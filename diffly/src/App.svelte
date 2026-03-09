@@ -30,9 +30,12 @@
   let directoryEntries: DirectoryEntryResult[] = []
   let entryGroups: EntryGroup[] = []
   let collapsedGroups: Record<string, boolean> = {}
+  let leftPaneScroll: HTMLDivElement | null = null
+  let rightPaneScroll: HTMLDivElement | null = null
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
+  let syncingScroll = false
 
   const statusLabel = {
     modified: 'Modified',
@@ -226,6 +229,23 @@
     }
 
     collapsedGroups = nextState
+  }
+
+  function syncPaneScroll(source: 'left' | 'right') {
+    const sourcePane = source === 'left' ? leftPaneScroll : rightPaneScroll
+    const targetPane = source === 'left' ? rightPaneScroll : leftPaneScroll
+
+    if (!sourcePane || !targetPane || syncingScroll) {
+      return
+    }
+
+    syncingScroll = true
+    targetPane.scrollTop = sourcePane.scrollTop
+    targetPane.scrollLeft = sourcePane.scrollLeft
+
+    requestAnimationFrame(() => {
+      syncingScroll = false
+    })
   }
 
   function formatSize(size: number | null) {
@@ -445,43 +465,69 @@
         {#if detailLoading}
           <div class="empty-state">Loading diff...</div>
         {:else if activeDiff}
-          <div class="viewer-header">
-            <div class="viewer-source">
-              <span>Left</span>
-              <strong>{activeDiff.leftLabel}</strong>
-            </div>
-            <div class="viewer-source">
-              <span>Right</span>
-              <strong>{activeDiff.rightLabel}</strong>
-            </div>
-          </div>
-
           {#if activeDiff.contentKind !== 'text'}
             <div class="message-card">{activeDiff.summary}</div>
           {:else if viewMode === 'sideBySide'}
-            <div class="diff-grid side-by-side-grid">
-              <div class="grid-label">Left</div>
-              <div class="grid-label">Right</div>
-
-              {#each activeDiff.sideBySide as row}
-                <div class={`diff-row ${row.left?.change ?? 'context'}`}>
-                  {#if row.left}
-                    <span class="line-number">{row.left.lineNumber ?? ''}</span>
-                    <span class="prefix">{row.left.prefix}</span>
-                    <span class="line-text">{row.left.text || ' '}</span>
-                  {/if}
+            <div class="split-view">
+              <section class="diff-pane">
+                <div class="pane-header sticky-pane-header">
+                  <span>Left</span>
+                  <strong>{activeDiff.leftLabel}</strong>
                 </div>
-
-                <div class={`diff-row ${row.right?.change ?? 'context'}`}>
-                  {#if row.right}
-                    <span class="line-number">{row.right.lineNumber ?? ''}</span>
-                    <span class="prefix">{row.right.prefix}</span>
-                    <span class="line-text">{row.right.text || ' '}</span>
-                  {/if}
+                <div
+                  bind:this={leftPaneScroll}
+                  class="pane-scroll"
+                  on:scroll={() => syncPaneScroll('left')}
+                >
+                  <div class="pane-grid">
+                    {#each activeDiff.sideBySide as row}
+                      <div class={`diff-row ${row.left?.change ?? 'context'}`}>
+                        {#if row.left}
+                          <span class="line-number">{row.left.lineNumber ?? ''}</span>
+                          <span class="prefix">{row.left.prefix}</span>
+                          <span class="line-text">{row.left.text || ' '}</span>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
                 </div>
-              {/each}
+              </section>
+
+              <section class="diff-pane">
+                <div class="pane-header sticky-pane-header">
+                  <span>Right</span>
+                  <strong>{activeDiff.rightLabel}</strong>
+                </div>
+                <div
+                  bind:this={rightPaneScroll}
+                  class="pane-scroll"
+                  on:scroll={() => syncPaneScroll('right')}
+                >
+                  <div class="pane-grid">
+                    {#each activeDiff.sideBySide as row}
+                      <div class={`diff-row ${row.right?.change ?? 'context'}`}>
+                        {#if row.right}
+                          <span class="line-number">{row.right.lineNumber ?? ''}</span>
+                          <span class="prefix">{row.right.prefix}</span>
+                          <span class="line-text">{row.right.text || ' '}</span>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              </section>
             </div>
           {:else}
+            <div class="viewer-header sticky-pane-header">
+              <div class="viewer-source">
+                <span>Left</span>
+                <strong>{activeDiff.leftLabel}</strong>
+              </div>
+              <div class="viewer-source">
+                <span>Right</span>
+                <strong>{activeDiff.rightLabel}</strong>
+              </div>
+            </div>
             <div class="unified-grid">
               {#each activeDiff.unified as line}
                 <div class={`unified-row ${line.change}`}>

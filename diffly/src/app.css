@@ -182,6 +182,7 @@ p {
   gap: 8px;
   align-items: center;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .setup-actions {
@@ -204,8 +205,10 @@ p {
 .compare-screen {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
   background: var(--canvas);
+  overflow: hidden;
 }
 
 .compare-toolbar {
@@ -272,6 +275,7 @@ p {
 .compare-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -281,6 +285,7 @@ p {
 }
 
 .file-browser {
+  height: 100%;
   overflow: auto;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -393,7 +398,9 @@ p {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
   background: var(--surface);
+  overflow: hidden;
 }
 
 .viewer-header {
@@ -403,6 +410,12 @@ p {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: #11161d;
+}
+
+.sticky-pane-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
 }
 
 .viewer-source {
@@ -424,15 +437,55 @@ p {
   font-weight: 600;
 }
 
-.diff-grid,
-.unified-grid {
-  overflow: auto;
-  scrollbar-gutter: stable both-edges;
+.split-view {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  height: 100%;
 }
 
-.side-by-side-grid {
+.diff-pane {
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.diff-pane + .diff-pane {
+  border-left: 1px solid var(--border);
+}
+
+.pane-header {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #11161d;
+}
+
+.pane-header span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.pane-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pane-scroll,
+.unified-grid {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.pane-grid {
+  min-width: max-content;
 }
 
 .grid-label {
@@ -453,7 +506,6 @@ p {
   gap: 8px;
   min-height: 22px;
   padding: 2px 10px;
-  min-width: 100%;
   border-bottom: 1px solid #21262d;
   font-family: var(--code);
   font-size: 12px;
@@ -483,7 +535,6 @@ p {
   gap: 8px;
   min-height: 22px;
   padding: 2px 10px;
-  min-width: 100%;
   border-bottom: 1px solid #21262d;
   font-family: var(--code);
   font-size: 12px;
@@ -515,21 +566,21 @@ p {
   color: var(--muted);
 }
 
-.diff-grid::-webkit-scrollbar,
+.pane-scroll::-webkit-scrollbar,
 .unified-grid::-webkit-scrollbar,
 .file-browser::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.diff-grid::-webkit-scrollbar-thumb,
+.pane-scroll::-webkit-scrollbar-thumb,
 .unified-grid::-webkit-scrollbar-thumb,
 .file-browser::-webkit-scrollbar-thumb {
   background: #30363d;
   border-radius: 999px;
 }
 
-.diff-grid::-webkit-scrollbar-track,
+.pane-scroll::-webkit-scrollbar-track,
 .unified-grid::-webkit-scrollbar-track,
 .file-browser::-webkit-scrollbar-track {
   background: #0d1117;
