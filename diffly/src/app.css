@@ -128,7 +128,8 @@ p {
 .mode-tabs button,
 .inline-controls button,
 .view-picker button {
-  padding: 8px 12px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
 }
 
 .mode-tabs button.active,
@@ -214,19 +215,20 @@ p {
 .compare-toolbar {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
-  align-items: flex-start;
+  gap: 12px;
+  align-items: center;
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: 10px 14px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
 .toolbar-left {
   display: flex;
-  gap: 16px;
+  gap: 10px;
+  align-items: center;
   min-width: 0;
 }
 
@@ -237,14 +239,14 @@ p {
 }
 
 .toolbar-meta strong {
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
 .source-lines {
   display: grid;
   gap: 1px;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   color: var(--muted);
 }
 
@@ -258,14 +260,14 @@ p {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
 .checkbox-row {
   display: flex;
-  gap: 12px;
-  font-size: 0.78rem;
+  gap: 10px;
+  font-size: 0.74rem;
 }
 
 .compare-error {
@@ -488,18 +490,6 @@ p {
   min-width: max-content;
 }
 
-.grid-label {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: #0f141b;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 .diff-row {
   display: grid;
   grid-template-columns: 40px 16px max-content;
@@ -564,6 +554,13 @@ p {
   min-height: 180px;
   padding: 20px;
   color: var(--muted);
+}
+
+.empty-inline-state {
+  padding: 12px 10px;
+  border-bottom: 1px solid #21262d;
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .pane-scroll::-webkit-scrollbar,

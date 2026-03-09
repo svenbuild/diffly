@@ -20,6 +20,7 @@
   let screen: Screen = 'setup'
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
+  let showFullFile = false
   let leftPath = ''
   let rightPath = ''
   let ignoreWhitespace = false
@@ -211,26 +212,6 @@
     }
   }
 
-  function expandAllGroups() {
-    const nextState: Record<string, boolean> = {}
-
-    for (const group of entryGroups) {
-      nextState[group.key] = false
-    }
-
-    collapsedGroups = nextState
-  }
-
-  function collapseAllGroups() {
-    const nextState: Record<string, boolean> = {}
-
-    for (const group of entryGroups) {
-      nextState[group.key] = true
-    }
-
-    collapsedGroups = nextState
-  }
-
   function syncPaneScroll(source: 'left' | 'right') {
     const sourcePane = source === 'left' ? leftPaneScroll : rightPaneScroll
     const targetPane = source === 'left' ? rightPaneScroll : leftPaneScroll
@@ -268,6 +249,16 @@
     mode === 'directory'
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
       : activeDiff?.summary ?? 'File compare'
+
+  $: visibleSideBySideRows =
+    activeDiff?.sideBySide.filter((row) =>
+      showFullFile
+        ? true
+        : row.left?.change !== 'context' || row.right?.change !== 'context',
+    ) ?? []
+
+  $: visibleUnifiedRows =
+    activeDiff?.unified.filter((line) => (showFullFile ? true : line.change !== 'context')) ?? []
 </script>
 
 <svelte:head>
@@ -325,20 +316,12 @@
           Ignore case
         </label>
         <div class="view-picker">
-          <span>Default view</span>
-          <button
-            class:active={viewMode === 'sideBySide'}
-            type="button"
-            on:click={() => (viewMode = 'sideBySide')}
-          >
-            Side by side
-          </button>
           <button
             class:active={viewMode === 'unified'}
             type="button"
-            on:click={() => (viewMode = 'unified')}
+            on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
           >
-            Unified
+            Unified view
           </button>
         </div>
       </div>
@@ -376,27 +359,20 @@
       <div class="toolbar-right">
         <div class="inline-controls">
           <button
-            class:active={viewMode === 'sideBySide'}
-            type="button"
-            on:click={() => (viewMode = 'sideBySide')}
-          >
-            Side by side
-          </button>
-          <button
             class:active={viewMode === 'unified'}
             type="button"
-            on:click={() => (viewMode = 'unified')}
+            on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
           >
             Unified
           </button>
+          <button
+            class:active={showFullFile}
+            type="button"
+            on:click={() => (showFullFile = !showFullFile)}
+          >
+            Full file
+          </button>
         </div>
-
-        {#if mode === 'directory' && entryGroups.length > 0}
-          <div class="inline-controls">
-            <button type="button" on:click={collapseAllGroups}>Collapse all</button>
-            <button type="button" on:click={expandAllGroups}>Expand all</button>
-          </div>
-        {/if}
 
         <div class="checkbox-row">
           <label>
@@ -480,7 +456,11 @@
                   on:scroll={() => syncPaneScroll('left')}
                 >
                   <div class="pane-grid">
-                    {#each activeDiff.sideBySide as row}
+                    {#if visibleSideBySideRows.length === 0}
+                      <div class="empty-inline-state">No changed lines.</div>
+                    {/if}
+
+                    {#each visibleSideBySideRows as row}
                       <div class={`diff-row ${row.left?.change ?? 'context'}`}>
                         {#if row.left}
                           <span class="line-number">{row.left.lineNumber ?? ''}</span>
@@ -504,7 +484,11 @@
                   on:scroll={() => syncPaneScroll('right')}
                 >
                   <div class="pane-grid">
-                    {#each activeDiff.sideBySide as row}
+                    {#if visibleSideBySideRows.length === 0}
+                      <div class="empty-inline-state">No changed lines.</div>
+                    {/if}
+
+                    {#each visibleSideBySideRows as row}
                       <div class={`diff-row ${row.right?.change ?? 'context'}`}>
                         {#if row.right}
                           <span class="line-number">{row.right.lineNumber ?? ''}</span>
@@ -529,7 +513,11 @@
               </div>
             </div>
             <div class="unified-grid">
-              {#each activeDiff.unified as line}
+              {#if visibleUnifiedRows.length === 0}
+                <div class="empty-inline-state">No changed lines.</div>
+              {/if}
+
+              {#each visibleUnifiedRows as line}
                 <div class={`unified-row ${line.change}`}>
                   <span class="line-number">{line.leftLineNumber ?? ''}</span>
                   <span class="line-number">{line.rightLineNumber ?? ''}</span>
