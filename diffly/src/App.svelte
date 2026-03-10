@@ -35,6 +35,14 @@
     entries: DirectoryEntryResult[]
   }
 
+  interface FolderSection {
+    key: string
+    label: string
+    depth: number
+    entries: DirectoryEntryResult[]
+    totalCount: number
+  }
+
   interface SideBySideRenderItem {
     type: 'hunk' | 'row'
     header?: string
@@ -47,10 +55,25 @@
     row?: UnifiedLine
   }
 
+  interface DiffTreeNode {
+    key: string
+    name: string
+    type: 'directory' | 'file'
+    children: DiffTreeNode[]
+    entry: DirectoryEntryResult | null
+    changedCount: number
+  }
+
+  interface VisibleDiffTreeNode {
+    node: DiffTreeNode
+    depth: number
+  }
+
   interface ExplorerPaneState {
     title: string
     roots: ExplorerEntry[]
     currentPath: string
+    pathInput: string
     currentListing: DirectoryListing | null
     listings: Record<string, DirectoryListing>
     history: string[]
@@ -68,6 +91,7 @@
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
   let showFullFile = false
+  let showInlineHighlights = true
   let leftPath = ''
   let rightPath = ''
   let ignoreWhitespace = false
@@ -78,6 +102,7 @@
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
   let entryGroups: EntryGroup[] = []
+  let folderSections: FolderSection[] = []
   let collapsedGroups: Record<string, boolean> = {}
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
@@ -118,6 +143,7 @@
       title,
       roots: [],
       currentPath: '',
+      pathInput: '',
       currentListing: null,
       listings: {},
       history: [],
@@ -207,6 +233,7 @@
     ignoreWhitespace = session.ignoreWhitespace
     ignoreCase = session.ignoreCase
     showFullFile = session.showFullFile
+    showInlineHighlights = session.showInlineHighlights ?? true
   }
 
   async function resolveInitialPanePath(
@@ -267,6 +294,7 @@
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
     entryGroups = []
+    folderSections = []
     collapsedGroups = {}
     selectedRelativePath = ''
     activeDiff = null
@@ -342,6 +370,7 @@
         ...current,
         ...historyState,
         currentPath: path,
+        pathInput: path,
         currentListing: listing,
         listings: {
           ...current.listings,
@@ -384,6 +413,51 @@
     }
 
     await openDirectory(side, path)
+  }
+
+  function updatePathInput(side: Side, value: string) {
+    updatePane(side, (pane) => ({
+      ...pane,
+      pathInput: value,
+    }))
+  }
+
+  async function submitPathInput(side: Side) {
+    const pane = paneFor(side)
+    const nextPath = pane.pathInput.trim()
+
+    if (!nextPath) {
+      updatePane(side, (current) => ({
+        ...current,
+        pathInput: current.currentPath,
+      }))
+      return
+    }
+
+    const info = await pathInfo(nextPath)
+
+    if (!info.exists) {
+      updatePane(side, (current) => ({
+        ...current,
+        error: 'The requested path does not exist.',
+      }))
+      return
+    }
+
+    if (info.isDirectory) {
+      await openDirectory(side, info.path)
+      if (mode === 'directory') {
+        selectTarget(side, info.path, 'directory')
+      }
+      return
+    }
+
+    if (info.isFile && info.parentPath) {
+      await openDirectory(side, info.parentPath)
+      if (mode === 'file') {
+        selectTarget(side, info.path, 'file')
+      }
+    }
   }
 
   function selectTarget(side: Side, path: string, kind: 'file' | 'directory') {
@@ -442,6 +516,7 @@
     errorMessage = ''
     directoryEntries = []
     entryGroups = []
+    folderSections = []
     collapsedGroups = {}
     selectedRelativePath = ''
     activeDiff = null
@@ -456,7 +531,8 @@
       if (response.kind === 'directory') {
         directoryEntries = response.entries
         entryGroups = buildGroups(directoryEntries)
-        collapsedGroups = createCollapsedState(entryGroups)
+        folderSections = buildFolderSections(entryGroups)
+        collapsedGroups = createCollapsedState(folderSections)
 
         if (directoryEntries.length > 0) {
           await selectEntry(directoryEntries[0], compareRevision)
@@ -522,7 +598,92 @@
       .sort((left, right) => left.label.localeCompare(right.label))
   }
 
-  function createCollapsedState(groups: EntryGroup[]) {
+  function buildFolderSections(groups: EntryGroup[]) {
+    type Node = {
+      key: string
+      label: string
+      entries: DirectoryEntryResult[]
+      children: string[]
+      totalCount: number
+    }
+
+    const nodes = new Map<string, Node>()
+
+    const ensureNode = (key: string) => {
+      if (!nodes.has(key)) {
+        nodes.set(key, {
+          key,
+          label: key === ROOT_GROUP ? 'Root' : getFileName(key),
+          entries: [],
+          children: [],
+          totalCount: 0,
+        })
+      }
+
+      return nodes.get(key)!
+    }
+
+    ensureNode(ROOT_GROUP)
+
+    for (const group of groups) {
+      const parts = group.key === ROOT_GROUP ? [] : group.key.split('/')
+      let currentKey = ROOT_GROUP
+
+      for (const part of parts) {
+        const nextKey = currentKey === ROOT_GROUP ? part : `${currentKey}/${part}`
+        const currentNode = ensureNode(currentKey)
+        ensureNode(nextKey)
+
+        if (!currentNode.children.includes(nextKey)) {
+          currentNode.children = [...currentNode.children, nextKey]
+        }
+
+        currentKey = nextKey
+      }
+
+      ensureNode(group.key).entries = group.entries
+    }
+
+    const computeCounts = (key: string) => {
+      const node = ensureNode(key)
+      let total = node.entries.length
+
+      for (const childKey of node.children) {
+        total += computeCounts(childKey)
+      }
+
+      node.totalCount = total
+      return total
+    }
+
+    computeCounts(ROOT_GROUP)
+
+    const sections: FolderSection[] = []
+
+    const appendSections = (key: string, depth: number) => {
+      const node = ensureNode(key)
+
+      sections.push({
+        key: node.key,
+        label: node.label,
+        depth,
+        entries: node.entries,
+        totalCount: node.totalCount,
+      })
+
+      const sortedChildren = [...node.children].sort((left, right) => left.localeCompare(right))
+
+      for (const childKey of sortedChildren) {
+        appendSections(childKey, depth + 1)
+      }
+    }
+
+    appendSections(ROOT_GROUP, 0)
+
+    return sections
+  }
+
+  function createCollapsedState(groups: FolderSection[]) {
     const nextState: Record<string, boolean> = {}
 
     for (const group of groups) {
@@ -530,6 +691,30 @@
     }
 
     return nextState
+  }
+
+  function getVisibleFolderSections(
+    sections: FolderSection[],
+    collapsedState: Record<string, boolean>,
+  ) {
+    return sections.filter((section) => {
+      if (section.key === ROOT_GROUP) {
+        return true
+      }
+
+      const parts = section.key.split('/')
+      let current = ''
+
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        current = current ? `${current}/${parts[index]}` : parts[index]
+
+        if (collapsedState[current]) {
+          return false
+        }
+      }
+
+      return true
+    })
   }
 
   function getParentPath(relativePath: string) {
@@ -779,6 +964,7 @@
       ignoreWhitespace,
       ignoreCase,
       showFullFile,
+      showInlineHighlights,
       leftPane: buildPersistedPane(leftExplorer),
       rightPane: buildPersistedPane(rightExplorer),
     }
@@ -828,6 +1014,7 @@
     ignoreWhitespace
     ignoreCase
     showFullFile
+    showInlineHighlights
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
     leftExplorer.selectedTargetKind
@@ -842,6 +1029,12 @@
   }
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
+  $: if (mode !== 'directory') {
+    folderSections = []
+  } else if (entryGroups.length > 0) {
+    folderSections = buildFolderSections(entryGroups)
+  }
+  $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
   $: pickerSides = [
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
@@ -924,7 +1117,7 @@
                 type="button"
                 on:click={() => navigateHistory(item.side, -1)}
               >
-                ←
+                &lt;
               </button>
               <button
                 class="secondary icon-button"
@@ -932,7 +1125,7 @@
                 type="button"
                 on:click={() => navigateHistory(item.side, 1)}
               >
-                →
+                &gt;
               </button>
               <button
                 class="secondary icon-button"
@@ -942,7 +1135,7 @@
                   item.pane.currentListing?.parentPath &&
                   navigateTo(item.side, item.pane.currentListing.parentPath)}
               >
-                ↑
+                ^
               </button>
             </div>
 
@@ -956,7 +1149,18 @@
               {/each}
             </select>
 
-            <div class="path-display">{item.pane.currentPath || 'No folder open'}</div>
+            <input
+              class="path-input"
+              placeholder="Enter a file or folder path"
+              type="text"
+              value={item.pane.pathInput}
+              on:input={(event) => updatePathInput(item.side, event.currentTarget.value)}
+              on:keydown={(event) => event.key === 'Enter' && submitPathInput(item.side)}
+            />
+
+            <button class="secondary" type="button" on:click={() => submitPathInput(item.side)}>
+              Go
+            </button>
 
             <button class="secondary" type="button" on:click={() => browseSystem(item.side)}>
               System dialog
@@ -1070,6 +1274,13 @@
           >
             Full file
           </button>
+          <button
+            class:active={showInlineHighlights}
+            type="button"
+            on:click={() => (showInlineHighlights = !showInlineHighlights)}
+          >
+            Inline highlights
+          </button>
         </div>
 
         <div class="checkbox-row">
@@ -1096,18 +1307,23 @@
     <section class:single-pane={mode === 'file'} class="compare-layout">
       {#if mode === 'directory'}
         <aside class="file-browser">
-          {#if entryGroups.length === 0}
+          {#if visibleFolderSections.length === 0}
             <div class="empty-state">No differing files found.</div>
           {:else}
-            {#each entryGroups as group}
+            {#each visibleFolderSections as group}
               <section class="file-group">
-                <button class="group-toggle" type="button" on:click={() => toggleGroup(group.key)}>
-                  <span class="chevron">{collapsedGroups[group.key] ? '▸' : '▾'}</span>
+                <button
+                  class="group-toggle"
+                  style={`padding-left: ${group.depth * 16 + 10}px`}
+                  type="button"
+                  on:click={() => toggleGroup(group.key)}
+                >
+                  <span class="chevron">{collapsedGroups[group.key] ? '>' : 'v'}</span>
                   <span class="group-label">{group.label}</span>
-                  <span class="group-count">{group.entries.length}</span>
+                  <span class="group-count">{group.totalCount}</span>
                 </button>
 
-                {#if !collapsedGroups[group.key]}
+                {#if !collapsedGroups[group.key] && group.entries.length > 0}
                   <div class="file-list">
                     {#each group.entries as entry}
                       <button
@@ -1149,7 +1365,10 @@
               <section class="diff-pane">
                 <div class="pane-header sticky-pane-header">
                   <span>Left</span>
-                  <strong>{activeDiff.leftLabel}</strong>
+                  <div class="pane-source">
+                    <strong>{getFileName(activeDiff.leftLabel)}</strong>
+                    <span class="pane-path">{activeDiff.leftLabel}</span>
+                  </div>
                 </div>
                 <div
                   bind:this={leftPaneScroll}
@@ -1169,7 +1388,16 @@
                           {#if item.row.left}
                             <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
                             <span class="prefix">{item.row.left.prefix}</span>
-                            <span class="line-text">{item.row.left.text || ' '}</span>
+                            <span class="line-text">
+                              {#each item.row.left.segments as segment}
+                                <span
+                                  class:highlighted={showInlineHighlights && segment.highlighted}
+                                  class="line-fragment"
+                                >
+                                  {segment.text || ' '}
+                                </span>
+                              {/each}
+                            </span>
                           {/if}
                         </div>
                       {/if}
@@ -1181,7 +1409,10 @@
               <section class="diff-pane">
                 <div class="pane-header sticky-pane-header">
                   <span>Right</span>
-                  <strong>{activeDiff.rightLabel}</strong>
+                  <div class="pane-source">
+                    <strong>{getFileName(activeDiff.rightLabel)}</strong>
+                    <span class="pane-path">{activeDiff.rightLabel}</span>
+                  </div>
                 </div>
                 <div
                   bind:this={rightPaneScroll}
@@ -1201,7 +1432,16 @@
                           {#if item.row.right}
                             <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
                             <span class="prefix">{item.row.right.prefix}</span>
-                            <span class="line-text">{item.row.right.text || ' '}</span>
+                            <span class="line-text">
+                              {#each item.row.right.segments as segment}
+                                <span
+                                  class:highlighted={showInlineHighlights && segment.highlighted}
+                                  class="line-fragment"
+                                >
+                                  {segment.text || ' '}
+                                </span>
+                              {/each}
+                            </span>
                           {/if}
                         </div>
                       {/if}
@@ -1214,11 +1454,13 @@
             <div class="viewer-header sticky-pane-header">
               <div class="viewer-source">
                 <span>Left</span>
-                <strong>{activeDiff.leftLabel}</strong>
+                <strong>{getFileName(activeDiff.leftLabel)}</strong>
+                <span class="pane-path">{activeDiff.leftLabel}</span>
               </div>
               <div class="viewer-source">
                 <span>Right</span>
-                <strong>{activeDiff.rightLabel}</strong>
+                <strong>{getFileName(activeDiff.rightLabel)}</strong>
+                <span class="pane-path">{activeDiff.rightLabel}</span>
               </div>
             </div>
             <div class="unified-grid">
@@ -1234,7 +1476,16 @@
                     <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
                     <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
                     <span class="prefix">{item.row.prefix}</span>
-                    <span class="line-text">{item.row.text || ' '}</span>
+                    <span class="line-text">
+                      {#each item.row.segments as segment}
+                        <span
+                          class:highlighted={showInlineHighlights && segment.highlighted}
+                          class="line-fragment"
+                        >
+                          {segment.text || ' '}
+                        </span>
+                      {/each}
+                    </span>
                   </div>
                 {/if}
               {/each}

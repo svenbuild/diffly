@@ -282,18 +282,10 @@ strong {
   flex: 0 0 auto;
 }
 
-.path-display {
+.path-input {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
   font-size: 0.78rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .explorer-list-pane {
@@ -323,7 +315,8 @@ strong {
 }
 
 .entry-row.selected,
-.file-row.selected {
+.file-row.selected,
+.tree-file-row.selected {
   background: var(--surface-selected);
 }
 
@@ -529,6 +522,22 @@ strong {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.pane-source {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  justify-items: end;
+}
+
+.pane-path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 .split-view {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -620,6 +629,24 @@ strong {
 .line-text {
   overflow: visible;
   white-space: pre;
+}
+
+.line-fragment {
+  white-space: pre;
+  border-radius: 2px;
+  padding-inline: 1px;
+}
+
+.diff-row.delete .line-fragment.highlighted,
+.unified-row.delete .line-fragment.highlighted {
+  background: #9d3b46;
+  color: #ffe2de;
+}
+
+.diff-row.insert .line-fragment.highlighted,
+.unified-row.insert .line-fragment.highlighted {
+  background: #2a7a46;
+  color: #d8ffe0;
 }
 
 .pane-scroll::-webkit-scrollbar,

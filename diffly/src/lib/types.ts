@@ -20,6 +20,7 @@ export interface PersistedSession {
   ignoreWhitespace: boolean
   ignoreCase: boolean
   showFullFile: boolean
+  showInlineHighlights: boolean
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
 }
@@ -66,7 +67,13 @@ export interface DiffCell {
   lineNumber: number | null
   prefix: string
   text: string
+  segments: DiffSegment[]
   change: DiffChange
+}
+
+export interface DiffSegment {
+  text: string
+  highlighted: boolean
 }
 
 export interface SideBySideRow {
@@ -79,6 +86,7 @@ export interface UnifiedLine {
   rightLineNumber: number | null
   prefix: string
   text: string
+  segments: DiffSegment[]
   change: DiffChange
 }
 

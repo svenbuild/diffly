@@ -39,6 +39,7 @@ struct PersistedSession {
   ignore_whitespace: bool,
   ignore_case: bool,
   show_full_file: bool,
+  show_inline_highlights: bool,
   left_pane: PersistedExplorerPane,
   right_pane: PersistedExplorerPane,
 }
@@ -141,7 +142,15 @@ struct DiffCell {
   line_number: Option<usize>,
   prefix: String,
   text: String,
+  segments: Vec<DiffSegment>,
   change: DiffChange,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiffSegment {
+  text: String,
+  highlighted: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -151,6 +160,7 @@ struct UnifiedLine {
   right_line_number: Option<usize>,
   prefix: String,
   text: String,
+  segments: Vec<DiffSegment>,
   change: DiffChange,
 }
 
@@ -556,12 +566,14 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
             line_number: Some(left_line_number),
             prefix: " ".to_string(),
             text: text.clone(),
+            segments: plain_segments(&text, false),
             change: DiffChange::Context,
           }),
           right: Some(DiffCell {
             line_number: Some(right_line_number),
             prefix: " ".to_string(),
-            text,
+            text: text.clone(),
+            segments: plain_segments(&text, false),
             change: DiffChange::Context,
           }),
         });
@@ -574,6 +586,7 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
           line_number: Some(left_line_number),
           prefix: "-".to_string(),
           text: clean_line(change.value()),
+          segments: Vec::new(),
           change: DiffChange::Delete,
         });
 
@@ -584,6 +597,7 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
           line_number: Some(right_line_number),
           prefix: "+".to_string(),
           text: clean_line(change.value()),
+          segments: Vec::new(),
           change: DiffChange::Insert,
         });
 
@@ -604,9 +618,19 @@ fn flush_side_buffer(
   let max_rows = left_pending.len().max(right_pending.len());
 
   for index in 0..max_rows {
+    let left_cell = left_pending.get(index).cloned();
+    let right_cell = right_pending.get(index).cloned();
+
+    let (left, right) = match (left_cell, right_cell) {
+      (Some(left), Some(right)) => highlight_side_by_side_pair(left, right),
+      (Some(left), None) => (Some(fill_cell_segments(left, true)), None),
+      (None, Some(right)) => (None, Some(fill_cell_segments(right, true))),
+      (None, None) => (None, None),
+    };
+
     rows.push(SideBySideRow {
-      left: left_pending.get(index).cloned(),
-      right: right_pending.get(index).cloned(),
+      left,
+      right,
     });
   }
 
@@ -616,39 +640,245 @@ fn flush_side_buffer(
 
 fn build_unified<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<UnifiedLine> {
   let mut lines = Vec::new();
+  let mut delete_pending = Vec::new();
+  let mut insert_pending = Vec::new();
   let mut left_line_number = 1;
   let mut right_line_number = 1;
 
   for change in diff.iter_all_changes() {
-    let (left_number, right_number, prefix, diff_change) = match change.tag() {
+    match change.tag() {
       ChangeTag::Equal => {
-        let numbers = (Some(left_line_number), Some(right_line_number));
+        flush_unified_buffer(&mut lines, &mut delete_pending, &mut insert_pending);
+
+        let text = clean_line(change.value());
+        lines.push(UnifiedLine {
+          left_line_number: Some(left_line_number),
+          right_line_number: Some(right_line_number),
+          prefix: " ".to_string(),
+          text: text.clone(),
+          segments: plain_segments(&text, false),
+          change: DiffChange::Context,
+        });
+
         left_line_number += 1;
         right_line_number += 1;
-        (numbers.0, numbers.1, " ".to_string(), DiffChange::Context)
       }
       ChangeTag::Delete => {
-        let number = Some(left_line_number);
+        let text = clean_line(change.value());
+        delete_pending.push(UnifiedLine {
+          left_line_number: Some(left_line_number),
+          right_line_number: None,
+          prefix: "-".to_string(),
+          text,
+          segments: Vec::new(),
+          change: DiffChange::Delete,
+        });
+
         left_line_number += 1;
-        (number, None, "-".to_string(), DiffChange::Delete)
       }
       ChangeTag::Insert => {
-        let number = Some(right_line_number);
+        let text = clean_line(change.value());
+        insert_pending.push(UnifiedLine {
+          left_line_number: None,
+          right_line_number: Some(right_line_number),
+          prefix: "+".to_string(),
+          text,
+          segments: Vec::new(),
+          change: DiffChange::Insert,
+        });
+
         right_line_number += 1;
-        (None, number, "+".to_string(), DiffChange::Insert)
       }
+    }
+  }
+
+  flush_unified_buffer(&mut lines, &mut delete_pending, &mut insert_pending);
+  lines
+}
+
+fn fill_cell_segments(mut cell: DiffCell, highlighted: bool) -> DiffCell {
+  cell.segments = plain_segments(&cell.text, highlighted);
+  cell
+}
+
+fn highlight_side_by_side_pair(left: DiffCell, right: DiffCell) -> (Option<DiffCell>, Option<DiffCell>) {
+  let (left_segments, right_segments) = highlight_segments(&left.text, &right.text);
+
+  (
+    Some(DiffCell {
+      segments: left_segments,
+      ..left
+    }),
+    Some(DiffCell {
+      segments: right_segments,
+      ..right
+    }),
+  )
+}
+
+fn flush_unified_buffer(
+  lines: &mut Vec<UnifiedLine>,
+  delete_pending: &mut Vec<UnifiedLine>,
+  insert_pending: &mut Vec<UnifiedLine>,
+) {
+  let max_lines = delete_pending.len().max(insert_pending.len());
+
+  for index in 0..max_lines {
+    if let Some(mut line) = delete_pending.get(index).cloned() {
+      if let Some(counterpart) = insert_pending.get(index) {
+        let (segments, _) = highlight_segments(&line.text, &counterpart.text);
+        line.segments = segments;
+      } else {
+        line.segments = plain_segments(&line.text, true);
+      }
+
+      lines.push(line);
+    }
+
+    if let Some(mut line) = insert_pending.get(index).cloned() {
+      if let Some(counterpart) = delete_pending.get(index) {
+        let (_, segments) = highlight_segments(&counterpart.text, &line.text);
+        line.segments = segments;
+      } else {
+        line.segments = plain_segments(&line.text, true);
+      }
+
+      lines.push(line);
+    }
+  }
+
+  delete_pending.clear();
+  insert_pending.clear();
+}
+
+fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
+  vec![DiffSegment {
+    text: text.to_string(),
+    highlighted,
+  }]
+}
+
+fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSegment>) {
+  let left_tokens = tokenize_inline_diff(left);
+  let right_tokens = tokenize_inline_diff(right);
+  let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
+  let mut left_common = vec![false; left_tokens.len()];
+  let mut right_common = vec![false; right_tokens.len()];
+
+  for (left_index, right_index) in common_pairs {
+    left_common[left_index] = true;
+    right_common[right_index] = true;
+  }
+
+  (
+    collapse_segments(&left_tokens, &left_common),
+    collapse_segments(&right_tokens, &right_common),
+  )
+}
+
+fn tokenize_inline_diff(text: &str) -> Vec<String> {
+  let mut tokens = Vec::new();
+  let mut current = String::new();
+  let mut current_kind: Option<usize> = None;
+
+  for character in text.chars() {
+    let next_kind = if character.is_whitespace() {
+      0
+    } else if character.is_alphanumeric() || character == '_' {
+      1
+    } else {
+      2
     };
 
-    lines.push(UnifiedLine {
-      left_line_number: left_number,
-      right_line_number: right_number,
-      prefix,
-      text: clean_line(change.value()),
-      change: diff_change,
+    match current_kind {
+      Some(kind) if kind == next_kind => current.push(character),
+      Some(_) => {
+        tokens.push(current);
+        current = character.to_string();
+        current_kind = Some(next_kind);
+      }
+      None => {
+        current.push(character);
+        current_kind = Some(next_kind);
+      }
+    }
+  }
+
+  if !current.is_empty() {
+    tokens.push(current);
+  }
+
+  tokens
+}
+
+fn lcs_pairs(left: &[String], right: &[String]) -> Vec<(usize, usize)> {
+  let mut dp = vec![vec![0; right.len() + 1]; left.len() + 1];
+
+  for left_index in (0..left.len()).rev() {
+    for right_index in (0..right.len()).rev() {
+      dp[left_index][right_index] = if left[left_index] == right[right_index] {
+        dp[left_index + 1][right_index + 1] + 1
+      } else {
+        dp[left_index + 1][right_index].max(dp[left_index][right_index + 1])
+      };
+    }
+  }
+
+  let mut pairs = Vec::new();
+  let mut left_index = 0;
+  let mut right_index = 0;
+
+  while left_index < left.len() && right_index < right.len() {
+    if left[left_index] == right[right_index] {
+      pairs.push((left_index, right_index));
+      left_index += 1;
+      right_index += 1;
+    } else if dp[left_index + 1][right_index] >= dp[left_index][right_index + 1] {
+      left_index += 1;
+    } else {
+      right_index += 1;
+    }
+  }
+
+  pairs
+}
+
+fn collapse_segments(tokens: &[String], common: &[bool]) -> Vec<DiffSegment> {
+  if tokens.is_empty() {
+    return plain_segments("", false);
+  }
+
+  let mut segments = Vec::new();
+  let mut current = String::new();
+  let mut highlighted = !common[0];
+
+  for (index, token) in tokens.iter().enumerate() {
+    let token_highlighted = !common[index];
+
+    if token_highlighted == highlighted {
+      current.push_str(token);
+      continue;
+    }
+
+    if !current.is_empty() {
+      segments.push(DiffSegment {
+        text: current,
+        highlighted,
+      });
+    }
+
+    current = token.clone();
+    highlighted = token_highlighted;
+  }
+
+  if !current.is_empty() {
+    segments.push(DiffSegment {
+      text: current,
+      highlighted,
     });
   }
 
-  lines
+  segments
 }
 
 fn normalize_text(content: &str, options: &CompareOptions) -> String {
