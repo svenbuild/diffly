@@ -6,6 +6,24 @@ export type DiffChange = 'context' | 'delete' | 'insert'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
 
+export interface PersistedExplorerPane {
+  currentPath: string
+  history: string[]
+  historyIndex: number
+  selectedTargetPath: string
+  selectedTargetKind: PathKind | null
+}
+
+export interface PersistedSession {
+  mode: CompareMode
+  viewMode: ViewMode
+  ignoreWhitespace: boolean
+  ignoreCase: boolean
+  showFullFile: boolean
+  leftPane: PersistedExplorerPane
+  rightPane: PersistedExplorerPane
+}
+
 export interface CompareOptions {
   ignoreWhitespace: boolean
   ignoreCase: boolean

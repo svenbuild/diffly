@@ -7,8 +7,10 @@
     comparePaths,
     listDirectory,
     listRoots,
+    loadSessionState,
     openCompareItem,
     pathInfo,
+    saveSessionState,
   } from './lib/api'
   import type {
     CompareMode,
@@ -16,6 +18,8 @@
     DirectoryListing,
     ExplorerEntry,
     FileDiffResult,
+    PersistedExplorerPane,
+    PersistedSession,
     SideBySideRow,
     UnifiedLine,
     ViewMode,
@@ -23,6 +27,7 @@
 
   const ROOT_GROUP = '__root__'
   const DIFF_CONTEXT_LINES = 3
+  const SESSION_SAVE_DELAY_MS = 180
 
   interface EntryGroup {
     key: string
@@ -80,6 +85,8 @@
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let syncingScroll = false
+  let persistenceReady = false
+  let saveSessionTimer: number | null = null
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
 
@@ -98,6 +105,12 @@
 
   onMount(() => {
     void initializePickers()
+
+    return () => {
+      if (saveSessionTimer !== null) {
+        window.clearTimeout(saveSessionTimer)
+      }
+    }
   })
 
   function createExplorerPane(title: string): ExplorerPaneState {
@@ -136,7 +149,12 @@
     pickerLoading = true
 
     try {
-      const roots = await listRoots()
+      const [roots, savedSession] = await Promise.all([
+        listRoots(),
+        loadSessionState().catch(() => null),
+      ])
+
+      applyPersistedSession(savedSession)
 
       leftExplorer = {
         ...createExplorerPane('Left'),
@@ -149,18 +167,93 @@
       }
 
       if (roots.length > 0) {
-        const leftRoot = roots[0].path
-        const rightRoot = roots[1]?.path ?? roots[0].path
+        const leftRoot = await resolveInitialPanePath(savedSession?.leftPane ?? null, roots[0].path)
+        const rightRoot = await resolveInitialPanePath(
+          savedSession?.rightPane ?? null,
+          roots[1]?.path ?? roots[0].path,
+        )
 
         await Promise.all([
           openDirectory('left', leftRoot),
           openDirectory('right', rightRoot),
+        ])
+
+        await Promise.all([
+          restorePaneSelection('left', savedSession?.leftPane ?? null),
+          restorePaneSelection('right', savedSession?.rightPane ?? null),
         ])
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
     } finally {
       pickerLoading = false
+      persistenceReady = true
+    }
+  }
+
+  function applyPersistedSession(session: PersistedSession | null) {
+    if (!session) {
+      return
+    }
+
+    if (session.mode === 'file' || session.mode === 'directory') {
+      mode = session.mode
+    }
+
+    if (session.viewMode === 'sideBySide' || session.viewMode === 'unified') {
+      viewMode = session.viewMode
+    }
+
+    ignoreWhitespace = session.ignoreWhitespace
+    ignoreCase = session.ignoreCase
+    showFullFile = session.showFullFile
+  }
+
+  async function resolveInitialPanePath(
+    pane: PersistedExplorerPane | null,
+    fallbackPath: string,
+  ) {
+    if (pane?.currentPath) {
+      const currentInfo = await pathInfo(pane.currentPath)
+
+      if (currentInfo.exists && currentInfo.isDirectory) {
+        return currentInfo.path
+      }
+    }
+
+    if (pane?.selectedTargetPath) {
+      const targetInfo = await pathInfo(pane.selectedTargetPath)
+
+      if (targetInfo.exists && targetInfo.isDirectory) {
+        return targetInfo.path
+      }
+
+      if (targetInfo.exists && targetInfo.isFile && targetInfo.parentPath) {
+        return targetInfo.parentPath
+      }
+    }
+
+    return fallbackPath
+  }
+
+  async function restorePaneSelection(side: Side, pane: PersistedExplorerPane | null) {
+    if (!pane?.selectedTargetPath || !pane.selectedTargetKind) {
+      return
+    }
+
+    const info = await pathInfo(pane.selectedTargetPath)
+
+    if (!info.exists) {
+      return
+    }
+
+    if (pane.selectedTargetKind === 'directory' && info.isDirectory) {
+      selectTarget(side, info.path, 'directory')
+      return
+    }
+
+    if (pane.selectedTargetKind === 'file' && info.isFile) {
+      selectTarget(side, info.path, 'file')
     }
   }
 
@@ -669,6 +762,45 @@
     return pane.roots.find((root) => normalized.startsWith(root.path.toLowerCase()))?.path ?? ''
   }
 
+  function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPane {
+    return {
+      currentPath: pane.currentPath,
+      history: pane.history,
+      historyIndex: pane.historyIndex,
+      selectedTargetPath: pane.selectedTargetPath,
+      selectedTargetKind: pane.selectedTargetKind,
+    }
+  }
+
+  function buildPersistedSession(): PersistedSession {
+    return {
+      mode,
+      viewMode,
+      ignoreWhitespace,
+      ignoreCase,
+      showFullFile,
+      leftPane: buildPersistedPane(leftExplorer),
+      rightPane: buildPersistedPane(rightExplorer),
+    }
+  }
+
+  function scheduleSessionSave() {
+    if (!persistenceReady) {
+      return
+    }
+
+    if (saveSessionTimer !== null) {
+      window.clearTimeout(saveSessionTimer)
+    }
+
+    const session = buildPersistedSession()
+
+    saveSessionTimer = window.setTimeout(() => {
+      void saveSessionState(session).catch(() => undefined)
+      saveSessionTimer = null
+    }, SESSION_SAVE_DELAY_MS)
+  }
+
   function isCurrentFolderSelected(pane: ExplorerPaneState) {
     return pane.selectedTargetKind === 'directory' && pane.selectedTargetPath === pane.currentPath
   }
@@ -689,6 +821,25 @@
 
   $: unifiedRenderItems =
     activeDiff && showFullFile !== undefined ? buildUnifiedRenderItems(activeDiff.unified) : []
+
+  $: if (persistenceReady) {
+    mode
+    viewMode
+    ignoreWhitespace
+    ignoreCase
+    showFullFile
+    leftExplorer.currentPath
+    leftExplorer.selectedTargetPath
+    leftExplorer.selectedTargetKind
+    leftExplorer.history
+    leftExplorer.historyIndex
+    rightExplorer.currentPath
+    rightExplorer.selectedTargetPath
+    rightExplorer.selectedTargetKind
+    rightExplorer.history
+    rightExplorer.historyIndex
+    scheduleSessionSave()
+  }
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
   $: pickerSides = [
