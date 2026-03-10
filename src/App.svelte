@@ -510,6 +510,7 @@
 
     const nextLeftPath = leftExplorer.selectedTargetPath
     const nextRightPath = rightExplorer.selectedTargetPath
+    const previousRelativePath = selectedRelativePath
 
     loading = true
     detailLoading = false
@@ -518,7 +519,6 @@
     entryGroups = []
     folderSections = []
     collapsedGroups = {}
-    selectedRelativePath = ''
     activeDiff = null
     leftPath = nextLeftPath
     rightPath = nextRightPath
@@ -535,9 +535,15 @@
         collapsedGroups = createCollapsedState(folderSections)
 
         if (directoryEntries.length > 0) {
-          await selectEntry(directoryEntries[0], compareRevision)
+          const retainedEntry =
+            directoryEntries.find((entry) => entry.relativePath === previousRelativePath) ??
+            directoryEntries[0]
+          await selectEntry(retainedEntry, compareRevision)
+        } else {
+          selectedRelativePath = ''
         }
       } else {
+        selectedRelativePath = ''
         activeDiff = response.result
       }
     } catch (error) {
@@ -1065,22 +1071,6 @@
       </div>
 
       <div class="setup-toolbar-right">
-        <label class="inline-check">
-          <input bind:checked={ignoreWhitespace} type="checkbox" />
-          Ignore whitespace
-        </label>
-        <label class="inline-check">
-          <input bind:checked={ignoreCase} type="checkbox" />
-          Ignore case
-        </label>
-        <button
-          class:active={viewMode === 'unified'}
-          class="secondary compact-toggle"
-          type="button"
-          on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
-        >
-          Unified view
-        </button>
         <button class="primary" disabled={!pickerCanCompare || loading} type="button" on:click={runCompare}>
           {#if loading}
             Comparing...
@@ -1158,18 +1148,14 @@
               on:keydown={(event) => event.key === 'Enter' && submitPathInput(item.side)}
             />
 
-            <button class="secondary" type="button" on:click={() => submitPathInput(item.side)}>
-              Go
-            </button>
-
-            <button class="secondary" type="button" on:click={() => browseSystem(item.side)}>
+            <button class="secondary utility-button" type="button" on:click={() => browseSystem(item.side)}>
               System dialog
             </button>
 
             {#if mode === 'directory'}
               <button
                 class:active={isCurrentFolderSelected(item.pane)}
-                class="secondary"
+                class="secondary utility-button"
                 disabled={!item.pane.currentPath}
                 type="button"
                 on:click={() => useCurrentFolder(item.side)}

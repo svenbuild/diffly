@@ -56,6 +56,7 @@ button {
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
@@ -164,14 +165,30 @@ strong {
   font-size: 0.78rem;
 }
 
+.utility-button {
+  min-width: 132px;
+  justify-content: center;
+}
+
 .mode-tabs button.active,
 .inline-controls button.active,
 .view-picker button.active,
-.secondary.active,
-.primary {
+.secondary.active {
   border-color: #2f81f7;
   background: #2f81f7;
   color: #0d1117;
+}
+
+.primary {
+  border-color: #2f81f7;
+  background: #2f81f7;
+  color: #ffffff;
+}
+
+.primary:hover:not(:disabled) {
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #ffffff;
 }
 
 .inline-check,
@@ -261,6 +278,7 @@ strong {
 .picker-pathbar {
   justify-content: flex-start;
   padding-block: 6px;
+  flex-wrap: nowrap;
 }
 
 .nav-buttons {
