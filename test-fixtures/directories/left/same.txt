@@ -1,0 +1,2 @@
+This file is identical on both sides.
+It should not appear in directory compare results.

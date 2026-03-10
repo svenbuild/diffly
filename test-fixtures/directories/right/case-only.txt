@@ -1,0 +1,2 @@
+diffly compare mode
+inline highlights enabled
