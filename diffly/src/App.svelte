@@ -4,15 +4,30 @@
     CompareMode,
     DirectoryEntryResult,
     FileDiffResult,
+    SideBySideRow,
+    UnifiedLine,
     ViewMode,
   } from './lib/types'
 
   const ROOT_GROUP = '__root__'
+  const DIFF_CONTEXT_LINES = 3
 
   interface EntryGroup {
     key: string
     label: string
     entries: DirectoryEntryResult[]
+  }
+
+  interface SideBySideRenderItem {
+    type: 'hunk' | 'row'
+    header?: string
+    row?: SideBySideRow
+  }
+
+  interface UnifiedRenderItem {
+    type: 'hunk' | 'row'
+    header?: string
+    row?: UnifiedLine
   }
 
   type Screen = 'setup' | 'compare'
@@ -245,20 +260,112 @@
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  function buildSideBySideRenderItems(rows: SideBySideRow[]) {
+    if (showFullFile) {
+      return rows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem)
+    }
+
+    const ranges = buildHunkRanges(rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'))
+
+    return ranges.flatMap((range) => {
+      const hunkRows = rows.slice(range.start, range.end + 1)
+
+      return [
+        {
+          type: 'hunk',
+          header: formatHunkHeader(
+            hunkRows.map((row) => row.left?.lineNumber ?? null),
+            hunkRows.map((row) => row.right?.lineNumber ?? null),
+          ),
+        } satisfies SideBySideRenderItem,
+        ...hunkRows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem),
+      ]
+    })
+  }
+
+  function buildUnifiedRenderItems(rows: UnifiedLine[]) {
+    if (showFullFile) {
+      return rows.map((row) => ({ type: 'row', row }) satisfies UnifiedRenderItem)
+    }
+
+    const ranges = buildHunkRanges(rows.map((row) => row.change !== 'context'))
+
+    return ranges.flatMap((range) => {
+      const hunkRows = rows.slice(range.start, range.end + 1)
+
+      return [
+        {
+          type: 'hunk',
+          header: formatHunkHeader(
+            hunkRows.map((row) => row.leftLineNumber),
+            hunkRows.map((row) => row.rightLineNumber),
+          ),
+        } satisfies UnifiedRenderItem,
+        ...hunkRows.map((row) => ({ type: 'row', row }) satisfies UnifiedRenderItem),
+      ]
+    })
+  }
+
+  function buildHunkRanges(changedRows: boolean[]) {
+    const ranges: Array<{ start: number; end: number }> = []
+
+    for (const [index, isChanged] of changedRows.entries()) {
+      if (!isChanged) {
+        continue
+      }
+
+      const nextStart = Math.max(0, index - DIFF_CONTEXT_LINES)
+      const nextEnd = Math.min(changedRows.length - 1, index + DIFF_CONTEXT_LINES)
+      const previous = ranges.at(-1)
+
+      if (previous && nextStart <= previous.end + 1) {
+        previous.end = Math.max(previous.end, nextEnd)
+      } else {
+        ranges.push({ start: nextStart, end: nextEnd })
+      }
+    }
+
+    return ranges
+  }
+
+  function formatHunkHeader(
+    leftLineNumbers: Array<number | null>,
+    rightLineNumbers: Array<number | null>,
+  ) {
+    const leftRange = summarizeLineNumbers(leftLineNumbers)
+    const rightRange = summarizeLineNumbers(rightLineNumbers)
+
+    return `@@ -${leftRange.start},${leftRange.count} +${rightRange.start},${rightRange.count} @@`
+  }
+
+  function summarizeLineNumbers(lineNumbers: Array<number | null>) {
+    const present = lineNumbers.filter((value): value is number => value !== null)
+
+    if (present.length === 0) {
+      return {
+        start: 0,
+        count: 0,
+      }
+    }
+
+    return {
+      start: present[0],
+      count: present.length,
+    }
+  }
+
   $: compareSummary =
     mode === 'directory'
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
       : activeDiff?.summary ?? 'File compare'
 
-  $: visibleSideBySideRows =
-    activeDiff?.sideBySide.filter((row) =>
-      showFullFile
-        ? true
-        : row.left?.change !== 'context' || row.right?.change !== 'context',
-    ) ?? []
+  $: sideBySideRenderItems =
+    activeDiff && showFullFile !== undefined
+      ? buildSideBySideRenderItems(activeDiff.sideBySide)
+      : []
 
-  $: visibleUnifiedRows =
-    activeDiff?.unified.filter((line) => (showFullFile ? true : line.change !== 'context')) ?? []
+  $: unifiedRenderItems =
+    activeDiff && showFullFile !== undefined ? buildUnifiedRenderItems(activeDiff.unified) : []
 </script>
 
 <svelte:head>
@@ -456,18 +563,22 @@
                   on:scroll={() => syncPaneScroll('left')}
                 >
                   <div class="pane-grid">
-                    {#if visibleSideBySideRows.length === 0}
+                    {#if sideBySideRenderItems.length === 0}
                       <div class="empty-inline-state">No changed lines.</div>
                     {/if}
 
-                    {#each visibleSideBySideRows as row}
-                      <div class={`diff-row ${row.left?.change ?? 'context'}`}>
-                        {#if row.left}
-                          <span class="line-number">{row.left.lineNumber ?? ''}</span>
-                          <span class="prefix">{row.left.prefix}</span>
-                          <span class="line-text">{row.left.text || ' '}</span>
-                        {/if}
-                      </div>
+                    {#each sideBySideRenderItems as item}
+                      {#if item.type === 'hunk'}
+                        <div class="hunk-row">{item.header}</div>
+                      {:else if item.row}
+                        <div class={`diff-row ${item.row.left?.change ?? 'context'}`}>
+                          {#if item.row.left}
+                            <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
+                            <span class="prefix">{item.row.left.prefix}</span>
+                            <span class="line-text">{item.row.left.text || ' '}</span>
+                          {/if}
+                        </div>
+                      {/if}
                     {/each}
                   </div>
                 </div>
@@ -484,18 +595,22 @@
                   on:scroll={() => syncPaneScroll('right')}
                 >
                   <div class="pane-grid">
-                    {#if visibleSideBySideRows.length === 0}
+                    {#if sideBySideRenderItems.length === 0}
                       <div class="empty-inline-state">No changed lines.</div>
                     {/if}
 
-                    {#each visibleSideBySideRows as row}
-                      <div class={`diff-row ${row.right?.change ?? 'context'}`}>
-                        {#if row.right}
-                          <span class="line-number">{row.right.lineNumber ?? ''}</span>
-                          <span class="prefix">{row.right.prefix}</span>
-                          <span class="line-text">{row.right.text || ' '}</span>
-                        {/if}
-                      </div>
+                    {#each sideBySideRenderItems as item}
+                      {#if item.type === 'hunk'}
+                        <div class="hunk-row">{item.header}</div>
+                      {:else if item.row}
+                        <div class={`diff-row ${item.row.right?.change ?? 'context'}`}>
+                          {#if item.row.right}
+                            <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
+                            <span class="prefix">{item.row.right.prefix}</span>
+                            <span class="line-text">{item.row.right.text || ' '}</span>
+                          {/if}
+                        </div>
+                      {/if}
                     {/each}
                   </div>
                 </div>
@@ -513,17 +628,21 @@
               </div>
             </div>
             <div class="unified-grid">
-              {#if visibleUnifiedRows.length === 0}
+              {#if unifiedRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
 
-              {#each visibleUnifiedRows as line}
-                <div class={`unified-row ${line.change}`}>
-                  <span class="line-number">{line.leftLineNumber ?? ''}</span>
-                  <span class="line-number">{line.rightLineNumber ?? ''}</span>
-                  <span class="prefix">{line.prefix}</span>
-                  <span class="line-text">{line.text || ' '}</span>
-                </div>
+              {#each unifiedRenderItems as item}
+                {#if item.type === 'hunk'}
+                  <div class="hunk-row unified-hunk">{item.header}</div>
+                {:else if item.row}
+                  <div class={`unified-row ${item.row.change}`}>
+                    <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
+                    <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
+                    <span class="prefix">{item.row.prefix}</span>
+                    <span class="line-text">{item.row.text || ' '}</span>
+                  </div>
+                {/if}
               {/each}
             </div>
           {/if}
