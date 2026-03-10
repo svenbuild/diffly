@@ -1,8 +1,20 @@
 <script lang="ts">
-  import { comparePaths, choosePath, openCompareItem } from './lib/api'
+  import { onMount } from 'svelte'
+  import EntryIcon from './lib/EntryIcon.svelte'
+
+  import {
+    choosePath,
+    comparePaths,
+    listDirectory,
+    listRoots,
+    openCompareItem,
+    pathInfo,
+  } from './lib/api'
   import type {
     CompareMode,
     DirectoryEntryResult,
+    DirectoryListing,
+    ExplorerEntry,
     FileDiffResult,
     SideBySideRow,
     UnifiedLine,
@@ -30,7 +42,22 @@
     row?: UnifiedLine
   }
 
+  interface ExplorerPaneState {
+    title: string
+    roots: ExplorerEntry[]
+    currentPath: string
+    currentListing: DirectoryListing | null
+    listings: Record<string, DirectoryListing>
+    history: string[]
+    historyIndex: number
+    selectedTargetPath: string
+    selectedTargetKind: 'file' | 'directory' | null
+    loading: boolean
+    error: string
+  }
+
   type Screen = 'setup' | 'compare'
+  type Side = 'left' | 'right'
 
   let screen: Screen = 'setup'
   let mode: CompareMode = 'directory'
@@ -42,6 +69,7 @@
   let ignoreCase = false
   let loading = false
   let detailLoading = false
+  let pickerLoading = false
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
   let entryGroups: EntryGroup[] = []
@@ -52,6 +80,8 @@
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let syncingScroll = false
+  let leftExplorer = createExplorerPane('Left')
+  let rightExplorer = createExplorerPane('Right')
 
   const statusLabel = {
     modified: 'Modified',
@@ -66,12 +96,82 @@
     ignoreCase,
   })
 
+  onMount(() => {
+    void initializePickers()
+  })
+
+  function createExplorerPane(title: string): ExplorerPaneState {
+    return {
+      title,
+      roots: [],
+      currentPath: '',
+      currentListing: null,
+      listings: {},
+      history: [],
+      historyIndex: -1,
+      selectedTargetPath: '',
+      selectedTargetKind: null,
+      loading: false,
+      error: '',
+    }
+  }
+
+  function paneFor(side: Side) {
+    return side === 'left' ? leftExplorer : rightExplorer
+  }
+
+  function setPane(side: Side, pane: ExplorerPaneState) {
+    if (side === 'left') {
+      leftExplorer = pane
+    } else {
+      rightExplorer = pane
+    }
+  }
+
+  function updatePane(side: Side, updater: (pane: ExplorerPaneState) => ExplorerPaneState) {
+    setPane(side, updater(paneFor(side)))
+  }
+
+  async function initializePickers() {
+    pickerLoading = true
+
+    try {
+      const roots = await listRoots()
+
+      leftExplorer = {
+        ...createExplorerPane('Left'),
+        roots,
+      }
+
+      rightExplorer = {
+        ...createExplorerPane('Right'),
+        roots,
+      }
+
+      if (roots.length > 0) {
+        const leftRoot = roots[0].path
+        const rightRoot = roots[1]?.path ?? roots[0].path
+
+        await Promise.all([
+          openDirectory('left', leftRoot),
+          openDirectory('right', rightRoot),
+        ])
+      }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
+    } finally {
+      pickerLoading = false
+    }
+  }
+
   function setMode(nextMode: CompareMode) {
     if (mode === nextMode) {
       return
     }
 
     mode = nextMode
+    leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
+    rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
     entryGroups = []
     collapsedGroups = {}
@@ -80,30 +180,169 @@
     errorMessage = ''
   }
 
+  function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMode) {
+    if (nextMode === 'file' && pane.selectedTargetKind !== 'file') {
+      return {
+        ...pane,
+        selectedTargetPath: '',
+        selectedTargetKind: null,
+      }
+    }
+
+    if (nextMode === 'directory' && pane.selectedTargetKind !== 'directory') {
+      return {
+        ...pane,
+        selectedTargetPath: '',
+        selectedTargetKind: null,
+      }
+    }
+
+    return pane
+  }
+
   function goToSetup() {
     screen = 'setup'
     errorMessage = ''
   }
 
-  async function browse(side: 'left' | 'right') {
+  async function browseSystem(side: Side) {
     const selected = await choosePath(mode === 'file' ? 'file' : 'directory')
 
     if (!selected) {
       return
     }
 
-    if (side === 'left') {
-      leftPath = selected
-    } else {
-      rightPath = selected
+    const info = await pathInfo(selected)
+
+    if (!info.exists) {
+      return
+    }
+
+    if (info.isDirectory) {
+      await openDirectory(side, info.path)
+      selectTarget(side, info.path, 'directory')
+      return
+    }
+
+    if (info.isFile) {
+      if (info.parentPath) {
+        await openDirectory(side, info.parentPath)
+      }
+      selectTarget(side, info.path, 'file')
     }
   }
 
-  async function runCompare() {
-    if (!leftPath || !rightPath) {
-      errorMessage = 'Pick two paths first.'
+  async function openDirectory(side: Side, path: string, historyMode: 'push' | 'keep' = 'push') {
+    updatePane(side, (pane) => ({
+      ...pane,
+      loading: true,
+      error: '',
+    }))
+
+    try {
+      const pane = paneFor(side)
+      const cached = pane.listings[path]
+      const listing = cached ?? (await listDirectory(path))
+      const historyState = buildNextHistoryState(pane, path, historyMode)
+
+      updatePane(side, (current) => ({
+        ...current,
+        ...historyState,
+        currentPath: path,
+        currentListing: listing,
+        listings: {
+          ...current.listings,
+          [path]: listing,
+        },
+        loading: false,
+      }))
+    } catch (error) {
+      updatePane(side, (pane) => ({
+        ...pane,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unable to open the folder.',
+      }))
+    }
+  }
+
+  async function navigateTo(side: Side, path: string) {
+    await openDirectory(side, path)
+  }
+
+  async function navigateHistory(side: Side, direction: -1 | 1) {
+    const pane = paneFor(side)
+    const nextIndex = pane.historyIndex + direction
+
+    if (nextIndex < 0 || nextIndex >= pane.history.length) {
       return
     }
+
+    await openDirectory(side, pane.history[nextIndex], 'keep')
+
+    updatePane(side, (current) => ({
+      ...current,
+      historyIndex: nextIndex,
+    }))
+  }
+
+  async function changeDrive(side: Side, path: string) {
+    if (!path) {
+      return
+    }
+
+    await openDirectory(side, path)
+  }
+
+  function selectTarget(side: Side, path: string, kind: 'file' | 'directory') {
+    updatePane(side, (pane) => ({
+      ...pane,
+      selectedTargetPath: path,
+      selectedTargetKind: kind,
+    }))
+  }
+
+  function useCurrentFolder(side: Side) {
+    const pane = paneFor(side)
+
+    if (pane.currentPath) {
+      selectTarget(side, pane.currentPath, 'directory')
+    }
+  }
+
+  function selectListEntry(side: Side, entry: ExplorerEntry) {
+    if (mode === 'directory' && entry.kind !== 'file') {
+      selectTarget(side, entry.path, 'directory')
+      return
+    }
+
+    if (mode === 'file' && entry.kind === 'file') {
+      selectTarget(side, entry.path, 'file')
+    }
+  }
+
+  async function activateListEntry(side: Side, entry: ExplorerEntry) {
+    if (entry.kind === 'directory' || entry.kind === 'drive') {
+      await openDirectory(side, entry.path)
+      return
+    }
+
+    if (mode === 'file') {
+      selectTarget(side, entry.path, 'file')
+    }
+  }
+
+  function canComparePane(pane: ExplorerPaneState) {
+    return mode === 'file' ? pane.selectedTargetKind === 'file' : pane.selectedTargetKind === 'directory'
+  }
+
+  async function runCompare() {
+    if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
+      errorMessage = 'Select valid targets on both sides first.'
+      return
+    }
+
+    const nextLeftPath = leftExplorer.selectedTargetPath
+    const nextRightPath = rightExplorer.selectedTargetPath
 
     loading = true
     detailLoading = false
@@ -113,9 +352,11 @@
     collapsedGroups = {}
     selectedRelativePath = ''
     activeDiff = null
+    leftPath = nextLeftPath
+    rightPath = nextRightPath
 
     try {
-      const response = await comparePaths(leftPath, rightPath, mode, getOptions())
+      const response = await comparePaths(nextLeftPath, nextRightPath, mode, getOptions())
       compareRevision += 1
       screen = 'compare'
 
@@ -260,12 +501,42 @@
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  function formatModified(value: number | null) {
+    if (value === null) {
+      return '-'
+    }
+
+    return new Intl.DateTimeFormat('de-CH', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(value)
+  }
+
+  function entryTypeLabel(entry: ExplorerEntry) {
+    if (entry.kind === 'directory' || entry.kind === 'drive') {
+      return 'Folder'
+    }
+
+    const extensionIndex = entry.name.lastIndexOf('.')
+
+    if (extensionIndex === -1) {
+      return 'File'
+    }
+
+    return `${entry.name.slice(extensionIndex + 1).toUpperCase()} file`
+  }
+
   function buildSideBySideRenderItems(rows: SideBySideRow[]) {
     if (showFullFile) {
       return rows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem)
     }
 
-    const ranges = buildHunkRanges(rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'))
+    const ranges = buildHunkRanges(
+      rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'),
+    )
 
     return ranges.flatMap((range) => {
       const hunkRows = rows.slice(range.start, range.end + 1)
@@ -354,6 +625,58 @@
     }
   }
 
+  function buildNextHistoryState(
+    pane: ExplorerPaneState,
+    path: string,
+    historyMode: 'push' | 'keep',
+  ) {
+    if (historyMode === 'keep') {
+      return {
+        history: pane.history,
+        historyIndex: pane.historyIndex,
+      }
+    }
+
+    const currentPath = pane.history[pane.historyIndex]
+
+    if (currentPath === path) {
+      return {
+        history: pane.history,
+        historyIndex: pane.historyIndex,
+      }
+    }
+
+    const nextHistory = pane.history.slice(0, pane.historyIndex + 1)
+    nextHistory.push(path)
+
+    return {
+      history: nextHistory,
+      historyIndex: nextHistory.length - 1,
+    }
+  }
+
+  function canGoBack(pane: ExplorerPaneState) {
+    return pane.historyIndex > 0
+  }
+
+  function canGoForward(pane: ExplorerPaneState) {
+    return pane.historyIndex !== -1 && pane.historyIndex < pane.history.length - 1
+  }
+
+  function currentDrive(pane: ExplorerPaneState) {
+    const normalized = pane.currentPath.toLowerCase()
+
+    return pane.roots.find((root) => normalized.startsWith(root.path.toLowerCase()))?.path ?? ''
+  }
+
+  function isCurrentFolderSelected(pane: ExplorerPaneState) {
+    return pane.selectedTargetKind === 'directory' && pane.selectedTargetPath === pane.currentPath
+  }
+
+  function isTargetSelected(pane: ExplorerPaneState, entry: ExplorerEntry) {
+    return pane.selectedTargetPath === entry.path
+  }
+
   $: compareSummary =
     mode === 'directory'
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
@@ -366,6 +689,12 @@
 
   $: unifiedRenderItems =
     activeDiff && showFullFile !== undefined ? buildUnifiedRenderItems(activeDiff.unified) : []
+
+  $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
+  $: pickerSides = [
+    { side: 'left' as Side, pane: leftExplorer },
+    { side: 'right' as Side, pane: rightExplorer },
+  ]
 </script>
 
 <svelte:head>
@@ -373,15 +702,11 @@
 </svelte:head>
 
 {#if screen === 'setup'}
-  <main class="setup-screen">
-    <section class="setup-panel">
-      <div class="setup-header">
-        <div>
-          <h1>Diffly</h1>
-          <p>Choose two files or two folders, then open the compare workspace.</p>
-        </div>
-
-        <div class="mode-tabs">
+  <main class="setup-screen explorer-screen">
+    <header class="setup-toolbar">
+      <div class="setup-toolbar-left">
+        <h1>Diffly</h1>
+        <div class="mode-tabs normal-tabs">
           <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
             Files
           </button>
@@ -395,57 +720,172 @@
         </div>
       </div>
 
-      <div class="setup-grid">
-        <label class="field">
-          <span>Left path</span>
-          <div class="field-row">
-            <input bind:value={leftPath} placeholder="Select the left side" />
-            <button type="button" on:click={() => browse('left')}>Browse</button>
-          </div>
-        </label>
-
-        <label class="field">
-          <span>Right path</span>
-          <div class="field-row">
-            <input bind:value={rightPath} placeholder="Select the right side" />
-            <button type="button" on:click={() => browse('right')}>Browse</button>
-          </div>
-        </label>
-      </div>
-
-      <div class="setup-options">
-        <label>
+      <div class="setup-toolbar-right">
+        <label class="inline-check">
           <input bind:checked={ignoreWhitespace} type="checkbox" />
           Ignore whitespace
         </label>
-        <label>
+        <label class="inline-check">
           <input bind:checked={ignoreCase} type="checkbox" />
           Ignore case
         </label>
-        <div class="view-picker">
-          <button
-            class:active={viewMode === 'unified'}
-            type="button"
-            on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
-          >
-            Unified view
-          </button>
-        </div>
-      </div>
-
-      {#if errorMessage}
-        <p class="error-banner">{errorMessage}</p>
-      {/if}
-
-      <div class="setup-actions">
-        <button class="primary" type="button" disabled={loading} on:click={runCompare}>
+        <button
+          class:active={viewMode === 'unified'}
+          class="secondary compact-toggle"
+          type="button"
+          on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
+        >
+          Unified view
+        </button>
+        <button class="primary" disabled={!pickerCanCompare || loading} type="button" on:click={runCompare}>
           {#if loading}
             Comparing...
           {:else}
-            Open compare
+            Compare
           {/if}
         </button>
       </div>
+    </header>
+
+    {#if errorMessage}
+      <p class="error-banner compare-error">{errorMessage}</p>
+    {/if}
+
+    <section class="picker-workspace">
+      {#each pickerSides as item}
+        <section class="picker-pane">
+          <div class="picker-pane-header">
+            <div class="picker-pane-title">
+              <strong>{item.pane.title}</strong>
+              <span>{item.pane.selectedTargetPath || 'No target selected'}</span>
+            </div>
+          </div>
+
+          {#if item.pane.error}
+            <p class="pane-error">{item.pane.error}</p>
+          {/if}
+
+          <div class="picker-pathbar">
+            <div class="nav-buttons">
+              <button
+                class="secondary icon-button"
+                disabled={!canGoBack(item.pane)}
+                type="button"
+                on:click={() => navigateHistory(item.side, -1)}
+              >
+                ←
+              </button>
+              <button
+                class="secondary icon-button"
+                disabled={!canGoForward(item.pane)}
+                type="button"
+                on:click={() => navigateHistory(item.side, 1)}
+              >
+                →
+              </button>
+              <button
+                class="secondary icon-button"
+                disabled={!item.pane.currentListing?.parentPath}
+                type="button"
+                on:click={() =>
+                  item.pane.currentListing?.parentPath &&
+                  navigateTo(item.side, item.pane.currentListing.parentPath)}
+              >
+                ↑
+              </button>
+            </div>
+
+            <select
+              class="drive-select"
+              value={currentDrive(item.pane)}
+              on:change={(event) => changeDrive(item.side, event.currentTarget.value)}
+            >
+              {#each item.pane.roots as root}
+                <option value={root.path}>{root.name}</option>
+              {/each}
+            </select>
+
+            <div class="path-display">{item.pane.currentPath || 'No folder open'}</div>
+
+            <button class="secondary" type="button" on:click={() => browseSystem(item.side)}>
+              System dialog
+            </button>
+
+            {#if mode === 'directory'}
+              <button
+                class:active={isCurrentFolderSelected(item.pane)}
+                class="secondary"
+                disabled={!item.pane.currentPath}
+                type="button"
+                on:click={() => useCurrentFolder(item.side)}
+              >
+                Use current folder
+              </button>
+            {/if}
+          </div>
+
+          <section class="list-pane explorer-list-pane">
+              <div class="list-pane-header">
+                <div class="list-columns">
+                  <span>Name</span>
+                  <span>Type</span>
+                  <span>Modified</span>
+                  <span>Size</span>
+                </div>
+              </div>
+
+              <div class="list-rows">
+                {#if pickerLoading}
+                  <div class="empty-state">Loading drives...</div>
+                {:else if item.pane.loading}
+                  <div class="empty-state">Loading folder...</div>
+                {:else if item.pane.currentListing}
+                  {#each item.pane.currentListing.directories as entry}
+                    <button
+                      class:selected={isTargetSelected(item.pane, entry)}
+                      class="entry-row"
+                      type="button"
+                      on:click={() => selectListEntry(item.side, entry)}
+                      on:dblclick={() => activateListEntry(item.side, entry)}
+                    >
+                      <span class="entry-name">
+                        <EntryIcon kind={entry.kind} open={false} />
+                        <span class="entry-text">{entry.name}</span>
+                      </span>
+                      <span class="entry-type">{entryTypeLabel(entry)}</span>
+                      <span class="entry-date">{formatModified(entry.modifiedMs)}</span>
+                      <span class="entry-meta">-</span>
+                    </button>
+                  {/each}
+
+                  {#each item.pane.currentListing.files as entry}
+                    <button
+                      class:selected={isTargetSelected(item.pane, entry)}
+                      class="entry-row"
+                      type="button"
+                      on:click={() => selectListEntry(item.side, entry)}
+                      on:dblclick={() => activateListEntry(item.side, entry)}
+                    >
+                      <span class="entry-name">
+                        <EntryIcon kind={entry.kind} />
+                        <span class="entry-text">{entry.name}</span>
+                      </span>
+                      <span class="entry-type">{entryTypeLabel(entry)}</span>
+                      <span class="entry-date">{formatModified(entry.modifiedMs)}</span>
+                      <span class="entry-meta">{formatSize(entry.size)}</span>
+                    </button>
+                  {/each}
+
+                  {#if item.pane.currentListing.directories.length === 0 && item.pane.currentListing.files.length === 0}
+                    <div class="empty-state">Folder is empty.</div>
+                  {/if}
+                {:else}
+                  <div class="empty-state">No folder open.</div>
+                {/if}
+              </div>
+          </section>
+        </section>
+      {/each}
     </section>
   </main>
 {:else}
@@ -511,7 +951,7 @@
             {#each entryGroups as group}
               <section class="file-group">
                 <button class="group-toggle" type="button" on:click={() => toggleGroup(group.key)}>
-                  <span>{collapsedGroups[group.key] ? '▸' : '▾'}</span>
+                  <span class="chevron">{collapsedGroups[group.key] ? '▸' : '▾'}</span>
                   <span class="group-label">{group.label}</span>
                   <span class="group-count">{group.entries.length}</span>
                 </button>
@@ -527,9 +967,12 @@
                       >
                         <span class={`status-mark ${entry.status}`}></span>
                         <span class="file-text">
-                          <span class="file-name">{getFileName(entry.relativePath)}</span>
+                          <span class="file-name">
+                            <EntryIcon kind="file" />
+                            <span class="entry-text">{getFileName(entry.relativePath)}</span>
+                          </span>
                           <span class="file-meta">
-                            {statusLabel[entry.status]} · {formatSize(entry.leftSize)} / {formatSize(
+                            {statusLabel[entry.status]} | {formatSize(entry.leftSize)} / {formatSize(
                               entry.rightSize,
                             )}
                           </span>

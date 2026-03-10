@@ -4,10 +4,35 @@ export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'to
 export type ContentKind = 'text' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
 export type PathKind = 'file' | 'directory'
+export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
 
 export interface CompareOptions {
   ignoreWhitespace: boolean
   ignoreCase: boolean
+}
+
+export interface ExplorerEntry {
+  name: string
+  path: string
+  kind: ExplorerEntryKind
+  size: number | null
+  modifiedMs: number | null
+}
+
+export interface DirectoryListing {
+  path: string
+  parentPath: string | null
+  directories: ExplorerEntry[]
+  files: ExplorerEntry[]
+}
+
+export interface PathInfo {
+  path: string
+  exists: boolean
+  isDirectory: boolean
+  isFile: boolean
+  parentPath: string | null
+  name: string
 }
 
 export interface DirectoryEntryResult {

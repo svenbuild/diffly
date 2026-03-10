@@ -2,6 +2,7 @@ use std::{
   collections::{BTreeMap, BTreeSet},
   fs,
   path::{Path, PathBuf},
+  time::UNIX_EPOCH,
 };
 
 use rfd::FileDialog;
@@ -24,6 +25,44 @@ struct CompareOptions {
 enum CompareResponse {
   Directory { entries: Vec<DirectoryEntryResult> },
   File { result: FileDiffResult },
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExplorerEntry {
+  name: String,
+  path: String,
+  kind: ExplorerEntryKind,
+  size: Option<u64>,
+  modified_ms: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum ExplorerEntryKind {
+  Drive,
+  Directory,
+  File,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirectoryListing {
+  path: String,
+  parent_path: Option<String>,
+  directories: Vec<ExplorerEntry>,
+  files: Vec<ExplorerEntry>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PathInfo {
+  path: String,
+  exists: bool,
+  is_directory: bool,
+  is_file: bool,
+  parent_path: Option<String>,
+  name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -117,6 +156,93 @@ fn choose_path(kind: String) -> Option<String> {
       .pick_file()
       .map(|path| path.to_string_lossy().to_string()),
     _ => None,
+  }
+}
+
+#[tauri::command]
+fn list_roots() -> Result<Vec<ExplorerEntry>, String> {
+  Ok(available_roots())
+}
+
+#[tauri::command]
+fn list_directory(path: String) -> Result<DirectoryListing, String> {
+  let directory = PathBuf::from(&path);
+
+  if !directory.exists() {
+    return Err("The requested path does not exist.".to_string());
+  }
+
+  if !directory.is_dir() {
+    return Err("The requested path is not a directory.".to_string());
+  }
+
+  let mut directories = Vec::new();
+  let mut files = Vec::new();
+
+  for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
+    let entry = entry.map_err(|error| error.to_string())?;
+    let path = entry.path();
+    let metadata = entry.metadata().map_err(|error| error.to_string())?;
+
+    let explorer_entry = ExplorerEntry {
+      name: entry_name(&path),
+      path: path.to_string_lossy().to_string(),
+      kind: if metadata.is_dir() {
+        ExplorerEntryKind::Directory
+      } else {
+        ExplorerEntryKind::File
+      },
+      size: if metadata.is_file() {
+        Some(metadata.len())
+      } else {
+        None
+      },
+      modified_ms: metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis() as u64),
+    };
+
+    if metadata.is_dir() {
+      directories.push(explorer_entry);
+    } else {
+      files.push(explorer_entry);
+    }
+  }
+
+  directories.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+  files.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+
+  Ok(DirectoryListing {
+    path: directory.to_string_lossy().to_string(),
+    parent_path: parent_path(&directory),
+    directories,
+    files,
+  })
+}
+
+#[tauri::command]
+fn path_info(path: String) -> Result<PathInfo, String> {
+  let value = PathBuf::from(&path);
+
+  match fs::metadata(&value) {
+    Ok(metadata) => Ok(PathInfo {
+      path: value.to_string_lossy().to_string(),
+      exists: true,
+      is_directory: metadata.is_dir(),
+      is_file: metadata.is_file(),
+      parent_path: parent_path(&value),
+      name: entry_name(&value),
+    }),
+    Err(_) => Ok(PathInfo {
+      path,
+      exists: false,
+      is_directory: false,
+      is_file: false,
+      parent_path: None,
+      name: String::new(),
+    }),
   }
 }
 
@@ -225,6 +351,40 @@ fn compare_directories(left: &Path, right: &Path) -> Result<Vec<DirectoryEntryRe
   }
 
   Ok(entries)
+}
+
+fn available_roots() -> Vec<ExplorerEntry> {
+  #[cfg(target_os = "windows")]
+  {
+    let mut roots = Vec::new();
+
+    for drive in 'A'..='Z' {
+      let candidate = PathBuf::from(format!("{drive}:\\"));
+
+      if candidate.exists() {
+        roots.push(ExplorerEntry {
+          name: candidate.to_string_lossy().to_string(),
+          path: candidate.to_string_lossy().to_string(),
+          kind: ExplorerEntryKind::Drive,
+          size: None,
+          modified_ms: None,
+        });
+      }
+    }
+
+    roots
+  }
+
+  #[cfg(not(target_os = "windows"))]
+  {
+    vec![ExplorerEntry {
+      name: "/".to_string(),
+      path: "/".to_string(),
+      kind: ExplorerEntryKind::Directory,
+      size: None,
+      modified_ms: None,
+    }]
+  }
 }
 
 fn collect_directory_files(base: &Path) -> Result<BTreeMap<String, PathBuf>, String> {
@@ -546,11 +706,25 @@ fn file_size(path: &Path) -> Option<u64> {
   fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 
+fn entry_name(path: &Path) -> String {
+  path
+    .file_name()
+    .map(|value| value.to_string_lossy().to_string())
+    .unwrap_or_else(|| path.to_string_lossy().to_string())
+}
+
+fn parent_path(path: &Path) -> Option<String> {
+  path.parent().map(|value| value.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
       choose_path,
+      list_roots,
+      list_directory,
+      path_info,
       compare_paths,
       open_compare_item
     ])

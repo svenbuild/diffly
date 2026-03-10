@@ -3,12 +3,22 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   CompareOptions,
   CompareResponse,
+  DirectoryListing,
+  ExplorerEntry,
   FileDiffResult,
+  PathInfo,
   PathKind,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
   invoke<string | null>('choose_path', { kind })
+
+export const listRoots = () => invoke<ExplorerEntry[]>('list_roots')
+
+export const listDirectory = (path: string) =>
+  invoke<DirectoryListing>('list_directory', { path })
+
+export const pathInfo = (path: string) => invoke<PathInfo>('path_info', { path })
 
 export const comparePaths = (
   leftPath: string,
