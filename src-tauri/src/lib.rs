@@ -6,8 +6,9 @@ use std::{
 };
 
 use rfd::FileDialog;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
+use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
@@ -18,6 +19,28 @@ const BINARY_SAMPLE_BYTES: usize = 8192;
 struct CompareOptions {
   ignore_whitespace: bool,
   ignore_case: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedExplorerPane {
+  current_path: String,
+  history: Vec<String>,
+  history_index: i64,
+  selected_target_path: String,
+  selected_target_kind: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedSession {
+  mode: String,
+  view_mode: String,
+  ignore_whitespace: bool,
+  ignore_case: bool,
+  show_full_file: bool,
+  left_pane: PersistedExplorerPane,
+  right_pane: PersistedExplorerPane,
 }
 
 #[derive(Serialize)]
@@ -157,6 +180,28 @@ fn choose_path(kind: String) -> Option<String> {
       .map(|path| path.to_string_lossy().to_string()),
     _ => None,
   }
+}
+
+#[tauri::command]
+fn load_session_state(app: AppHandle) -> Result<Option<PersistedSession>, String> {
+  let session_path = session_file_path(&app)?;
+
+  if !session_path.exists() {
+    return Ok(None);
+  }
+
+  let contents = fs::read_to_string(&session_path).map_err(|error| error.to_string())?;
+  let session = serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+
+  Ok(Some(session))
+}
+
+#[tauri::command]
+fn save_session_state(app: AppHandle, session: PersistedSession) -> Result<(), String> {
+  let session_path = session_file_path(&app)?;
+  let json = serde_json::to_string_pretty(&session).map_err(|error| error.to_string())?;
+
+  fs::write(session_path, json).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -385,6 +430,14 @@ fn available_roots() -> Vec<ExplorerEntry> {
       modified_ms: None,
     }]
   }
+}
+
+fn session_file_path(app: &AppHandle) -> Result<PathBuf, String> {
+  let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+
+  fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
+
+  Ok(app_data_dir.join("session.json"))
 }
 
 fn collect_directory_files(base: &Path) -> Result<BTreeMap<String, PathBuf>, String> {
@@ -722,6 +775,8 @@ pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
       choose_path,
+      load_session_state,
+      save_session_state,
       list_roots,
       list_directory,
       path_info,
