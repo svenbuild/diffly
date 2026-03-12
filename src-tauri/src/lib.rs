@@ -230,44 +230,7 @@ fn list_directory(path: String) -> Result<DirectoryListing, String> {
   if !directory.is_dir() {
     return Err("The requested path is not a directory.".to_string());
   }
-
-  let mut directories = Vec::new();
-  let mut files = Vec::new();
-
-  for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
-    let entry = entry.map_err(|error| error.to_string())?;
-    let path = entry.path();
-    let metadata = entry.metadata().map_err(|error| error.to_string())?;
-
-    let explorer_entry = ExplorerEntry {
-      name: entry_name(&path),
-      path: path.to_string_lossy().to_string(),
-      kind: if metadata.is_dir() {
-        ExplorerEntryKind::Directory
-      } else {
-        ExplorerEntryKind::File
-      },
-      size: if metadata.is_file() {
-        Some(metadata.len())
-      } else {
-        None
-      },
-      modified_ms: metadata
-        .modified()
-        .ok()
-        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-        .map(|value| value.as_millis() as u64),
-    };
-
-    if metadata.is_dir() {
-      directories.push(explorer_entry);
-    } else {
-      files.push(explorer_entry);
-    }
-  }
-
-  directories.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
-  files.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+  let (directories, files) = read_directory_entries(&directory)?;
 
   Ok(DirectoryListing {
     path: directory.to_string_lossy().to_string(),
@@ -300,6 +263,8 @@ fn path_info(path: String) -> Result<PathInfo, String> {
     }),
   }
 }
+
+
 
 #[tauri::command]
 fn compare_paths(
@@ -407,6 +372,49 @@ fn compare_directories(left: &Path, right: &Path) -> Result<Vec<DirectoryEntryRe
 
   Ok(entries)
 }
+
+fn read_directory_entries(base: &Path) -> Result<(Vec<ExplorerEntry>, Vec<ExplorerEntry>), String> {
+  let mut directories = Vec::new();
+  let mut files = Vec::new();
+
+  for entry in fs::read_dir(base).map_err(|error| error.to_string())? {
+    let entry = entry.map_err(|error| error.to_string())?;
+    let path = entry.path();
+    let metadata = entry.metadata().map_err(|error| error.to_string())?;
+
+    let explorer_entry = ExplorerEntry {
+      name: entry_name(&path),
+      path: path.to_string_lossy().to_string(),
+      kind: if metadata.is_dir() {
+        ExplorerEntryKind::Directory
+      } else {
+        ExplorerEntryKind::File
+      },
+      size: if metadata.is_file() {
+        Some(metadata.len())
+      } else {
+        None
+      },
+      modified_ms: metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis() as u64),
+    };
+
+    if metadata.is_dir() {
+      directories.push(explorer_entry);
+    } else {
+      files.push(explorer_entry);
+    }
+  }
+
+  directories.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+  files.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+
+  Ok((directories, files))
+}
+
 
 fn available_roots() -> Vec<ExplorerEntry> {
   #[cfg(target_os = "windows")]
@@ -537,18 +545,24 @@ fn build_file_diff(
   let normalized_left = normalize_text(&left_text, options);
   let normalized_right = normalize_text(&right_text, options);
   let diff = TextDiff::from_lines(&normalized_left, &normalized_right);
+  let left_lines = display_lines(&left_text);
+  let right_lines = display_lines(&right_text);
 
   Ok(FileDiffResult {
     content_kind: ContentKind::Text,
     summary,
     left_label,
     right_label,
-    side_by_side: build_side_by_side(&diff),
-    unified: build_unified(&diff),
+    side_by_side: build_side_by_side(&diff, &left_lines, &right_lines),
+    unified: build_unified(&diff, &left_lines, &right_lines),
   })
 }
 
-fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow> {
+fn build_side_by_side<'a>(
+  diff: &TextDiff<'a, 'a, 'a, str>,
+  left_lines: &[String],
+  right_lines: &[String],
+) -> Vec<SideBySideRow> {
   let mut rows = Vec::new();
   let mut left_pending = Vec::new();
   let mut right_pending = Vec::new();
@@ -560,20 +574,21 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
       ChangeTag::Equal => {
         flush_side_buffer(&mut rows, &mut left_pending, &mut right_pending);
 
-        let text = clean_line(change.value());
+        let left_text = display_line(left_lines, left_line_number, change.value());
+        let right_text = display_line(right_lines, right_line_number, change.value());
         rows.push(SideBySideRow {
           left: Some(DiffCell {
             line_number: Some(left_line_number),
             prefix: " ".to_string(),
-            text: text.clone(),
-            segments: plain_segments(&text, false),
+            text: left_text.clone(),
+            segments: plain_segments(&left_text, false),
             change: DiffChange::Context,
           }),
           right: Some(DiffCell {
             line_number: Some(right_line_number),
             prefix: " ".to_string(),
-            text: text.clone(),
-            segments: plain_segments(&text, false),
+            text: right_text.clone(),
+            segments: plain_segments(&right_text, false),
             change: DiffChange::Context,
           }),
         });
@@ -585,7 +600,7 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
         left_pending.push(DiffCell {
           line_number: Some(left_line_number),
           prefix: "-".to_string(),
-          text: clean_line(change.value()),
+          text: display_line(left_lines, left_line_number, change.value()),
           segments: Vec::new(),
           change: DiffChange::Delete,
         });
@@ -596,7 +611,7 @@ fn build_side_by_side<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<SideBySideRow
         right_pending.push(DiffCell {
           line_number: Some(right_line_number),
           prefix: "+".to_string(),
-          text: clean_line(change.value()),
+          text: display_line(right_lines, right_line_number, change.value()),
           segments: Vec::new(),
           change: DiffChange::Insert,
         });
@@ -623,8 +638,8 @@ fn flush_side_buffer(
 
     let (left, right) = match (left_cell, right_cell) {
       (Some(left), Some(right)) => highlight_side_by_side_pair(left, right),
-      (Some(left), None) => (Some(fill_cell_segments(left, true)), None),
-      (None, Some(right)) => (None, Some(fill_cell_segments(right, true))),
+      (Some(left), None) => (Some(fill_cell_segments(left, false)), None),
+      (None, Some(right)) => (None, Some(fill_cell_segments(right, false))),
       (None, None) => (None, None),
     };
 
@@ -638,7 +653,11 @@ fn flush_side_buffer(
   right_pending.clear();
 }
 
-fn build_unified<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<UnifiedLine> {
+fn build_unified<'a>(
+  diff: &TextDiff<'a, 'a, 'a, str>,
+  left_lines: &[String],
+  right_lines: &[String],
+) -> Vec<UnifiedLine> {
   let mut lines = Vec::new();
   let mut delete_pending = Vec::new();
   let mut insert_pending = Vec::new();
@@ -650,7 +669,7 @@ fn build_unified<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<UnifiedLine> {
       ChangeTag::Equal => {
         flush_unified_buffer(&mut lines, &mut delete_pending, &mut insert_pending);
 
-        let text = clean_line(change.value());
+        let text = display_line(left_lines, left_line_number, change.value());
         lines.push(UnifiedLine {
           left_line_number: Some(left_line_number),
           right_line_number: Some(right_line_number),
@@ -669,7 +688,7 @@ fn build_unified<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<UnifiedLine> {
           left_line_number: Some(left_line_number),
           right_line_number: None,
           prefix: "-".to_string(),
-          text,
+          text: display_line(left_lines, left_line_number, &text),
           segments: Vec::new(),
           change: DiffChange::Delete,
         });
@@ -682,7 +701,7 @@ fn build_unified<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<UnifiedLine> {
           left_line_number: None,
           right_line_number: Some(right_line_number),
           prefix: "+".to_string(),
-          text,
+          text: display_line(right_lines, right_line_number, &text),
           segments: Vec::new(),
           change: DiffChange::Insert,
         });
@@ -729,7 +748,7 @@ fn flush_unified_buffer(
         let (segments, _) = highlight_segments(&line.text, &counterpart.text);
         line.segments = segments;
       } else {
-        line.segments = plain_segments(&line.text, true);
+        line.segments = plain_segments(&line.text, false);
       }
 
       lines.push(line);
@@ -740,7 +759,7 @@ fn flush_unified_buffer(
         let (_, segments) = highlight_segments(&counterpart.text, &line.text);
         line.segments = segments;
       } else {
-        line.segments = plain_segments(&line.text, true);
+        line.segments = plain_segments(&line.text, false);
       }
 
       lines.push(line);
@@ -762,6 +781,11 @@ fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSeg
   let left_tokens = tokenize_inline_diff(left);
   let right_tokens = tokenize_inline_diff(right);
   let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
+
+  if common_pairs.is_empty() {
+    return (plain_segments(left, false), plain_segments(right, false));
+  }
+
   let mut left_common = vec![false; left_tokens.len()];
   let mut right_common = vec![false; right_tokens.len()];
 
@@ -900,6 +924,21 @@ fn normalize_text(content: &str, options: &CompareOptions) -> String {
   }
 
   normalized_lines.join("\n")
+}
+
+fn display_lines(content: &str) -> Vec<String> {
+  content
+    .replace("\r\n", "\n")
+    .lines()
+    .map(|line| line.to_string())
+    .collect()
+}
+
+fn display_line(lines: &[String], line_number: usize, fallback: &str) -> String {
+  lines
+    .get(line_number.saturating_sub(1))
+    .cloned()
+    .unwrap_or_else(|| clean_line(fallback))
 }
 
 fn collapse_whitespace(input: &str) -> String {

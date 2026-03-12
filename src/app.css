@@ -135,6 +135,11 @@ strong {
   background: var(--surface);
 }
 
+.compare-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
 .setup-toolbar-left,
 .toolbar-left,
 .setup-toolbar-right,
@@ -155,6 +160,22 @@ strong {
   flex-wrap: wrap;
 }
 
+.toolbar-left,
+.toolbar-right {
+  min-width: 0;
+}
+
+.toolbar-right {
+  justify-self: end;
+}
+
+.toolbar-center {
+  display: flex;
+  justify-content: center;
+}
+
+
+
 .mode-tabs button,
 .inline-controls button,
 .view-picker button,
@@ -172,6 +193,7 @@ strong {
 
 .mode-tabs button.active,
 .inline-controls button.active,
+.checkbox-row button.active,
 .view-picker button.active,
 .secondary.active {
   border-color: #2f81f7;
@@ -192,7 +214,7 @@ strong {
 }
 
 .inline-check,
-.checkbox-row label {
+.checkbox-row button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -220,6 +242,7 @@ strong {
   min-height: 0;
 }
 
+
 .picker-pane {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -231,6 +254,8 @@ strong {
 .picker-pane + .picker-pane {
   border-left: 1px solid var(--border);
 }
+
+
 
 .picker-pane-header,
 .picker-pathbar,
@@ -288,11 +313,37 @@ strong {
 }
 
 .icon-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  font-size: 0.95rem;
-  line-height: 1;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.icon-button:hover:not(:disabled),
+.icon-button:focus-visible {
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  color: #5b6470;
+}
+
+.nav-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.swap-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 12px;
+}
+
+.swap-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .drive-select {
@@ -371,6 +422,7 @@ strong {
   text-align: left;
 }
 
+
 .entry-name,
 .file-name {
   display: inline-flex;
@@ -423,6 +475,7 @@ strong {
 .entry-icon.file {
   color: #79c0ff;
 }
+
 
 .entry-meta,
 .file-meta,
