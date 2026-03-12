@@ -326,6 +326,29 @@
     errorMessage = ''
   }
 
+  function retitlePane(pane: ExplorerPaneState, title: string): ExplorerPaneState {
+    return {
+      ...pane,
+      title,
+    }
+  }
+
+  async function swapComparedSides() {
+    if (loading || detailLoading || pickerLoading) {
+      return
+    }
+
+    const nextLeftPane = retitlePane(rightExplorer, leftExplorer.title)
+    const nextRightPane = retitlePane(leftExplorer, rightExplorer.title)
+
+    leftExplorer = nextLeftPane
+    rightExplorer = nextRightPane
+
+    if (screen === 'compare') {
+      await runCompare()
+    }
+  }
+
   async function browseSystem(side: Side) {
     const selected = await choosePath(mode === 'file' ? 'file' : 'directory')
 
@@ -501,6 +524,8 @@
   function canComparePane(pane: ExplorerPaneState) {
     return mode === 'file' ? pane.selectedTargetKind === 'file' : pane.selectedTargetKind === 'directory'
   }
+
+
 
   async function runCompare() {
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
@@ -1103,29 +1128,42 @@
             <div class="nav-buttons">
               <button
                 class="secondary icon-button"
+                aria-label="Back"
                 disabled={!canGoBack(item.pane)}
+                title="Back"
                 type="button"
                 on:click={() => navigateHistory(item.side, -1)}
               >
-                &lt;
+                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                  <path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
               </button>
               <button
                 class="secondary icon-button"
+                aria-label="Forward"
                 disabled={!canGoForward(item.pane)}
+                title="Forward"
                 type="button"
                 on:click={() => navigateHistory(item.side, 1)}
               >
-                &gt;
+                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                  <path d="M6.5 3.5 11 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
               </button>
               <button
                 class="secondary icon-button"
+                aria-label="Up"
                 disabled={!item.pane.currentListing?.parentPath}
+                title="Up"
                 type="button"
                 on:click={() =>
                   item.pane.currentListing?.parentPath &&
                   navigateTo(item.side, item.pane.currentListing.parentPath)}
               >
-                ^
+                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                  <path d="M8 12.5v-9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+                  <path d="M4.5 7 8 3.5 11.5 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
               </button>
             </div>
 
@@ -1226,6 +1264,7 @@
               </div>
           </section>
         </section>
+
       {/each}
     </section>
   </main>
@@ -1242,6 +1281,25 @@
             <span><b>Right:</b> {rightPath}</span>
           </div>
         </div>
+      </div>
+
+      <div class="toolbar-center">
+        <button
+          class="secondary swap-button"
+          aria-label="Switch left and right sides"
+          disabled={loading || detailLoading || pickerLoading}
+          title="Switch left and right sides"
+          type="button"
+          on:click={swapComparedSides}
+        >
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.5 8  -3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
+          <span>Switch sides</span>
+        </button>
       </div>
 
       <div class="toolbar-right">
@@ -1270,14 +1328,24 @@
         </div>
 
         <div class="checkbox-row">
-          <label>
-            <input bind:checked={ignoreWhitespace} type="checkbox" />
+          <button
+            class:active={ignoreWhitespace}
+            class="secondary"
+            aria-pressed={ignoreWhitespace}
+            type="button"
+            on:click={() => (ignoreWhitespace = !ignoreWhitespace)}
+          >
             Ignore whitespace
-          </label>
-          <label>
-            <input bind:checked={ignoreCase} type="checkbox" />
+          </button>
+          <button
+            class:active={ignoreCase}
+            class="secondary"
+            aria-pressed={ignoreCase}
+            type="button"
+            on:click={() => (ignoreCase = !ignoreCase)}
+          >
             Ignore case
-          </label>
+          </button>
         </div>
 
         <button class="primary" type="button" disabled={loading} on:click={runCompare}>
@@ -1484,3 +1552,4 @@
     </section>
   </main>
 {/if}
+
