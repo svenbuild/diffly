@@ -62,3 +62,28 @@ int build_speed_table(const int *inputValues, int valueCount, int *outputValues)
 
   return valueCount;
 }
+
+static const int modern_profile_table[] = {
+  24, 30, 36, 44, 52, 60, 70, 80, 90, 100,
+  110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
+};
+
+int summarize_profile_table(void) {
+  int index = 0;
+  int total = 0;
+
+  for (index = 0; index < (int)(sizeof(modern_profile_table) / sizeof(modern_profile_table[0])); index += 1) {
+    total += modern_profile_table[index];
+  }
+
+  return total;
+}
+
+int compute_profile_window(int sampleWindowMs, int sensorCount) {
+  int normalizedWindow = sampleWindowMs / 4;
+  return clamp_speed(normalizedWindow + sensorCount * 4, 12, 220);
+}
+
+int summarize_profile_span(void) {
+  return modern_profile_table[0] + modern_profile_table[5] + modern_profile_table[10] + modern_profile_table[15];
+}

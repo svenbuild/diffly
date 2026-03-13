@@ -15,3 +15,56 @@ const leftOnlyMetrics = {
 };
 
 export default leftOnlyMetrics;
+
+export const leftOnlyAudit = {
+  owner: "integration-lab",
+  preset: "legacy-badge-layout",
+  checkpoints: [
+    "uses compact header labels for the compare summary",
+    "renders tree groups with low-contrast dividers",
+    "keeps the action bar anchored to the top edge",
+    "does not persist the last selected theme mode",
+  ],
+  snapshots: [
+    "2026-03-11T09:10:00Z compare requested",
+    "2026-03-11T09:10:04Z scan completed",
+    "2026-03-11T09:10:07Z diff rows rendered",
+    "2026-03-11T09:10:11Z export queued",
+  ],
+  notes:
+    "This fixture exists only on the left side so directory compares can verify missing-path handling and tree counts.",
+};
+
+export const leftOnlyReviewMatrix = [
+  "legacy-toolbar",
+  "compact-badges",
+  "no-theme-persistence",
+  "classic-scrollbars",
+  "fixed-tree-groups",
+  "manual-refresh-copy",
+  "baseline-selection",
+  "status-count-rollup",
+];
+
+export const leftOnlyReleaseNotes = [
+  "Baseline directory fixture keeps a left-only payload for tree aggregation checks.",
+  "Values emphasize the older toolbar layout and the absence of theme persistence.",
+  "Consumers should treat this object as a dense metadata sample rather than runtime code.",
+];
+
+export const leftOnlyScenarioLabels = [
+  "legacy-tree",
+  "left-artifact",
+  "manual-refresh",
+  "status-rollup",
+  "selection-baseline",
+  "fixed-toolbar",
+];
+
+export const leftOnlyFooter =
+  "Left-only fixture padding keeps the metadata file above the minimum size threshold for directory tests.";
+
+export const leftOnlyPadding =
+  "Supplemental baseline payload for left-only directory coverage and fixture sizing.";
+export const leftOnlyTail = "left fixture size pad";
+export const leftOnlyTail2 = "pad";
