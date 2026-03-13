@@ -1,5 +1,6 @@
 export type CompareMode = 'file' | 'directory'
 export type ViewMode = 'sideBySide' | 'unified'
+export type ThemeMode = 'dark' | 'light'
 export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'tooLarge'
 export type ContentKind = 'text' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
@@ -17,6 +18,7 @@ export interface PersistedExplorerPane {
 export interface PersistedSession {
   mode: CompareMode
   viewMode: ViewMode
+  themeMode?: ThemeMode
   ignoreWhitespace: boolean
   ignoreCase: boolean
   showFullFile: boolean

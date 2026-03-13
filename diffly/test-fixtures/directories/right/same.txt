@@ -1,2 +1,58 @@
-This file is identical on both sides.
-It should not appear in directory compare results.
+export function normalizeWorkspacePath(input) {
+  const value = input.replaceAll("\\", "/").trim();
+
+  if (value.endsWith("/")) {
+    return value.slice(0, -1);
+  }
+
+  return value;
+}
+
+export function buildCompareLabel(leftPath, rightPath) {
+  return `${normalizeWorkspacePath(leftPath)} -> ${normalizeWorkspacePath(rightPath)}`;
+}
+
+export function summarizeCompareRun(run) {
+  return {
+    id: run.id,
+    left: normalizeWorkspacePath(run.left),
+    right: normalizeWorkspacePath(run.right),
+    mode: run.mode,
+    includeHidden: run.includeHidden,
+    filters: [...run.filters],
+    totals: {
+      changed: run.stats.changed,
+      added: run.stats.added,
+      removed: run.stats.removed,
+    },
+  };
+}
+
+export const sampleRun = {
+  id: "fixture-run-001",
+  left: "C:\\projects\\left\\",
+  right: "C:\\projects\\right\\",
+  mode: "directory",
+  includeHidden: false,
+  filters: ["*.c", "*.h", "*.css"],
+  stats: {
+    changed: 12,
+    added: 4,
+    removed: 3,
+  },
+};
+
+export const sampleSummary = summarizeCompareRun(sampleRun);
+
+export function renderSummaryLines(summary) {
+  return [
+    `compare ${summary.id}`,
+    `left ${summary.left}`,
+    `right ${summary.right}`,
+    `mode ${summary.mode}`,
+    `includeHidden ${summary.includeHidden}`,
+    `changed ${summary.totals.changed}`,
+    `added ${summary.totals.added}`,
+    `removed ${summary.totals.removed}`,
+  ];
+}

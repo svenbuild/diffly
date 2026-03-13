@@ -36,6 +36,7 @@ struct PersistedExplorerPane {
 struct PersistedSession {
   mode: String,
   view_mode: String,
+  theme_mode: Option<String>,
   ignore_whitespace: bool,
   ignore_case: bool,
   show_full_file: bool,

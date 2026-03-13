@@ -1,2 +1,6 @@
-diffly compare mode
-inline highlights enabled
+const screen_title = "diffly compare mode";
+const highlight_state = "inline highlights enabled";
+const active_panel = "directory workspace";
+const active_theme = "dark mode";
+const status_line = "refresh completed successfully";
+const footer_note = "left side remains the control baseline";

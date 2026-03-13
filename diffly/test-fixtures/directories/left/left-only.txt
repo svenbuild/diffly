@@ -1,1 +1,17 @@
-This file exists only on the left side.
+const leftOnlyMetrics = {
+  branch: "legacy-ui",
+  filesChanged: 12,
+  reviewers: ["qa", "build-bot"],
+  notes: [
+    "uses classic diff badges",
+    "keeps nested tree counts compact",
+    "does not include a theme toggle",
+  ],
+  deployment: {
+    channel: "internal",
+    artifact: "diffly-legacy.zip",
+    signed: false,
+  },
+};
+
+export default leftOnlyMetrics;
