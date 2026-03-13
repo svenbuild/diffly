@@ -737,8 +737,10 @@ h2 {
 .compare-layout {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
+  align-items: stretch;
   gap: 8px;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -754,7 +756,15 @@ h2 {
 .file-browser {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 4px;
+  height: 100%;
+  max-height: 100%;
   background: var(--pane-bg);
+}
+
+.browser-header {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
 }
 
 .status-summary {
@@ -831,10 +841,14 @@ button.filter-chip.tooLarge:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--list-bg);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .file-group {
