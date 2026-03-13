@@ -16,6 +16,7 @@
     CompareMode,
     DirectoryEntryResult,
     DirectoryListing,
+    EntryStatus,
     ExplorerEntry,
     FileDiffResult,
     PersistedExplorerPane,
@@ -122,6 +123,7 @@
     binary: 'Binary',
     tooLarge: 'Too large',
   }
+  const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'binary', 'tooLarge']
 
   const getOptions = () => ({
     ignoreWhitespace,
@@ -1070,6 +1072,13 @@
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
   ]
+  $: directoryStatusSummary = statusOrder
+    .map((status) => ({
+      status,
+      label: statusLabel[status],
+      count: directoryEntries.filter((entry) => entry.status === status).length,
+    }))
+    .filter((item) => item.count > 0)
 </script>
 
 <svelte:head>
@@ -1077,11 +1086,15 @@
 </svelte:head>
 
 {#if screen === 'setup'}
-  <main class="setup-screen explorer-screen">
-    <header class="setup-toolbar">
-      <div class="setup-toolbar-left">
-        <h1>Diffly</h1>
-        <div class="mode-tabs normal-tabs">
+  <main class="screen setup-screen">
+    <header class="app-bar">
+      <div class="app-bar-main">
+        <div class="app-identity">
+          <h1>Diffly</h1>
+          <span>{mode === 'directory' ? 'Directory workspace' : 'File workspace'}</span>
+        </div>
+
+        <div class="segmented-control">
           <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
             Files
           </button>
@@ -1095,7 +1108,15 @@
         </div>
       </div>
 
-      <div class="setup-toolbar-right">
+      <div class="app-bar-actions">
+        <button
+          class="secondary"
+          disabled={loading || detailLoading || pickerLoading}
+          type="button"
+          on:click={swapComparedSides}
+        >
+          Swap sides
+        </button>
         <button class="primary" disabled={!pickerCanCompare || loading} type="button" on:click={runCompare}>
           {#if loading}
             Comparing...
@@ -1107,103 +1128,163 @@
     </header>
 
     {#if errorMessage}
-      <p class="error-banner compare-error">{errorMessage}</p>
+      <p class="error-banner">{errorMessage}</p>
     {/if}
 
-    <section class="picker-workspace">
-      {#each pickerSides as item}
-        <section class="picker-pane">
-          <div class="picker-pane-header">
-            <div class="picker-pane-title">
-              <strong>{item.pane.title}</strong>
-              <span>{item.pane.selectedTargetPath || 'No target selected'}</span>
+    <section class="setup-body">
+      <aside class="setup-sidebar">
+        <section class="sidebar-panel">
+          <h2>Selection</h2>
+          <dl class="definition-list">
+            <div>
+              <dt>Mode</dt>
+              <dd>{mode === 'directory' ? 'Compare folders' : 'Compare files'}</dd>
             </div>
-          </div>
-
-          {#if item.pane.error}
-            <p class="pane-error">{item.pane.error}</p>
-          {/if}
-
-          <div class="picker-pathbar">
-            <div class="nav-buttons">
-              <button
-                class="secondary icon-button"
-                aria-label="Back"
-                disabled={!canGoBack(item.pane)}
-                title="Back"
-                type="button"
-                on:click={() => navigateHistory(item.side, -1)}
-              >
-                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
-                  <path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-                </svg>
-              </button>
-              <button
-                class="secondary icon-button"
-                aria-label="Forward"
-                disabled={!canGoForward(item.pane)}
-                title="Forward"
-                type="button"
-                on:click={() => navigateHistory(item.side, 1)}
-              >
-                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
-                  <path d="M6.5 3.5 11 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-                </svg>
-              </button>
-              <button
-                class="secondary icon-button"
-                aria-label="Up"
-                disabled={!item.pane.currentListing?.parentPath}
-                title="Up"
-                type="button"
-                on:click={() =>
-                  item.pane.currentListing?.parentPath &&
-                  navigateTo(item.side, item.pane.currentListing.parentPath)}
-              >
-                <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
-                  <path d="M8 12.5v-9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-                  <path d="M4.5 7 8 3.5 11.5 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-                </svg>
-              </button>
+            <div>
+              <dt>Left</dt>
+              <dd>{leftExplorer.selectedTargetPath || 'Nothing selected yet'}</dd>
             </div>
+            <div>
+              <dt>Right</dt>
+              <dd>{rightExplorer.selectedTargetPath || 'Nothing selected yet'}</dd>
+            </div>
+          </dl>
+        </section>
 
-            <select
-              class="drive-select"
-              value={currentDrive(item.pane)}
-              on:change={(event) => changeDrive(item.side, event.currentTarget.value)}
+        <section class="sidebar-panel">
+          <h2>Options</h2>
+          <div class="stacked-actions">
+            <button
+              class:active={ignoreWhitespace}
+              class="secondary"
+              aria-pressed={ignoreWhitespace}
+              type="button"
+              on:click={() => (ignoreWhitespace = !ignoreWhitespace)}
             >
-              {#each item.pane.roots as root}
-                <option value={root.path}>{root.name}</option>
-              {/each}
-            </select>
-
-            <input
-              class="path-input"
-              placeholder="Enter a file or folder path"
-              type="text"
-              value={item.pane.pathInput}
-              on:input={(event) => updatePathInput(item.side, event.currentTarget.value)}
-              on:keydown={(event) => event.key === 'Enter' && submitPathInput(item.side)}
-            />
-
-            <button class="secondary utility-button" type="button" on:click={() => browseSystem(item.side)}>
-              System dialog
+              Ignore whitespace
             </button>
-
-            {#if mode === 'directory'}
-              <button
-                class:active={isCurrentFolderSelected(item.pane)}
-                class="secondary utility-button"
-                disabled={!item.pane.currentPath}
-                type="button"
-                on:click={() => useCurrentFolder(item.side)}
-              >
-                Use current folder
-              </button>
-            {/if}
+            <button
+              class:active={ignoreCase}
+              class="secondary"
+              aria-pressed={ignoreCase}
+              type="button"
+              on:click={() => (ignoreCase = !ignoreCase)}
+            >
+              Ignore case
+            </button>
           </div>
+        </section>
 
-          <section class="list-pane explorer-list-pane">
+        <section class="sidebar-panel">
+          <h2>Workflow</h2>
+          <p class="sidebar-note">
+            {mode === 'directory'
+              ? 'Open the folders you want, mark one target on each side, then run the compare.'
+              : 'Open the parent folders, choose one file on each side, then run the compare.'}
+          </p>
+        </section>
+      </aside>
+
+      <section class="picker-workspace">
+        {#each pickerSides as item}
+          <section class="picker-pane">
+            <header class="picker-pane-header">
+              <div class="picker-pane-title">
+                <strong>{item.pane.title}</strong>
+                <span>{item.pane.currentPath || 'No folder open'}</span>
+              </div>
+              <div class="target-summary">
+                <span>{mode === 'directory' ? 'Folder target' : 'File target'}</span>
+                <strong>{item.pane.selectedTargetPath || 'Nothing selected'}</strong>
+              </div>
+            </header>
+
+            {#if item.pane.error}
+              <p class="pane-error">{item.pane.error}</p>
+            {/if}
+
+            <div class="picker-nav-row">
+              <div class="nav-buttons">
+                <button
+                  class="secondary icon-button"
+                  aria-label="Back"
+                  disabled={!canGoBack(item.pane)}
+                  title="Back"
+                  type="button"
+                  on:click={() => navigateHistory(item.side, -1)}
+                >
+                  <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                    <path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                  </svg>
+                </button>
+                <button
+                  class="secondary icon-button"
+                  aria-label="Forward"
+                  disabled={!canGoForward(item.pane)}
+                  title="Forward"
+                  type="button"
+                  on:click={() => navigateHistory(item.side, 1)}
+                >
+                  <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                    <path d="M6.5 3.5 11 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                  </svg>
+                </button>
+                <button
+                  class="secondary icon-button"
+                  aria-label="Up"
+                  disabled={!item.pane.currentListing?.parentPath}
+                  title="Up"
+                  type="button"
+                  on:click={() =>
+                    item.pane.currentListing?.parentPath &&
+                    navigateTo(item.side, item.pane.currentListing.parentPath)}
+                >
+                  <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+                    <path d="M8 12.5v-9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+                    <path d="M4.5 7 8 3.5 11.5 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                  </svg>
+                </button>
+              </div>
+
+              <select
+                class="drive-select"
+                value={currentDrive(item.pane)}
+                on:change={(event) => changeDrive(item.side, event.currentTarget.value)}
+              >
+                {#each item.pane.roots as root}
+                  <option value={root.path}>{root.name}</option>
+                {/each}
+              </select>
+
+              <input
+                class="path-input"
+                placeholder="Enter a file or folder path"
+                type="text"
+                value={item.pane.pathInput}
+                on:input={(event) => updatePathInput(item.side, event.currentTarget.value)}
+                on:keydown={(event) => event.key === 'Enter' && submitPathInput(item.side)}
+              />
+            </div>
+
+            <div class="picker-action-row">
+              <button class="secondary" type="button" on:click={() => browseSystem(item.side)}>
+                System dialog
+              </button>
+
+              {#if mode === 'directory'}
+                <button
+                  class:active={isCurrentFolderSelected(item.pane)}
+                  class="secondary"
+                  disabled={!item.pane.currentPath}
+                  type="button"
+                  on:click={() => useCurrentFolder(item.side)}
+                >
+                  Use current folder
+                </button>
+              {/if}
+            </div>
+
+            <section class="list-pane explorer-list-pane">
               <div class="list-pane-header">
                 <div class="list-columns">
                   <span>Name</span>
@@ -1262,57 +1343,45 @@
                   <div class="empty-state">No folder open.</div>
                 {/if}
               </div>
+            </section>
           </section>
-        </section>
-
-      {/each}
+        {/each}
+      </section>
     </section>
   </main>
 {:else}
-  <main class="compare-screen">
-    <header class="compare-toolbar">
-      <div class="toolbar-left">
-        <button class="secondary" type="button" on:click={goToSetup}>Configure</button>
-
-        <div class="toolbar-meta">
+  <main class="screen compare-screen">
+    <header class="app-bar compare-bar">
+      <div class="app-bar-main">
+        <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
+        <div class="compare-summary">
           <strong>{compareSummary}</strong>
-          <div class="source-lines">
-            <span><b>Left:</b> {leftPath}</span>
-            <span><b>Right:</b> {rightPath}</span>
-          </div>
+          <span>{mode === 'directory' ? 'Directory compare' : 'File compare'}</span>
         </div>
       </div>
 
-      <div class="toolbar-center">
-        <button
-          class="secondary swap-button"
-          aria-label="Switch left and right sides"
-          disabled={loading || detailLoading || pickerLoading}
-          title="Switch left and right sides"
-          type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.5 8  -3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
-          <span>Switch sides</span>
-        </button>
-      </div>
-
-      <div class="toolbar-right">
-        <div class="inline-controls">
+      <div class="app-bar-actions compare-actions">
+        <div class="segmented-control">
+          <button
+            class:active={viewMode === 'sideBySide'}
+            type="button"
+            on:click={() => (viewMode = 'sideBySide')}
+          >
+            Side by side
+          </button>
           <button
             class:active={viewMode === 'unified'}
             type="button"
-            on:click={() => (viewMode = viewMode === 'unified' ? 'sideBySide' : 'unified')}
+            on:click={() => (viewMode = 'unified')}
           >
             Unified
           </button>
+        </div>
+
+        <div class="inline-actions">
           <button
             class:active={showFullFile}
+            class="secondary"
             type="button"
             on:click={() => (showFullFile = !showFullFile)}
           >
@@ -1320,14 +1389,12 @@
           </button>
           <button
             class:active={showInlineHighlights}
+            class="secondary"
             type="button"
             on:click={() => (showInlineHighlights = !showInlineHighlights)}
           >
             Inline highlights
           </button>
-        </div>
-
-        <div class="checkbox-row">
           <button
             class:active={ignoreWhitespace}
             class="secondary"
@@ -1348,6 +1415,23 @@
           </button>
         </div>
 
+        <button
+          class="secondary swap-button"
+          aria-label="Switch left and right sides"
+          disabled={loading || detailLoading || pickerLoading}
+          title="Switch left and right sides"
+          type="button"
+          on:click={swapComparedSides}
+        >
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
+          <span>Swap sides</span>
+        </button>
+
         <button class="primary" type="button" disabled={loading} on:click={runCompare}>
           Refresh
         </button>
@@ -1355,55 +1439,79 @@
     </header>
 
     {#if errorMessage}
-      <p class="error-banner compare-error">{errorMessage}</p>
+      <p class="error-banner">{errorMessage}</p>
     {/if}
+
+    <section class="compare-context">
+      <div class="context-card">
+        <span>Left</span>
+        <strong>{leftPath}</strong>
+      </div>
+      <div class="context-card">
+        <span>Right</span>
+        <strong>{rightPath}</strong>
+      </div>
+    </section>
 
     <section class:single-pane={mode === 'file'} class="compare-layout">
       {#if mode === 'directory'}
         <aside class="file-browser">
+          <header class="browser-header">
+            <div class="browser-title">
+              <h2>Changed items</h2>
+              <span>{directoryEntries.length} total</span>
+            </div>
+
+            {#if directoryStatusSummary.length > 0}
+              <div class="status-summary">
+                {#each directoryStatusSummary as item}
+                  <span class={`status-chip ${item.status}`}>{item.label} {item.count}</span>
+                {/each}
+              </div>
+            {/if}
+          </header>
+
           {#if visibleFolderSections.length === 0}
             <div class="empty-state">No differing files found.</div>
           {:else}
-            {#each visibleFolderSections as group}
-              <section class="file-group">
-                <button
-                  class="group-toggle"
-                  style={`padding-left: ${group.depth * 16 + 10}px`}
-                  type="button"
-                  on:click={() => toggleGroup(group.key)}
-                >
-                  <span class="chevron">{collapsedGroups[group.key] ? '>' : 'v'}</span>
-                  <span class="group-label">{group.label}</span>
-                  <span class="group-count">{group.totalCount}</span>
-                </button>
+            <div class="browser-list">
+              {#each visibleFolderSections as group}
+                <section class="file-group">
+                  <button
+                    class="group-toggle"
+                    style={`padding-left: ${group.depth * 16 + 12}px`}
+                    type="button"
+                    on:click={() => toggleGroup(group.key)}
+                  >
+                    <span class="chevron">{collapsedGroups[group.key] ? '>' : 'v'}</span>
+                    <span class="group-label">{group.label}</span>
+                    <span class="group-count">{group.totalCount}</span>
+                  </button>
 
-                {#if !collapsedGroups[group.key] && group.entries.length > 0}
-                  <div class="file-list">
-                    {#each group.entries as entry}
-                      <button
-                        class:selected={selectedRelativePath === entry.relativePath}
-                        class="file-row"
-                        type="button"
-                        on:click={() => selectEntry(entry)}
-                      >
-                        <span class={`status-mark ${entry.status}`}></span>
-                        <span class="file-text">
-                          <span class="file-name">
+                  {#if !collapsedGroups[group.key] && group.entries.length > 0}
+                    <div class="file-list">
+                      {#each group.entries as entry}
+                        <button
+                          class:selected={selectedRelativePath === entry.relativePath}
+                          class="file-row"
+                          type="button"
+                          on:click={() => selectEntry(entry)}
+                        >
+                          <span class="file-row-top">
                             <EntryIcon kind="file" />
                             <span class="entry-text">{getFileName(entry.relativePath)}</span>
                           </span>
-                          <span class="file-meta">
-                            {statusLabel[entry.status]} | {formatSize(entry.leftSize)} / {formatSize(
-                              entry.rightSize,
-                            )}
+                          <span class="file-row-bottom">
+                            <span class={`status-chip ${entry.status}`}>{statusLabel[entry.status]}</span>
+                            <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
                           </span>
-                        </span>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </section>
-            {/each}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </section>
+              {/each}
+            </div>
           {/if}
         </aside>
       {/if}
@@ -1417,7 +1525,7 @@
           {:else if viewMode === 'sideBySide'}
             <div class="split-view">
               <section class="diff-pane">
-                <div class="pane-header sticky-pane-header">
+                <div class="pane-header">
                   <span>Left</span>
                   <div class="pane-source">
                     <strong>{getFileName(activeDiff.leftLabel)}</strong>
@@ -1461,7 +1569,7 @@
               </section>
 
               <section class="diff-pane">
-                <div class="pane-header sticky-pane-header">
+                <div class="pane-header">
                   <span>Right</span>
                   <div class="pane-source">
                     <strong>{getFileName(activeDiff.rightLabel)}</strong>
@@ -1505,7 +1613,7 @@
               </section>
             </div>
           {:else}
-            <div class="viewer-header sticky-pane-header">
+            <div class="viewer-header">
               <div class="viewer-source">
                 <span>Left</span>
                 <strong>{getFileName(activeDiff.leftLabel)}</strong>
