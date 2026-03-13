@@ -1,0 +1,62 @@
+{
+  "fixture": "punctuation-inline",
+  "version": "baseline",
+  "workspace": {
+    "mode": "directory",
+    "theme": "dark",
+    "selected": "nested/docs/reordered-notes.md",
+    "filters": ["modified", "binary"],
+    "paths": {
+      "left": "D:/fixtures/left",
+      "right": "D:/fixtures/right"
+    }
+  },
+  "viewer": {
+    "layout": "side-by-side",
+    "inlineHighlights": true,
+    "grouping": "pairwise",
+    "header": "Refresh / Swap / Full file / Ignore whitespace / Ignore case",
+    "footer": "Rows keep punctuation-heavy labels for token-level diff checks."
+  },
+  "notes": [
+    "Tokens include brackets, commas, colons, slashes, and quoted values.",
+    "The right-side variant changes punctuation placement and several string values.",
+    "This makes inline highlighting exercise non-word token boundaries carefully.",
+    "The payload is deliberately large enough to clear the fixture minimum size."
+  ],
+  "timeline": [
+    "08:10 compare-started",
+    "08:10 tree-built",
+    "08:11 diff-opened",
+    "08:11 selection-retained",
+    "08:12 refresh-complete"
+  ],
+  "report": {
+    "summary": "Baseline punctuation map for inline diff tokenization.",
+    "details": [
+      "badge: modified, count: 4",
+      "badge: leftOnly, count: 2",
+      "badge: rightOnly, count: 2",
+      "badge: binary, count: 1",
+      "badge: tooLarge, count: 1"
+    ]
+  },
+  "appendix": {
+    "notes": [
+      "The appendix extends the JSON fixture beyond the repository minimum size.",
+      "It also gives the token highlighter extra commas, braces, and quoted strings.",
+      "Each sentence is intentionally plain ASCII to keep the file portable.",
+      "The right-side variant changes several separators and wording choices."
+    ],
+    "checks": {
+      "statusFilters": "multi-select",
+      "refreshLabel": "stable",
+      "scrollbarTheme": "dark",
+      "selectionRetention": "enabled"
+    },
+    "tail": [
+      "extra punctuation, commas, and quoted strings keep the fixture larger.",
+      "the compare should still emphasize changed separators and token order."
+    }
+  }
+}
