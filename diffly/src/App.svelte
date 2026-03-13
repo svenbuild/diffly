@@ -108,7 +108,7 @@
   let filteredEntryGroups: EntryGroup[] = []
   let folderSections: FolderSection[] = []
   let collapsedGroups: Record<string, boolean> = {}
-  let activeStatusFilter: EntryStatus | null = null
+  let activeStatusFilters: EntryStatus[] = []
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
   let selectedRelativePath = ''
@@ -330,7 +330,7 @@
     filteredEntryGroups = []
     folderSections = []
     collapsedGroups = {}
-    activeStatusFilter = null
+    activeStatusFilters = []
     selectedRelativePath = ''
     activeDiff = null
     errorMessage = ''
@@ -678,13 +678,13 @@
 
   function filterDirectoryEntries(
     entries: DirectoryEntryResult[],
-    statusFilter: EntryStatus | null,
+    statusFilters: EntryStatus[],
   ) {
-    if (!statusFilter) {
+    if (statusFilters.length === 0) {
       return entries
     }
 
-    return entries.filter((entry) => entry.status === statusFilter)
+    return entries.filter((entry) => statusFilters.includes(entry.status))
   }
 
   function reconcileCollapsedState(
@@ -701,7 +701,7 @@
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
-    filteredDirectoryEntries = filterDirectoryEntries(entries, activeStatusFilter)
+    filteredDirectoryEntries = filterDirectoryEntries(entries, activeStatusFilters)
     filteredEntryGroups = buildGroups(filteredDirectoryEntries)
 
     if (filteredEntryGroups.length === 0) {
@@ -716,7 +716,9 @@
   }
 
   async function toggleStatusFilter(status: EntryStatus) {
-    activeStatusFilter = activeStatusFilter === status ? null : status
+    activeStatusFilters = activeStatusFilters.includes(status)
+      ? activeStatusFilters.filter((value) => value !== status)
+      : [...activeStatusFilters, status]
     syncFilteredDirectoryState()
 
     if (mode !== 'directory' || screen !== 'compare') {
@@ -1133,7 +1135,7 @@
   }
 
   function isStatusFilterActive(status: EntryStatus) {
-    return activeStatusFilter === status
+    return activeStatusFilters.includes(status)
   }
 
   $: compareSummary =
@@ -1609,12 +1611,35 @@
 
         <button
           aria-busy={loading}
-          class="primary refresh-button"
+          class="refresh-button"
           type="button"
           disabled={loading}
           on:click={runCompare}
         >
-          <span class:visible={loading} aria-hidden="true" class="refresh-spinner"></span>
+          <span class="refresh-icon-slot" aria-hidden="true">
+            {#if loading}
+              <span class="refresh-spinner visible"></span>
+            {:else}
+              <svg class="refresh-icon" viewBox="0 0 16 16">
+                <path
+                  d="M13 5.5V2.8L11.3 4.5A5.4 5.4 0 0 0 2.8 6.3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                />
+                <path
+                  d="M3 10.5v2.7l1.7-1.7A5.4 5.4 0 0 0 13.2 9.7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                />
+              </svg>
+            {/if}
+          </span>
           <span>Refresh</span>
         </button>
       </div>
@@ -1642,7 +1667,7 @@
             <div class="browser-title">
               <h2>Changed items</h2>
               <span>
-                {#if activeStatusFilter}
+                {#if activeStatusFilters.length > 0}
                   {filteredDirectoryEntries.length} shown of {directoryEntries.length}
                 {:else}
                   {directoryEntries.length} total
@@ -1669,7 +1694,9 @@
 
           {#if visibleFolderSections.length === 0}
             <div class="empty-state">
-              {activeStatusFilter ? 'No files match the selected tag.' : 'No differing files found.'}
+              {activeStatusFilters.length > 0
+                ? 'No files match the selected filters.'
+                : 'No differing files found.'}
             </div>
           {:else}
             <div class="browser-list">
