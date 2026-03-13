@@ -76,6 +76,10 @@
   --delete-highlight-bg: rgba(197, 79, 108, 0.32);
   --line-divider: rgba(51, 69, 95, 0.46);
   --highlight-bg: rgba(88, 166, 255, 0.24);
+  --scrollbar-track: #09111a;
+  --scrollbar-thumb: #2a415a;
+  --scrollbar-thumb-hover: #3b5c81;
+  --scrollbar-thumb-border: #0c131c;
   --code: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
 }
 
@@ -150,6 +154,10 @@
   --delete-highlight-bg: rgba(183, 57, 101, 0.18);
   --line-divider: rgba(139, 158, 181, 0.46);
   --highlight-bg: rgba(37, 99, 235, 0.18);
+  --scrollbar-track: #e8eef6;
+  --scrollbar-thumb: #a7b6c7;
+  --scrollbar-thumb-hover: #899db5;
+  --scrollbar-thumb-border: #f4f8fd;
 }
 
 * {
@@ -766,6 +774,15 @@ h2 {
   color: var(--text);
 }
 
+.filter-chip {
+  cursor: pointer;
+}
+
+button.filter-chip:hover:not(:disabled),
+button.filter-chip:focus-visible {
+  background: inherit;
+}
+
 .status-chip.modified {
   background: var(--warning-bg);
   border-color: var(--status-modified-border);
@@ -784,6 +801,30 @@ h2 {
   background: var(--danger-bg);
   border-color: var(--status-danger-border);
   color: var(--status-danger-text);
+}
+
+.filter-chip.active-filter {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+button.filter-chip.modified:hover:not(:disabled),
+button.filter-chip.modified:focus-visible {
+  background: var(--warning-bg);
+}
+
+button.filter-chip.leftOnly:hover:not(:disabled),
+button.filter-chip.leftOnly:focus-visible,
+button.filter-chip.rightOnly:hover:not(:disabled),
+button.filter-chip.rightOnly:focus-visible {
+  background: var(--success-bg);
+}
+
+button.filter-chip.binary:hover:not(:disabled),
+button.filter-chip.binary:focus-visible,
+button.filter-chip.tooLarge:hover:not(:disabled),
+button.filter-chip.tooLarge:focus-visible {
+  background: var(--danger-bg);
 }
 
 .browser-list {
@@ -937,7 +978,7 @@ h2 {
 .pane-grid,
 .unified-grid {
   font-family: var(--code);
-  font-size: 0.76rem;
+  font-size: 0.71rem;
 }
 
 .unified-grid {
@@ -1084,6 +1125,73 @@ h2 {
   display: block;
 }
 
+.theme-icon-moon {
+  transform: translateX(-0.3px);
+}
+
+.refresh-button {
+  min-width: 88px;
+}
+
+.refresh-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  opacity: 0;
+}
+
+.refresh-spinner.visible {
+  opacity: 0.8;
+}
+
+.list-rows,
+.browser-list,
+.pane-scroll,
+.unified-grid {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.list-rows::-webkit-scrollbar,
+.browser-list::-webkit-scrollbar,
+.pane-scroll::-webkit-scrollbar,
+.unified-grid::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.list-rows::-webkit-scrollbar-track,
+.browser-list::-webkit-scrollbar-track,
+.pane-scroll::-webkit-scrollbar-track,
+.unified-grid::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.list-rows::-webkit-scrollbar-thumb,
+.browser-list::-webkit-scrollbar-thumb,
+.pane-scroll::-webkit-scrollbar-thumb,
+.unified-grid::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.list-rows::-webkit-scrollbar-thumb:hover,
+.browser-list::-webkit-scrollbar-thumb:hover,
+.pane-scroll::-webkit-scrollbar-thumb:hover,
+.unified-grid::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.list-rows::-webkit-scrollbar-corner,
+.browser-list::-webkit-scrollbar-corner,
+.pane-scroll::-webkit-scrollbar-corner,
+.unified-grid::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   body,
   button,
@@ -1115,14 +1223,20 @@ h2 {
   .line-fragment.highlighted,
   .entry-icon,
   .nav-icon,
-  .swap-icon {
+  .swap-icon,
+  .refresh-spinner {
     transition:
       background-color 180ms ease,
       border-color 180ms ease,
       color 180ms ease,
       box-shadow 180ms ease,
       fill 180ms ease,
-      stroke 180ms ease;
+      stroke 180ms ease,
+      opacity 180ms ease;
+  }
+
+  .refresh-spinner.visible {
+    animation: spin 700ms linear infinite;
   }
 }
 
@@ -1134,6 +1248,12 @@ h2 {
 
 .swap-button {
   padding-inline: 8px 10px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1280px) {
