@@ -82,3 +82,41 @@
   display: block;
   white-space: pre;
 }
+
+.diff-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.diff-summary .metric {
+  padding: 12px 14px;
+  border: 1px solid rgba(88, 166, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(10, 16, 23, 0.72);
+}
+
+.diff-summary .metric strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.diff-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(88, 166, 255, 0.12);
+  color: #8b949e;
+}
+
+@media (max-width: 860px) {
+  .diff-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diff-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

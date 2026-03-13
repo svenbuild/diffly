@@ -56,3 +56,43 @@ export function renderSummaryLines(summary) {
     `removed ${summary.totals.removed}`,
   ];
 }
+
+export const sampleTimeline = [
+  {
+    timestamp: "2026-03-12T08:10:00Z",
+    action: "scan-started",
+    status: "ok",
+    summary: "Directory scan queued for firmware-control workspace.",
+  },
+  {
+    timestamp: "2026-03-12T08:10:04Z",
+    action: "tree-built",
+    status: "ok",
+    summary: "Collected nested folder metadata and flattened compare paths.",
+  },
+  {
+    timestamp: "2026-03-12T08:10:06Z",
+    action: "diff-generated",
+    status: "ok",
+    summary: "Prepared side-by-side and unified hunks for 12 modified files.",
+  },
+  {
+    timestamp: "2026-03-12T08:10:08Z",
+    action: "summary-rendered",
+    status: "ok",
+    summary: "Rendered result cards, file badges, and toolbar state.",
+  },
+];
+
+export function summarizeTimeline(events) {
+  return events.map((event, index) => {
+    return `${index + 1}. ${event.timestamp} ${event.action} ${event.status} ${event.summary}`;
+  });
+}
+
+export const sampleWarnings = [
+  "Whitespace-only updates are hidden when ignoreWhitespace is enabled.",
+  "Binary files return status-only cards and never open inline diff panes.",
+  "Large files stop rendering text hunks after the 1 MB inspection ceiling.",
+  "Refreshing preserves the selected relative path whenever the file still exists.",
+];

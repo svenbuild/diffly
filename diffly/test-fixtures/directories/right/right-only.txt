@@ -15,3 +15,55 @@ const rightOnlyMetrics = {
 };
 
 export default rightOnlyMetrics;
+
+export const rightOnlyAudit = {
+  owner: "release-lab",
+  preset: "refined-toolbar-layout",
+  checkpoints: [
+    "stores theme mode changes between launches",
+    "keeps refresh button copy stable while loading",
+    "lets status tags filter the sidebar file tree",
+    "shows grouped delete blocks before insert blocks",
+  ],
+  snapshots: [
+    "2026-03-11T09:10:00Z compare requested",
+    "2026-03-11T09:10:03Z scan completed",
+    "2026-03-11T09:10:06Z diff rows rendered",
+    "2026-03-11T09:10:09Z export queued",
+  ],
+  notes:
+    "This fixture exists only on the right side so directory compares can verify added-path handling and tree counts.",
+};
+
+export const rightOnlyReviewMatrix = [
+  "refined-toolbar",
+  "filterable-badges",
+  "theme-persistence",
+  "styled-scrollbars",
+  "stable-refresh-copy",
+  "grouped-unified-blocks",
+  "selection-retention",
+  "status-count-rollup",
+];
+
+export const rightOnlyReleaseNotes = [
+  "Refined directory fixture keeps a right-only payload for tree aggregation checks.",
+  "Values emphasize the newer toolbar layout and persisted user interface controls.",
+  "Consumers should treat this object as a dense metadata sample rather than runtime code.",
+];
+
+export const rightOnlyScenarioLabels = [
+  "refined-tree",
+  "right-artifact",
+  "stable-refresh",
+  "status-rollup",
+  "selection-retention",
+  "styled-toolbar",
+];
+
+export const rightOnlyFooter =
+  "Right-only fixture padding keeps the metadata file above the minimum size threshold for directory tests.";
+
+export const rightOnlyPadding =
+  "Supplemental refined payload for right-only directory coverage and fixture sizing.";
+export const rightOnlyTail = "right fixture size pad extension";

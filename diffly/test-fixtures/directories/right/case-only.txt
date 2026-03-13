@@ -4,3 +4,60 @@ const active_panel = "directory workspace";
 const active_theme = "dark mode";
 const status_line = "refresh completed successfully";
 const footer_note = "left side remains the control baseline";
+const session_stage = "directory diff snapshot";
+const tree_header = "root nested include source";
+const left_case_guide = "case-only fixture should stay uppercase on this side";
+const right_case_guide = "the opposing file mirrors this data using lowercase";
+const view_labels = [
+  "side-by-side",
+  "unified",
+  "full file",
+  "inline tokens",
+  "ignore whitespace",
+  "ignore case",
+];
+const status_summary = [
+  "modified 4",
+  "left only 2",
+  "right only 2",
+  "binary 1",
+  "too large 1",
+];
+const operation_log = [
+  "refresh toolbar remains stable during recompare",
+  "status tags trigger file tree filtering",
+  "dark mode toggle stores the last selected theme",
+  "unified blocks group all deletes before inserts",
+  "scrollbars use a narrow track with a rounded thumb",
+];
+const release_checklist = [
+  "compare targets verified",
+  "directory tree collapse state verified",
+  "selected file retention verified",
+  "inline token highlights verified",
+  "status badge filtering verified",
+  "scroll synchronization verified",
+  "theme toggle icon alignment verified",
+  "refresh button width verified",
+];
+const panel_sequence = [
+  "setup workspace",
+  "left picker",
+  "right picker",
+  "compare header",
+  "status filters",
+  "folder tree",
+  "diff viewer",
+  "hunk summary",
+  "scroll overview",
+  "export actions",
+];
+const render_notes = [
+  "tree filters stay visible after each reload",
+  "row numbers stay aligned throughout each hunk",
+  "toolbar controls keep their width when busy",
+  "inline token markers remain sharp on dark panels",
+  "the case-only fixture preserves letter shape differences",
+];
+const footnote = "lowercase appendix for the case-only fixture to ensure a larger payload.";
+const size_pad = "lowercase size pad";

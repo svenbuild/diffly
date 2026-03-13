@@ -62,3 +62,28 @@ int build_speed_table(const int *inputValues, int valueCount, int *outputValues)
 
   return valueCount;
 }
+
+static const int legacy_profile_table[] = {
+  24, 28, 32, 38, 44, 52, 60, 68, 76, 84,
+  92, 100, 108, 116, 124, 132, 140, 148, 156, 164,
+};
+
+int summarize_profile_table(void) {
+  int index = 0;
+  int total = 0;
+
+  for (index = 0; index < (int)(sizeof(legacy_profile_table) / sizeof(legacy_profile_table[0])); index += 1) {
+    total += legacy_profile_table[index];
+  }
+
+  return total;
+}
+
+int compute_profile_window(int sampleWindowMs, int sensorCount) {
+  int normalizedWindow = sampleWindowMs / 5;
+  return clamp_speed(normalizedWindow + sensorCount * 3, 12, 180);
+}
+
+int summarize_profile_span(void) {
+  return legacy_profile_table[0] + legacy_profile_table[5] + legacy_profile_table[10] + legacy_profile_table[15];
+}

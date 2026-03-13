@@ -16,3 +16,59 @@ const lines = [
 ];
 
 console.log(lines.join("\n"));
+
+const metrics = [
+  formatRow("filters", "*.c, *.h, *.css"),
+  formatRow("selected", "nested/src/module.c"),
+  formatRow("refresh", "manual"),
+  formatRow("scroll", "synchronized"),
+  formatRow("themeToggle", "enabled"),
+  formatRow("statusTags", "clickable"),
+];
+
+function renderMetrics(items) {
+  return items.join("\n");
+}
+
+console.log(renderMetrics(metrics));
+
+const auditTrail = [
+  "Compare requested from the workspace toolbar.",
+  "Changed files grouped by folder depth and status.",
+  "Unified hunks show removed sections before added sections.",
+  "Binary fixtures remain available as status-only entries.",
+];
+
+console.log(auditTrail.join("\n"));
+
+const reviewLines = [
+  formatRow("review", "baseline-accepted"),
+  formatRow("filtersVisible", "yes"),
+  formatRow("selectionRetention", "yes"),
+  formatRow("refreshLabel", "stable"),
+  formatRow("scrollbarTheme", "applied"),
+  formatRow("export", "pending"),
+];
+
+console.log(reviewLines.join("\n"));
+
+const exportLines = [
+  formatRow("artifact", "diffly-left-report.txt"),
+  formatRow("bundle", "fixtures-baseline"),
+  formatRow("owner", "integration-lab"),
+  formatRow("timezone", "Europe/Zurich"),
+  formatRow("session", "directory-compare"),
+];
+
+console.log(exportLines.join("\n"));
+
+const traceLines = [
+  formatRow("trace", "sidebar-filter"),
+  formatRow("trace", "selection-sync"),
+  formatRow("trace", "hunk-collapse"),
+  formatRow("trace", "inline-diff"),
+  formatRow("trace", "binary-summary"),
+  formatRow("trace", "footer-metadata"),
+];
+
+console.log(traceLines.join("\n"));
