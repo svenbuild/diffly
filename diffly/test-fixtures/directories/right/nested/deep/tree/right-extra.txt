@@ -24,3 +24,13 @@ line 22 right-only nested coverage for deep aggregation checks
 line 23 right-only nested coverage for deep aggregation checks
 line 24 right-only nested coverage for deep aggregation checks
 line 25 right-only nested coverage for deep aggregation checks
+line 26 right-only nested coverage for deep aggregation checks
+line 27 right-only nested coverage for deep aggregation checks
+line 28 right-only nested coverage for deep aggregation checks
+line 29 right-only nested coverage for deep aggregation checks
+line 30 right-only nested coverage for deep aggregation checks
+line 31 right-only nested coverage for deep aggregation checks
+line 32 right-only nested coverage for deep aggregation checks
+line 33 right-only nested coverage for deep aggregation checks
+line 34 right-only nested coverage for deep aggregation checks
+line 35 right-only nested coverage for deep aggregation checks
