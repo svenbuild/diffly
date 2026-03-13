@@ -22,6 +22,7 @@
     PersistedExplorerPane,
     PersistedSession,
     SideBySideRow,
+    ThemeMode,
     UnifiedLine,
     ViewMode,
   } from './lib/types'
@@ -91,6 +92,7 @@
   let screen: Screen = 'setup'
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
+  let themeMode: ThemeMode = 'dark'
   let showFullFile = false
   let showInlineHighlights = true
   let leftPath = ''
@@ -113,6 +115,7 @@
   let syncingScroll = false
   let persistenceReady = false
   let saveSessionTimer: number | null = null
+  let compareRefreshTimer: number | null = null
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
 
@@ -130,12 +133,34 @@
     ignoreCase,
   })
 
+  const toggleThemeMode = () => {
+    themeMode = themeMode === 'dark' ? 'light' : 'dark'
+  }
+
+  const toggleViewMode = () => {
+    viewMode = viewMode === 'sideBySide' ? 'unified' : 'sideBySide'
+  }
+
+  const toggleIgnoreWhitespace = () => {
+    ignoreWhitespace = !ignoreWhitespace
+    scheduleCompareRefresh()
+  }
+
+  const toggleIgnoreCase = () => {
+    ignoreCase = !ignoreCase
+    scheduleCompareRefresh()
+  }
+
   onMount(() => {
     void initializePickers()
 
     return () => {
       if (saveSessionTimer !== null) {
         window.clearTimeout(saveSessionTimer)
+      }
+
+      if (compareRefreshTimer !== null) {
+        window.clearTimeout(compareRefreshTimer)
       }
     }
   })
@@ -230,6 +255,10 @@
 
     if (session.viewMode === 'sideBySide' || session.viewMode === 'unified') {
       viewMode = session.viewMode
+    }
+
+    if (session.themeMode === 'dark' || session.themeMode === 'light') {
+      themeMode = session.themeMode
     }
 
     ignoreWhitespace = session.ignoreWhitespace
@@ -542,11 +571,6 @@
     loading = true
     detailLoading = false
     errorMessage = ''
-    directoryEntries = []
-    entryGroups = []
-    folderSections = []
-    collapsedGroups = {}
-    activeDiff = null
     leftPath = nextLeftPath
     rightPath = nextRightPath
 
@@ -578,6 +602,24 @@
     } finally {
       loading = false
     }
+  }
+
+  function scheduleCompareRefresh() {
+    if (screen !== 'compare' || !canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
+      return
+    }
+
+    if (compareRefreshTimer !== null) {
+      window.clearTimeout(compareRefreshTimer)
+    }
+
+    compareRefreshTimer = window.setTimeout(() => {
+      compareRefreshTimer = null
+
+      if (!loading && !detailLoading) {
+        void runCompare()
+      }
+    }, 120)
   }
 
   async function selectEntry(entry: DirectoryEntryResult, revision = compareRevision) {
@@ -733,6 +775,10 @@
     return sections.filter((section) => {
       if (section.key === ROOT_GROUP) {
         return true
+      }
+
+      if (collapsedState[ROOT_GROUP]) {
+        return false
       }
 
       const parts = section.key.split('/')
@@ -994,6 +1040,7 @@
     return {
       mode,
       viewMode,
+      themeMode,
       ignoreWhitespace,
       ignoreCase,
       showFullFile,
@@ -1028,6 +1075,10 @@
     return pane.selectedTargetPath === entry.path
   }
 
+  function normalizeSelectionPath(path: string) {
+    return path.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase()
+  }
+
   $: compareSummary =
     mode === 'directory'
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
@@ -1041,9 +1092,16 @@
   $: unifiedRenderItems =
     activeDiff && showFullFile !== undefined ? buildUnifiedRenderItems(activeDiff.unified) : []
 
+  $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
+
+  $: if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = themeMode
+  }
+
   $: if (persistenceReady) {
     mode
     viewMode
+    themeMode
     ignoreWhitespace
     ignoreCase
     showFullFile
@@ -1072,6 +1130,15 @@
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
   ]
+  $: sameSelectionWarning =
+    pickerCanCompare &&
+    leftExplorer.selectedTargetKind === rightExplorer.selectedTargetKind &&
+    leftExplorer.selectedTargetPath &&
+    rightExplorer.selectedTargetPath &&
+    normalizeSelectionPath(leftExplorer.selectedTargetPath) ===
+      normalizeSelectionPath(rightExplorer.selectedTargetPath)
+      ? `Both sides currently point to the same ${mode === 'directory' ? 'folder' : 'file'}. The compare will usually be empty.`
+      : ''
   $: directoryStatusSummary = statusOrder
     .map((status) => ({
       status,
@@ -1109,6 +1176,37 @@
       </div>
 
       <div class="app-bar-actions">
+        <button
+          class="secondary theme-toggle"
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={themeToggleLabel}
+          type="button"
+          on:click={toggleThemeMode}
+        >
+          {#if themeMode === 'dark'}
+            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+            </svg>
+          {:else}
+            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <path
+                d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linejoin="round"
+                stroke-width="1.4"
+              />
+            </svg>
+          {/if}
+        </button>
         <button
           class="secondary"
           disabled={loading || detailLoading || pickerLoading}
@@ -1159,7 +1257,7 @@
               class="secondary"
               aria-pressed={ignoreWhitespace}
               type="button"
-              on:click={() => (ignoreWhitespace = !ignoreWhitespace)}
+              on:click={toggleIgnoreWhitespace}
             >
               Ignore whitespace
             </button>
@@ -1168,7 +1266,7 @@
               class="secondary"
               aria-pressed={ignoreCase}
               type="button"
-              on:click={() => (ignoreCase = !ignoreCase)}
+              on:click={toggleIgnoreCase}
             >
               Ignore case
             </button>
@@ -1182,6 +1280,12 @@
               ? 'Open the folders you want, mark one target on each side, then run the compare.'
               : 'Open the parent folders, choose one file on each side, then run the compare.'}
           </p>
+          {#if sameSelectionWarning}
+            <div class="setup-warning">
+              <strong>Heads up</strong>
+              <span>{sameSelectionWarning}</span>
+            </div>
+          {/if}
         </section>
       </aside>
 
@@ -1361,22 +1465,40 @@
       </div>
 
       <div class="app-bar-actions compare-actions">
-        <div class="segmented-control">
-          <button
-            class:active={viewMode === 'sideBySide'}
-            type="button"
-            on:click={() => (viewMode = 'sideBySide')}
-          >
-            Side by side
-          </button>
-          <button
-            class:active={viewMode === 'unified'}
-            type="button"
-            on:click={() => (viewMode = 'unified')}
-          >
-            Unified
-          </button>
-        </div>
+        <button
+          class="secondary theme-toggle"
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={themeToggleLabel}
+          type="button"
+          on:click={toggleThemeMode}
+        >
+          {#if themeMode === 'dark'}
+            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+            </svg>
+          {:else}
+            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <path
+                d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linejoin="round"
+                stroke-width="1.4"
+              />
+            </svg>
+          {/if}
+        </button>
+        <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
+          {viewMode === 'sideBySide' ? 'Unified view' : 'Side by side'}
+        </button>
 
         <div class="inline-actions">
           <button
@@ -1400,7 +1522,7 @@
             class="secondary"
             aria-pressed={ignoreWhitespace}
             type="button"
-            on:click={() => (ignoreWhitespace = !ignoreWhitespace)}
+            on:click={toggleIgnoreWhitespace}
           >
             Ignore whitespace
           </button>
@@ -1409,7 +1531,7 @@
             class="secondary"
             aria-pressed={ignoreCase}
             type="button"
-            on:click={() => (ignoreCase = !ignoreCase)}
+            on:click={toggleIgnoreCase}
           >
             Ignore case
           </button>
@@ -1433,7 +1555,7 @@
         </button>
 
         <button class="primary" type="button" disabled={loading} on:click={runCompare}>
-          Refresh
+          {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
     </header>
@@ -1442,12 +1564,12 @@
       <p class="error-banner">{errorMessage}</p>
     {/if}
 
-    <section class="compare-context">
-      <div class="context-card">
+    <section class:refreshing={loading} class="compare-context">
+      <div class="context-card compact">
         <span>Left</span>
         <strong>{leftPath}</strong>
       </div>
-      <div class="context-card">
+      <div class="context-card compact">
         <span>Right</span>
         <strong>{rightPath}</strong>
       </div>
@@ -1455,7 +1577,7 @@
 
     <section class:single-pane={mode === 'file'} class="compare-layout">
       {#if mode === 'directory'}
-        <aside class="file-browser">
+        <aside class:refreshing={loading} class="file-browser">
           <header class="browser-header">
             <div class="browser-title">
               <h2>Changed items</h2>
@@ -1479,11 +1601,15 @@
                 <section class="file-group">
                   <button
                     class="group-toggle"
-                    style={`padding-left: ${group.depth * 16 + 12}px`}
+                    style={`padding-left: ${group.depth * 14 + 10}px`}
                     type="button"
                     on:click={() => toggleGroup(group.key)}
                   >
-                    <span class="chevron">{collapsedGroups[group.key] ? '>' : 'v'}</span>
+                    <span class="chevron">
+                      <svg aria-hidden="true" class:collapsed={collapsedGroups[group.key]} class="chevron-icon" viewBox="0 0 16 16">
+                        <path d="m5.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+                      </svg>
+                    </span>
                     <span class="group-label">{group.label}</span>
                     <span class="group-count">{group.totalCount}</span>
                   </button>
@@ -1516,10 +1642,8 @@
         </aside>
       {/if}
 
-      <section class="viewer">
-        {#if detailLoading}
-          <div class="empty-state">Loading diff...</div>
-        {:else if activeDiff}
+      <section class:refreshing={loading} class="viewer">
+        {#if activeDiff}
           {#if activeDiff.contentKind !== 'text'}
             <div class="message-card">{activeDiff.summary}</div>
           {:else if viewMode === 'sideBySide'}
@@ -1653,6 +1777,11 @@
               {/each}
             </div>
           {/if}
+          {#if detailLoading}
+            <div class="viewer-loading">Refreshing diff...</div>
+          {/if}
+        {:else if detailLoading}
+          <div class="empty-state">Loading diff...</div>
         {:else}
           <div class="empty-state">Run a compare to see the result.</div>
         {/if}

@@ -1,3 +1,18 @@
-alpha   beta    gamma
+function  formatRow(label, value)  {
+  return `${label}: ${value}`;
+}
 
-delta    epsilon
+const  lines = [
+  formatRow("mode", "directory"),
+  formatRow("status", "ready"),
+  formatRow("selection", "root/src"),
+  formatRow("summary", "12 changed / 4 added / 3 removed"),
+  formatRow("viewer", "side-by-side"),
+  formatRow("inline", "enabled"),
+  formatRow("theme", "dark"),
+  formatRow("workspace", "firmware-control"),
+  formatRow("path", "C:/projects/firmware-control"),
+  formatRow("target", "C:/projects/firmware-control/src"),
+];
+
+console.log(lines.join("\n"));
