@@ -39,3 +39,6 @@ difference the same: the right-side file lacks the legacy notes section.
 The final paragraph repeats the intent once more so the fixture remains above
 two kilobytes: this is a delete-only markdown case with stable surrounding
 context and no synthetic insertion block on the right side.
+
+One more stable sentence closes the file and ensures the fixture clears the
+minimum size threshold without changing the intended diff shape.
