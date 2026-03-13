@@ -35,3 +35,7 @@ as a pure delete block sourced from the left-side content with readable context.
 The rest of this appendix is intentionally steady markdown prose. It gives the
 fixture enough size to clear the repository floor while keeping the semantic
 difference the same: the right-side file lacks the legacy notes section.
+
+The final paragraph repeats the intent once more so the fixture remains above
+two kilobytes: this is a delete-only markdown case with stable surrounding
+context and no synthetic insertion block on the right side.

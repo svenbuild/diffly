@@ -1,0 +1,26 @@
+right deep tree fixture
+line 01 right-only nested coverage for deep aggregation checks
+line 02 right-only nested coverage for deep aggregation checks
+line 03 right-only nested coverage for deep aggregation checks
+line 04 right-only nested coverage for deep aggregation checks
+line 05 right-only nested coverage for deep aggregation checks
+line 06 right-only nested coverage for deep aggregation checks
+line 07 right-only nested coverage for deep aggregation checks
+line 08 right-only nested coverage for deep aggregation checks
+line 09 right-only nested coverage for deep aggregation checks
+line 10 right-only nested coverage for deep aggregation checks
+line 11 right-only nested coverage for deep aggregation checks
+line 12 right-only nested coverage for deep aggregation checks
+line 13 right-only nested coverage for deep aggregation checks
+line 14 right-only nested coverage for deep aggregation checks
+line 15 right-only nested coverage for deep aggregation checks
+line 16 right-only nested coverage for deep aggregation checks
+line 17 right-only nested coverage for deep aggregation checks
+line 18 right-only nested coverage for deep aggregation checks
+line 19 right-only nested coverage for deep aggregation checks
+line 20 right-only nested coverage for deep aggregation checks
+line 21 right-only nested coverage for deep aggregation checks
+line 22 right-only nested coverage for deep aggregation checks
+line 23 right-only nested coverage for deep aggregation checks
+line 24 right-only nested coverage for deep aggregation checks
+line 25 right-only nested coverage for deep aggregation checks

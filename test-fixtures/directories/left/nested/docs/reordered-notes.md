@@ -48,3 +48,9 @@ navigation and hunk headers worth checking during manual testing.
 The final section is plain filler with realistic language about compare results,
 selected files, grouped folder trees, and retained state after refresh. It
 exists so the fixture remains large enough without changing the intended test.
+
+## Section I
+
+This closing note exists only to push the markdown file over the minimum size
+threshold. It repeats the same test intent in different words: section order,
+stable context, readable hunk headers, and realistic nested path coverage.
