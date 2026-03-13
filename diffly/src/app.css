@@ -1141,41 +1141,41 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  min-width: 102px;
-  padding: 3px 10px;
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface-alt));
-  color: var(--active-text);
-  font-weight: 600;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-alt));
+  color: color-mix(in srgb, var(--accent-strong) 84%, var(--text));
 }
 
 .refresh-button:hover:not(:disabled) {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 88%, var(--surface-strong));
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--surface-strong));
 }
 
 .refresh-button:disabled {
   opacity: 1;
-  color: color-mix(in srgb, var(--active-text) 82%, var(--muted));
+  color: color-mix(in srgb, var(--accent-strong) 66%, var(--muted));
 }
 
 .refresh-icon-slot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 12px;
+  flex: 0 0 14px;
 }
 
 .refresh-icon {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 
 .refresh-spinner {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border: 1.5px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;

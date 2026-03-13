@@ -1610,8 +1610,10 @@
         </button>
 
         <button
+          aria-label="Refresh compare"
           aria-busy={loading}
           class="refresh-button"
+          title="Refresh compare"
           type="button"
           disabled={loading}
           on:click={runCompare}
@@ -1640,7 +1642,6 @@
               </svg>
             {/if}
           </span>
-          <span>Refresh</span>
         </button>
       </div>
     </header>
