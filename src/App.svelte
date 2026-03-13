@@ -104,9 +104,11 @@
   let pickerLoading = false
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
-  let entryGroups: EntryGroup[] = []
+  let filteredDirectoryEntries: DirectoryEntryResult[] = []
+  let filteredEntryGroups: EntryGroup[] = []
   let folderSections: FolderSection[] = []
   let collapsedGroups: Record<string, boolean> = {}
+  let activeStatusFilter: EntryStatus | null = null
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
   let selectedRelativePath = ''
@@ -324,9 +326,11 @@
     leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
-    entryGroups = []
+    filteredDirectoryEntries = []
+    filteredEntryGroups = []
     folderSections = []
     collapsedGroups = {}
+    activeStatusFilter = null
     selectedRelativePath = ''
     activeDiff = null
     errorMessage = ''
@@ -581,17 +585,16 @@
 
       if (response.kind === 'directory') {
         directoryEntries = response.entries
-        entryGroups = buildGroups(directoryEntries)
-        folderSections = buildFolderSections(entryGroups)
-        collapsedGroups = createCollapsedState(folderSections)
+        syncFilteredDirectoryState(response.entries)
 
-        if (directoryEntries.length > 0) {
+        if (filteredDirectoryEntries.length > 0) {
           const retainedEntry =
-            directoryEntries.find((entry) => entry.relativePath === previousRelativePath) ??
-            directoryEntries[0]
+            filteredDirectoryEntries.find((entry) => entry.relativePath === previousRelativePath) ??
+            filteredDirectoryEntries[0]
           await selectEntry(retainedEntry, compareRevision)
         } else {
           selectedRelativePath = ''
+          activeDiff = null
         }
       } else {
         selectedRelativePath = ''
@@ -671,6 +674,66 @@
         ),
       }))
       .sort((left, right) => left.label.localeCompare(right.label))
+  }
+
+  function filterDirectoryEntries(
+    entries: DirectoryEntryResult[],
+    statusFilter: EntryStatus | null,
+  ) {
+    if (!statusFilter) {
+      return entries
+    }
+
+    return entries.filter((entry) => entry.status === statusFilter)
+  }
+
+  function reconcileCollapsedState(
+    previousState: Record<string, boolean>,
+    sections: FolderSection[],
+  ) {
+    const nextState: Record<string, boolean> = {}
+
+    for (const section of sections) {
+      nextState[section.key] = previousState[section.key] ?? false
+    }
+
+    return nextState
+  }
+
+  function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
+    filteredDirectoryEntries = filterDirectoryEntries(entries, activeStatusFilter)
+    filteredEntryGroups = buildGroups(filteredDirectoryEntries)
+
+    if (filteredEntryGroups.length === 0) {
+      folderSections = []
+      collapsedGroups = {}
+      return
+    }
+
+    const nextSections = buildFolderSections(filteredEntryGroups)
+    folderSections = nextSections
+    collapsedGroups = reconcileCollapsedState(collapsedGroups, nextSections)
+  }
+
+  async function toggleStatusFilter(status: EntryStatus) {
+    activeStatusFilter = activeStatusFilter === status ? null : status
+    syncFilteredDirectoryState()
+
+    if (mode !== 'directory' || screen !== 'compare') {
+      return
+    }
+
+    if (filteredDirectoryEntries.some((entry) => entry.relativePath === selectedRelativePath)) {
+      return
+    }
+
+    if (filteredDirectoryEntries.length > 0) {
+      await selectEntry(filteredDirectoryEntries[0])
+      return
+    }
+
+    selectedRelativePath = ''
+    activeDiff = null
   }
 
   function buildFolderSections(groups: EntryGroup[]) {
@@ -756,16 +819,6 @@
     appendSections(ROOT_GROUP, 0)
 
     return sections
-  }
-
-  function createCollapsedState(groups: FolderSection[]) {
-    const nextState: Record<string, boolean> = {}
-
-    for (const group of groups) {
-      nextState[group.key] = false
-    }
-
-    return nextState
   }
 
   function getVisibleFolderSections(
@@ -1079,6 +1132,10 @@
     return path.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase()
   }
 
+  function isStatusFilterActive(status: EntryStatus) {
+    return activeStatusFilter === status
+  }
+
   $: compareSummary =
     mode === 'directory'
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
@@ -1120,11 +1177,6 @@
   }
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
-  $: if (mode !== 'directory') {
-    folderSections = []
-  } else if (entryGroups.length > 0) {
-    folderSections = buildFolderSections(entryGroups)
-  }
   $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
   $: pickerSides = [
     { side: 'left' as Side, pane: leftExplorer },
@@ -1196,11 +1248,12 @@
               <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
             </svg>
           {:else}
-            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+            <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
               <path
-                d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
+                d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
                 fill="none"
                 stroke="currentColor"
+                stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="1.4"
               />
@@ -1554,8 +1607,15 @@
           <span>Swap sides</span>
         </button>
 
-        <button class="primary" type="button" disabled={loading} on:click={runCompare}>
-          {loading ? 'Refreshing...' : 'Refresh'}
+        <button
+          aria-busy={loading}
+          class="primary refresh-button"
+          type="button"
+          disabled={loading}
+          on:click={runCompare}
+        >
+          <span class:visible={loading} aria-hidden="true" class="refresh-spinner"></span>
+          <span>Refresh</span>
         </button>
       </div>
     </header>
@@ -1581,20 +1641,36 @@
           <header class="browser-header">
             <div class="browser-title">
               <h2>Changed items</h2>
-              <span>{directoryEntries.length} total</span>
+              <span>
+                {#if activeStatusFilter}
+                  {filteredDirectoryEntries.length} shown of {directoryEntries.length}
+                {:else}
+                  {directoryEntries.length} total
+                {/if}
+              </span>
             </div>
 
             {#if directoryStatusSummary.length > 0}
               <div class="status-summary">
                 {#each directoryStatusSummary as item}
-                  <span class={`status-chip ${item.status}`}>{item.label} {item.count}</span>
+                  <button
+                    aria-pressed={isStatusFilterActive(item.status)}
+                    class:active-filter={isStatusFilterActive(item.status)}
+                    class={`status-chip filter-chip ${item.status}`}
+                    type="button"
+                    on:click={() => toggleStatusFilter(item.status)}
+                  >
+                    {item.label} {item.count}
+                  </button>
                 {/each}
               </div>
             {/if}
           </header>
 
           {#if visibleFolderSections.length === 0}
-            <div class="empty-state">No differing files found.</div>
+            <div class="empty-state">
+              {activeStatusFilter ? 'No files match the selected tag.' : 'No differing files found.'}
+            </div>
           {:else}
             <div class="browser-list">
               {#each visibleFolderSections as group}
