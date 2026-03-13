@@ -1,0 +1,62 @@
+{
+  "fixture": "punctuation-inline",
+  "version": "refined",
+  "workspace": {
+    "mode": "directory",
+    "theme": "light",
+    "selected": "nested/docs/reordered-notes.md",
+    "filters": ["modified", "binary", "tooLarge"],
+    "paths": {
+      "left": "D:/fixtures/left",
+      "right": "D:/fixtures/right"
+    }
+  },
+  "viewer": {
+    "layout": "unified",
+    "inlineHighlights": true,
+    "grouping": "delete-block-then-insert-block",
+    "header": "Refresh | Swap | Full file | Ignore whitespace | Ignore case",
+    "footer": "Rows keep punctuation-aware labels for token-level diff checks."
+  },
+  "notes": [
+    "Tokens include brackets, commas, colons, pipes, and quoted values.",
+    "The right-side variant changes punctuation placement and several string values.",
+    "This makes inline highlighting exercise non-word token boundaries carefully.",
+    "The payload is deliberately large enough to clear the fixture minimum size."
+  ],
+  "timeline": [
+    "08:10 compare-started",
+    "08:10 tree-built",
+    "08:11 diff-opened",
+    "08:11 selection-retained",
+    "08:12 refresh-finished"
+  ],
+  "report": {
+    "summary": "Refined punctuation map for inline diff tokenization.",
+    "details": [
+      "badge: modified; count: 6",
+      "badge: leftOnly; count: 2",
+      "badge: rightOnly; count: 3",
+      "badge: binary; count: 1",
+      "badge: tooLarge; count: 1"
+    ]
+  },
+  "appendix": {
+    "notes": [
+      "The appendix extends the JSON fixture beyond the repository minimum size.",
+      "It also gives the token highlighter extra commas, braces, pipes, and quoted strings.",
+      "Each sentence is intentionally plain ASCII to keep the file portable.",
+      "The left-side variant keeps older separators and a different grouping label."
+    ],
+    "checks": {
+      "statusFilters": "multi-select",
+      "refreshLabel": "stable",
+      "scrollbarTheme": "light",
+      "selectionRetention": "enabled"
+    },
+    "tail": [
+      "extra punctuation, commas, pipes, and quoted strings keep the fixture larger.",
+      "the compare should still emphasize changed separators and token order."
+    }
+  }
+}
