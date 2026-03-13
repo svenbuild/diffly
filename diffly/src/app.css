@@ -873,15 +873,12 @@ button.filter-chip.tooLarge:focus-visible {
   width: 13px;
   height: 13px;
   color: var(--muted);
+  transform: rotate(90deg);
   transition: transform 160ms ease, color 160ms ease;
 }
 
 .chevron-icon.collapsed {
   transform: rotate(0deg);
-}
-
-.group-toggle:not(:hover) .chevron-icon:not(.collapsed) {
-  transform: rotate(90deg);
 }
 
 .group-toggle:hover .chevron-icon,
@@ -1130,7 +1127,36 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  min-width: 88px;
+  min-width: 102px;
+  padding: 3px 10px;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface-alt));
+  color: var(--active-text);
+  font-weight: 600;
+}
+
+.refresh-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 88%, var(--surface-strong));
+}
+
+.refresh-button:disabled {
+  opacity: 1;
+  color: color-mix(in srgb, var(--active-text) 82%, var(--muted));
+}
+
+.refresh-icon-slot {
+  width: 12px;
+  height: 12px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 12px;
+}
+
+.refresh-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .refresh-spinner {
@@ -1139,11 +1165,7 @@ button.filter-chip.tooLarge:focus-visible {
   border: 1.5px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
-  opacity: 0;
-}
-
-.refresh-spinner.visible {
-  opacity: 0.8;
+  opacity: 0.88;
 }
 
 .list-rows,
