@@ -287,6 +287,7 @@ h2 {
 .app-bar-main,
 .app-bar-actions,
 .compare-actions,
+.compare-action-group,
 .inline-actions,
 .segmented-control,
 .nav-buttons,
@@ -301,6 +302,20 @@ h2 {
 .compare-actions {
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.compare-actions {
+  gap: 10px;
+}
+
+.compare-action-group {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.compare-action-group + .compare-action-group {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
 
 .app-identity,
@@ -1014,6 +1029,12 @@ button.filter-chip.tooLarge:focus-visible {
   font-size: 0.7rem;
 }
 
+.hunk-row.current-diff-target,
+.diff-row.current-diff-target,
+.unified-row.current-diff-target {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .diff-row {
   grid-template-columns: 64px 30px minmax(0, 1fr);
   gap: 0;
@@ -1338,6 +1359,11 @@ button.filter-chip.tooLarge:focus-visible {
   .compare-context {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .compare-action-group + .compare-action-group {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .picker-nav-row,
