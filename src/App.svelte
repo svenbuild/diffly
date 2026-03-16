@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import EntryIcon from './lib/EntryIcon.svelte'
 
   import {
@@ -49,12 +49,22 @@
     type: 'hunk' | 'row'
     header?: string
     row?: SideBySideRow
+    hunkIndex?: number
+    isAnchor?: boolean
   }
 
   interface UnifiedRenderItem {
     type: 'hunk' | 'row'
     header?: string
     row?: UnifiedLine
+    hunkIndex?: number
+    isAnchor?: boolean
+  }
+
+  interface DiffHunkRange {
+    start: number
+    end: number
+    header: string
   }
 
   interface DiffTreeNode {
@@ -111,15 +121,26 @@
   let activeStatusFilters: EntryStatus[] = []
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
+  let unifiedScroll: HTMLDivElement | null = null
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let syncingScroll = false
+  let diffNavigationRefreshQueued = false
+  let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareRefreshTimer: number | null = null
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
+  let sideBySideHunkRanges: DiffHunkRange[] = []
+  let unifiedHunkRanges: DiffHunkRange[] = []
+  let sideBySideRenderItems: SideBySideRenderItem[] = []
+  let unifiedRenderItems: UnifiedRenderItem[] = []
+  let visibleDiffHunkCount = 0
+  let canNavigateDiffs = false
+  let canGoToPreviousDiff = false
+  let canGoToNextDiff = false
 
   const statusLabel = {
     modified: 'Modified',
@@ -880,6 +901,123 @@
     }
   }
 
+  function getActiveDiffScrollContainer() {
+    if (!activeDiff || activeDiff.contentKind !== 'text') {
+      return null
+    }
+
+    return viewMode === 'sideBySide' ? leftPaneScroll : unifiedScroll
+  }
+
+  function getActiveDiffAnchors() {
+    const container = getActiveDiffScrollContainer()
+
+    if (!container) {
+      return []
+    }
+
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-diff-anchor="true"]'))
+  }
+
+  function getCurrentDiffHunkFromScroll(
+    container: HTMLDivElement,
+    anchors: HTMLElement[],
+  ) {
+    if (anchors.length === 0) {
+      return -1
+    }
+
+    const threshold = container.getBoundingClientRect().top + 16
+    let nextCurrentIndex = 0
+
+    for (const [index, anchor] of anchors.entries()) {
+      if (anchor.getBoundingClientRect().top <= threshold) {
+        nextCurrentIndex = index
+        continue
+      }
+
+      break
+    }
+
+    return nextCurrentIndex
+  }
+
+  function refreshDiffNavigationState() {
+    const container = getActiveDiffScrollContainer()
+    const anchors = getActiveDiffAnchors()
+
+    if (!container || anchors.length === 0) {
+      currentDiffHunk = -1
+      return
+    }
+
+    currentDiffHunk = getCurrentDiffHunkFromScroll(container, anchors)
+  }
+
+  function scheduleDiffNavigationRefresh() {
+    if (diffNavigationRefreshQueued) {
+      return
+    }
+
+    diffNavigationRefreshQueued = true
+
+    void tick().then(() => {
+      diffNavigationRefreshQueued = false
+      refreshDiffNavigationState()
+    })
+  }
+
+  function prefersReducedMotion() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false
+    }
+
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  function scrollDiffHunkIntoView(targetIndex: number) {
+    const container = getActiveDiffScrollContainer()
+    const anchors = getActiveDiffAnchors()
+    const anchor = anchors[targetIndex]
+
+    if (!container || !anchor) {
+      return
+    }
+
+    const top =
+      container.scrollTop +
+      anchor.getBoundingClientRect().top -
+      container.getBoundingClientRect().top -
+      8
+
+    currentDiffHunk = targetIndex
+    container.scrollTo({
+      top: Math.max(0, top),
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
+  }
+
+  function goToPreviousDifference() {
+    if (!canGoToPreviousDiff) {
+      return
+    }
+
+    const targetIndex = Math.max(0, (currentDiffHunk === -1 ? 0 : currentDiffHunk) - 1)
+    scrollDiffHunkIntoView(targetIndex)
+  }
+
+  function goToNextDifference() {
+    if (!canGoToNextDiff) {
+      return
+    }
+
+    const targetIndex = Math.min(
+      visibleDiffHunkCount - 1,
+      (currentDiffHunk === -1 ? 0 : currentDiffHunk) + 1,
+    )
+    scrollDiffHunkIntoView(targetIndex)
+  }
+
   function syncPaneScroll(source: 'left' | 'right') {
     const sourcePane = source === 'left' ? leftPaneScroll : rightPaneScroll
     const targetPane = source === 'left' ? rightPaneScroll : leftPaneScroll
@@ -891,6 +1029,7 @@
     syncingScroll = true
     targetPane.scrollTop = sourcePane.scrollTop
     targetPane.scrollLeft = sourcePane.scrollLeft
+    refreshDiffNavigationState()
 
     requestAnimationFrame(() => {
       syncingScroll = false
@@ -941,48 +1080,98 @@
     return `${entry.name.slice(extensionIndex + 1).toUpperCase()} file`
   }
 
-  function buildSideBySideRenderItems(rows: SideBySideRow[]) {
+  function buildSideBySideHunkRanges(rows: SideBySideRow[]) {
+    return buildHunkRanges(
+      rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'),
+    ).map((range) => {
+      const hunkRows = rows.slice(range.start, range.end + 1)
+
+      return {
+        ...range,
+        header: formatHunkHeader(
+          hunkRows.map((row) => row.left?.lineNumber ?? null),
+          hunkRows.map((row) => row.right?.lineNumber ?? null),
+        ),
+      } satisfies DiffHunkRange
+    })
+  }
+
+  function buildUnifiedHunkRanges(rows: UnifiedLine[]) {
+    return buildHunkRanges(rows.map((row) => row.change !== 'context')).map((range) => {
+      const hunkRows = rows.slice(range.start, range.end + 1)
+
+      return {
+        ...range,
+        header: formatHunkHeader(
+          hunkRows.map((row) => row.leftLineNumber),
+          hunkRows.map((row) => row.rightLineNumber),
+        ),
+      } satisfies DiffHunkRange
+    })
+  }
+
+  function buildSideBySideRenderItems(rows: SideBySideRow[], hunks: DiffHunkRange[]) {
     if (showFullFile) {
-      return rows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem)
+      const anchorRows = new Map<number, number>()
+
+      hunks.forEach((hunk, index) => {
+        anchorRows.set(hunk.start, index)
+      })
+
+      return rows.map(
+        (row, index) =>
+          ({
+            type: 'row',
+            row,
+            hunkIndex: anchorRows.get(index),
+            isAnchor: anchorRows.has(index),
+          }) satisfies SideBySideRenderItem,
+      )
     }
 
-    const ranges = buildHunkRanges(
-      rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'),
-    )
-
-    return ranges.flatMap((range) => {
-      const hunkRows = rows.slice(range.start, range.end + 1)
+    return hunks.flatMap((hunk, index) => {
+      const hunkRows = rows.slice(hunk.start, hunk.end + 1)
 
       return [
         {
           type: 'hunk',
-          header: formatHunkHeader(
-            hunkRows.map((row) => row.left?.lineNumber ?? null),
-            hunkRows.map((row) => row.right?.lineNumber ?? null),
-          ),
+          header: hunk.header,
+          hunkIndex: index,
+          isAnchor: true,
         } satisfies SideBySideRenderItem,
         ...hunkRows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem),
       ]
     })
   }
 
-  function buildUnifiedRenderItems(rows: UnifiedLine[]) {
+  function buildUnifiedRenderItems(rows: UnifiedLine[], hunks: DiffHunkRange[]) {
     if (showFullFile) {
-      return rows.map((row) => ({ type: 'row', row }) satisfies UnifiedRenderItem)
+      const anchorRows = new Map<number, number>()
+
+      hunks.forEach((hunk, index) => {
+        anchorRows.set(hunk.start, index)
+      })
+
+      return rows.map(
+        (row, index) =>
+          ({
+            type: 'row',
+            row,
+            hunkIndex: anchorRows.get(index),
+            isAnchor: anchorRows.has(index),
+          }) satisfies UnifiedRenderItem,
+      )
     }
 
-    const ranges = buildHunkRanges(rows.map((row) => row.change !== 'context'))
-
-    return ranges.flatMap((range) => {
-      const hunkRows = rows.slice(range.start, range.end + 1)
+    return hunks.flatMap((hunk, index) => {
+      const hunkRows = rows.slice(hunk.start, hunk.end + 1)
 
       return [
         {
           type: 'hunk',
-          header: formatHunkHeader(
-            hunkRows.map((row) => row.leftLineNumber),
-            hunkRows.map((row) => row.rightLineNumber),
-          ),
+          header: hunk.header,
+          hunkIndex: index,
+          isAnchor: true,
         } satisfies UnifiedRenderItem,
         ...hunkRows.map((row) => ({ type: 'row', row }) satisfies UnifiedRenderItem),
       ]
@@ -1143,15 +1332,47 @@
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
       : activeDiff?.summary ?? 'File compare'
 
+  $: sideBySideHunkRanges = activeDiff ? buildSideBySideHunkRanges(activeDiff.sideBySide) : []
+
+  $: unifiedHunkRanges = activeDiff ? buildUnifiedHunkRanges(activeDiff.unified) : []
+
   $: sideBySideRenderItems =
     activeDiff && showFullFile !== undefined
-      ? buildSideBySideRenderItems(activeDiff.sideBySide)
+      ? buildSideBySideRenderItems(activeDiff.sideBySide, sideBySideHunkRanges)
       : []
 
   $: unifiedRenderItems =
-    activeDiff && showFullFile !== undefined ? buildUnifiedRenderItems(activeDiff.unified) : []
+    activeDiff && showFullFile !== undefined
+      ? buildUnifiedRenderItems(activeDiff.unified, unifiedHunkRanges)
+      : []
+
+  $: visibleDiffHunkCount =
+    viewMode === 'sideBySide' ? sideBySideHunkRanges.length : unifiedHunkRanges.length
+
+  $: canNavigateDiffs =
+    !loading &&
+    !detailLoading &&
+    !pickerLoading &&
+    activeDiff?.contentKind === 'text' &&
+    visibleDiffHunkCount > 0
+
+  $: canGoToPreviousDiff = canNavigateDiffs && Math.max(currentDiffHunk, 0) > 0
+
+  $: canGoToNextDiff =
+    canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
   $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
+
+  $: if (screen === 'compare') {
+    activeDiff
+    viewMode
+    showFullFile
+    sideBySideRenderItems
+    unifiedRenderItems
+    scheduleDiffNavigationRefresh()
+  } else {
+    currentDiffHunk = -1
+  }
 
   $: if (typeof document !== 'undefined') {
     document.documentElement.dataset.theme = themeMode
@@ -1520,129 +1741,159 @@
       </div>
 
       <div class="app-bar-actions compare-actions">
-        <button
-          class="secondary theme-toggle"
-          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-          title={themeToggleLabel}
-          type="button"
-          on:click={toggleThemeMode}
-        >
-          {#if themeMode === 'dark'}
-            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-            </svg>
-          {:else}
-            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-              <path
-                d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linejoin="round"
-                stroke-width="1.4"
-              />
-            </svg>
-          {/if}
-        </button>
-        <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
-          {viewMode === 'sideBySide' ? 'Unified view' : 'Side by side'}
-        </button>
-
-        <div class="inline-actions">
+        <div class="compare-action-group utility-actions">
           <button
-            class:active={showFullFile}
-            class="secondary"
+            class="secondary theme-toggle"
+            aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+            title={themeToggleLabel}
             type="button"
-            on:click={() => (showFullFile = !showFullFile)}
+            on:click={toggleThemeMode}
           >
-            Full file
-          </button>
-          <button
-            class:active={showInlineHighlights}
-            class="secondary"
-            type="button"
-            on:click={() => (showInlineHighlights = !showInlineHighlights)}
-          >
-            Inline highlights
-          </button>
-          <button
-            class:active={ignoreWhitespace}
-            class="secondary"
-            aria-pressed={ignoreWhitespace}
-            type="button"
-            on:click={toggleIgnoreWhitespace}
-          >
-            Ignore whitespace
-          </button>
-          <button
-            class:active={ignoreCase}
-            class="secondary"
-            aria-pressed={ignoreCase}
-            type="button"
-            on:click={toggleIgnoreCase}
-          >
-            Ignore case
-          </button>
-        </div>
-
-        <button
-          class="secondary swap-button"
-          aria-label="Switch left and right sides"
-          disabled={loading || detailLoading || pickerLoading}
-          title="Switch left and right sides"
-          type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
-          <span>Swap sides</span>
-        </button>
-
-        <button
-          aria-label="Refresh compare"
-          aria-busy={loading}
-          class="refresh-button"
-          title="Refresh compare"
-          type="button"
-          disabled={loading}
-          on:click={runCompare}
-        >
-          <span class="refresh-icon-slot" aria-hidden="true">
-            {#if loading}
-              <span class="refresh-spinner visible"></span>
+            {#if themeMode === 'dark'}
+              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+                <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+              </svg>
             {:else}
-              <svg class="refresh-icon" viewBox="0 0 16 16">
+              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
                 <path
-                  d="M13 5.5V2.8L11.3 4.5A5.4 5.4 0 0 0 2.8 6.3"
+                  d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
                   fill="none"
                   stroke="currentColor"
-                  stroke-linecap="round"
                   stroke-linejoin="round"
-                  stroke-width="1.5"
-                />
-                <path
-                  d="M3 10.5v2.7l1.7-1.7A5.4 5.4 0 0 0 13.2 9.7"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.5"
+                  stroke-width="1.4"
                 />
               </svg>
             {/if}
-          </span>
-        </button>
+          </button>
+        </div>
+
+        <div class="compare-action-group diff-nav-actions">
+          <button
+            class="secondary"
+            aria-label="Jump to the previous difference"
+            disabled={!canGoToPreviousDiff}
+            title="Jump to the previous difference"
+            type="button"
+            on:click={goToPreviousDifference}
+          >
+            Previous difference
+          </button>
+          <button
+            class="secondary"
+            aria-label="Jump to the next difference"
+            disabled={!canGoToNextDiff}
+            title="Jump to the next difference"
+            type="button"
+            on:click={goToNextDifference}
+          >
+            Next difference
+          </button>
+        </div>
+
+        <div class="compare-action-group display-actions">
+          <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
+            {viewMode === 'sideBySide' ? 'Unified view' : 'Side by side'}
+          </button>
+
+          <div class="inline-actions">
+            <button
+              class:active={showFullFile}
+              class="secondary"
+              type="button"
+              on:click={() => (showFullFile = !showFullFile)}
+            >
+              Full file
+            </button>
+            <button
+              class:active={showInlineHighlights}
+              class="secondary"
+              type="button"
+              on:click={() => (showInlineHighlights = !showInlineHighlights)}
+            >
+              Inline highlights
+            </button>
+            <button
+              class:active={ignoreWhitespace}
+              class="secondary"
+              aria-pressed={ignoreWhitespace}
+              type="button"
+              on:click={toggleIgnoreWhitespace}
+            >
+              Ignore whitespace
+            </button>
+            <button
+              class:active={ignoreCase}
+              class="secondary"
+              aria-pressed={ignoreCase}
+              type="button"
+              on:click={toggleIgnoreCase}
+            >
+              Ignore case
+            </button>
+          </div>
+        </div>
+
+        <div class="compare-action-group utility-actions">
+          <button
+            class="secondary swap-button"
+            aria-label="Switch left and right sides"
+            disabled={loading || detailLoading || pickerLoading}
+            title="Switch left and right sides"
+            type="button"
+            on:click={swapComparedSides}
+          >
+            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+              <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+              <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            </svg>
+            <span>Swap sides</span>
+          </button>
+
+          <button
+            aria-label="Refresh compare"
+            aria-busy={loading}
+            class="refresh-button"
+            title="Refresh compare"
+            type="button"
+            disabled={loading}
+            on:click={runCompare}
+          >
+            <span class="refresh-icon-slot" aria-hidden="true">
+              {#if loading}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <svg class="refresh-icon" viewBox="0 0 16 16">
+                  <path
+                    d="M13 5.5V2.8L11.3 4.5A5.4 5.4 0 0 0 2.8 6.3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M3 10.5v2.7l1.7-1.7A5.4 5.4 0 0 0 13.2 9.7"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              {/if}
+            </span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -1772,9 +2023,21 @@
 
                     {#each sideBySideRenderItems as item}
                       {#if item.type === 'hunk'}
-                        <div class="hunk-row">{item.header}</div>
+                        <div
+                          class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                          class="hunk-row"
+                          data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                          data-diff-index={item.hunkIndex}
+                        >
+                          {item.header}
+                        </div>
                       {:else if item.row}
-                        <div class={`diff-row ${item.row.left?.change ?? 'context'}`}>
+                        <div
+                          class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                          class={`diff-row ${item.row.left?.change ?? 'context'}`}
+                          data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                          data-diff-index={item.hunkIndex}
+                        >
                           {#if item.row.left}
                             <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
                             <span class="prefix">{item.row.left.prefix}</span>
@@ -1816,9 +2079,14 @@
 
                     {#each sideBySideRenderItems as item}
                       {#if item.type === 'hunk'}
-                        <div class="hunk-row">{item.header}</div>
+                        <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="hunk-row">
+                          {item.header}
+                        </div>
                       {:else if item.row}
-                        <div class={`diff-row ${item.row.right?.change ?? 'context'}`}>
+                        <div
+                          class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                          class={`diff-row ${item.row.right?.change ?? 'context'}`}
+                        >
                           {#if item.row.right}
                             <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
                             <span class="prefix">{item.row.right.prefix}</span>
@@ -1853,16 +2121,28 @@
                 <span class="pane-path">{activeDiff.rightLabel}</span>
               </div>
             </div>
-            <div class="unified-grid">
+            <div bind:this={unifiedScroll} class="unified-grid" on:scroll={refreshDiffNavigationState}>
               {#if unifiedRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
 
               {#each unifiedRenderItems as item}
                 {#if item.type === 'hunk'}
-                  <div class="hunk-row unified-hunk">{item.header}</div>
+                  <div
+                    class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                    class="hunk-row unified-hunk"
+                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                    data-diff-index={item.hunkIndex}
+                  >
+                    {item.header}
+                  </div>
                 {:else if item.row}
-                  <div class={`unified-row ${item.row.change}`}>
+                  <div
+                    class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                    class={`unified-row ${item.row.change}`}
+                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                    data-diff-index={item.hunkIndex}
+                  >
                     <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
                     <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
                     <span class="prefix">{item.row.prefix}</span>
