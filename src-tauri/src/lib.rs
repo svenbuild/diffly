@@ -782,6 +782,11 @@ fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
 fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSegment>) {
     let left_tokens = tokenize_inline_diff(left);
     let right_tokens = tokenize_inline_diff(right);
+
+    if should_skip_inline_lcs(left_tokens.len(), right_tokens.len()) {
+        return (plain_segments(left, false), plain_segments(right, false));
+    }
+
     let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
 
     if common_pairs.is_empty() {
@@ -800,6 +805,19 @@ fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSeg
         collapse_segments(&left_tokens, &left_common),
         collapse_segments(&right_tokens, &right_common),
     )
+}
+
+fn should_skip_inline_lcs(left_len: usize, right_len: usize) -> bool {
+    const MAX_INLINE_LCS_CELLS: usize = 200_000;
+
+    left_len
+        .checked_add(1)
+        .and_then(|left| {
+            right_len
+                .checked_add(1)
+                .and_then(|right| left.checked_mul(right))
+        })
+        .is_none_or(|cells| cells > MAX_INLINE_LCS_CELLS)
 }
 
 fn tokenize_inline_diff(text: &str) -> Vec<String> {
@@ -1089,4 +1107,30 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{highlight_segments, should_skip_inline_lcs};
+
+    #[test]
+    fn skips_lcs_when_token_matrix_exceeds_limit() {
+        assert!(should_skip_inline_lcs(500, 500));
+        assert!(!should_skip_inline_lcs(200, 200));
+    }
+
+    #[test]
+    fn falls_back_to_plain_segments_when_lcs_is_skipped() {
+        let left = "a ".repeat(300);
+        let right = "b ".repeat(300);
+
+        let (left_segments, right_segments) = highlight_segments(&left, &right);
+
+        assert_eq!(left_segments.len(), 1);
+        assert_eq!(right_segments.len(), 1);
+        assert_eq!(left_segments[0].text, left);
+        assert_eq!(right_segments[0].text, right);
+        assert!(!left_segments[0].highlighted);
+        assert!(!right_segments[0].highlighted);
+    }
 }
