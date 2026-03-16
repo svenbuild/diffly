@@ -1,47 +1,76 @@
-# Svelte + TS + Vite
+# Diffly
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+Diffly is a desktop diff viewer for comparing files and directories on Windows.
 
-## Recommended IDE Setup
+It pairs a Svelte frontend with a Tauri backend and focuses on fast local comparisons, side-by-side review, and practical directory browsing instead of a Git-centric workflow.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Features
 
-## Need an official Svelte framework?
+- Compare two files directly or compare two directories recursively.
+- Browse folders from a dual-pane setup screen with back, forward, and up navigation.
+- Review diffs in side-by-side or unified view.
+- Jump between diff hunks with `Previous difference` and `Next difference`.
+- Toggle full-file rendering, inline highlights, ignore-whitespace, and ignore-case options.
+- Filter directory results by status such as modified, left only, right only, binary, and too large.
+- Preserve session state for compare mode, theme, and viewer preferences between launches.
+- Fall back to status-only output for binary files and large text files.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Tech Stack
 
-## Technical considerations
+- Svelte 5
+- TypeScript
+- Vite
+- Tauri 2
+- Rust
 
-**Why use this over SvelteKit?**
+## Development
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+### Prerequisites
 
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+- Node.js 20+
+- Rust toolchain
+- Tauri build prerequisites for your platform
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
+On Windows, install the Visual Studio C++ build tools and WebView2 runtime if they are not already present.
 
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
+### Install dependencies
 
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+npm install
 ```
+
+### Run the desktop app in development
+
+```bash
+npm run tauri:dev
+```
+
+### Run checks
+
+```bash
+npm run check
+```
+
+### Build the web bundle
+
+```bash
+npm run build
+```
+
+### Build the desktop application
+
+```bash
+npm run tauri:build
+```
+
+Tauri outputs the packaged artifacts under `src-tauri/target/release/bundle/`.
+
+## Repository Notes
+
+- `src/` contains the Svelte application.
+- `src-tauri/` contains the native commands, file-system access, and application packaging config.
+- `test-fixtures/` contains local compare fixtures used to exercise directory and diff behavior.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
