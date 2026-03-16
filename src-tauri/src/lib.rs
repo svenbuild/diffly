@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -993,10 +994,31 @@ fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
         return Ok(false);
     }
 
-    let left_bytes = fs::read(left).map_err(|error| error.to_string())?;
-    let right_bytes = fs::read(right).map_err(|error| error.to_string())?;
+    let mut left_file = fs::File::open(left).map_err(|error| error.to_string())?;
+    let mut right_file = fs::File::open(right).map_err(|error| error.to_string())?;
+    let mut left_buffer = [0_u8; 8192];
+    let mut right_buffer = [0_u8; 8192];
 
-    Ok(left_bytes == right_bytes)
+    loop {
+        let left_read = left_file
+            .read(&mut left_buffer)
+            .map_err(|error| error.to_string())?;
+        let right_read = right_file
+            .read(&mut right_buffer)
+            .map_err(|error| error.to_string())?;
+
+        if left_read != right_read {
+            return Ok(false);
+        }
+
+        if left_read == 0 {
+            return Ok(true);
+        }
+
+        if left_buffer[..left_read] != right_buffer[..right_read] {
+            return Ok(false);
+        }
+    }
 }
 
 fn is_too_large(path: &Path) -> Result<bool, String> {
