@@ -1,7 +1,14 @@
 {
   "name": "diffly",
+  "description": "Desktop diff viewer for comparing files and directories.",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "Sven",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/svenbuild/diffly.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -21,5 +28,8 @@
     "svelte-check": "^4.3.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1"
   }
 }
