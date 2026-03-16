@@ -759,7 +759,7 @@ h2 {
   height: 100%;
   max-height: 100%;
   background: var(--pane-bg);
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -851,10 +851,12 @@ button.filter-chip.tooLarge:focus-visible {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--list-bg);
-  overflow: visible;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .file-group {
+  flex: 0 0 auto;
   border: 0;
   border-radius: 0;
   background: transparent;
