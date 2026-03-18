@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -277,7 +278,7 @@ fn compare_paths(
 
     match mode.as_str() {
         "directory" => Ok(CompareResponse::Directory {
-            entries: compare_directories(&left, &right)?,
+            entries: compare_directories(&left, &right, &options)?,
         }),
         "file" => Ok(CompareResponse::File {
             result: build_file_diff(&left, &right, left_path, right_path, &options)?,
@@ -305,7 +306,11 @@ fn open_compare_item(
     )
 }
 
-fn compare_directories(left: &Path, right: &Path) -> Result<Vec<DirectoryEntryResult>, String> {
+fn compare_directories(
+    left: &Path,
+    right: &Path,
+    options: &CompareOptions,
+) -> Result<Vec<DirectoryEntryResult>, String> {
     if !left.is_dir() {
         return Err("The left path is not a directory.".to_string());
     }
@@ -334,7 +339,7 @@ fn compare_directories(left: &Path, right: &Path) -> Result<Vec<DirectoryEntryRe
 
         let entry = match (left_file, right_file) {
             (Some(left_file), Some(right_file)) => {
-                if files_are_identical(left_file, right_file)? {
+                if files_match(left_file, right_file, options)? {
                     continue;
                 }
 
@@ -985,18 +990,59 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
     ))
 }
 
-fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
+fn files_match(left: &Path, right: &Path, options: &CompareOptions) -> Result<bool, String> {
     let left_meta = fs::metadata(left).map_err(|error| error.to_string())?;
     let right_meta = fs::metadata(right).map_err(|error| error.to_string())?;
 
-    if left_meta.len() != right_meta.len() {
+    if left_meta.len() == right_meta.len() && files_are_identical(left, right)? {
+        return Ok(true);
+    }
+
+    if !options.ignore_whitespace && !options.ignore_case {
         return Ok(false);
     }
 
-    let left_bytes = fs::read(left).map_err(|error| error.to_string())?;
-    let right_bytes = fs::read(right).map_err(|error| error.to_string())?;
+    if is_too_large(left)? || is_too_large(right)? {
+        return Ok(false);
+    }
 
-    Ok(left_bytes == right_bytes)
+    let left_loaded = load_file(left)?;
+    let right_loaded = load_file(right)?;
+
+    match (left_loaded, right_loaded) {
+        (LoadedFile::Text(left_text), LoadedFile::Text(right_text)) => {
+            Ok(normalize_text(&left_text, options) == normalize_text(&right_text, options))
+        }
+        _ => Ok(false),
+    }
+}
+
+fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
+    let mut left_file = fs::File::open(left).map_err(|error| error.to_string())?;
+    let mut right_file = fs::File::open(right).map_err(|error| error.to_string())?;
+    let mut left_buffer = [0; BINARY_SAMPLE_BYTES];
+    let mut right_buffer = [0; BINARY_SAMPLE_BYTES];
+
+    loop {
+        let left_read = left_file
+            .read(&mut left_buffer)
+            .map_err(|error| error.to_string())?;
+        let right_read = right_file
+            .read(&mut right_buffer)
+            .map_err(|error| error.to_string())?;
+
+        if left_read != right_read {
+            return Ok(false);
+        }
+
+        if left_read == 0 {
+            return Ok(true);
+        }
+
+        if left_buffer[..left_read] != right_buffer[..right_read] {
+            return Ok(false);
+        }
+    }
 }
 
 fn is_too_large(path: &Path) -> Result<bool, String> {
@@ -1005,14 +1051,22 @@ fn is_too_large(path: &Path) -> Result<bool, String> {
 }
 
 fn is_binary_file(path: &Path) -> Result<bool, String> {
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let bytes = sample_file_bytes(path)?;
     Ok(looks_binary(&bytes))
+}
+
+fn sample_file_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut buffer = vec![0; BINARY_SAMPLE_BYTES];
+    let bytes_read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+    buffer.truncate(bytes_read);
+    Ok(buffer)
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
     let sample = &bytes[..bytes.len().min(BINARY_SAMPLE_BYTES)];
 
-    if sample.iter().any(|byte| *byte == 0) {
+    if sample.contains(&0) {
         return true;
     }
 
@@ -1067,4 +1121,156 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fixture_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../test-fixtures/directories")
+    }
+
+    fn fixture_path(side: &str, relative: &str) -> PathBuf {
+        fixture_root().join(side).join(relative)
+    }
+
+    fn default_options() -> CompareOptions {
+        CompareOptions {
+            ignore_whitespace: false,
+            ignore_case: false,
+        }
+    }
+
+    fn unique_temp_dir(test_name: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after the unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("diffly-{test_name}-{timestamp}"));
+
+        fs::create_dir_all(&path).expect("temporary directory should be created");
+        path
+    }
+
+    fn write_temp_file(path: &Path, contents: &str) {
+        fs::write(path, contents).expect("temporary file should be written");
+    }
+
+    #[test]
+    fn directory_compare_skips_whitespace_only_changes_when_requested() {
+        let temp_root = unique_temp_dir("whitespace-ignore");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+        write_temp_file(&left.join("sample.txt"), "alpha beta\nsecond line\n");
+        write_temp_file(&right.join("sample.txt"), "alpha   beta\nsecond   line\n");
+
+        let entries = compare_directories(
+            &left,
+            &right,
+            &CompareOptions {
+                ignore_whitespace: true,
+                ignore_case: false,
+            },
+        )
+        .expect("directory compare should succeed");
+
+        assert!(
+            entries.is_empty(),
+            "whitespace-only differences should be suppressed when whitespace is ignored"
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn directory_compare_skips_case_only_changes_when_requested() {
+        let temp_root = unique_temp_dir("case-ignore");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+        write_temp_file(&left.join("sample.txt"), "ALPHA\nBETA\nGAMMA\n");
+        write_temp_file(&right.join("sample.txt"), "alpha\nbeta\ngamma\n");
+
+        let entries = compare_directories(
+            &left,
+            &right,
+            &CompareOptions {
+                ignore_whitespace: false,
+                ignore_case: true,
+            },
+        )
+        .expect("directory compare should succeed");
+
+        assert!(
+            entries.is_empty(),
+            "case-only differences should be suppressed when case is ignored"
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn directory_compare_marks_binary_and_large_entries() {
+        let entries = compare_directories(
+            &fixture_path("left", ""),
+            &fixture_path("right", ""),
+            &default_options(),
+        )
+        .expect("directory compare should succeed");
+
+        assert!(entries.iter().any(|entry| {
+            entry.relative_path == "binary.bin" && matches!(entry.status, EntryStatus::Binary)
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.relative_path == "too-large.txt" && matches!(entry.status, EntryStatus::TooLarge)
+        }));
+    }
+
+    #[test]
+    fn file_diff_reports_no_changed_lines_for_ignored_whitespace() {
+        let temp_root = unique_temp_dir("file-whitespace-ignore");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(&left, "one two\nthree four\n");
+        write_temp_file(&right, "one  two\nthree    four\n");
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &CompareOptions {
+                ignore_whitespace: true,
+                ignore_case: false,
+            },
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(result.side_by_side.iter().all(|row| {
+            row.left
+                .as_ref()
+                .map(|cell| matches!(cell.change, DiffChange::Context))
+                .unwrap_or(true)
+                && row
+                    .right
+                    .as_ref()
+                    .map(|cell| matches!(cell.change, DiffChange::Context))
+                    .unwrap_or(true)
+        }));
+        assert!(result
+            .unified
+            .iter()
+            .all(|row| matches!(row.change, DiffChange::Context)));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
 }
