@@ -2,7 +2,7 @@
   "name": "diffly",
   "description": "Desktop diff viewer for comparing files and directories.",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": "Sven",
   "repository": {
