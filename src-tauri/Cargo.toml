@@ -1,6 +1,6 @@
 [package]
 name = "diffly"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop diff viewer for comparing files and directories."
 authors = ["Sven"]
 license = "MIT"
