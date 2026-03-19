@@ -74,11 +74,11 @@
   --diff-insert-text: #f4fff7;
   --diff-delete-bg: #471b23;
   --diff-delete-text: #fff1f3;
-  --diff-line-number-width: 64px;
-  --diff-prefix-width: 30px;
+  --diff-line-number-width: calc(1ch + 10px);
+  --diff-prefix-width: calc(1ch + 8px);
   --diff-font-size: 11px;
-  --diff-row-line-height: 13px;
-  --diff-row-height: 18px;
+  --diff-row-line-height: 12px;
+  --diff-row-height: 16px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
   --collapsed-row-bg: transparent;
@@ -180,8 +180,8 @@
   --diff-insert-text: #074b1d;
   --diff-delete-bg: #ffd7d5;
   --diff-delete-text: #8b1021;
-  --diff-line-number-width: 64px;
-  --diff-prefix-width: 30px;
+  --diff-line-number-width: calc(1ch + 10px);
+  --diff-prefix-width: calc(1ch + 8px);
   --diff-gap-bg: #f6f8fa;
   --diff-gap-stripe: rgba(31, 35, 40, 0.06);
   --collapsed-row-bg: transparent;
@@ -834,77 +834,7 @@ h2 {
 }
 
 .compare-screen {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-}
-
-.compare-context {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding-top: 4px;
-  padding-bottom: 0;
-}
-
-.compare-roots {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 0 2px;
-}
-
-.compare-root {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  position: relative;
-  overflow: visible;
-}
-
-.compare-root-label {
-  color: var(--muted);
-  font-size: 0.7rem;
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.compare-root-value {
-  display: flex;
-  align-items: baseline;
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--code);
-  font-size: 0.74rem;
-  white-space: nowrap;
-  transition:
-    color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.compare-root:hover,
-.compare-root:focus-within {
-  align-items: flex-start;
-}
-
-.compare-root:hover .compare-root-value,
-.compare-root:focus-within .compare-root-value {
-  overflow: visible;
-  white-space: nowrap;
-  position: relative;
-  z-index: 3;
-}
-
-.compare-root-prefix {
-  color: var(--muted);
-  flex: 0 0 auto;
-}
-
-.compare-root-suffix {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--panel-meta);
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .compare-layout {
@@ -1106,6 +1036,68 @@ button.filter-chip.tooLarge:focus-visible {
   background: var(--pane-bg);
   grid-template-rows: auto minmax(0, 1fr);
   position: relative;
+}
+
+.viewer-root-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.viewer-root {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: visible;
+  font-size: 0.72rem;
+}
+
+.viewer-root-label {
+  color: var(--muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.viewer-root-path {
+  position: relative;
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-family: var(--code);
+  color: var(--panel-meta);
+  white-space: nowrap;
+}
+
+.viewer-root-path-compact {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewer-root-path-full {
+  display: none;
+  position: absolute;
+  inset: 0 auto auto 0;
+  min-width: max-content;
+  padding-right: 12px;
+  background: var(--pane-bg);
+  color: var(--panel-title);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.viewer-root:hover .viewer-root-path-compact,
+.viewer-root:focus-within .viewer-root-path-compact {
+  visibility: hidden;
+}
+
+.viewer-root:hover .viewer-root-path-full,
+.viewer-root:focus-within .viewer-root-path-full {
+  display: block;
 }
 
 .viewer.refreshing,
@@ -1348,7 +1340,7 @@ button.filter-chip.tooLarge:focus-visible {
 .prefix,
 .line-text {
   display: block;
-  padding: 1px 4px;
+  padding: 0 3px;
   line-height: var(--diff-row-line-height);
 }
 
@@ -1795,8 +1787,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 @media (max-width: 1100px) {
   .picker-workspace,
-  .compare-context,
-  .compare-roots,
+  .viewer-root-row,
   .compare-layout,
   .split-view,
   .viewer-header {

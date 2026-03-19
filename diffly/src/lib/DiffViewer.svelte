@@ -30,8 +30,24 @@
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
+  let lineNumberColumnWidth = 'calc(1ch + 10px)'
+  let prefixColumnWidth = 'calc(1ch + 8px)'
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
+
+  $: {
+    const maxLineNumber = activeDiff
+      ? activeDiff.sideBySide.reduce((maxValue, row) => {
+          const leftLineNumber = row.left?.lineNumber ?? 0
+          const rightLineNumber = row.right?.lineNumber ?? 0
+          return Math.max(maxValue, leftLineNumber, rightLineNumber)
+        }, 0)
+      : 0
+    const digitCount = Math.max(1, String(maxLineNumber).length)
+
+    lineNumberColumnWidth = `calc(${digitCount}ch + 10px)`
+    prefixColumnWidth = 'calc(1ch + 8px)'
+  }
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
     sideBySideRenderItems
@@ -102,8 +118,31 @@
   }}
 />
 
-<section class:refreshing={loading} class="viewer">
+<section
+  class:refreshing={loading}
+  class="viewer"
+  style:--diff-line-number-width={lineNumberColumnWidth}
+  style:--diff-prefix-width={prefixColumnWidth}
+>
   {#if activeDiff}
+    <div class="viewer-root-row">
+      <div class="viewer-root" title={diffHeaderContext.leftRootFullPath}>
+        <span class="viewer-root-label">Left root:</span>
+        <span class="viewer-root-path">
+          <span class="viewer-root-path-compact">{diffHeaderContext.leftRootLabel}</span>
+          <span class="viewer-root-path-full">{diffHeaderContext.leftRootFullPath}</span>
+        </span>
+      </div>
+
+      <div class="viewer-root" title={diffHeaderContext.rightRootFullPath}>
+        <span class="viewer-root-label">Right root:</span>
+        <span class="viewer-root-path">
+          <span class="viewer-root-path-compact">{diffHeaderContext.rightRootLabel}</span>
+          <span class="viewer-root-path-full">{diffHeaderContext.rightRootFullPath}</span>
+        </span>
+      </div>
+    </div>
+
     {#if activeDiff.contentKind !== 'text'}
       <div class="message-card">{activeDiff.summary}</div>
     {:else if viewMode === 'sideBySide'}
