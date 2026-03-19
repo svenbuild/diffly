@@ -22,6 +22,7 @@
   } from './lib/diff-render'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
+    formatBreadcrumbSegments,
     buildFolderSections,
     formatBreadcrumbPath,
     formatCompactPath,
@@ -975,6 +976,53 @@
     return label || formatCompactPath(path, 2) || path
   }
 
+  function buildSetupPathDisplay(path: string, commonSegments: string[], distinctSegments: string[]) {
+    if (!path) {
+      return {
+        muted: '',
+        strong: 'No folder open',
+      }
+    }
+
+    if (commonSegments.length === 0 || distinctSegments.length === 0) {
+      return {
+        muted: '',
+        strong: formatBreadcrumbPath(path),
+      }
+    }
+
+    return {
+      muted: `${formatBreadcrumbSegments(commonSegments, 4)} >`,
+      strong: formatBreadcrumbSegments(distinctSegments, 4),
+    }
+  }
+
+  async function jumpToSelectedTarget(side: Side) {
+    const pane = paneFor(side)
+    const targetPath = pane.selectedTargetPath
+
+    if (!targetPath) {
+      return
+    }
+
+    const info = await pathInfo(targetPath)
+
+    if (!info.exists) {
+      return
+    }
+
+    if (info.isDirectory) {
+      await openDirectory(side, info.path)
+      selectTarget(side, info.path, 'directory')
+      return
+    }
+
+    if (info.isFile && info.parentPath) {
+      await openDirectory(side, info.parentPath)
+      selectTarget(side, info.path, 'file')
+    }
+  }
+
   async function runCompare() {
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
       errorMessage = 'Select valid targets on both sides first.'
@@ -1822,9 +1870,30 @@
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
   $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
+  $: setupCurrentPaths = splitCommonPathPrefix(leftExplorer.currentPath, rightExplorer.currentPath)
+  $: leftSetupPathDisplay = buildSetupPathDisplay(
+    leftExplorer.currentPath,
+    setupCurrentPaths.commonSegments,
+    setupCurrentPaths.leftSegments,
+  )
+  $: rightSetupPathDisplay = buildSetupPathDisplay(
+    rightExplorer.currentPath,
+    setupCurrentPaths.commonSegments,
+    setupCurrentPaths.rightSegments,
+  )
   $: pickerSides = [
-    { side: 'left' as Side, pane: leftExplorer },
-    { side: 'right' as Side, pane: rightExplorer },
+    {
+      side: 'left' as Side,
+      pane: leftExplorer,
+      pathMuted: leftSetupPathDisplay.muted,
+      pathStrong: leftSetupPathDisplay.strong,
+    },
+    {
+      side: 'right' as Side,
+      pane: rightExplorer,
+      pathMuted: rightSetupPathDisplay.muted,
+      pathStrong: rightSetupPathDisplay.strong,
+    },
   ]
   $: sameSelectionWarning =
     pickerCanCompare &&
@@ -1835,11 +1904,15 @@
       normalizeSelectionPath(rightExplorer.selectedTargetPath)
       ? `Both sides currently point to the same ${mode === 'directory' ? 'folder' : 'file'}. The compare will usually be empty.`
       : ''
+  $: leftPickerReady = canComparePane(leftExplorer)
+  $: rightPickerReady = canComparePane(rightExplorer)
   $: setupHintMessage = pickerCanCompare
     ? ''
-    : mode === 'directory'
-      ? 'Select one folder on each side, then compare.'
-      : 'Select one file on each side, then compare.'
+    : !leftPickerReady && !rightPickerReady
+      ? `Select ${mode === 'directory' ? 'left and right folders' : 'left and right files'}.`
+      : !leftPickerReady
+        ? `Select the left ${mode === 'directory' ? 'folder' : 'file'}.`
+        : `Select the right ${mode === 'directory' ? 'folder' : 'file'}.`
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: directoryStatusSummary = statusOrder
@@ -1879,63 +1952,38 @@
       </div>
 
       <div class="app-bar-actions">
-        <div class="compare-options-anchor">
-          <button
-            bind:this={compareOptionsTrigger}
-            aria-controls={COMPARE_OPTIONS_POPOVER_ID}
-            aria-expanded={compareOptionsOpen}
-            aria-label="Setup options"
-            class:active={compareOptionsOpen}
-            class="secondary compare-options-toggle"
-            title="Setup options"
-            type="button"
-            on:click={toggleCompareOptions}
-          >
-            <svg aria-hidden="true" class="compare-options-icon" viewBox="0 0 16 16">
-              <path d="M3 4h5.4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M9.8 4H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M3 8h2.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M7.6 8H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M3 12h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M11.4 12H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <circle cx="7.1" cy="4" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
-              <circle cx="6.4" cy="8" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
-              <circle cx="10.1" cy="12" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+        <button
+          class="secondary theme-toggle"
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={themeToggleLabel}
+          type="button"
+          on:click={toggleThemeMode}
+        >
+          {#if themeMode === 'dark'}
+            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
             </svg>
-          </button>
-
-          {#if compareOptionsOpen}
-            <div
-              bind:this={compareOptionsPopover}
-              aria-label="Setup options"
-              class="compare-options-popover"
-              id={COMPARE_OPTIONS_POPOVER_ID}
-              role="dialog"
-            >
-              <label class="compare-options-row">
-                <span>Light mode</span>
-                <input
-                  bind:this={compareOptionsFirstControl}
-                  checked={themeMode === 'light'}
-                  type="checkbox"
-                  on:change={toggleThemeMode}
-                />
-              </label>
-
-              <div class="compare-options-divider"></div>
-
-              <label class="compare-options-row">
-                <span>Ignore whitespace</span>
-                <input checked={ignoreWhitespace} type="checkbox" on:change={toggleIgnoreWhitespace} />
-              </label>
-
-              <label class="compare-options-row">
-                <span>Ignore case</span>
-                <input checked={ignoreCase} type="checkbox" on:change={toggleIgnoreCase} />
-              </label>
-            </div>
+          {:else}
+            <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
+              <path
+                d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.4"
+              />
+            </svg>
           {/if}
-        </div>
+        </button>
         <button
           class="secondary icon-button swap-button"
           aria-label="Switch left and right sides"
@@ -1967,15 +2015,27 @@
 
     <section class="setup-body">
       <div class="setup-summary-row">
-        <div class="setup-summary-card">
-          <span>Left target</span>
-          <strong title={leftExplorer.selectedTargetPath || 'Not selected'}>{leftSetupTargetLabel}</strong>
-        </div>
+        <button
+          class="setup-summary-item"
+          disabled={!leftExplorer.selectedTargetPath}
+          title={leftExplorer.selectedTargetPath || 'Left target not selected'}
+          type="button"
+          on:click={() => jumpToSelectedTarget('left')}
+        >
+          <span>Left</span>
+          <strong>{leftSetupTargetLabel}</strong>
+        </button>
 
-        <div class="setup-summary-card">
-          <span>Right target</span>
-          <strong title={rightExplorer.selectedTargetPath || 'Not selected'}>{rightSetupTargetLabel}</strong>
-        </div>
+        <button
+          class="setup-summary-item"
+          disabled={!rightExplorer.selectedTargetPath}
+          title={rightExplorer.selectedTargetPath || 'Right target not selected'}
+          type="button"
+          on:click={() => jumpToSelectedTarget('right')}
+        >
+          <span>Right</span>
+          <strong>{rightSetupTargetLabel}</strong>
+        </button>
 
         {#if sameSelectionWarning}
           <div class="setup-summary-message warning">
@@ -1995,13 +2055,13 @@
             pane={item.pane}
             {mode}
             {pickerLoading}
+            browsePathMuted={item.pathMuted}
+            browsePathStrong={item.pathStrong}
             {canGoBack}
             {canGoForward}
             {currentDrive}
             {formatModified}
             {formatSize}
-            {formatBreadcrumbPath}
-            formatTargetLabel={formatPickerTargetLabel}
             {entryTypeLabel}
             {changeDrive}
             {navigateHistory}

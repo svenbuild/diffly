@@ -14,8 +14,8 @@
   export let currentDrive: (pane: ExplorerPaneState) => string
   export let formatModified: (value: number | null) => string
   export let formatSize: (value: number | null) => string
-  export let formatBreadcrumbPath: (path: string) => string
-  export let formatTargetLabel: (path: string, emptyLabel: string) => string
+  export let browsePathMuted: string
+  export let browsePathStrong: string
   export let entryTypeLabel: (entry: ExplorerEntry) => string
   export let changeDrive: (side: Side, path: string) => Promise<void>
   export let navigateHistory: (side: Side, direction: -1 | 1) => Promise<void>
@@ -32,23 +32,17 @@
 
 <section class="picker-pane">
   <header class="picker-pane-header">
-    <div class="picker-pane-title-row">
-      <strong>{pane.title}</strong>
-      <span
-        class:empty={!pane.selectedTargetPath}
-        class="target-chip"
-        title={pane.selectedTargetPath || (mode === 'directory' ? 'No folder target selected' : 'No file target selected')}
-      >
-        {mode === 'directory' ? 'Target' : 'Selected'}: {formatTargetLabel(
-          pane.selectedTargetPath,
-          mode === 'directory' ? 'None' : 'None',
-        )}
-      </span>
-    </div>
+    <strong>{pane.title}</strong>
     <div class="pane-path-stack">
-      <span class="pane-path-label">Browsing</span>
       <span class="pane-path" title={pane.currentPath || 'No folder open'}>
-        {pane.currentPath ? formatBreadcrumbPath(pane.currentPath) : 'No folder open'}
+        {#if pane.currentPath}
+          {#if browsePathMuted}
+            <span class="pane-path-prefix">{browsePathMuted}</span>
+          {/if}
+          <span class="pane-path-strong">{browsePathStrong}</span>
+        {:else}
+          No folder open
+        {/if}
       </span>
     </div>
   </header>
@@ -128,12 +122,13 @@
     {#if mode === 'directory'}
       <button
         class:active={isCurrentFolderSelected(pane)}
-        class="secondary"
-        disabled={!pane.currentPath}
+        class:is-complete={isCurrentFolderSelected(pane)}
+        class={isCurrentFolderSelected(pane) ? 'secondary' : 'primary'}
+        disabled={!pane.currentPath || isCurrentFolderSelected(pane)}
         type="button"
         on:click={() => setCurrentFolderAsTarget(side)}
       >
-        {isCurrentFolderSelected(pane) ? 'Target selected' : 'Set as target'}
+        {isCurrentFolderSelected(pane) ? 'Target selected' : 'Use open folder'}
       </button>
     {/if}
   </div>
