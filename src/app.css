@@ -56,8 +56,9 @@
   --list-header-bg: #242424;
   --selection-bg: rgba(34, 199, 199, 0.12);
   --icon-color: #cbd5e1;
-  --status-modified-border: #3c3c3c;
-  --status-modified-text: #f2f6fb;
+  --status-modified-bg: #1d2d31;
+  --status-modified-border: #2f636a;
+  --status-modified-text: #dff6f6;
   --status-success-border: #275c31;
   --status-success-text: #e3ffe8;
   --status-danger-border: #5e2b33;
@@ -158,8 +159,9 @@
   --list-header-bg: #f6f8fa;
   --selection-bg: rgba(9, 105, 218, 0.1);
   --icon-color: #0969da;
-  --status-modified-border: #d0d7de;
-  --status-modified-text: #1f2328;
+  --status-modified-bg: #dff2f5;
+  --status-modified-border: #9ecfd6;
+  --status-modified-text: #0f5963;
   --status-success-border: #9be9a8;
   --status-success-text: #055d20;
   --status-danger-border: #ffb3ba;
@@ -873,7 +875,7 @@ button.filter-chip:focus-visible {
 }
 
 .status-chip.modified {
-  background: var(--warning-bg);
+  background: var(--status-modified-bg);
   border-color: var(--status-modified-border);
   color: var(--status-modified-text);
 }
@@ -899,7 +901,7 @@ button.filter-chip:focus-visible {
 
 button.filter-chip.modified:hover:not(:disabled),
 button.filter-chip.modified:focus-visible {
-  background: var(--warning-bg);
+  background: var(--status-modified-bg);
 }
 
 button.filter-chip.leftOnly:hover:not(:disabled),
