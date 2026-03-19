@@ -28,13 +28,15 @@
   let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
   let sideBySideContentWidth = 0
   let unifiedContentWidth = 0
+  let leftPaneTrailingSpace = 0
+  let rightPaneTrailingSpace = 0
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
     sideBySideRenderItems
     wrapSideBySideLines
-    void updateSideBySideContentWidth()
+    void updateSideBySideContentMetrics()
   }
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'unified') {
@@ -50,25 +52,35 @@
     )
   }
 
-  async function updateSideBySideContentWidth() {
+  async function updateSideBySideContentMetrics() {
     await tick()
-
-    if (wrapSideBySideLines) {
-      sideBySideContentWidth = 0
-      return
-    }
 
     if (!leftPaneScroll || !rightPaneScroll || !leftPaneGrid || !rightPaneGrid) {
       sideBySideContentWidth = 0
+      leftPaneTrailingSpace = 0
+      rightPaneTrailingSpace = 0
       return
     }
 
-    sideBySideContentWidth = Math.max(
-      leftPaneGrid.scrollWidth,
-      rightPaneGrid.scrollWidth,
-      leftPaneScroll.clientWidth,
-      rightPaneScroll.clientWidth,
-    )
+    if (wrapSideBySideLines) {
+      sideBySideContentWidth = 0
+    } else {
+      sideBySideContentWidth = Math.max(
+        leftPaneGrid.scrollWidth,
+        rightPaneGrid.scrollWidth,
+        leftPaneScroll.clientWidth,
+        rightPaneScroll.clientWidth,
+      )
+    }
+
+    const leftContentHeight = Math.max(0, leftPaneGrid.scrollHeight - leftPaneTrailingSpace)
+    const rightContentHeight = Math.max(0, rightPaneGrid.scrollHeight - rightPaneTrailingSpace)
+    const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneScroll.clientHeight)
+    const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneScroll.clientHeight)
+    const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
+
+    leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
+    rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
   }
 
   async function updateUnifiedContentWidth() {
@@ -85,7 +97,7 @@
 
 <svelte:window
   on:resize={() => {
-    void updateSideBySideContentWidth()
+    void updateSideBySideContentMetrics()
     void updateUnifiedContentWidth()
   }}
 />
@@ -118,6 +130,7 @@
               bind:this={leftPaneGrid}
               class="pane-grid"
               style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+              style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
             >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
@@ -179,6 +192,7 @@
               bind:this={rightPaneGrid}
               class="pane-grid"
               style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+              style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
             >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>

@@ -1155,7 +1155,7 @@ button.filter-chip.tooLarge:focus-visible {
   justify-content: center;
   position: sticky;
   left: 8px;
-  grid-column: 1 / span 2;
+  grid-column: 1 / -1;
   justify-self: start;
   margin-left: 8px;
   z-index: 4;
@@ -1171,14 +1171,14 @@ button.filter-chip.tooLarge:focus-visible {
   font-weight: 600;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow-wrap: normal;
+  white-space: nowrap;
   text-align: center;
   box-shadow: none;
 }
 
 .unified-collapsed-row > .collapsed-chip {
-  grid-column: 1 / span 3;
+  grid-column: 1 / -1;
 }
 
 .diff-row {
