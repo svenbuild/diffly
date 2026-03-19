@@ -28,6 +28,55 @@ export function normalizeSelectionPath(path: string) {
   return path.replaceAll('\\', '/').replace(/\/+$/, '')
 }
 
+function splitPathSegments(path: string) {
+  const normalized = normalizeSelectionPath(path)
+
+  if (!normalized) {
+    return []
+  }
+
+  return normalized.split('/').filter(Boolean)
+}
+
+export function splitCommonPathPrefix(leftPath: string, rightPath: string) {
+  const leftSegments = splitPathSegments(leftPath)
+  const rightSegments = splitPathSegments(rightPath)
+  let sharedCount = 0
+
+  while (
+    sharedCount < leftSegments.length &&
+    sharedCount < rightSegments.length &&
+    leftSegments[sharedCount].localeCompare(rightSegments[sharedCount], undefined, {
+      sensitivity: 'accent',
+    }) === 0
+  ) {
+    sharedCount += 1
+  }
+
+  return {
+    commonSegments: leftSegments.slice(0, sharedCount),
+    leftSegments: leftSegments.slice(sharedCount),
+    rightSegments: rightSegments.slice(sharedCount),
+  }
+}
+
+export function formatCompactPath(path: string, maxSegments = 3) {
+  const segments = splitPathSegments(path)
+
+  if (segments.length === 0) {
+    return ''
+  }
+
+  const visibleSegments =
+    segments.length > maxSegments ? ['...', ...segments.slice(-maxSegments)] : segments
+
+  return visibleSegments.join('\\')
+}
+
+export function formatRelativePathLabel(path: string) {
+  return normalizeSelectionPath(path)
+}
+
 export function buildFolderSections(groups: EntryGroup[]) {
   type Node = {
     key: string

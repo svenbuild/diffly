@@ -41,6 +41,14 @@ export interface DiffHunkRange {
   end: number
 }
 
+export interface DiffHeaderContext {
+  currentFileLabel: string
+  leftPaneLabel: string
+  rightPaneLabel: string
+  leftAbsolutePath: string
+  rightAbsolutePath: string
+}
+
 export interface ExplorerPaneState {
   title: string
   roots: ExplorerEntry[]

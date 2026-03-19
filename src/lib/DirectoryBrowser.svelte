@@ -28,12 +28,12 @@
 <aside class:refreshing={loading} class="file-browser">
   <header class="browser-header">
     <div class="browser-title">
-      <h2>Changed items</h2>
+      <h2>Files</h2>
       <span>
         {#if activeStatusFilters.length > 0}
-          {filteredDirectoryEntries.length} shown of {directoryEntries.length}
+          {filteredDirectoryEntries.length} of {directoryEntries.length} shown
         {:else}
-          {directoryEntries.length} total
+          {directoryEntries.length} shown
         {/if}
       </span>
     </div>
