@@ -21,6 +21,11 @@ const LINE_PAIR_NORMALIZED_MATCH_SCORE: i32 = 190;
 const LINE_PAIR_COMMENT_MATCH_SCORE: i32 = 140;
 const LINE_PAIR_BLANK_MATCH_SCORE: i32 = 160;
 const LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE: i32 = 70;
+const LINE_PAIR_STRONG_MODIFIED_SCORE: i32 = 150;
+const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
+const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 6;
+const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
+const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -202,6 +207,25 @@ enum LineKind {
     Code,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum MatchBand {
+    StrongExact,
+    StrongModified,
+    WeakStructural,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum MatchBandSeed {
+    Blank,
+    Comment,
+    WeakStructural,
+    Preprocessor,
+    ControlHeader,
+    Assignment,
+    Call,
+    OtherCode,
+}
+
 struct LineDescriptor {
     original_text: String,
     trimmed_text: String,
@@ -211,12 +235,23 @@ struct LineDescriptor {
     tokens: Vec<String>,
     indentation_depth: usize,
     primary_identifier: String,
+    is_preprocessor: bool,
+    is_weak_structural: bool,
+    match_band_seed: MatchBandSeed,
+    identifier_count: usize,
 }
 
 struct ReplaceBlockAlignment {
     row_pairs: Vec<(Option<usize>, Option<usize>)>,
     left_matches: Vec<Option<usize>>,
     right_matches: Vec<Option<usize>>,
+}
+
+#[derive(Clone, Copy)]
+struct ResyncCandidate {
+    left_index: usize,
+    right_index: usize,
+    band: MatchBand,
 }
 
 #[derive(Clone, Copy)]
@@ -975,7 +1010,7 @@ fn align_replace_block_rows(
         .iter()
         .map(|cell| build_line_descriptor(&cell.text))
         .collect::<Vec<_>>();
-    let anchors = exact_code_anchor_pairs(&left_descriptors, &right_descriptors);
+    let anchors = local_exact_anchor_pairs(&left_descriptors, &right_descriptors);
     let mut row_pairs = Vec::new();
     let mut left_cursor = 0;
     let mut right_cursor = 0;
@@ -1018,6 +1053,31 @@ fn align_replace_block_rows(
     }
 }
 
+fn local_exact_anchor_pairs(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) -> Vec<(usize, usize)> {
+    let mut filtered = Vec::new();
+    let mut left_cursor = 0;
+    let mut right_cursor = 0;
+
+    for (left_anchor, right_anchor) in exact_code_anchor_pairs(left_descriptors, right_descriptors)
+    {
+        let left_gap = left_anchor.saturating_sub(left_cursor);
+        let right_gap = right_anchor.saturating_sub(right_cursor);
+
+        if left_gap.max(right_gap) > LINE_PAIR_ANCHOR_MAX_PREFIX_GAP {
+            continue;
+        }
+
+        filtered.push((left_anchor, right_anchor));
+        left_cursor = left_anchor + 1;
+        right_cursor = right_anchor + 1;
+    }
+
+    filtered
+}
+
 fn append_aligned_subrange(
     row_pairs: &mut Vec<(Option<usize>, Option<usize>)>,
     left_descriptors: &[LineDescriptor],
@@ -1025,7 +1085,9 @@ fn append_aligned_subrange(
     left_offset: usize,
     right_offset: usize,
 ) {
-    for (left_match, right_match) in align_replace_subrange(left_descriptors, right_descriptors) {
+    for (left_match, right_match) in
+        align_replace_subrange_local(left_descriptors, right_descriptors)
+    {
         row_pairs.push((
             left_match.map(|index| index + left_offset),
             right_match.map(|index| index + right_offset),
@@ -1072,10 +1134,410 @@ fn exact_code_anchor_pairs(
 fn is_exact_anchor_candidate(descriptor: &LineDescriptor) -> bool {
     descriptor.kind == LineKind::Code
         && !descriptor.code_signature.is_empty()
-        && !is_weak_structural_signature(&descriptor.code_signature)
+        && !descriptor.is_weak_structural
+        && descriptor.identifier_count > 0
+        && (!descriptor.is_preprocessor || !descriptor.primary_identifier.is_empty())
 }
 
-fn align_replace_subrange(
+fn align_replace_subrange_local(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) -> Vec<(Option<usize>, Option<usize>)> {
+    let mut left_index = 0;
+    let mut right_index = 0;
+    let mut aligned = Vec::new();
+
+    while left_index < left_descriptors.len() || right_index < right_descriptors.len() {
+        if left_index == left_descriptors.len() {
+            aligned.push((None, Some(right_index)));
+            right_index += 1;
+            continue;
+        }
+
+        if right_index == right_descriptors.len() {
+            aligned.push((Some(left_index), None));
+            left_index += 1;
+            continue;
+        }
+
+        let direct_pair = pair_band(
+            &left_descriptors[left_index],
+            &right_descriptors[right_index],
+        );
+
+        if matches!(
+            direct_pair,
+            Some(MatchBand::StrongExact | MatchBand::StrongModified)
+        ) || matches!(direct_pair, Some(MatchBand::WeakStructural))
+            && (left_descriptors[left_index].normalized_text
+                == right_descriptors[right_index].normalized_text
+                || !has_stronger_candidate_nearby(
+                    left_descriptors,
+                    right_descriptors,
+                    left_index,
+                    right_index,
+                ))
+        {
+            aligned.push((Some(left_index), Some(right_index)));
+            left_index += 1;
+            right_index += 1;
+            continue;
+        }
+
+        if should_flush_current_gap(
+            &left_descriptors[left_index],
+            &right_descriptors[right_index],
+        ) {
+            match weaker_structural_side(
+                &left_descriptors[left_index],
+                &right_descriptors[right_index],
+            ) {
+                AlignmentMove::LeftOnly => {
+                    aligned.push((Some(left_index), None));
+                    left_index += 1;
+                }
+                AlignmentMove::RightOnly => {
+                    aligned.push((None, Some(right_index)));
+                    right_index += 1;
+                }
+                AlignmentMove::Pair => {
+                    aligned.push((Some(left_index), Some(right_index)));
+                    left_index += 1;
+                    right_index += 1;
+                }
+            }
+            continue;
+        }
+
+        if let Some(candidate) = find_next_resync_match(
+            left_descriptors,
+            right_descriptors,
+            left_index,
+            right_index,
+            false,
+        )
+        .or_else(|| {
+            find_next_resync_match(
+                left_descriptors,
+                right_descriptors,
+                left_index,
+                right_index,
+                true,
+            )
+        }) {
+            while left_index < candidate.left_index || right_index < candidate.right_index {
+                match choose_gap_side(
+                    left_descriptors,
+                    right_descriptors,
+                    left_index,
+                    right_index,
+                    candidate.left_index,
+                    candidate.right_index,
+                ) {
+                    AlignmentMove::LeftOnly => {
+                        aligned.push((Some(left_index), None));
+                        left_index += 1;
+                    }
+                    AlignmentMove::RightOnly => {
+                        aligned.push((None, Some(right_index)));
+                        right_index += 1;
+                    }
+                    AlignmentMove::Pair => {}
+                }
+            }
+
+            if left_index == candidate.left_index && right_index == candidate.right_index {
+                aligned.push((Some(left_index), Some(right_index)));
+                left_index += 1;
+                right_index += 1;
+                continue;
+            }
+        }
+
+        let remaining_left = left_descriptors.len() - left_index;
+        let remaining_right = right_descriptors.len() - right_index;
+
+        if remaining_left <= LINE_PAIR_FALLBACK_DP_LIMIT
+            && remaining_right <= LINE_PAIR_FALLBACK_DP_LIMIT
+        {
+            for (left_match, right_match) in align_replace_subrange_fallback_dp(
+                &left_descriptors[left_index..],
+                &right_descriptors[right_index..],
+            ) {
+                aligned.push((
+                    left_match.map(|index| index + left_index),
+                    right_match.map(|index| index + right_index),
+                ));
+            }
+            break;
+        }
+
+        match choose_gap_side(
+            left_descriptors,
+            right_descriptors,
+            left_index,
+            right_index,
+            left_descriptors.len(),
+            right_descriptors.len(),
+        ) {
+            AlignmentMove::LeftOnly => {
+                aligned.push((Some(left_index), None));
+                left_index += 1;
+            }
+            AlignmentMove::RightOnly => {
+                aligned.push((None, Some(right_index)));
+                right_index += 1;
+            }
+            AlignmentMove::Pair => {
+                aligned.push((Some(left_index), Some(right_index)));
+                left_index += 1;
+                right_index += 1;
+            }
+        }
+    }
+
+    aligned
+}
+
+fn has_stronger_candidate_nearby(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+    left_index: usize,
+    right_index: usize,
+) -> bool {
+    find_next_resync_match(
+        left_descriptors,
+        right_descriptors,
+        left_index,
+        right_index,
+        false,
+    )
+    .is_some_and(|candidate| {
+        candidate.left_index != left_index || candidate.right_index != right_index
+    })
+}
+
+fn find_next_resync_match(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+    left_index: usize,
+    right_index: usize,
+    include_weak_structural: bool,
+) -> Option<ResyncCandidate> {
+    let left_limit = (left_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(left_descriptors.len());
+    let right_limit = (right_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(right_descriptors.len());
+    let mut best_candidate = None;
+
+    for current_left in left_index..left_limit {
+        for current_right in right_index..right_limit {
+            let Some(band) = pair_band(
+                &left_descriptors[current_left],
+                &right_descriptors[current_right],
+            ) else {
+                continue;
+            };
+
+            if !include_weak_structural && band == MatchBand::WeakStructural {
+                continue;
+            }
+
+            let candidate = ResyncCandidate {
+                left_index: current_left,
+                right_index: current_right,
+                band,
+            };
+
+            if best_candidate
+                .as_ref()
+                .is_none_or(|best| resync_candidate_cmp(candidate, *best).is_lt())
+            {
+                best_candidate = Some(candidate);
+            }
+        }
+    }
+
+    best_candidate
+}
+
+fn choose_gap_side(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+    left_index: usize,
+    right_index: usize,
+    left_limit: usize,
+    right_limit: usize,
+) -> AlignmentMove {
+    if left_index >= left_limit {
+        return AlignmentMove::RightOnly;
+    }
+
+    if right_index >= right_limit {
+        return AlignmentMove::LeftOnly;
+    }
+
+    let current_priority_order = descriptor_priority(&left_descriptors[left_index])
+        .cmp(&descriptor_priority(&right_descriptors[right_index]));
+
+    if current_priority_order != std::cmp::Ordering::Equal {
+        return weaker_current_side(
+            &left_descriptors[left_index],
+            &right_descriptors[right_index],
+        );
+    }
+
+    let left_future = best_future_match_for_left(
+        &left_descriptors[left_index],
+        right_descriptors,
+        right_index,
+        right_limit,
+    );
+    let right_future = best_future_match_for_right(
+        left_descriptors,
+        left_index,
+        left_limit,
+        &right_descriptors[right_index],
+    );
+
+    match compare_future_matches(left_future, right_future) {
+        std::cmp::Ordering::Greater => AlignmentMove::RightOnly,
+        std::cmp::Ordering::Less => AlignmentMove::LeftOnly,
+        std::cmp::Ordering::Equal => weaker_current_side(
+            &left_descriptors[left_index],
+            &right_descriptors[right_index],
+        ),
+    }
+}
+
+fn should_flush_current_gap(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    left.kind != right.kind
+        || left.is_preprocessor != right.is_preprocessor
+        || left.is_weak_structural != right.is_weak_structural
+}
+
+fn weaker_structural_side(left: &LineDescriptor, right: &LineDescriptor) -> AlignmentMove {
+    if left.kind == LineKind::Blank || left.kind == LineKind::CommentOnly {
+        return AlignmentMove::LeftOnly;
+    }
+
+    if right.kind == LineKind::Blank || right.kind == LineKind::CommentOnly {
+        return AlignmentMove::RightOnly;
+    }
+
+    if left.is_weak_structural && !right.is_weak_structural {
+        return AlignmentMove::LeftOnly;
+    }
+
+    if right.is_weak_structural && !left.is_weak_structural {
+        return AlignmentMove::RightOnly;
+    }
+
+    weaker_current_side(left, right)
+}
+
+fn best_future_match_for_left(
+    left_descriptor: &LineDescriptor,
+    right_descriptors: &[LineDescriptor],
+    right_index: usize,
+    right_limit: usize,
+) -> Option<(MatchBand, usize)> {
+    let limit = (right_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(right_limit);
+    let mut best = None;
+
+    for current_right in right_index..limit {
+        let Some(band) = pair_band(left_descriptor, &right_descriptors[current_right]) else {
+            continue;
+        };
+        let offset = current_right - right_index;
+
+        if best.is_none_or(|current| future_match_cmp((band, offset), current).is_gt()) {
+            best = Some((band, offset));
+        }
+    }
+
+    best
+}
+
+fn best_future_match_for_right(
+    left_descriptors: &[LineDescriptor],
+    left_index: usize,
+    left_limit: usize,
+    right_descriptor: &LineDescriptor,
+) -> Option<(MatchBand, usize)> {
+    let limit = (left_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(left_limit);
+    let mut best = None;
+
+    for current_left in left_index..limit {
+        let Some(band) = pair_band(&left_descriptors[current_left], right_descriptor) else {
+            continue;
+        };
+        let offset = current_left - left_index;
+
+        if best.is_none_or(|current| future_match_cmp((band, offset), current).is_gt()) {
+            best = Some((band, offset));
+        }
+    }
+
+    best
+}
+
+fn compare_future_matches(
+    left_future: Option<(MatchBand, usize)>,
+    right_future: Option<(MatchBand, usize)>,
+) -> std::cmp::Ordering {
+    match (left_future, right_future) {
+        (Some(left), Some(right)) => future_match_cmp(left, right),
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+fn future_match_cmp(
+    left_future: (MatchBand, usize),
+    right_future: (MatchBand, usize),
+) -> std::cmp::Ordering {
+    match match_band_rank(left_future.0).cmp(&match_band_rank(right_future.0)) {
+        std::cmp::Ordering::Equal => right_future.1.cmp(&left_future.1),
+        ordering => ordering,
+    }
+}
+
+fn weaker_current_side(left: &LineDescriptor, right: &LineDescriptor) -> AlignmentMove {
+    let left_priority = descriptor_priority(left);
+    let right_priority = descriptor_priority(right);
+
+    match left_priority.cmp(&right_priority) {
+        std::cmp::Ordering::Less => AlignmentMove::LeftOnly,
+        std::cmp::Ordering::Greater => AlignmentMove::RightOnly,
+        std::cmp::Ordering::Equal => AlignmentMove::LeftOnly,
+    }
+}
+
+fn descriptor_priority(descriptor: &LineDescriptor) -> i32 {
+    match descriptor.kind {
+        LineKind::Blank => 0,
+        LineKind::CommentOnly => 1,
+        LineKind::Code => {
+            if descriptor.is_weak_structural {
+                2
+            } else if descriptor.is_preprocessor {
+                4
+            } else {
+                match descriptor.match_band_seed {
+                    MatchBandSeed::Assignment => 6,
+                    MatchBandSeed::ControlHeader => 5,
+                    MatchBandSeed::Call | MatchBandSeed::OtherCode => 4,
+                    MatchBandSeed::Preprocessor => 4,
+                    MatchBandSeed::WeakStructural => 2,
+                    MatchBandSeed::Comment => 1,
+                    MatchBandSeed::Blank => 0,
+                }
+            }
+        }
+    }
+}
+
+fn align_replace_subrange_fallback_dp(
     left_descriptors: &[LineDescriptor],
     right_descriptors: &[LineDescriptor],
 ) -> Vec<(Option<usize>, Option<usize>)> {
@@ -1114,7 +1576,10 @@ fn align_replace_subrange(
                     &left_descriptors[left_index],
                     &right_descriptors[right_index],
                 ) {
-                    let candidate = scores[left_index + 1][right_index + 1] + pair_score;
+                    let locality_penalty =
+                        (left_index.abs_diff(right_index) as i32) * LINE_PAIR_LOCALITY_PENALTY;
+                    let candidate =
+                        scores[left_index + 1][right_index + 1] + pair_score - locality_penalty;
 
                     if candidate >= best_score {
                         best_score = candidate;
@@ -1155,22 +1620,49 @@ fn align_replace_subrange(
 }
 
 fn line_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+    let band = pair_band(left, right)?;
+
+    Some(match band {
+        MatchBand::StrongExact => {
+            if left.kind == LineKind::Blank {
+                LINE_PAIR_BLANK_MATCH_SCORE
+            } else if left.kind == LineKind::CommentOnly {
+                LINE_PAIR_COMMENT_MATCH_SCORE + 20
+            } else if !left.code_signature.is_empty() && left.code_signature == right.code_signature
+            {
+                LINE_PAIR_SIGNATURE_MATCH_SCORE + indentation_bonus(left, right)
+            } else {
+                LINE_PAIR_NORMALIZED_MATCH_SCORE + indentation_bonus(left, right)
+            }
+        }
+        MatchBand::StrongModified => {
+            LINE_PAIR_STRONG_MODIFIED_SCORE
+                + line_similarity_score(left, right) / 2
+                + indentation_bonus(left, right)
+        }
+        MatchBand::WeakStructural => {
+            LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE + indentation_bonus(left, right)
+        }
+    })
+}
+
+fn pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand> {
     match (left.kind, right.kind) {
-        (LineKind::Blank, LineKind::Blank) => Some(LINE_PAIR_BLANK_MATCH_SCORE),
+        (LineKind::Blank, LineKind::Blank) => Some(MatchBand::WeakStructural),
         (LineKind::Blank, _) | (_, LineKind::Blank) => None,
         (LineKind::CommentOnly, LineKind::Code) | (LineKind::Code, LineKind::CommentOnly) => None,
-        (LineKind::CommentOnly, LineKind::CommentOnly) => comment_pair_score(left, right),
-        (LineKind::Code, LineKind::Code) => code_pair_score(left, right),
+        (LineKind::CommentOnly, LineKind::CommentOnly) => comment_pair_band(left, right),
+        (LineKind::Code, LineKind::Code) => code_pair_band(left, right),
     }
 }
 
-fn comment_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+fn comment_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand> {
     if left.trimmed_text == right.trimmed_text {
-        return Some(LINE_PAIR_NORMALIZED_MATCH_SCORE);
+        return Some(MatchBand::StrongExact);
     }
 
     if left.normalized_text == right.normalized_text {
-        return Some(LINE_PAIR_COMMENT_MATCH_SCORE);
+        return Some(MatchBand::StrongExact);
     }
 
     let similarity = line_similarity_score(left, right);
@@ -1179,45 +1671,127 @@ fn comment_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i
         return None;
     }
 
-    Some(LINE_PAIR_COMMENT_MATCH_SCORE + similarity / 3 + indentation_bonus(left, right))
+    Some(MatchBand::StrongModified)
 }
 
-fn code_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
-    let weak_structural_match = is_weak_structural_pair(left, right);
-
+fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand> {
     if !left.code_signature.is_empty() && left.code_signature == right.code_signature {
-        return Some(if weak_structural_match {
-            LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE + indentation_bonus(left, right)
+        return Some(if is_weak_structural_pair(left, right) {
+            MatchBand::WeakStructural
         } else {
-            LINE_PAIR_SIGNATURE_MATCH_SCORE
+            MatchBand::StrongExact
         });
     }
 
     if left.trimmed_text == right.trimmed_text || left.normalized_text == right.normalized_text {
-        return Some(if weak_structural_match {
-            LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE + indentation_bonus(left, right)
+        return Some(if is_weak_structural_pair(left, right) {
+            MatchBand::WeakStructural
         } else {
-            LINE_PAIR_NORMALIZED_MATCH_SCORE + indentation_bonus(left, right)
+            MatchBand::StrongExact
         });
+    }
+
+    if left.is_preprocessor != right.is_preprocessor {
+        return None;
+    }
+
+    if left.is_weak_structural || right.is_weak_structural {
+        return None;
     }
 
     let similarity = line_similarity_score(left, right);
     let same_primary_identifier =
         !left.primary_identifier.is_empty() && left.primary_identifier == right.primary_identifier;
+    let same_seed = left.match_band_seed == right.match_band_seed;
+
+    if left.is_preprocessor {
+        return (same_primary_identifier
+            && same_preprocessor_family(left, right)
+            && similarity >= LINE_PAIR_MIN_SIMILARITY - 15)
+            .then_some(MatchBand::StrongModified);
+    }
 
     if same_primary_identifier {
         if similarity < LINE_PAIR_MIN_SIMILARITY - 15 {
             return None;
         }
 
-        return Some(150 + similarity / 2 + indentation_bonus(left, right));
+        return Some(MatchBand::StrongModified);
+    }
+
+    if same_seed
+        && matches!(
+            left.match_band_seed,
+            MatchBandSeed::Assignment | MatchBandSeed::ControlHeader | MatchBandSeed::Call
+        )
+        && similarity >= LINE_PAIR_MIN_SIMILARITY + 10
+    {
+        return Some(MatchBand::StrongModified);
     }
 
     if similarity < LINE_PAIR_MIN_SIMILARITY + 20 {
         return None;
     }
 
-    Some(100 + similarity / 2 + indentation_bonus(left, right))
+    matches!(
+        left.match_band_seed,
+        MatchBandSeed::Assignment | MatchBandSeed::Call | MatchBandSeed::OtherCode
+    )
+    .then_some(MatchBand::StrongModified)
+}
+
+fn same_preprocessor_family(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    preprocessor_family(&left.code_signature) == preprocessor_family(&right.code_signature)
+}
+
+fn preprocessor_family(signature: &str) -> &str {
+    signature
+        .trim_start()
+        .trim_start_matches('#')
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+}
+
+fn resync_candidate_cmp(
+    left_candidate: ResyncCandidate,
+    right_candidate: ResyncCandidate,
+) -> std::cmp::Ordering {
+    match candidate_displacement(left_candidate).cmp(&candidate_displacement(right_candidate)) {
+        std::cmp::Ordering::Equal => {}
+        ordering => return ordering,
+    }
+
+    match candidate_drift(left_candidate).cmp(&candidate_drift(right_candidate)) {
+        std::cmp::Ordering::Equal => {}
+        ordering => return ordering,
+    }
+
+    match match_band_rank(right_candidate.band).cmp(&match_band_rank(left_candidate.band)) {
+        std::cmp::Ordering::Equal => {}
+        ordering => return ordering,
+    }
+
+    match left_candidate.left_index.cmp(&right_candidate.left_index) {
+        std::cmp::Ordering::Equal => left_candidate.right_index.cmp(&right_candidate.right_index),
+        ordering => ordering,
+    }
+}
+
+fn candidate_displacement(candidate: ResyncCandidate) -> usize {
+    candidate.left_index + candidate.right_index
+}
+
+fn candidate_drift(candidate: ResyncCandidate) -> usize {
+    candidate.left_index.abs_diff(candidate.right_index)
+}
+
+fn match_band_rank(band: MatchBand) -> i32 {
+    match band {
+        MatchBand::WeakStructural => 0,
+        MatchBand::StrongModified => 1,
+        MatchBand::StrongExact => 2,
+    }
 }
 
 fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
@@ -1260,11 +1834,15 @@ fn build_line_descriptor(text: &str) -> LineDescriptor {
     let trimmed_text = text.trim().to_string();
     let kind = classify_line_kind(&trimmed_text);
     let normalized_text = collapse_whitespace(&trimmed_text);
+    let is_preprocessor = trimmed_text.starts_with('#');
     let code_signature = if kind == LineKind::Code {
         collapse_whitespace(trim_trailing_line_comment(&trimmed_text).trim())
     } else {
         String::new()
     };
+    let identifier_count = extract_identifiers(&code_signature).len();
+    let is_weak_structural =
+        kind == LineKind::Code && is_weak_structural_signature(&code_signature);
     let token_source = match kind {
         LineKind::Blank => String::new(),
         LineKind::CommentOnly => normalized_text.clone(),
@@ -1279,13 +1857,23 @@ fn build_line_descriptor(text: &str) -> LineDescriptor {
 
     LineDescriptor {
         original_text: text.to_string(),
-        trimmed_text,
+        trimmed_text: trimmed_text.clone(),
         normalized_text,
         code_signature: code_signature.clone(),
         kind,
         tokens: tokenize_alignment_tokens(&token_source),
         indentation_depth: leading_indent_width(text),
         primary_identifier: primary_identifier(&code_signature),
+        is_preprocessor,
+        is_weak_structural,
+        match_band_seed: match_band_seed(
+            kind,
+            &trimmed_text,
+            &code_signature,
+            is_preprocessor,
+            is_weak_structural,
+        ),
+        identifier_count,
     }
 }
 
@@ -1342,9 +1930,44 @@ fn primary_identifier(signature: &str) -> String {
         .unwrap_or_default()
 }
 
+fn match_band_seed(
+    kind: LineKind,
+    trimmed_text: &str,
+    code_signature: &str,
+    is_preprocessor: bool,
+    is_weak_structural: bool,
+) -> MatchBandSeed {
+    match kind {
+        LineKind::Blank => MatchBandSeed::Blank,
+        LineKind::CommentOnly => MatchBandSeed::Comment,
+        LineKind::Code => {
+            if is_weak_structural {
+                return MatchBandSeed::WeakStructural;
+            }
+
+            if is_preprocessor {
+                return MatchBandSeed::Preprocessor;
+            }
+
+            if is_control_header(trimmed_text) {
+                return MatchBandSeed::ControlHeader;
+            }
+
+            if looks_like_assignment(code_signature) {
+                return MatchBandSeed::Assignment;
+            }
+
+            if looks_like_call_or_signature(code_signature) {
+                return MatchBandSeed::Call;
+            }
+
+            MatchBandSeed::OtherCode
+        }
+    }
+}
+
 fn is_weak_structural_pair(left: &LineDescriptor, right: &LineDescriptor) -> bool {
-    is_weak_structural_signature(&left.code_signature)
-        && is_weak_structural_signature(&right.code_signature)
+    left.is_weak_structural && right.is_weak_structural
 }
 
 fn is_weak_structural_signature(signature: &str) -> bool {
@@ -1408,11 +2031,29 @@ fn is_noise_identifier(identifier: &str) -> bool {
     matches!(
         identifier,
         "define"
+            | "ifdef"
+            | "ifndef"
+            | "if"
+            | "elif"
+            | "else"
+            | "endif"
+            | "undef"
+            | "include"
+            | "pragma"
             | "static"
             | "const"
             | "volatile"
             | "extern"
             | "inline"
+            | "for"
+            | "while"
+            | "switch"
+            | "case"
+            | "return"
+            | "do"
+            | "try"
+            | "catch"
+            | "finally"
             | "void"
             | "char"
             | "short"
@@ -1430,6 +2071,27 @@ fn is_noise_identifier(identifier: &str) -> bool {
             | "int32_t"
             | "bool"
     )
+}
+
+fn is_control_header(text: &str) -> bool {
+    let trimmed = text.trim_start();
+
+    matches!(
+        trimmed.split_whitespace().next().unwrap_or(""),
+        "if" | "else" | "for" | "while" | "switch" | "case" | "return" | "do"
+    )
+}
+
+fn looks_like_assignment(signature: &str) -> bool {
+    signature.contains('=')
+        && !signature.contains("==")
+        && !signature.contains("!=")
+        && !signature.contains(">=")
+        && !signature.contains("<=")
+}
+
+fn looks_like_call_or_signature(signature: &str) -> bool {
+    signature.contains('(') && signature.contains(')')
 }
 
 fn trim_trailing_line_comment(line: &str) -> &str {
@@ -2497,5 +3159,151 @@ mod tests {
         assert!(alignment.right_matches[2].is_none());
         assert!(alignment.right_matches[6].is_none());
         assert!(alignment.right_matches[7].is_none());
+    }
+
+    #[test]
+    fn replace_block_alignment_resyncs_after_inserted_comment_before_statement() {
+        let left_cells = vec![
+            test_changed_cell("if (ready)", DiffChange::Delete),
+            test_changed_cell("{", DiffChange::Delete),
+            test_changed_cell("x = y;", DiffChange::Delete),
+        ];
+        let right_cells = vec![
+            test_changed_cell("if (ready)", DiffChange::Insert),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("// comment", DiffChange::Insert),
+            test_changed_cell("x = y;", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(
+            alignment.row_pairs,
+            vec![
+                (Some(0), Some(0)),
+                (Some(1), Some(1)),
+                (None, Some(2)),
+                (Some(2), Some(3))
+            ]
+        );
+    }
+
+    #[test]
+    fn replace_block_alignment_resyncs_after_inserted_preprocessor_block_before_else_if() {
+        let left_cells = vec![
+            test_changed_cell(
+                "else if ((SM_waitstates >= 3) && (SM_waitstates < 9))",
+                DiffChange::Delete,
+            ),
+            test_changed_cell("{", DiffChange::Delete),
+            test_changed_cell("#ifdef ULTRON_SM_TEST_ACTIVE", DiffChange::Delete),
+            test_changed_cell(
+                "DL_GPIO_setPins(GPIO_LED_R_PORT, GPIO_LED_R_PIN);",
+                DiffChange::Delete,
+            ),
+        ];
+        let right_cells = vec![
+            test_changed_cell("#ifdef ULTRON_SM_TEST_ACTIVE", DiffChange::Insert),
+            test_changed_cell("DL_GPIO_clearPins(GPIO_TT_SECURITY_PORT, GPIO_TT_SECURITY_PIN);", DiffChange::Insert),
+            test_changed_cell("#endif", DiffChange::Insert),
+            test_changed_cell(
+                "else if ((SM_waitstates >= SM_ADC_WindowStart) && (SM_waitstates < SM_ADC_WindowEnd))",
+                DiffChange::Insert,
+            ),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("#ifdef ULTRON_SM_TEST_ACTIVE", DiffChange::Insert),
+            test_changed_cell("DL_GPIO_setPins(GPIO_LED_R_PORT, GPIO_LED_R_PIN);", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(alignment.row_pairs[0], (None, Some(0)));
+        assert_eq!(alignment.row_pairs[1], (None, Some(1)));
+        assert_eq!(alignment.row_pairs[2], (None, Some(2)));
+        assert_eq!(alignment.left_matches[0], Some(3));
+        assert_eq!(alignment.left_matches[1], Some(4));
+        assert_eq!(alignment.left_matches[2], Some(5));
+        assert_eq!(alignment.left_matches[3], Some(6));
+    }
+
+    #[test]
+    fn replace_block_alignment_realigns_assignment_before_else_after_insertions() {
+        let left_cells = vec![
+            test_changed_cell("SM_synchronized = 0;", DiffChange::Delete),
+            test_changed_cell("}", DiffChange::Delete),
+            test_changed_cell("else", DiffChange::Delete),
+        ];
+        let right_cells = vec![
+            test_changed_cell("SM_ADC_DetectedFlag = 1;", DiffChange::Insert),
+            test_changed_cell(
+                "DL_GPIO_clearPins(GPIO_SM_NOE_PORT, GPIO_PIN_0);",
+                DiffChange::Insert,
+            ),
+            test_changed_cell("SM_synchronized = 0;", DiffChange::Insert),
+            test_changed_cell("}", DiffChange::Insert),
+            test_changed_cell("else", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(alignment.row_pairs[0], (None, Some(0)));
+        assert_eq!(alignment.row_pairs[1], (None, Some(1)));
+        assert_eq!(alignment.left_matches[0], Some(2));
+        assert_eq!(alignment.left_matches[1], Some(3));
+        assert_eq!(alignment.left_matches[2], Some(4));
+    }
+
+    #[test]
+    fn replace_block_alignment_resyncs_same_statement_after_comment_and_helper_insertions() {
+        let left_cells = vec![
+            test_changed_cell("if (SM_ADC_result > SM_ADC_Threshold)", DiffChange::Delete),
+            test_changed_cell("{", DiffChange::Delete),
+            test_changed_cell("if (++SM_TouchBaseCount > 2)", DiffChange::Delete),
+            test_changed_cell("{", DiffChange::Delete),
+            test_changed_cell("SM_synchronized = 0;", DiffChange::Delete),
+        ];
+        let right_cells = vec![
+            test_changed_cell(
+                "SM_ADC_PeaksLive[peakIndex] = SM_ADC_result;",
+                DiffChange::Insert,
+            ),
+            test_changed_cell(
+                "// Runtime detection is intentionally simple again",
+                DiffChange::Insert,
+            ),
+            test_changed_cell("if (SM_ADC_result > SM_ADC_Threshold)", DiffChange::Insert),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("if (++SM_TouchBaseCount > 2)", DiffChange::Insert),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("SM_ADC_DetectedFlag = 1;", DiffChange::Insert),
+            test_changed_cell("SM_synchronized = 0;", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(alignment.row_pairs[0], (None, Some(0)));
+        assert_eq!(alignment.row_pairs[1], (None, Some(1)));
+        assert_eq!(alignment.left_matches[0], Some(2));
+        assert_eq!(alignment.left_matches[1], Some(3));
+        assert_eq!(alignment.left_matches[2], Some(4));
+        assert_eq!(alignment.left_matches[3], Some(5));
+        assert_eq!(alignment.row_pairs[6], (None, Some(6)));
+        assert_eq!(alignment.left_matches[4], Some(7));
+    }
+
+    #[test]
+    fn preprocessor_directives_only_pair_with_same_family() {
+        assert!(pair_band(
+            &build_line_descriptor("#ifdef FOO"),
+            &build_line_descriptor("#endif")
+        )
+        .is_none());
+        assert!(matches!(
+            pair_band(
+                &build_line_descriptor("#ifdef FOO"),
+                &build_line_descriptor("#ifdef FOO")
+            ),
+            Some(MatchBand::StrongExact)
+        ));
     }
 }
