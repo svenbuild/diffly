@@ -12,7 +12,10 @@
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build --debug --no-bundle",
+    "tauri:build:release": "tauri build --no-bundle",
+    "tauri:package": "tauri build --bundles nsis",
+    "tauri:package:all": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

@@ -37,10 +37,28 @@ Start the desktop app in development mode:
 npm run tauri:dev
 ```
 
-Build a production bundle:
+Build a fast desktop binary for local verification:
 
 ```bash
 npm run tauri:build
+```
+
+Build a release binary without packaging installers:
+
+```bash
+npm run tauri:build:release
+```
+
+Build the standard Windows installer:
+
+```bash
+npm run tauri:package
+```
+
+Build every configured installer target:
+
+```bash
+npm run tauri:package:all
 ```
 
 ## Project Structure
@@ -63,5 +81,8 @@ The current validation path is:
 
 ## Notes
 
+- `npm run tauri:build` now uses a debug, no-bundle path to keep local desktop builds fast.
+- `npm run tauri:package` keeps installer generation separate so packaging does not slow down every build.
+- Release Rust builds keep incremental artifacts enabled and use `opt-level = 2` to cut compile time without falling all the way back to debug codegen.
 - Large text diffs are capped at 1 MB per file.
 - Binary files are detected automatically and shown as status-only entries.
