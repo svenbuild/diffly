@@ -1010,6 +1010,7 @@ button.filter-chip.tooLarge:focus-visible {
 .unified-grid {
   font-family: var(--code);
   font-size: 0.71rem;
+  line-height: 1.45;
 }
 
 .unified-grid {
@@ -1020,7 +1021,7 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row,
 .unified-row {
   display: grid;
-  align-items: start;
+  align-items: stretch;
 }
 
 .hunk-row {
@@ -1040,11 +1041,15 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row {
   grid-template-columns: 64px 30px minmax(0, 1fr);
   gap: 0;
+  min-height: calc(1.45em + 5px);
+  height: calc(1.45em + 5px);
   border-bottom: 1px solid var(--diff-divider);
 }
 
 .unified-row {
   grid-template-columns: 64px 64px 30px minmax(0, 1fr);
+  min-height: calc(1.45em + 5px);
+  height: calc(1.45em + 5px);
   border-bottom: 1px solid var(--diff-divider);
 }
 
@@ -1068,7 +1073,10 @@ button.filter-chip.tooLarge:focus-visible {
 .line-number,
 .prefix,
 .line-text {
+  display: block;
+  height: calc(1.45em + 4px);
   padding: 2px 4px;
+  line-height: 1.45;
 }
 
 .line-number,
