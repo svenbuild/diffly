@@ -865,6 +865,46 @@
     return side === 'left' ? leftPaneScroll : rightPaneScroll
   }
 
+  function getMaxScrollTop(element: HTMLDivElement) {
+    return Math.max(0, element.scrollHeight - element.clientHeight)
+  }
+
+  function getMaxScrollLeft(element: HTMLDivElement) {
+    return Math.max(0, element.scrollWidth - element.clientWidth)
+  }
+
+  function clampScrollOffset(nextValue: number, maxValue: number) {
+    return Math.min(Math.max(nextValue, 0), maxValue)
+  }
+
+  function mapScrollOffset(
+    sourceOffset: number,
+    sourceMaxOffset: number,
+    targetMaxOffset: number,
+  ) {
+    if (targetMaxOffset <= 0) {
+      return 0
+    }
+
+    if (sourceMaxOffset <= 0) {
+      return clampScrollOffset(sourceOffset, targetMaxOffset)
+    }
+
+    return clampScrollOffset((sourceOffset / sourceMaxOffset) * targetMaxOffset, targetMaxOffset)
+  }
+
+  function normalizeWheelDelta(delta: number, deltaMode: number) {
+    if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
+      return delta * 16
+    }
+
+    if (deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+      return delta * 100
+    }
+
+    return delta
+  }
+
   function applyPaneScrollSync(source: 'left' | 'right') {
     const sourcePane = getPaneScroll(source)
     const targetSide = source === 'left' ? 'right' : 'left'
@@ -874,16 +914,27 @@
       return
     }
 
-    scrollEchoTarget = targetSide
-    scrollEchoTop = sourcePane.scrollTop
-    scrollEchoLeft = sourcePane.scrollLeft
+    const nextTargetTop = mapScrollOffset(
+      sourcePane.scrollTop,
+      getMaxScrollTop(sourcePane),
+      getMaxScrollTop(targetPane),
+    )
+    const nextTargetLeft = mapScrollOffset(
+      sourcePane.scrollLeft,
+      getMaxScrollLeft(sourcePane),
+      getMaxScrollLeft(targetPane),
+    )
 
-    if (Math.abs(targetPane.scrollTop - scrollEchoTop) >= 1) {
-      targetPane.scrollTop = scrollEchoTop
+    scrollEchoTarget = targetSide
+    scrollEchoTop = nextTargetTop
+    scrollEchoLeft = nextTargetLeft
+
+    if (Math.abs(targetPane.scrollTop - nextTargetTop) >= 0.5) {
+      targetPane.scrollTop = nextTargetTop
     }
 
-    if (Math.abs(targetPane.scrollLeft - scrollEchoLeft) >= 1) {
-      targetPane.scrollLeft = scrollEchoLeft
+    if (Math.abs(targetPane.scrollLeft - nextTargetLeft) >= 0.5) {
+      targetPane.scrollLeft = nextTargetLeft
     }
 
     if (scrollEchoResetFrame !== null) {
@@ -896,6 +947,28 @@
     })
 
     scheduleScrollNavigationRefresh()
+  }
+
+  function syncPaneWheel(event: WheelEvent, source: 'left' | 'right') {
+    const sourcePane = getPaneScroll(source)
+
+    if (!sourcePane || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+      return
+    }
+
+    event.preventDefault()
+
+    const nextSourceTop = clampScrollOffset(
+      sourcePane.scrollTop + normalizeWheelDelta(event.deltaY, event.deltaMode),
+      getMaxScrollTop(sourcePane),
+    )
+
+    if (Math.abs(nextSourceTop - sourcePane.scrollTop) < 0.5) {
+      return
+    }
+
+    sourcePane.scrollTop = nextSourceTop
+    applyPaneScrollSync(source)
   }
 
   function syncPaneScroll(source: 'left' | 'right') {
@@ -1495,6 +1568,7 @@
         {sideBySideRenderItems}
         {unifiedRenderItems}
         {getFileName}
+        {syncPaneWheel}
         {syncPaneScroll}
         {refreshDiffNavigationState}
         bind:leftPaneScroll

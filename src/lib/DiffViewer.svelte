@@ -13,6 +13,7 @@
   export let sideBySideRenderItems: SideBySideRenderItem[]
   export let unifiedRenderItems: UnifiedRenderItem[]
   export let getFileName: (path: string) => string
+  export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let refreshDiffNavigationState: () => void
   export let leftPaneScroll: HTMLDivElement | null = null
@@ -93,6 +94,7 @@
           <div
             bind:this={leftPaneScroll}
             class="pane-scroll"
+            on:wheel={(event) => syncPaneWheel(event, 'left')}
             on:scroll={() => syncPaneScroll('left')}
           >
             <div
@@ -153,6 +155,7 @@
           <div
             bind:this={rightPaneScroll}
             class="pane-scroll"
+            on:wheel={(event) => syncPaneWheel(event, 'right')}
             on:scroll={() => syncPaneScroll('right')}
           >
             <div
