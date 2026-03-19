@@ -81,6 +81,9 @@
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let syncingScroll = false
+  let scrollEchoTarget: 'left' | 'right' | null = null
+  let queuedScrollSyncSource: 'left' | 'right' | null = null
+  let paneScrollSyncFrame: number | null = null
   let diffNavigationRefreshQueued = false
   let currentDiffHunk = -1
   let persistenceReady = false
@@ -838,22 +841,74 @@
     scrollDiffHunkIntoView(targetIndex)
   }
 
-  function syncPaneScroll(source: 'left' | 'right') {
-    const sourcePane = source === 'left' ? leftPaneScroll : rightPaneScroll
-    const targetPane = source === 'left' ? rightPaneScroll : leftPaneScroll
+  function getPaneScroll(side: 'left' | 'right') {
+    return side === 'left' ? leftPaneScroll : rightPaneScroll
+  }
 
-    if (!sourcePane || !targetPane || syncingScroll) {
+  function applyPaneScrollSync(source: 'left' | 'right') {
+    const sourcePane = getPaneScroll(source)
+    const targetSide = source === 'left' ? 'right' : 'left'
+    const targetPane = getPaneScroll(targetSide)
+
+    if (!sourcePane || !targetPane) {
+      return
+    }
+
+    scrollEchoTarget = targetSide
+    targetPane.scrollTop = sourcePane.scrollTop
+    targetPane.scrollLeft = sourcePane.scrollLeft
+    refreshDiffNavigationState()
+  }
+
+  function finishPaneScrollSync() {
+    paneScrollSyncFrame = null
+
+    if (queuedScrollSyncSource) {
+      const nextSource = queuedScrollSyncSource
+      queuedScrollSyncSource = null
+      applyPaneScrollSync(nextSource)
+      paneScrollSyncFrame = requestAnimationFrame(finishPaneScrollSync)
+      return
+    }
+
+    scrollEchoTarget = null
+    syncingScroll = false
+  }
+
+  function syncPaneScroll(source: 'left' | 'right') {
+    const sourcePane = getPaneScroll(source)
+    const targetPane = getPaneScroll(source === 'left' ? 'right' : 'left')
+
+    if (!sourcePane || !targetPane) {
+      return
+    }
+
+    if (
+      source === scrollEchoTarget &&
+      Math.abs(sourcePane.scrollTop - targetPane.scrollTop) < 1 &&
+      Math.abs(sourcePane.scrollLeft - targetPane.scrollLeft) < 1
+    ) {
+      return
+    }
+
+    queuedScrollSyncSource = source
+
+    if (syncingScroll) {
       return
     }
 
     syncingScroll = true
-    targetPane.scrollTop = sourcePane.scrollTop
-    targetPane.scrollLeft = sourcePane.scrollLeft
-    refreshDiffNavigationState()
 
-    requestAnimationFrame(() => {
+    const nextSource = queuedScrollSyncSource
+    queuedScrollSyncSource = null
+
+    if (!nextSource) {
       syncingScroll = false
-    })
+      return
+    }
+
+    applyPaneScrollSync(nextSource)
+    paneScrollSyncFrame = requestAnimationFrame(finishPaneScrollSync)
   }
 
   function buildNextHistoryState(
