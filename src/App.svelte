@@ -94,6 +94,8 @@
   let scrollEchoTop = 0
   let scrollEchoLeft = 0
   let scrollEchoResetFrame: number | null = null
+  let paneNavigationScrollFrame: number | null = null
+  let paneNavigationSyncActive = false
   let diffNavigationRefreshQueued = false
   let diffNavigationScrollFrame: number | null = null
   let currentDiffHunk = -1
@@ -170,6 +172,10 @@
 
       if (scrollEchoResetFrame !== null) {
         window.cancelAnimationFrame(scrollEchoResetFrame)
+      }
+
+      if (paneNavigationScrollFrame !== null) {
+        window.cancelAnimationFrame(paneNavigationScrollFrame)
       }
 
       if (diffNavigationScrollFrame !== null) {
@@ -1072,6 +1078,111 @@
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
+  function cancelPaneNavigationScroll() {
+    paneNavigationSyncActive = false
+    scrollEchoTarget = null
+
+    if (paneNavigationScrollFrame !== null) {
+      window.cancelAnimationFrame(paneNavigationScrollFrame)
+      paneNavigationScrollFrame = null
+    }
+  }
+
+  function getScrollTopForAnchor(container: HTMLDivElement, anchor: HTMLElement) {
+    return clampScrollOffset(
+      container.scrollTop + anchor.getBoundingClientRect().top - container.getBoundingClientRect().top - 8,
+      getMaxScrollTop(container),
+    )
+  }
+
+  function getSideBySideDiffAnchorPair(targetIndex: number) {
+    if (!leftPaneScroll || !rightPaneScroll) {
+      return null
+    }
+
+    const selector = `[data-diff-anchor="true"][data-diff-index="${targetIndex}"]`
+    const leftAnchor = leftPaneScroll.querySelector<HTMLElement>(selector)
+    const rightAnchor = rightPaneScroll.querySelector<HTMLElement>(selector)
+
+    if (!leftAnchor || !rightAnchor) {
+      return null
+    }
+
+    return {
+      leftAnchor,
+      rightAnchor,
+    }
+  }
+
+  function scrollSideBySidePanes(
+    leftTop: number,
+    rightTop: number,
+    behavior: ScrollBehavior,
+  ) {
+    if (!leftPaneScroll || !rightPaneScroll) {
+      return
+    }
+
+    cancelPaneNavigationScroll()
+
+    const nextLeftTop = clampScrollOffset(leftTop, getMaxScrollTop(leftPaneScroll))
+    const nextRightTop = clampScrollOffset(rightTop, getMaxScrollTop(rightPaneScroll))
+
+    if (behavior === 'auto') {
+      leftPaneScroll.scrollTop = nextLeftTop
+      rightPaneScroll.scrollTop = nextRightTop
+      scheduleScrollNavigationRefresh()
+      return
+    }
+
+    const startLeftTop = leftPaneScroll.scrollTop
+    const startRightTop = rightPaneScroll.scrollTop
+
+    if (
+      Math.abs(nextLeftTop - startLeftTop) < 0.5 &&
+      Math.abs(nextRightTop - startRightTop) < 0.5
+    ) {
+      scheduleScrollNavigationRefresh()
+      return
+    }
+
+    const distance = Math.max(
+      Math.abs(nextLeftTop - startLeftTop),
+      Math.abs(nextRightTop - startRightTop),
+    )
+    const duration = Math.min(220, Math.max(120, distance * 0.18))
+    const startTime = window.performance.now()
+    paneNavigationSyncActive = true
+
+    const animate = (timestamp: number) => {
+      if (!leftPaneScroll || !rightPaneScroll) {
+        cancelPaneNavigationScroll()
+        return
+      }
+
+      const progress = Math.min((timestamp - startTime) / duration, 1)
+      const easedProgress = 1 - Math.pow(1 - progress, 3)
+
+      leftPaneScroll.scrollTop = startLeftTop + (nextLeftTop - startLeftTop) * easedProgress
+      rightPaneScroll.scrollTop = startRightTop + (nextRightTop - startRightTop) * easedProgress
+
+      scheduleScrollNavigationRefresh()
+
+      if (progress >= 1) {
+        leftPaneScroll.scrollTop = nextLeftTop
+        rightPaneScroll.scrollTop = nextRightTop
+        paneNavigationScrollFrame = null
+        paneNavigationSyncActive = false
+        scheduleScrollNavigationRefresh()
+        return
+      }
+
+      paneNavigationScrollFrame = window.requestAnimationFrame(animate)
+    }
+
+    paneNavigationScrollFrame = window.requestAnimationFrame(animate)
+  }
+
   function scrollDiffHunkIntoView(targetIndex: number) {
     const container = getActiveDiffScrollContainer()
     const anchors = getActiveDiffAnchors()
@@ -1081,16 +1192,37 @@
       return
     }
 
-    const top =
-      container.scrollTop +
-      anchor.getBoundingClientRect().top -
-      container.getBoundingClientRect().top -
-      8
-
     currentDiffHunk = targetIndex
+    const behavior = prefersReducedMotion() ? 'auto' : 'smooth'
+
+    if (viewMode === 'sideBySide') {
+      const anchorPair = getSideBySideDiffAnchorPair(targetIndex)
+
+      if (anchorPair && leftPaneScroll && rightPaneScroll) {
+        scrollSideBySidePanes(
+          getScrollTopForAnchor(leftPaneScroll, anchorPair.leftAnchor),
+          getScrollTopForAnchor(rightPaneScroll, anchorPair.rightAnchor),
+          behavior,
+        )
+        return
+      }
+
+      const nextLeftTop = getScrollTopForAnchor(container, anchor)
+      scrollSideBySidePanes(
+        nextLeftTop,
+        mapScrollOffset(
+          nextLeftTop,
+          getMaxScrollTop(container),
+          getMaxScrollTop(rightPaneScroll ?? container),
+        ),
+        behavior,
+      )
+      return
+    }
+
     container.scrollTo({
-      top: Math.max(0, top),
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      top: getScrollTopForAnchor(container, anchor),
+      behavior,
     })
   }
 
@@ -1210,6 +1342,7 @@
       return
     }
 
+    cancelPaneNavigationScroll()
     event.preventDefault()
 
     const nextSourceTop = clampScrollOffset(
@@ -1229,6 +1362,11 @@
     const sourcePane = getPaneScroll(source)
 
     if (!sourcePane) {
+      return
+    }
+
+    if (paneNavigationSyncActive) {
+      scheduleScrollNavigationRefresh()
       return
     }
 
