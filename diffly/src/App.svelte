@@ -80,11 +80,12 @@
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
-  let syncingScroll = false
   let scrollEchoTarget: 'left' | 'right' | null = null
-  let queuedScrollSyncSource: 'left' | 'right' | null = null
-  let paneScrollSyncFrame: number | null = null
+  let scrollEchoTop = 0
+  let scrollEchoLeft = 0
+  let scrollEchoResetFrame: number | null = null
   let diffNavigationRefreshQueued = false
+  let diffNavigationScrollFrame: number | null = null
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
@@ -142,6 +143,14 @@
 
       if (compareRefreshTimer !== null) {
         window.clearTimeout(compareRefreshTimer)
+      }
+
+      if (scrollEchoResetFrame !== null) {
+        window.cancelAnimationFrame(scrollEchoResetFrame)
+      }
+
+      if (diffNavigationScrollFrame !== null) {
+        window.cancelAnimationFrame(diffNavigationScrollFrame)
       }
     }
   })
@@ -790,6 +799,17 @@
     })
   }
 
+  function scheduleScrollNavigationRefresh() {
+    if (diffNavigationScrollFrame !== null) {
+      return
+    }
+
+    diffNavigationScrollFrame = window.requestAnimationFrame(() => {
+      diffNavigationScrollFrame = null
+      refreshDiffNavigationState()
+    })
+  }
+
   function prefersReducedMotion() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return false
@@ -855,60 +875,46 @@
     }
 
     scrollEchoTarget = targetSide
-    targetPane.scrollTop = sourcePane.scrollTop
-    targetPane.scrollLeft = sourcePane.scrollLeft
-    refreshDiffNavigationState()
-  }
+    scrollEchoTop = sourcePane.scrollTop
+    scrollEchoLeft = sourcePane.scrollLeft
 
-  function finishPaneScrollSync() {
-    paneScrollSyncFrame = null
-
-    if (queuedScrollSyncSource) {
-      const nextSource = queuedScrollSyncSource
-      queuedScrollSyncSource = null
-      applyPaneScrollSync(nextSource)
-      paneScrollSyncFrame = requestAnimationFrame(finishPaneScrollSync)
-      return
+    if (Math.abs(targetPane.scrollTop - scrollEchoTop) >= 1) {
+      targetPane.scrollTop = scrollEchoTop
     }
 
-    scrollEchoTarget = null
-    syncingScroll = false
+    if (Math.abs(targetPane.scrollLeft - scrollEchoLeft) >= 1) {
+      targetPane.scrollLeft = scrollEchoLeft
+    }
+
+    if (scrollEchoResetFrame !== null) {
+      window.cancelAnimationFrame(scrollEchoResetFrame)
+    }
+
+    scrollEchoResetFrame = window.requestAnimationFrame(() => {
+      scrollEchoResetFrame = null
+      scrollEchoTarget = null
+    })
+
+    scheduleScrollNavigationRefresh()
   }
 
   function syncPaneScroll(source: 'left' | 'right') {
     const sourcePane = getPaneScroll(source)
-    const targetPane = getPaneScroll(source === 'left' ? 'right' : 'left')
 
-    if (!sourcePane || !targetPane) {
+    if (!sourcePane) {
       return
     }
 
     if (
       source === scrollEchoTarget &&
-      Math.abs(sourcePane.scrollTop - targetPane.scrollTop) < 1 &&
-      Math.abs(sourcePane.scrollLeft - targetPane.scrollLeft) < 1
+      Math.abs(sourcePane.scrollTop - scrollEchoTop) < 1 &&
+      Math.abs(sourcePane.scrollLeft - scrollEchoLeft) < 1
     ) {
+      scrollEchoTarget = null
       return
     }
 
-    queuedScrollSyncSource = source
-
-    if (syncingScroll) {
-      return
-    }
-
-    syncingScroll = true
-
-    const nextSource = queuedScrollSyncSource
-    queuedScrollSyncSource = null
-
-    if (!nextSource) {
-      syncingScroll = false
-      return
-    }
-
-    applyPaneScrollSync(nextSource)
-    paneScrollSyncFrame = requestAnimationFrame(finishPaneScrollSync)
+    applyPaneScrollSync(source)
   }
 
   function buildNextHistoryState(
