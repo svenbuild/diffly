@@ -43,7 +43,7 @@ export function buildSideBySideRenderItems(
   return hunks.flatMap((hunk, index) => {
     const hunkRows = rows.slice(hunk.start, hunk.end + 1)
     const previousHunk = hunks[index - 1]
-    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : 0
+    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : hunk.start
     const items: SideBySideRenderItem[] = []
 
     if (hiddenLineCount > 0) {
@@ -97,7 +97,7 @@ export function buildUnifiedRenderItems(
   return hunks.flatMap((hunk, index) => {
     const hunkRows = rows.slice(hunk.start, hunk.end + 1)
     const previousHunk = hunks[index - 1]
-    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : 0
+    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : hunk.start
     const items: UnifiedRenderItem[] = []
 
     if (hiddenLineCount > 0) {
