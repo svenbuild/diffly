@@ -1668,10 +1668,32 @@ fn comment_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Ma
     let similarity = line_similarity_score(left, right);
 
     if similarity < LINE_PAIR_MIN_SIMILARITY {
-        return None;
+        return (same_comment_prefix(left, right)
+            && left.indentation_depth.abs_diff(right.indentation_depth) <= 4
+            && !left.tokens.is_empty()
+            && !right.tokens.is_empty())
+        .then_some(MatchBand::StrongModified);
     }
 
     Some(MatchBand::StrongModified)
+}
+
+fn same_comment_prefix(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    comment_prefix(&left.trimmed_text) == comment_prefix(&right.trimmed_text)
+}
+
+fn comment_prefix(text: &str) -> &str {
+    if text.starts_with("//") {
+        "//"
+    } else if text.starts_with("/*") {
+        "/*"
+    } else if text.starts_with('*') {
+        "*"
+    } else if text.starts_with("*/") {
+        "*/"
+    } else {
+        ""
+    }
 }
 
 fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand> {
@@ -2873,7 +2895,10 @@ mod tests {
             result.side_by_side[0].left.as_ref().map(|cell| &cell.text),
             Some(text) if text == "// adjust the pointer towards a target RPM or SPEED values"
         ));
-        assert!(result.side_by_side[0].right.is_none());
+        assert!(matches!(
+            result.side_by_side[0].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Map the requested engineering value to a compensated microstep target position."
+        ));
         assert!(matches!(
             result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
             Some(text) if text == "// does the pointer / dial adjustments via a linearisation table"
@@ -2884,29 +2909,97 @@ mod tests {
             Some(text) if text == "// in : RPM or SPEED , out : stepmotor position pos_in_steps"
         ));
         assert!(result.side_by_side[2].right.is_none());
-        assert!(result.side_by_side[3]
-            .left
-            .as_ref()
-            .map(|cell| &cell.text)
-            .is_none());
         assert!(matches!(
             result.side_by_side[3].right.as_ref().map(|cell| &cell.text),
-            Some(text) if text == "// Map the requested engineering value to a compensated microstep target position."
+            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
+        ));
+        assert!(matches!(
+            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
         ));
         assert!(matches!(
             result.side_by_side[4].left.as_ref().map(|cell| &cell.text),
-            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
-        ));
-        assert!(matches!(
-            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
-            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
-        ));
-        assert!(matches!(
-            result.side_by_side[5].left.as_ref().map(|cell| &cell.text),
             Some(text) if text == "{"
         ));
         assert!(matches!(
-            result.side_by_side[5].right.as_ref().map(|cell| &cell.text),
+            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "{"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_pairs_summary_comment_with_first_old_comment_before_function_block() {
+        let temp_root = unique_temp_dir("file-summary-comment-pairs-before-function");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "// Standard calling time is 10ms\n",
+                "// if called slower -> higher damping (e.g. for speed)\n",
+                "void SM_HandlerLS_10ms(void);\n",
+                "void SM_HandlerLS_10ms(void)\n",
+                "{\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "// Update the low-speed pointer target filter that smooths visible needle motion.\n",
+                "void SM_HandlerLS_10ms(void);\n",
+                "void SM_HandlerLS_10ms(void)\n",
+                "{\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[0].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Standard calling time is 10ms"
+        ));
+        assert!(matches!(
+            result.side_by_side[0].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Update the low-speed pointer target filter that smooths visible needle motion."
+        ));
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// if called slower -> higher damping (e.g. for speed)"
+        ));
+        assert!(result.side_by_side[1].right.is_none());
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerLS_10ms(void);"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerLS_10ms(void);"
+        ));
+        assert!(matches!(
+            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerLS_10ms(void)"
+        ));
+        assert!(matches!(
+            result.side_by_side[3].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerLS_10ms(void)"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "{"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
             Some(text) if text == "{"
         ));
 
