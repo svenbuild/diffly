@@ -26,3 +26,7 @@ tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 walkdir = "2.5"
 rfd = "0.15"
+
+[profile.release]
+incremental = true
+opt-level = 2
