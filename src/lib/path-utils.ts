@@ -73,9 +73,7 @@ export function formatCompactPath(path: string, maxSegments = 3) {
   return visibleSegments.join('\\')
 }
 
-export function formatBreadcrumbPath(path: string, maxSegments = 5) {
-  const segments = splitPathSegments(path)
-
+export function formatBreadcrumbSegments(segments: string[], maxSegments = 5) {
   if (segments.length === 0) {
     return ''
   }
@@ -86,6 +84,12 @@ export function formatBreadcrumbPath(path: string, maxSegments = 5) {
 
   const trailingCount = Math.max(maxSegments - 2, 2)
   return [segments[0], '...', ...segments.slice(-trailingCount)].join(' > ')
+}
+
+export function formatBreadcrumbPath(path: string, maxSegments = 5) {
+  const segments = splitPathSegments(path)
+
+  return formatBreadcrumbSegments(segments, maxSegments)
 }
 
 export function formatRelativePathLabel(path: string) {
