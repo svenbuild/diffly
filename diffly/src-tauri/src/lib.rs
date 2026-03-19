@@ -231,11 +231,15 @@ struct LineDescriptor {
     trimmed_text: String,
     normalized_text: String,
     code_signature: String,
+    commented_code_signature: String,
     kind: LineKind,
     tokens: Vec<String>,
+    commented_code_tokens: Vec<String>,
     indentation_depth: usize,
     primary_identifier: String,
+    commented_code_primary_identifier: String,
     is_preprocessor: bool,
+    commented_code_is_preprocessor: bool,
     is_weak_structural: bool,
     match_band_seed: MatchBandSeed,
     identifier_count: usize,
@@ -1650,7 +1654,8 @@ fn pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand>
     match (left.kind, right.kind) {
         (LineKind::Blank, LineKind::Blank) => Some(MatchBand::WeakStructural),
         (LineKind::Blank, _) | (_, LineKind::Blank) => None,
-        (LineKind::CommentOnly, LineKind::Code) | (LineKind::Code, LineKind::CommentOnly) => None,
+        (LineKind::CommentOnly, LineKind::Code) => commented_code_pair_band(left, right),
+        (LineKind::Code, LineKind::CommentOnly) => commented_code_pair_band(right, left),
         (LineKind::CommentOnly, LineKind::CommentOnly) => comment_pair_band(left, right),
         (LineKind::Code, LineKind::Code) => code_pair_band(left, right),
     }
@@ -1694,6 +1699,43 @@ fn comment_prefix(text: &str) -> &str {
     } else {
         ""
     }
+}
+
+fn commented_code_pair_band(comment: &LineDescriptor, code: &LineDescriptor) -> Option<MatchBand> {
+    if comment.commented_code_signature.is_empty() {
+        return None;
+    }
+
+    if comment.commented_code_is_preprocessor != code.is_preprocessor {
+        return None;
+    }
+
+    if !code.code_signature.is_empty() && comment.commented_code_signature == code.code_signature {
+        return Some(if code.is_weak_structural {
+            MatchBand::WeakStructural
+        } else {
+            MatchBand::StrongModified
+        });
+    }
+
+    if code.is_weak_structural {
+        return None;
+    }
+
+    let same_primary_identifier = !comment.commented_code_primary_identifier.is_empty()
+        && comment.commented_code_primary_identifier == code.primary_identifier;
+    let similarity = commented_code_similarity_score(comment, code);
+
+    if comment.commented_code_is_preprocessor {
+        return (same_primary_identifier
+            && preprocessor_family(&comment.commented_code_signature)
+                == preprocessor_family(&code.code_signature)
+            && similarity >= LINE_PAIR_MIN_SIMILARITY - 20)
+            .then_some(MatchBand::StrongModified);
+    }
+
+    (same_primary_identifier && similarity >= LINE_PAIR_MIN_SIMILARITY - 20)
+        .then_some(MatchBand::StrongModified)
 }
 
 fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<MatchBand> {
@@ -1840,6 +1882,31 @@ fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
     }
 }
 
+fn commented_code_similarity_score(comment: &LineDescriptor, code: &LineDescriptor) -> i32 {
+    if comment.commented_code_tokens.is_empty() || code.tokens.is_empty() {
+        return 0;
+    }
+
+    let common_pairs = lcs_pairs(&comment.commented_code_tokens, &code.tokens);
+
+    if common_pairs.is_empty() {
+        return 0;
+    }
+
+    let common_chars = common_pairs
+        .into_iter()
+        .map(|(comment_index, _)| comment.commented_code_tokens[comment_index].chars().count())
+        .sum::<usize>();
+    let total_chars =
+        comment.commented_code_signature.chars().count() + code.code_signature.chars().count();
+
+    if total_chars == 0 {
+        0
+    } else {
+        ((common_chars * 200) / total_chars) as i32
+    }
+}
+
 fn indentation_bonus(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
     let difference = left.indentation_depth.abs_diff(right.indentation_depth);
 
@@ -1857,6 +1924,12 @@ fn build_line_descriptor(text: &str) -> LineDescriptor {
     let kind = classify_line_kind(&trimmed_text);
     let normalized_text = collapse_whitespace(&trimmed_text);
     let is_preprocessor = trimmed_text.starts_with('#');
+    let commented_code_signature = if kind == LineKind::CommentOnly {
+        commented_code_signature(&trimmed_text)
+    } else {
+        String::new()
+    };
+    let commented_code_is_preprocessor = commented_code_signature.starts_with('#');
     let code_signature = if kind == LineKind::Code {
         collapse_whitespace(trim_trailing_line_comment(&trimmed_text).trim())
     } else {
@@ -1882,11 +1955,15 @@ fn build_line_descriptor(text: &str) -> LineDescriptor {
         trimmed_text: trimmed_text.clone(),
         normalized_text,
         code_signature: code_signature.clone(),
+        commented_code_signature: commented_code_signature.clone(),
         kind,
         tokens: tokenize_alignment_tokens(&token_source),
+        commented_code_tokens: tokenize_alignment_tokens(&commented_code_signature),
         indentation_depth: leading_indent_width(text),
         primary_identifier: primary_identifier(&code_signature),
+        commented_code_primary_identifier: primary_identifier(&commented_code_signature),
         is_preprocessor,
+        commented_code_is_preprocessor,
         is_weak_structural,
         match_band_seed: match_band_seed(
             kind,
@@ -1916,6 +1993,42 @@ fn is_comment_only_line(trimmed_text: &str) -> bool {
         || trimmed_text.starts_with("/*")
         || trimmed_text.starts_with("*/")
         || trimmed_text.starts_with('*')
+}
+
+fn commented_code_signature(trimmed_text: &str) -> String {
+    let Some(comment_body) = trimmed_text.strip_prefix("//") else {
+        return String::new();
+    };
+    let uncommented = comment_body.trim_start();
+
+    if !looks_like_commented_code(uncommented) {
+        return String::new();
+    }
+
+    collapse_whitespace(trim_trailing_line_comment(uncommented).trim())
+}
+
+fn looks_like_commented_code(uncommented: &str) -> bool {
+    if uncommented.is_empty() || is_comment_only_line(uncommented) {
+        return false;
+    }
+
+    if uncommented.starts_with('#') {
+        return extract_identifiers(uncommented).len() > 1;
+    }
+
+    let identifiers = extract_identifiers(uncommented);
+
+    if identifiers.is_empty() {
+        return false;
+    }
+
+    uncommented.contains('=')
+        || uncommented.contains('(')
+        || uncommented.contains(')')
+        || uncommented.contains('{')
+        || uncommented.contains('}')
+        || uncommented.ends_with(';')
 }
 
 fn tokenize_alignment_tokens(text: &str) -> Vec<String> {
@@ -3007,6 +3120,53 @@ mod tests {
     }
 
     #[test]
+    fn file_diff_pairs_commented_out_define_with_enabled_define_inline_comment() {
+        let temp_root = unique_temp_dir("file-commented-out-define-pairs-inline");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "#define ULTRON_SM_TEST_ACTIVE\n",
+                "#define ULTRON_TEST_MODE_ACTIVE\n",
+                "//#define ULTRON_LOGGER_MODE_ACTIVE\n",
+                "#define FALSE false\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "#define ULTRON_SM_TEST_ACTIVE\n",
+                "#define ULTRON_TEST_MODE_ACTIVE\n",
+                "#define ULTRON_LOGGER_MODE_ACTIVE    // keep logger output enabled while validating the new SM behavior\n",
+                "#define FALSE false\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "//#define ULTRON_LOGGER_MODE_ACTIVE"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define ULTRON_LOGGER_MODE_ACTIVE    // keep logger output enabled while validating the new SM behavior"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
     fn file_diff_only_pairs_blank_lines_with_blank_lines() {
         let temp_root = unique_temp_dir("file-blank-line-pairing");
         let left = temp_root.join("left.txt");
@@ -3398,5 +3558,16 @@ mod tests {
             ),
             Some(MatchBand::StrongExact)
         ));
+    }
+
+    #[test]
+    fn prose_comment_still_does_not_pair_with_code() {
+        assert!(pair_band(
+            &build_line_descriptor(
+                "// keep logger output enabled while validating the new SM behavior"
+            ),
+            &build_line_descriptor("#define ULTRON_LOGGER_MODE_ACTIVE")
+        )
+        .is_none());
     }
 }
