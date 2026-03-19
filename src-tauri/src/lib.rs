@@ -8,7 +8,7 @@ use std::{
 
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use similar::{ChangeTag, TextDiff};
+use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
 
@@ -17,6 +17,9 @@ const BINARY_SAMPLE_BYTES: usize = 8192;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
 const LINE_PAIR_SIGNATURE_MATCH_SCORE: i32 = 220;
+const LINE_PAIR_NORMALIZED_MATCH_SCORE: i32 = 190;
+const LINE_PAIR_COMMENT_MATCH_SCORE: i32 = 140;
+const LINE_PAIR_BLANK_MATCH_SCORE: i32 = 160;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,7 +172,7 @@ struct UnifiedLine {
     change: DiffChange,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum DiffChange {
     Context,
@@ -189,6 +192,53 @@ enum AlignmentMove {
     Pair,
     LeftOnly,
     RightOnly,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum LineKind {
+    Blank,
+    CommentOnly,
+    Code,
+}
+
+struct LineDescriptor {
+    original_text: String,
+    trimmed_text: String,
+    normalized_text: String,
+    code_signature: String,
+    kind: LineKind,
+    tokens: Vec<String>,
+    indentation_depth: usize,
+    primary_identifier: String,
+}
+
+struct ReplaceBlockAlignment {
+    row_pairs: Vec<(Option<usize>, Option<usize>)>,
+    left_matches: Vec<Option<usize>>,
+    right_matches: Vec<Option<usize>>,
+}
+
+#[derive(Clone, Copy)]
+enum DiffBlock {
+    Equal {
+        old_index: usize,
+        new_index: usize,
+        len: usize,
+    },
+    Delete {
+        old_index: usize,
+        old_len: usize,
+    },
+    Insert {
+        new_index: usize,
+        new_len: usize,
+    },
+    Replace {
+        old_index: usize,
+        old_len: usize,
+        new_index: usize,
+        new_len: usize,
+    },
 }
 
 #[tauri::command]
@@ -580,104 +630,79 @@ fn build_side_by_side<'a>(
     right_lines: &[String],
 ) -> Vec<SideBySideRow> {
     let mut rows = Vec::new();
-    let mut left_pending = Vec::new();
-    let mut right_pending = Vec::new();
-    let mut left_line_number = 1;
-    let mut right_line_number = 1;
-
-    for change in diff.iter_all_changes() {
-        match change.tag() {
-            ChangeTag::Equal => {
-                flush_side_buffer(&mut rows, &mut left_pending, &mut right_pending);
-
-                let left_text = display_line(left_lines, left_line_number, change.value());
-                let right_text = display_line(right_lines, right_line_number, change.value());
-                rows.push(SideBySideRow {
-                    left: Some(DiffCell {
-                        line_number: Some(left_line_number),
-                        prefix: " ".to_string(),
-                        text: left_text.clone(),
-                        segments: plain_segments(&left_text, false),
-                        change: DiffChange::Context,
-                    }),
-                    right: Some(DiffCell {
-                        line_number: Some(right_line_number),
-                        prefix: " ".to_string(),
-                        text: right_text.clone(),
-                        segments: plain_segments(&right_text, false),
-                        change: DiffChange::Context,
-                    }),
-                });
-
-                left_line_number += 1;
-                right_line_number += 1;
+    for block in diff_blocks(diff) {
+        match block {
+            DiffBlock::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for offset in 0..len {
+                    rows.push(SideBySideRow {
+                        left: Some(build_context_cell(left_lines, old_index + offset)),
+                        right: Some(build_context_cell(right_lines, new_index + offset)),
+                    });
+                }
             }
-            ChangeTag::Delete => {
-                left_pending.push(DiffCell {
-                    line_number: Some(left_line_number),
-                    prefix: "-".to_string(),
-                    text: display_line(left_lines, left_line_number, change.value()),
-                    segments: Vec::new(),
-                    change: DiffChange::Delete,
-                });
+            DiffBlock::Delete { old_index, old_len } => {
+                let left_cells =
+                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
 
-                left_line_number += 1;
+                for left_cell in left_cells {
+                    rows.push(SideBySideRow {
+                        left: Some(fill_cell_segments(left_cell, false)),
+                        right: None,
+                    });
+                }
             }
-            ChangeTag::Insert => {
-                right_pending.push(DiffCell {
-                    line_number: Some(right_line_number),
-                    prefix: "+".to_string(),
-                    text: display_line(right_lines, right_line_number, change.value()),
-                    segments: Vec::new(),
-                    change: DiffChange::Insert,
-                });
+            DiffBlock::Insert { new_index, new_len } => {
+                let right_cells =
+                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
 
-                right_line_number += 1;
+                for right_cell in right_cells {
+                    rows.push(SideBySideRow {
+                        left: None,
+                        right: Some(fill_cell_segments(right_cell, false)),
+                    });
+                }
+            }
+            DiffBlock::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let left_cells =
+                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
+                let right_cells =
+                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
+                let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+                for (left_match, right_match) in alignment.row_pairs {
+                    let left_cell = left_match.and_then(|index| left_cells.get(index).cloned());
+                    let right_cell = right_match.and_then(|index| right_cells.get(index).cloned());
+
+                    match (left_cell, right_cell) {
+                        (Some(left_cell), Some(right_cell)) => {
+                            let (left, right) = highlight_side_by_side_pair(left_cell, right_cell);
+                            rows.push(SideBySideRow { left, right });
+                        }
+                        (Some(left_cell), None) => rows.push(SideBySideRow {
+                            left: Some(fill_cell_segments(left_cell, false)),
+                            right: None,
+                        }),
+                        (None, Some(right_cell)) => rows.push(SideBySideRow {
+                            left: None,
+                            right: Some(fill_cell_segments(right_cell, false)),
+                        }),
+                        (None, None) => {}
+                    }
+                }
             }
         }
     }
 
-    flush_side_buffer(&mut rows, &mut left_pending, &mut right_pending);
     rows
-}
-
-fn flush_side_buffer(
-    rows: &mut Vec<SideBySideRow>,
-    left_pending: &mut Vec<DiffCell>,
-    right_pending: &mut Vec<DiffCell>,
-) {
-    for (left_index, right_index) in align_change_buffers(
-        &left_pending
-            .iter()
-            .map(|cell| cell.text.as_str())
-            .collect::<Vec<_>>(),
-        &right_pending
-            .iter()
-            .map(|cell| cell.text.as_str())
-            .collect::<Vec<_>>(),
-    ) {
-        let left_cell = left_index.and_then(|index| left_pending.get(index).cloned());
-        let right_cell = right_index.and_then(|index| right_pending.get(index).cloned());
-
-        match (left_cell, right_cell) {
-            (Some(left), Some(right)) => {
-                let (left, right) = highlight_side_by_side_pair(left, right);
-                rows.push(SideBySideRow { left, right });
-            }
-            (Some(left), None) => rows.push(SideBySideRow {
-                left: Some(fill_cell_segments(left, false)),
-                right: None,
-            }),
-            (None, Some(right)) => rows.push(SideBySideRow {
-                left: None,
-                right: Some(fill_cell_segments(right, false)),
-            }),
-            (None, None) => {}
-        }
-    }
-
-    left_pending.clear();
-    right_pending.clear();
 }
 
 fn build_unified<'a>(
@@ -686,60 +711,155 @@ fn build_unified<'a>(
     right_lines: &[String],
 ) -> Vec<UnifiedLine> {
     let mut lines = Vec::new();
-    let mut delete_pending = Vec::new();
-    let mut insert_pending = Vec::new();
-    let mut left_line_number = 1;
-    let mut right_line_number = 1;
-
-    for change in diff.iter_all_changes() {
-        match change.tag() {
-            ChangeTag::Equal => {
-                flush_unified_buffer(&mut lines, &mut delete_pending, &mut insert_pending);
-
-                let text = display_line(left_lines, left_line_number, change.value());
-                lines.push(UnifiedLine {
-                    left_line_number: Some(left_line_number),
-                    right_line_number: Some(right_line_number),
-                    prefix: " ".to_string(),
-                    text: text.clone(),
-                    segments: plain_segments(&text, false),
-                    change: DiffChange::Context,
-                });
-
-                left_line_number += 1;
-                right_line_number += 1;
+    for block in diff_blocks(diff) {
+        match block {
+            DiffBlock::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for offset in 0..len {
+                    let text = display_line(left_lines, old_index + offset + 1, "");
+                    lines.push(UnifiedLine {
+                        left_line_number: Some(old_index + offset + 1),
+                        right_line_number: Some(new_index + offset + 1),
+                        prefix: " ".to_string(),
+                        text: text.clone(),
+                        segments: plain_segments(&text, false),
+                        change: DiffChange::Context,
+                    });
+                }
             }
-            ChangeTag::Delete => {
-                let text = clean_line(change.value());
-                delete_pending.push(UnifiedLine {
-                    left_line_number: Some(left_line_number),
-                    right_line_number: None,
-                    prefix: "-".to_string(),
-                    text: display_line(left_lines, left_line_number, &text),
-                    segments: Vec::new(),
-                    change: DiffChange::Delete,
-                });
+            DiffBlock::Delete { old_index, old_len } => {
+                let left_cells =
+                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
 
-                left_line_number += 1;
+                for left_cell in left_cells {
+                    lines.push(unified_from_left_cell(&left_cell, None));
+                }
             }
-            ChangeTag::Insert => {
-                let text = clean_line(change.value());
-                insert_pending.push(UnifiedLine {
-                    left_line_number: None,
-                    right_line_number: Some(right_line_number),
-                    prefix: "+".to_string(),
-                    text: display_line(right_lines, right_line_number, &text),
-                    segments: Vec::new(),
-                    change: DiffChange::Insert,
-                });
+            DiffBlock::Insert { new_index, new_len } => {
+                let right_cells =
+                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
 
-                right_line_number += 1;
+                for right_cell in right_cells {
+                    lines.push(unified_from_right_cell(&right_cell, None));
+                }
+            }
+            DiffBlock::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let left_cells =
+                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
+                let right_cells =
+                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
+                let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+                for (index, left_cell) in left_cells.iter().enumerate() {
+                    let counterpart = alignment.left_matches[index]
+                        .and_then(|right_index| right_cells.get(right_index));
+                    lines.push(unified_from_left_cell(left_cell, counterpart));
+                }
+
+                for (index, right_cell) in right_cells.iter().enumerate() {
+                    let counterpart = alignment.right_matches[index]
+                        .and_then(|left_index| left_cells.get(left_index));
+                    lines.push(unified_from_right_cell(right_cell, counterpart));
+                }
             }
         }
     }
 
-    flush_unified_buffer(&mut lines, &mut delete_pending, &mut insert_pending);
     lines
+}
+
+fn diff_blocks<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<DiffBlock> {
+    let ops = diff.ops();
+    let mut blocks = Vec::new();
+    let mut index = 0;
+
+    while index < ops.len() {
+        match ops[index] {
+            DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                blocks.push(DiffBlock::Equal {
+                    old_index,
+                    new_index,
+                    len,
+                });
+                index += 1;
+            }
+            _ => {
+                let mut old_index = None;
+                let mut new_index = None;
+                let mut old_len = 0;
+                let mut new_len = 0;
+
+                while index < ops.len() {
+                    match ops[index] {
+                        DiffOp::Equal { .. } => break,
+                        DiffOp::Delete {
+                            old_index: current_old_index,
+                            old_len: current_old_len,
+                            new_index: current_new_index,
+                        } => {
+                            old_index.get_or_insert(current_old_index);
+                            new_index.get_or_insert(current_new_index);
+                            old_len += current_old_len;
+                        }
+                        DiffOp::Insert {
+                            old_index: current_old_index,
+                            new_index: current_new_index,
+                            new_len: current_new_len,
+                        } => {
+                            old_index.get_or_insert(current_old_index);
+                            new_index.get_or_insert(current_new_index);
+                            new_len += current_new_len;
+                        }
+                        DiffOp::Replace {
+                            old_index: current_old_index,
+                            old_len: current_old_len,
+                            new_index: current_new_index,
+                            new_len: current_new_len,
+                        } => {
+                            old_index.get_or_insert(current_old_index);
+                            new_index.get_or_insert(current_new_index);
+                            old_len += current_old_len;
+                            new_len += current_new_len;
+                        }
+                    }
+
+                    index += 1;
+                }
+
+                match (old_len, new_len) {
+                    (0, 0) => {}
+                    (0, current_new_len) => blocks.push(DiffBlock::Insert {
+                        new_index: new_index.unwrap_or(0),
+                        new_len: current_new_len,
+                    }),
+                    (current_old_len, 0) => blocks.push(DiffBlock::Delete {
+                        old_index: old_index.unwrap_or(0),
+                        old_len: current_old_len,
+                    }),
+                    (current_old_len, current_new_len) => blocks.push(DiffBlock::Replace {
+                        old_index: old_index.unwrap_or(0),
+                        old_len: current_old_len,
+                        new_index: new_index.unwrap_or(0),
+                        new_len: current_new_len,
+                    }),
+                }
+            }
+        }
+    }
+
+    blocks
 }
 
 fn fill_cell_segments(mut cell: DiffCell, highlighted: bool) -> DiffCell {
@@ -765,62 +885,6 @@ fn highlight_side_by_side_pair(
     )
 }
 
-fn flush_unified_buffer(
-    lines: &mut Vec<UnifiedLine>,
-    delete_pending: &mut Vec<UnifiedLine>,
-    insert_pending: &mut Vec<UnifiedLine>,
-) {
-    let mut delete_matches = vec![None; delete_pending.len()];
-    let mut insert_matches = vec![None; insert_pending.len()];
-
-    for (left_index, right_index) in align_change_buffers(
-        &delete_pending
-            .iter()
-            .map(|line| line.text.as_str())
-            .collect::<Vec<_>>(),
-        &insert_pending
-            .iter()
-            .map(|line| line.text.as_str())
-            .collect::<Vec<_>>(),
-    ) {
-        if let (Some(delete_index), Some(insert_index)) = (left_index, right_index) {
-            delete_matches[delete_index] = Some(insert_index);
-            insert_matches[insert_index] = Some(delete_index);
-        }
-    }
-
-    for (index, pending_line) in delete_pending.iter().cloned().enumerate() {
-        let mut line = pending_line;
-
-        if let Some(counterpart_index) = delete_matches[index] {
-            let counterpart = &insert_pending[counterpart_index];
-            let (segments, _) = highlight_segments(&line.text, &counterpart.text);
-            line.segments = segments;
-        } else {
-            line.segments = plain_segments(&line.text, false);
-        }
-
-        lines.push(line);
-    }
-
-    for (index, pending_line) in insert_pending.iter().cloned().enumerate() {
-        let mut line = pending_line;
-
-        if let Some(counterpart_index) = insert_matches[index] {
-            let counterpart = &delete_pending[counterpart_index];
-            let (_, segments) = highlight_segments(&counterpart.text, &line.text);
-            line.segments = segments;
-        } else {
-            line.segments = plain_segments(&line.text, false);
-        }
-
-        lines.push(line);
-    }
-
-    delete_pending.clear();
-    insert_pending.clear();
-}
-
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
     vec![DiffSegment {
         text: text.to_string(),
@@ -828,23 +892,203 @@ fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
     }]
 }
 
-fn align_change_buffers(
-    left_lines: &[&str],
-    right_lines: &[&str],
-) -> Vec<(Option<usize>, Option<usize>)> {
-    let mut scores = vec![vec![0; right_lines.len() + 1]; left_lines.len() + 1];
-    let mut moves = vec![vec![None; right_lines.len() + 1]; left_lines.len() + 1];
+fn build_context_cell(lines: &[String], index: usize) -> DiffCell {
+    let text = lines.get(index).cloned().unwrap_or_default();
 
-    for left_index in (0..=left_lines.len()).rev() {
-        for right_index in (0..=right_lines.len()).rev() {
-            if left_index == left_lines.len() && right_index == right_lines.len() {
+    DiffCell {
+        line_number: Some(index + 1),
+        prefix: " ".to_string(),
+        text: text.clone(),
+        segments: plain_segments(&text, false),
+        change: DiffChange::Context,
+    }
+}
+
+fn build_changed_cells(
+    lines: &[String],
+    start_index: usize,
+    len: usize,
+    change: DiffChange,
+) -> Vec<DiffCell> {
+    let prefix = match change {
+        DiffChange::Delete => "-",
+        DiffChange::Insert => "+",
+        DiffChange::Context => " ",
+    };
+
+    (0..len)
+        .map(|offset| {
+            let line_index = start_index + offset;
+            let text = lines.get(line_index).cloned().unwrap_or_default();
+
+            DiffCell {
+                line_number: Some(line_index + 1),
+                prefix: prefix.to_string(),
+                text,
+                segments: Vec::new(),
+                change,
+            }
+        })
+        .collect()
+}
+
+fn unified_from_left_cell(left_cell: &DiffCell, counterpart: Option<&DiffCell>) -> UnifiedLine {
+    let segments = counterpart
+        .map(|right_cell| highlight_segments(&left_cell.text, &right_cell.text).0)
+        .unwrap_or_else(|| plain_segments(&left_cell.text, false));
+
+    UnifiedLine {
+        left_line_number: left_cell.line_number,
+        right_line_number: None,
+        prefix: left_cell.prefix.clone(),
+        text: left_cell.text.clone(),
+        segments,
+        change: DiffChange::Delete,
+    }
+}
+
+fn unified_from_right_cell(right_cell: &DiffCell, counterpart: Option<&DiffCell>) -> UnifiedLine {
+    let segments = counterpart
+        .map(|left_cell| highlight_segments(&left_cell.text, &right_cell.text).1)
+        .unwrap_or_else(|| plain_segments(&right_cell.text, false));
+
+    UnifiedLine {
+        left_line_number: None,
+        right_line_number: right_cell.line_number,
+        prefix: right_cell.prefix.clone(),
+        text: right_cell.text.clone(),
+        segments,
+        change: DiffChange::Insert,
+    }
+}
+
+fn align_replace_block_rows(
+    left_cells: &[DiffCell],
+    right_cells: &[DiffCell],
+) -> ReplaceBlockAlignment {
+    let left_descriptors = left_cells
+        .iter()
+        .map(|cell| build_line_descriptor(&cell.text))
+        .collect::<Vec<_>>();
+    let right_descriptors = right_cells
+        .iter()
+        .map(|cell| build_line_descriptor(&cell.text))
+        .collect::<Vec<_>>();
+    let anchors = exact_code_anchor_pairs(&left_descriptors, &right_descriptors);
+    let mut row_pairs = Vec::new();
+    let mut left_cursor = 0;
+    let mut right_cursor = 0;
+
+    for (left_anchor, right_anchor) in anchors {
+        append_aligned_subrange(
+            &mut row_pairs,
+            &left_descriptors[left_cursor..left_anchor],
+            &right_descriptors[right_cursor..right_anchor],
+            left_cursor,
+            right_cursor,
+        );
+        row_pairs.push((Some(left_anchor), Some(right_anchor)));
+        left_cursor = left_anchor + 1;
+        right_cursor = right_anchor + 1;
+    }
+
+    append_aligned_subrange(
+        &mut row_pairs,
+        &left_descriptors[left_cursor..],
+        &right_descriptors[right_cursor..],
+        left_cursor,
+        right_cursor,
+    );
+
+    let mut left_matches = vec![None; left_cells.len()];
+    let mut right_matches = vec![None; right_cells.len()];
+
+    for (left_match, right_match) in &row_pairs {
+        if let (Some(left_index), Some(right_index)) = (*left_match, *right_match) {
+            left_matches[left_index] = Some(right_index);
+            right_matches[right_index] = Some(left_index);
+        }
+    }
+
+    ReplaceBlockAlignment {
+        row_pairs,
+        left_matches,
+        right_matches,
+    }
+}
+
+fn append_aligned_subrange(
+    row_pairs: &mut Vec<(Option<usize>, Option<usize>)>,
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+    left_offset: usize,
+    right_offset: usize,
+) {
+    for (left_match, right_match) in align_replace_subrange(left_descriptors, right_descriptors) {
+        row_pairs.push((
+            left_match.map(|index| index + left_offset),
+            right_match.map(|index| index + right_offset),
+        ));
+    }
+}
+
+fn exact_code_anchor_pairs(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) -> Vec<(usize, usize)> {
+    let left_candidates = left_descriptors
+        .iter()
+        .enumerate()
+        .filter(|(_, descriptor)| {
+            descriptor.kind == LineKind::Code && !descriptor.code_signature.is_empty()
+        })
+        .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
+        .collect::<Vec<_>>();
+    let right_candidates = right_descriptors
+        .iter()
+        .enumerate()
+        .filter(|(_, descriptor)| {
+            descriptor.kind == LineKind::Code && !descriptor.code_signature.is_empty()
+        })
+        .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
+        .collect::<Vec<_>>();
+    let left_signatures = left_candidates
+        .iter()
+        .map(|(_, signature)| signature.clone())
+        .collect::<Vec<_>>();
+    let right_signatures = right_candidates
+        .iter()
+        .map(|(_, signature)| signature.clone())
+        .collect::<Vec<_>>();
+
+    lcs_pairs(&left_signatures, &right_signatures)
+        .into_iter()
+        .map(|(left_index, right_index)| {
+            (
+                left_candidates[left_index].0,
+                right_candidates[right_index].0,
+            )
+        })
+        .collect()
+}
+
+fn align_replace_subrange(
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) -> Vec<(Option<usize>, Option<usize>)> {
+    let mut scores = vec![vec![0; right_descriptors.len() + 1]; left_descriptors.len() + 1];
+    let mut moves = vec![vec![None; right_descriptors.len() + 1]; left_descriptors.len() + 1];
+
+    for left_index in (0..=left_descriptors.len()).rev() {
+        for right_index in (0..=right_descriptors.len()).rev() {
+            if left_index == left_descriptors.len() && right_index == right_descriptors.len() {
                 continue;
             }
 
             let mut best_score = i32::MIN;
             let mut best_move = None;
 
-            if left_index < left_lines.len() {
+            if left_index < left_descriptors.len() {
                 let candidate = scores[left_index + 1][right_index] - LINE_PAIR_GAP_PENALTY;
 
                 if candidate > best_score {
@@ -853,7 +1097,7 @@ fn align_change_buffers(
                 }
             }
 
-            if right_index < right_lines.len() {
+            if right_index < right_descriptors.len() {
                 let candidate = scores[left_index][right_index + 1] - LINE_PAIR_GAP_PENALTY;
 
                 if candidate > best_score {
@@ -862,10 +1106,11 @@ fn align_change_buffers(
                 }
             }
 
-            if left_index < left_lines.len() && right_index < right_lines.len() {
-                if let Some(pair_score) =
-                    line_pair_score(left_lines[left_index], right_lines[right_index])
-                {
+            if left_index < left_descriptors.len() && right_index < right_descriptors.len() {
+                if let Some(pair_score) = line_pair_score(
+                    &left_descriptors[left_index],
+                    &right_descriptors[right_index],
+                ) {
                     let candidate = scores[left_index + 1][right_index + 1] + pair_score;
 
                     if candidate >= best_score {
@@ -884,7 +1129,7 @@ fn align_change_buffers(
     let mut right_index = 0;
     let mut aligned = Vec::new();
 
-    while left_index < left_lines.len() || right_index < right_lines.len() {
+    while left_index < left_descriptors.len() || right_index < right_descriptors.len() {
         match moves[left_index][right_index] {
             Some(AlignmentMove::Pair) => {
                 aligned.push((Some(left_index), Some(right_index)));
@@ -906,50 +1151,229 @@ fn align_change_buffers(
     aligned
 }
 
-fn line_pair_score(left: &str, right: &str) -> Option<i32> {
-    let left_length = left.chars().count();
-    let right_length = right.chars().count();
+fn line_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+    match (left.kind, right.kind) {
+        (LineKind::Blank, LineKind::Blank) => Some(LINE_PAIR_BLANK_MATCH_SCORE),
+        (LineKind::Blank, _) | (_, LineKind::Blank) => None,
+        (LineKind::CommentOnly, LineKind::Code) | (LineKind::Code, LineKind::CommentOnly) => None,
+        (LineKind::CommentOnly, LineKind::CommentOnly) => comment_pair_score(left, right),
+        (LineKind::Code, LineKind::Code) => code_pair_score(left, right),
+    }
+}
 
-    if left_length == 0 && right_length == 0 {
-        return Some(100);
+fn comment_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+    if left.trimmed_text == right.trimmed_text {
+        return Some(LINE_PAIR_NORMALIZED_MATCH_SCORE);
     }
 
-    let left_signature = alignment_signature(left);
-    let right_signature = alignment_signature(right);
+    if left.normalized_text == right.normalized_text {
+        return Some(LINE_PAIR_COMMENT_MATCH_SCORE);
+    }
 
-    if !left_signature.is_empty() && left_signature == right_signature {
+    let similarity = line_similarity_score(left, right);
+
+    if similarity < LINE_PAIR_MIN_SIMILARITY {
+        return None;
+    }
+
+    Some(LINE_PAIR_COMMENT_MATCH_SCORE + similarity / 3 + indentation_bonus(left, right))
+}
+
+fn code_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+    if !left.code_signature.is_empty() && left.code_signature == right.code_signature {
         return Some(LINE_PAIR_SIGNATURE_MATCH_SCORE);
     }
 
-    let left_tokens = tokenize_inline_diff(left);
-    let right_tokens = tokenize_inline_diff(right);
-    let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
+    if left.trimmed_text == right.trimmed_text || left.normalized_text == right.normalized_text {
+        return Some(LINE_PAIR_NORMALIZED_MATCH_SCORE + indentation_bonus(left, right));
+    }
+
+    let similarity = line_similarity_score(left, right);
+    let same_primary_identifier =
+        !left.primary_identifier.is_empty() && left.primary_identifier == right.primary_identifier;
+
+    if same_primary_identifier {
+        if similarity < LINE_PAIR_MIN_SIMILARITY - 15 {
+            return None;
+        }
+
+        return Some(150 + similarity / 2 + indentation_bonus(left, right));
+    }
+
+    if similarity < LINE_PAIR_MIN_SIMILARITY + 20 {
+        return None;
+    }
+
+    Some(100 + similarity / 2 + indentation_bonus(left, right))
+}
+
+fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
+    if left.tokens.is_empty() || right.tokens.is_empty() {
+        return 0;
+    }
+
+    let common_pairs = lcs_pairs(&left.tokens, &right.tokens);
 
     if common_pairs.is_empty() {
-        return None;
+        return 0;
     }
 
     let common_chars = common_pairs
         .into_iter()
-        .map(|(left_index, _)| left_tokens[left_index].chars().count())
+        .map(|(left_index, _)| left.tokens[left_index].chars().count())
         .sum::<usize>();
-    let similarity = ((common_chars * 200) / (left_length + right_length)) as i32;
+    let total_chars = left.original_text.chars().count() + right.original_text.chars().count();
 
-    (similarity >= LINE_PAIR_MIN_SIMILARITY).then_some(similarity)
+    if total_chars == 0 {
+        0
+    } else {
+        ((common_chars * 200) / total_chars) as i32
+    }
 }
 
-fn alignment_signature(line: &str) -> String {
-    let trimmed = line.trim();
+fn indentation_bonus(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
+    let difference = left.indentation_depth.abs_diff(right.indentation_depth);
 
-    if trimmed.is_empty() {
+    if difference == 0 {
+        10
+    } else if difference <= 2 {
+        4
+    } else {
+        0
+    }
+}
+
+fn build_line_descriptor(text: &str) -> LineDescriptor {
+    let trimmed_text = text.trim().to_string();
+    let kind = classify_line_kind(&trimmed_text);
+    let normalized_text = collapse_whitespace(&trimmed_text);
+    let code_signature = if kind == LineKind::Code {
+        collapse_whitespace(trim_trailing_line_comment(&trimmed_text).trim())
+    } else {
+        String::new()
+    };
+    let token_source = match kind {
+        LineKind::Blank => String::new(),
+        LineKind::CommentOnly => normalized_text.clone(),
+        LineKind::Code => {
+            if code_signature.is_empty() {
+                normalized_text.clone()
+            } else {
+                code_signature.clone()
+            }
+        }
+    };
+
+    LineDescriptor {
+        original_text: text.to_string(),
+        trimmed_text,
+        normalized_text,
+        code_signature: code_signature.clone(),
+        kind,
+        tokens: tokenize_alignment_tokens(&token_source),
+        indentation_depth: leading_indent_width(text),
+        primary_identifier: primary_identifier(&code_signature),
+    }
+}
+
+fn classify_line_kind(trimmed_text: &str) -> LineKind {
+    if trimmed_text.is_empty() {
+        return LineKind::Blank;
+    }
+
+    if is_comment_only_line(trimmed_text) {
+        LineKind::CommentOnly
+    } else {
+        LineKind::Code
+    }
+}
+
+fn is_comment_only_line(trimmed_text: &str) -> bool {
+    trimmed_text.starts_with("//")
+        || trimmed_text.starts_with("/*")
+        || trimmed_text.starts_with("*/")
+        || trimmed_text.starts_with('*')
+}
+
+fn tokenize_alignment_tokens(text: &str) -> Vec<String> {
+    tokenize_inline_diff(text)
+        .into_iter()
+        .filter(|token| !token.chars().all(|character| character.is_whitespace()))
+        .collect()
+}
+
+fn leading_indent_width(text: &str) -> usize {
+    text.chars()
+        .take_while(|character| character.is_whitespace())
+        .count()
+}
+
+fn primary_identifier(signature: &str) -> String {
+    let identifiers = extract_identifiers(signature);
+
+    if identifiers.is_empty() {
         return String::new();
     }
 
-    if let Some(comment_body) = trimmed.strip_prefix("//") {
-        return collapse_whitespace(comment_body);
+    if signature.trim_start().starts_with("#define") && identifiers.len() > 1 {
+        return identifiers[1].clone();
     }
 
-    collapse_whitespace(trim_trailing_line_comment(trimmed))
+    identifiers
+        .into_iter()
+        .find(|identifier| !is_noise_identifier(identifier))
+        .unwrap_or_default()
+}
+
+fn extract_identifiers(text: &str) -> Vec<String> {
+    let mut identifiers = Vec::new();
+    let mut current = String::new();
+
+    for character in text.chars() {
+        if character.is_alphanumeric() || character == '_' {
+            current.push(character);
+            continue;
+        }
+
+        if !current.is_empty() {
+            identifiers.push(current);
+            current = String::new();
+        }
+    }
+
+    if !current.is_empty() {
+        identifiers.push(current);
+    }
+
+    identifiers
+}
+
+fn is_noise_identifier(identifier: &str) -> bool {
+    matches!(
+        identifier,
+        "define"
+            | "static"
+            | "const"
+            | "volatile"
+            | "extern"
+            | "inline"
+            | "void"
+            | "char"
+            | "short"
+            | "int"
+            | "long"
+            | "float"
+            | "double"
+            | "signed"
+            | "unsigned"
+            | "uint8_t"
+            | "uint16_t"
+            | "uint32_t"
+            | "int8_t"
+            | "int16_t"
+            | "int32_t"
+            | "bool"
+    )
 }
 
 fn trim_trailing_line_comment(line: &str) -> &str {
@@ -959,8 +1383,8 @@ fn trim_trailing_line_comment(line: &str) -> &str {
     let mut index = 0;
 
     while index + 1 < characters.len() {
-        let (_, current) = characters[index];
-        let (byte_index, next) = characters[index + 1];
+        let (current_byte_index, current) = characters[index];
+        let (_, next) = characters[index + 1];
 
         if escaped {
             escaped = false;
@@ -981,7 +1405,7 @@ fn trim_trailing_line_comment(line: &str) -> &str {
         }
 
         if !quoted && current == '/' && next == '/' {
-            return &line[..byte_index];
+            return &line[..current_byte_index];
         }
 
         index += 1;
@@ -1613,5 +2037,337 @@ mod tests {
         ));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_keeps_define_aligned_after_deleted_comment_line() {
+        let temp_root = unique_temp_dir("file-deleted-comment-before-define");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "// T_WAIT multiplied by refresh rate (1ms) is the stabilizing time per full step\n",
+                "#define T_WAIT 10\n",
+                "// Fix comma is 7 bit\n",
+                "#define KOMMA 128\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "#define T_WAIT 10    // settling time in 1 ms steps before ADC sampling\n",
+                "#define KOMMA 128    // fixed-point scaling used by the motion filter\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[0].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// T_WAIT multiplied by refresh rate (1ms) is the stabilizing time per full step"
+        ));
+        assert!(result.side_by_side[0].right.is_none());
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define T_WAIT 10"
+        ));
+        assert!(matches!(
+            result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define T_WAIT 10    // settling time in 1 ms steps before ADC sampling"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Fix comma is 7 bit"
+        ));
+        assert!(result.side_by_side[2].right.is_none());
+        assert!(matches!(
+            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define KOMMA 128"
+        ));
+        assert!(matches!(
+            result.side_by_side[3].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define KOMMA 128    // fixed-point scaling used by the motion filter"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_resyncs_before_unchanged_function_after_comment_rewrite() {
+        let temp_root = unique_temp_dir("file-comment-rewrite-before-function");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "// adjust the pointer towards a target RPM or SPEED values\n",
+                "// does the pointer / dial adjustments via a linearisation table\n",
+                "// in : RPM or SPEED , out : stepmotor position pos_in_steps\n",
+                "int32_t SM_AdjustPosition(int32_t targetPos)\n",
+                "{\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "// Map the requested engineering value to a compensated microstep target position.\n",
+                "int32_t SM_AdjustPosition(int32_t targetPos)\n",
+                "{\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[0].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// adjust the pointer towards a target RPM or SPEED values"
+        ));
+        assert!(result.side_by_side[0].right.is_none());
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// does the pointer / dial adjustments via a linearisation table"
+        ));
+        assert!(result.side_by_side[1].right.is_none());
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// in : RPM or SPEED , out : stepmotor position pos_in_steps"
+        ));
+        assert!(result.side_by_side[2].right.is_none());
+        assert!(matches!(
+            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
+            None
+        ));
+        assert!(matches!(
+            result.side_by_side[3].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Map the requested engineering value to a compensated microstep target position."
+        ));
+        assert!(matches!(
+            result.side_by_side[4].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "int32_t SM_AdjustPosition(int32_t targetPos)"
+        ));
+        assert!(matches!(
+            result.side_by_side[5].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "{"
+        ));
+        assert!(matches!(
+            result.side_by_side[5].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "{"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_only_pairs_blank_lines_with_blank_lines() {
+        let temp_root = unique_temp_dir("file-blank-line-pairing");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "alpha\n",
+                "\n",
+                "// called every 1ms\n",
+                "void SM_HandlerHS_1ms(void);\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "alpha\n",
+                "// Execute the 1 ms homing and runtime motor drive state machine.\n",
+                "\n",
+                "void SM_HandlerHS_1ms(void);\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// Execute the 1 ms homing and runtime motor drive state machine."
+        ));
+        assert!(result.side_by_side[1].left.is_none());
+        assert!(matches!(
+            result.side_by_side[2]
+                .left
+                .as_ref()
+                .map(|cell| cell.text.as_str()),
+            Some("")
+        ));
+        assert!(matches!(
+            result.side_by_side[2]
+                .right
+                .as_ref()
+                .map(|cell| cell.text.as_str()),
+            Some("")
+        ));
+        assert!(matches!(
+            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// called every 1ms"
+        ));
+        assert!(result.side_by_side[3].right.is_none());
+        assert!(matches!(
+            result.side_by_side[4].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerHS_1ms(void);"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "void SM_HandlerHS_1ms(void);"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_pairs_changed_literal_on_same_statement_row() {
+        let temp_root = unique_temp_dir("file-changed-literal-same-row");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!("void tune(void)\n", "{\n", "    damp_fact = 16;\n", "}\n"),
+        );
+        write_temp_file(
+            &right,
+            concat!("void tune(void)\n", "{\n", "    damp_fact = 8;\n", "}\n"),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "    damp_fact = 16;"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "    damp_fact = 8;"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_resyncs_immediately_after_deleted_comment_before_function_declaration() {
+        let temp_root = unique_temp_dir("file-comment-delete-before-function");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "// invoked by the 1 ms scheduler\n",
+                "static void SM_UpdateState(uint16_t flags);\n",
+                "static void SM_ResetFaults(void);\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "static void SM_UpdateState(uint16_t flags);\n",
+                "static void SM_ResetFaults(void);\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[0].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "// invoked by the 1 ms scheduler"
+        ));
+        assert!(result.side_by_side[0].right.is_none());
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_UpdateState(uint16_t flags);"
+        ));
+        assert!(matches!(
+            result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_UpdateState(uint16_t flags);"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_ResetFaults(void);"
+        ));
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_ResetFaults(void);"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn exact_code_anchor_pairs_match_defines_with_inline_comments() {
+        let left = vec![
+            build_line_descriptor(
+                "// T_WAIT multiplied by refresh rate (1ms) is the stabilizing time per full step",
+            ),
+            build_line_descriptor("#define T_WAIT 10"),
+            build_line_descriptor("// Fix comma is 7 bit"),
+            build_line_descriptor("#define KOMMA 128"),
+        ];
+        let right = vec![
+            build_line_descriptor(
+                "#define T_WAIT 10    // settling time in 1 ms steps before ADC sampling",
+            ),
+            build_line_descriptor(
+                "#define KOMMA 128    // fixed-point scaling used by the motion filter",
+            ),
+        ];
+
+        assert_eq!(left[1].code_signature, "#define T_WAIT 10");
+        assert_eq!(left[3].code_signature, "#define KOMMA 128");
+        assert_eq!(right[0].code_signature, "#define T_WAIT 10");
+        assert_eq!(right[1].code_signature, "#define KOMMA 128");
+        assert_eq!(exact_code_anchor_pairs(&left, &right), vec![(1, 0), (3, 1)]);
     }
 }
