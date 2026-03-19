@@ -1039,7 +1039,8 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .pane-grid,
-.unified-grid {
+.unified-grid,
+.unified-content-grid {
   font-family: var(--code);
   font-size: 0.71rem;
   line-height: 1.45;
@@ -1047,6 +1048,11 @@ button.filter-chip.tooLarge:focus-visible {
 
 .unified-grid {
   align-content: start;
+}
+
+.pane-grid,
+.unified-content-grid {
+  min-width: 100%;
 }
 
 .hunk-row,
@@ -1064,6 +1070,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .collapsed-row {
+  position: relative;
   min-height: 30px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--diff-divider);
@@ -1075,6 +1082,9 @@ button.filter-chip.tooLarge:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: sticky;
+  left: 8px;
+  z-index: 4;
   width: fit-content;
   min-height: 20px;
   padding: 2px 10px;
