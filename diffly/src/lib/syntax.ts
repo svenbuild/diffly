@@ -7,7 +7,13 @@ import 'prismjs/components/prism-json'
 import 'prismjs/components/prism-markup'
 import 'prismjs/components/prism-css'
 import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-jsx'
 import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-tsx'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-markdown'
+import 'prismjs/components/prism-python'
+import 'prismjs/components/prism-yaml'
 
 import type { DiffSegment } from './types'
 
@@ -19,9 +25,15 @@ type SyntaxLanguage =
   | 'rust'
   | 'json'
   | 'javascript'
+  | 'jsx'
   | 'typescript'
+  | 'tsx'
   | 'markup'
   | 'css'
+  | 'bash'
+  | 'markdown'
+  | 'python'
+  | 'yaml'
 
 interface SyntaxPiece {
   text: string
@@ -58,10 +70,14 @@ export function detectSyntaxLanguage(path: string) {
     case 'mjs':
     case 'cjs':
       return 'javascript' satisfies SyntaxLanguage
+    case 'jsx':
+      return 'jsx' satisfies SyntaxLanguage
     case 'ts':
     case 'mts':
     case 'cts':
       return 'typescript' satisfies SyntaxLanguage
+    case 'tsx':
+      return 'tsx' satisfies SyntaxLanguage
     case 'html':
     case 'htm':
     case 'xml':
@@ -71,6 +87,18 @@ export function detectSyntaxLanguage(path: string) {
     case 'scss':
     case 'less':
       return 'css' satisfies SyntaxLanguage
+    case 'sh':
+    case 'bash':
+    case 'zsh':
+      return 'bash' satisfies SyntaxLanguage
+    case 'md':
+    case 'markdown':
+      return 'markdown' satisfies SyntaxLanguage
+    case 'py':
+      return 'python' satisfies SyntaxLanguage
+    case 'yml':
+    case 'yaml':
+      return 'yaml' satisfies SyntaxLanguage
     default:
       return null
   }
