@@ -153,6 +153,10 @@
     rightPaneLabel: '',
     leftAbsolutePath: '',
     rightAbsolutePath: '',
+    leftRootLabel: '',
+    rightRootLabel: '',
+    leftRootFullPath: '',
+    rightRootFullPath: '',
   }
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
@@ -1724,6 +1728,10 @@
     rightPaneLabel: getPaneLabel('right'),
     leftAbsolutePath: activeDiff?.leftLabel ?? '',
     rightAbsolutePath: activeDiff?.rightLabel ?? '',
+    leftRootLabel: `${leftCompareRoot.prefix}${leftCompareRoot.suffix}`,
+    rightRootLabel: `${rightCompareRoot.prefix}${rightCompareRoot.suffix}`,
+    leftRootFullPath: leftCompareRoot.fullPath,
+    rightRootFullPath: rightCompareRoot.fullPath,
   }
 
   $: if (activeDiff?.contentKind === 'text') {
@@ -2253,30 +2261,6 @@
     {#if errorMessage}
       <p class="error-banner">{errorMessage}</p>
     {/if}
-
-    <section class:refreshing={loading} class="compare-context">
-      <div class="compare-roots">
-        <div class="compare-root" title={leftCompareRoot.fullPath}>
-          <span class="compare-root-label">Left root:</span>
-          <span class="compare-root-value">
-            {#if leftCompareRoot.prefix}
-              <span class="compare-root-prefix">{leftCompareRoot.prefix}</span>
-            {/if}
-            <span class="compare-root-suffix">{leftCompareRoot.suffix}</span>
-          </span>
-        </div>
-
-        <div class="compare-root" title={rightCompareRoot.fullPath}>
-          <span class="compare-root-label">Right root:</span>
-          <span class="compare-root-value">
-            {#if rightCompareRoot.prefix}
-              <span class="compare-root-prefix">{rightCompareRoot.prefix}</span>
-            {/if}
-            <span class="compare-root-suffix">{rightCompareRoot.suffix}</span>
-          </span>
-        </div>
-      </div>
-    </section>
 
     <section class:single-pane={mode === 'file'} class="compare-layout">
       {#if mode === 'directory'}

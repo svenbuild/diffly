@@ -47,6 +47,10 @@ export interface DiffHeaderContext {
   rightPaneLabel: string
   leftAbsolutePath: string
   rightAbsolutePath: string
+  leftRootLabel: string
+  rightRootLabel: string
+  leftRootFullPath: string
+  rightRootFullPath: string
 }
 
 export interface ExplorerPaneState {
