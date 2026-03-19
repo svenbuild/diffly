@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { FileDiffResult, ViewMode } from './types'
+  import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
+  import type { DiffSegment, FileDiffResult, ViewMode } from './types'
   import type { SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
 
   export let activeDiff: FileDiffResult | null
@@ -16,6 +17,13 @@
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
+  let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
+
+  $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
+
+  function syntaxFragments(text: string, segments: DiffSegment[]) {
+    return renderDiffFragments(text, segments, syntaxLanguage)
+  }
 </script>
 
 <section class:refreshing={loading} class="viewer">
@@ -59,12 +67,12 @@
                       <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.left.prefix}</span>
                       <span class="line-text">
-                        {#each item.row.left.segments as segment}
+                        {#each syntaxFragments(item.row.left.text, item.row.left.segments) as fragment}
                           <span
-                            class:highlighted={showInlineHighlights && segment.highlighted}
-                            class="line-fragment"
+                            class:highlighted={showInlineHighlights && fragment.highlighted}
+                            class={`line-fragment ${fragment.className ?? ''}`}
                           >
-                            {segment.text || ' '}
+                            {fragment.text || ' '}
                           </span>
                         {/each}
                       </span>
@@ -113,12 +121,12 @@
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.right.prefix}</span>
                       <span class="line-text">
-                        {#each item.row.right.segments as segment}
+                        {#each syntaxFragments(item.row.right.text, item.row.right.segments) as fragment}
                           <span
-                            class:highlighted={showInlineHighlights && segment.highlighted}
-                            class="line-fragment"
+                            class:highlighted={showInlineHighlights && fragment.highlighted}
+                            class={`line-fragment ${fragment.className ?? ''}`}
                           >
-                            {segment.text || ' '}
+                            {fragment.text || ' '}
                           </span>
                         {/each}
                       </span>
@@ -168,12 +176,12 @@
               <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
               <span class="prefix">{item.row.prefix}</span>
               <span class="line-text">
-                {#each item.row.segments as segment}
+                {#each syntaxFragments(item.row.text, item.row.segments) as fragment}
                   <span
-                    class:highlighted={showInlineHighlights && segment.highlighted}
-                    class="line-fragment"
+                    class:highlighted={showInlineHighlights && fragment.highlighted}
+                    class={`line-fragment ${fragment.className ?? ''}`}
                   >
-                    {segment.text || ' '}
+                    {fragment.text || ' '}
                   </span>
                 {/each}
               </span>
