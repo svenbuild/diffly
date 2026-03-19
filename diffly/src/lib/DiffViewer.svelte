@@ -177,6 +177,8 @@
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                     class:gap-row={!item.row.right}
                     class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
+                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                    data-diff-index={item.hunkIndex}
                   >
                     {#if item.row.right}
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
