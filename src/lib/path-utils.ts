@@ -73,6 +73,21 @@ export function formatCompactPath(path: string, maxSegments = 3) {
   return visibleSegments.join('\\')
 }
 
+export function formatBreadcrumbPath(path: string, maxSegments = 5) {
+  const segments = splitPathSegments(path)
+
+  if (segments.length === 0) {
+    return ''
+  }
+
+  if (segments.length <= maxSegments) {
+    return segments.join(' > ')
+  }
+
+  const trailingCount = Math.max(maxSegments - 2, 2)
+  return [segments[0], '...', ...segments.slice(-trailingCount)].join(' > ')
+}
+
 export function formatRelativePathLabel(path: string) {
   return normalizeSelectionPath(path)
 }

@@ -14,6 +14,8 @@
   export let currentDrive: (pane: ExplorerPaneState) => string
   export let formatModified: (value: number | null) => string
   export let formatSize: (value: number | null) => string
+  export let formatBreadcrumbPath: (path: string) => string
+  export let formatTargetLabel: (path: string, emptyLabel: string) => string
   export let entryTypeLabel: (entry: ExplorerEntry) => string
   export let changeDrive: (side: Side, path: string) => Promise<void>
   export let navigateHistory: (side: Side, direction: -1 | 1) => Promise<void>
@@ -21,7 +23,7 @@
   export let updatePathInput: (side: Side, value: string) => void
   export let submitPathInput: (side: Side) => Promise<void>
   export let browseSystem: (side: Side) => Promise<void>
-  export let useCurrentFolder: (side: Side) => void
+  export let setCurrentFolderAsTarget: (side: Side) => void
   export let isCurrentFolderSelected: (pane: ExplorerPaneState) => boolean
   export let selectListEntry: (side: Side, entry: ExplorerEntry) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
@@ -30,13 +32,24 @@
 
 <section class="picker-pane">
   <header class="picker-pane-header">
-    <div class="picker-pane-title">
+    <div class="picker-pane-title-row">
       <strong>{pane.title}</strong>
-      <span>{pane.currentPath || 'No folder open'}</span>
+      <span
+        class:empty={!pane.selectedTargetPath}
+        class="target-chip"
+        title={pane.selectedTargetPath || (mode === 'directory' ? 'No folder target selected' : 'No file target selected')}
+      >
+        {mode === 'directory' ? 'Target' : 'Selected'}: {formatTargetLabel(
+          pane.selectedTargetPath,
+          mode === 'directory' ? 'None' : 'None',
+        )}
+      </span>
     </div>
-    <div class="target-summary">
-      <span>{mode === 'directory' ? 'Folder target' : 'File target'}</span>
-      <strong>{pane.selectedTargetPath || 'Nothing selected'}</strong>
+    <div class="pane-path-stack">
+      <span class="pane-path-label">Browsing</span>
+      <span class="pane-path" title={pane.currentPath || 'No folder open'}>
+        {pane.currentPath ? formatBreadcrumbPath(pane.currentPath) : 'No folder open'}
+      </span>
     </div>
   </header>
 
@@ -109,7 +122,7 @@
 
   <div class="picker-action-row">
     <button class="secondary" type="button" on:click={() => browseSystem(side)}>
-      System dialog
+      Browse
     </button>
 
     {#if mode === 'directory'}
@@ -118,9 +131,9 @@
         class="secondary"
         disabled={!pane.currentPath}
         type="button"
-        on:click={() => useCurrentFolder(side)}
+        on:click={() => setCurrentFolderAsTarget(side)}
       >
-        Use current folder
+        {isCurrentFolderSelected(pane) ? 'Target selected' : 'Set as target'}
       </button>
     {/if}
   </div>
@@ -152,6 +165,9 @@
             <span class="entry-name">
               <EntryIcon kind={entry.kind} open={false} />
               <span class="entry-text">{entry.name}</span>
+              {#if isTargetSelected(pane, entry)}
+                <span class="entry-badge">Target</span>
+              {/if}
             </span>
             <span class="entry-type">{entryTypeLabel(entry)}</span>
             <span class="entry-date">{formatModified(entry.modifiedMs)}</span>
@@ -170,6 +186,9 @@
             <span class="entry-name">
               <EntryIcon kind={entry.kind} />
               <span class="entry-text">{entry.name}</span>
+              {#if isTargetSelected(pane, entry)}
+                <span class="entry-badge">Target</span>
+              {/if}
             </span>
             <span class="entry-type">{entryTypeLabel(entry)}</span>
             <span class="entry-date">{formatModified(entry.modifiedMs)}</span>

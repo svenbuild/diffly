@@ -23,6 +23,7 @@
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
+    formatBreadcrumbPath,
     formatCompactPath,
     formatRelativePathLabel,
     getFileName,
@@ -965,7 +966,14 @@
     return mode === 'file' ? pane.selectedTargetKind === 'file' : pane.selectedTargetKind === 'directory'
   }
 
+  function formatPickerTargetLabel(path: string, emptyLabel: string) {
+    if (!path) {
+      return emptyLabel
+    }
 
+    const label = getFileName(path)
+    return label || formatCompactPath(path, 2) || path
+  }
 
   async function runCompare() {
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
@@ -980,6 +988,7 @@
     loading = true
     detailLoading = false
     errorMessage = ''
+    closeCompareOptions(false)
     activeDetailRequestId += 1
     clearDetailPrefetch()
     leftPath = nextLeftPath
@@ -1779,7 +1788,6 @@
     unifiedRenderItems
     scheduleDiffNavigationRefresh()
   } else {
-    closeCompareOptions(false)
     currentDiffHunk = -1
   }
 
@@ -1827,6 +1835,13 @@
       normalizeSelectionPath(rightExplorer.selectedTargetPath)
       ? `Both sides currently point to the same ${mode === 'directory' ? 'folder' : 'file'}. The compare will usually be empty.`
       : ''
+  $: setupHintMessage = pickerCanCompare
+    ? ''
+    : mode === 'directory'
+      ? 'Select one folder on each side, then compare.'
+      : 'Select one file on each side, then compare.'
+  $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
+  $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: directoryStatusSummary = statusOrder
     .map((status) => ({
       status,
@@ -1846,7 +1861,7 @@
       <div class="app-bar-main">
         <div class="app-identity">
           <h1>Diffly</h1>
-          <span>{mode === 'directory' ? 'Directory workspace' : 'File workspace'}</span>
+          <span>Setup</span>
         </div>
 
         <div class="segmented-control">
@@ -1864,45 +1879,77 @@
       </div>
 
       <div class="app-bar-actions">
-        <button
-          class="secondary theme-toggle"
-          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-          title={themeToggleLabel}
-          type="button"
-          on:click={toggleThemeMode}
-        >
-          {#if themeMode === 'dark'}
-            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+        <div class="compare-options-anchor">
+          <button
+            bind:this={compareOptionsTrigger}
+            aria-controls={COMPARE_OPTIONS_POPOVER_ID}
+            aria-expanded={compareOptionsOpen}
+            aria-label="Setup options"
+            class:active={compareOptionsOpen}
+            class="secondary compare-options-toggle"
+            title="Setup options"
+            type="button"
+            on:click={toggleCompareOptions}
+          >
+            <svg aria-hidden="true" class="compare-options-icon" viewBox="0 0 16 16">
+              <path d="M3 4h5.4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M9.8 4H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M3 8h2.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M7.6 8H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M3 12h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <path d="M11.4 12H13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+              <circle cx="7.1" cy="4" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <circle cx="6.4" cy="8" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <circle cx="10.1" cy="12" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
             </svg>
-          {:else}
-            <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
-              <path
-                d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.4"
-              />
-            </svg>
+          </button>
+
+          {#if compareOptionsOpen}
+            <div
+              bind:this={compareOptionsPopover}
+              aria-label="Setup options"
+              class="compare-options-popover"
+              id={COMPARE_OPTIONS_POPOVER_ID}
+              role="dialog"
+            >
+              <label class="compare-options-row">
+                <span>Light mode</span>
+                <input
+                  bind:this={compareOptionsFirstControl}
+                  checked={themeMode === 'light'}
+                  type="checkbox"
+                  on:change={toggleThemeMode}
+                />
+              </label>
+
+              <div class="compare-options-divider"></div>
+
+              <label class="compare-options-row">
+                <span>Ignore whitespace</span>
+                <input checked={ignoreWhitespace} type="checkbox" on:change={toggleIgnoreWhitespace} />
+              </label>
+
+              <label class="compare-options-row">
+                <span>Ignore case</span>
+                <input checked={ignoreCase} type="checkbox" on:change={toggleIgnoreCase} />
+              </label>
+            </div>
           {/if}
-        </button>
+        </div>
         <button
-          class="secondary"
+          class="secondary icon-button swap-button"
+          aria-label="Switch left and right sides"
           disabled={loading || detailLoading || pickerLoading}
+          title="Switch left and right sides"
           type="button"
           on:click={swapComparedSides}
         >
-          Swap sides
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
         </button>
         <button class="primary" disabled={!pickerCanCompare || loading} type="button" on:click={runCompare}>
           {#if loading}
@@ -1919,64 +1966,27 @@
     {/if}
 
     <section class="setup-body">
-      <aside class="setup-sidebar">
-        <section class="sidebar-panel">
-          <h2>Selection</h2>
-          <dl class="definition-list">
-            <div>
-              <dt>Mode</dt>
-              <dd>{mode === 'directory' ? 'Compare folders' : 'Compare files'}</dd>
-            </div>
-            <div>
-              <dt>Left</dt>
-              <dd>{leftExplorer.selectedTargetPath || 'Nothing selected yet'}</dd>
-            </div>
-            <div>
-              <dt>Right</dt>
-              <dd>{rightExplorer.selectedTargetPath || 'Nothing selected yet'}</dd>
-            </div>
-          </dl>
-        </section>
+      <div class="setup-summary-row">
+        <div class="setup-summary-card">
+          <span>Left target</span>
+          <strong title={leftExplorer.selectedTargetPath || 'Not selected'}>{leftSetupTargetLabel}</strong>
+        </div>
 
-        <section class="sidebar-panel">
-          <h2>Options</h2>
-          <div class="stacked-actions">
-            <button
-              class:active={ignoreWhitespace}
-              class="secondary"
-              aria-pressed={ignoreWhitespace}
-              type="button"
-              on:click={toggleIgnoreWhitespace}
-            >
-              Ignore whitespace
-            </button>
-            <button
-              class:active={ignoreCase}
-              class="secondary"
-              aria-pressed={ignoreCase}
-              type="button"
-              on:click={toggleIgnoreCase}
-            >
-              Ignore case
-            </button>
+        <div class="setup-summary-card">
+          <span>Right target</span>
+          <strong title={rightExplorer.selectedTargetPath || 'Not selected'}>{rightSetupTargetLabel}</strong>
+        </div>
+
+        {#if sameSelectionWarning}
+          <div class="setup-summary-message warning">
+            {sameSelectionWarning}
           </div>
-        </section>
-
-        <section class="sidebar-panel">
-          <h2>Workflow</h2>
-          <p class="sidebar-note">
-            {mode === 'directory'
-              ? 'Open the folders you want, mark one target on each side, then run the compare.'
-              : 'Open the parent folders, choose one file on each side, then run the compare.'}
-          </p>
-          {#if sameSelectionWarning}
-            <div class="setup-warning">
-              <strong>Heads up</strong>
-              <span>{sameSelectionWarning}</span>
-            </div>
-          {/if}
-        </section>
-      </aside>
+        {:else if setupHintMessage}
+          <div class="setup-summary-message">
+            {setupHintMessage}
+          </div>
+        {/if}
+      </div>
 
       <section class="picker-workspace">
         {#each pickerSides as item}
@@ -1990,6 +2000,8 @@
             {currentDrive}
             {formatModified}
             {formatSize}
+            {formatBreadcrumbPath}
+            formatTargetLabel={formatPickerTargetLabel}
             {entryTypeLabel}
             {changeDrive}
             {navigateHistory}
@@ -1997,7 +2009,7 @@
             {updatePathInput}
             {submitPathInput}
             {browseSystem}
-            {useCurrentFolder}
+            setCurrentFolderAsTarget={useCurrentFolder}
             {isCurrentFolderSelected}
             {selectListEntry}
             {activateListEntry}
