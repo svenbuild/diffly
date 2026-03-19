@@ -74,9 +74,9 @@
   --diff-delete-text: #ffe7ea;
   --diff-line-number-width: 64px;
   --diff-prefix-width: 30px;
-  --diff-font-size: 13px;
-  --diff-row-line-height: 18px;
-  --diff-row-height: 24px;
+  --diff-font-size: 11px;
+  --diff-row-line-height: 14px;
+  --diff-row-height: 20px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
   --collapsed-chip-bg: #303030;
