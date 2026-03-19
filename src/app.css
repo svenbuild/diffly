@@ -564,7 +564,7 @@ h2 {
 .setup-selection-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   min-width: 0;
   flex-wrap: wrap;
 }
@@ -575,9 +575,11 @@ h2 {
 }
 
 .setup-selection-summary strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   max-width: 20ch;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
