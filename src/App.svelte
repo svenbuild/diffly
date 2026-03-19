@@ -1387,11 +1387,12 @@
                 <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
               </svg>
             {:else}
-              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+              <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
                 <path
-                  d="M10.9 11.9a4.9 4.9 0 0 1-5.8-6.7 5.2 5.2 0 1 0 5.8 6.7Z"
+                  d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
                   fill="none"
                   stroke="currentColor"
+                  stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="1.4"
                 />
