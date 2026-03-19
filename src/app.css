@@ -74,7 +74,7 @@
   --diff-insert-text: #f4fff7;
   --diff-delete-bg: #471b23;
   --diff-delete-text: #fff1f3;
-  --diff-line-number-width: calc(1ch + 8px);
+  --diff-line-number-width: calc(1ch + 14px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-font-size: 11px;
   --diff-row-line-height: 14px;
@@ -180,7 +180,7 @@
   --diff-insert-text: #074b1d;
   --diff-delete-bg: #ffd7d5;
   --diff-delete-text: #8b1021;
-  --diff-line-number-width: calc(1ch + 8px);
+  --diff-line-number-width: calc(1ch + 14px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-gap-bg: #f6f8fa;
   --diff-gap-stripe: rgba(31, 35, 40, 0.06);

@@ -30,7 +30,7 @@
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
-  let lineNumberColumnWidth = 'calc(1ch + 10px)'
+  let lineNumberColumnWidth = 'calc(1ch + 14px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
@@ -45,7 +45,7 @@
       : 0
     const digitCount = Math.max(1, String(maxLineNumber).length)
 
-    lineNumberColumnWidth = `calc(${digitCount}ch + 8px)`
+    lineNumberColumnWidth = `calc(${digitCount}ch + 14px)`
     prefixColumnWidth = 'calc(1ch + 6px)'
   }
 
