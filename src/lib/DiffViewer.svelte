@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { DiffSegment, FileDiffResult, ViewMode } from './types'
   import type { SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
@@ -17,14 +18,63 @@
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
+  let leftPaneGrid: HTMLDivElement | null = null
+  let rightPaneGrid: HTMLDivElement | null = null
+  let unifiedContentGrid: HTMLDivElement | null = null
   let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
+  let sideBySideContentWidth = 0
+  let unifiedContentWidth = 0
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
+
+  $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
+    sideBySideRenderItems
+    void updateSideBySideContentWidth()
+  }
+
+  $: if (activeDiff?.contentKind === 'text' && viewMode === 'unified') {
+    unifiedRenderItems
+    void updateUnifiedContentWidth()
+  }
 
   function syntaxFragments(text: string, segments: DiffSegment[]) {
     return renderDiffFragments(text, segments, syntaxLanguage)
   }
+
+  async function updateSideBySideContentWidth() {
+    await tick()
+
+    if (!leftPaneScroll || !rightPaneScroll || !leftPaneGrid || !rightPaneGrid) {
+      sideBySideContentWidth = 0
+      return
+    }
+
+    sideBySideContentWidth = Math.max(
+      leftPaneGrid.scrollWidth,
+      rightPaneGrid.scrollWidth,
+      leftPaneScroll.clientWidth,
+      rightPaneScroll.clientWidth,
+    )
+  }
+
+  async function updateUnifiedContentWidth() {
+    await tick()
+
+    if (!unifiedScroll || !unifiedContentGrid) {
+      unifiedContentWidth = 0
+      return
+    }
+
+    unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
+  }
 </script>
+
+<svelte:window
+  on:resize={() => {
+    void updateSideBySideContentWidth()
+    void updateUnifiedContentWidth()
+  }}
+/>
 
 <section class:refreshing={loading} class="viewer">
   {#if activeDiff}
@@ -45,7 +95,11 @@
             class="pane-scroll"
             on:scroll={() => syncPaneScroll('left')}
           >
-            <div class="pane-grid">
+            <div
+              bind:this={leftPaneGrid}
+              class="pane-grid"
+              style:min-width={sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+            >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
@@ -101,7 +155,11 @@
             class="pane-scroll"
             on:scroll={() => syncPaneScroll('right')}
           >
-            <div class="pane-grid">
+            <div
+              bind:this={rightPaneGrid}
+              class="pane-grid"
+              style:min-width={sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+            >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
@@ -156,6 +214,11 @@
         </div>
       </div>
       <div bind:this={unifiedScroll} class="unified-grid" on:scroll={refreshDiffNavigationState}>
+        <div
+          bind:this={unifiedContentGrid}
+          class="unified-content-grid"
+          style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
+        >
         {#if unifiedRenderItems.length === 0}
           <div class="empty-inline-state">No changed lines.</div>
         {/if}
@@ -188,6 +251,7 @@
             </div>
           {/if}
         {/each}
+        </div>
       </div>
     {/if}
     {#if detailLoading}
