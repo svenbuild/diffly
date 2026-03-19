@@ -426,8 +426,8 @@ h2 {
 
 .compare-bar-main {
   flex: 1 1 auto;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .compare-bar-brand {
@@ -439,20 +439,6 @@ h2 {
 
 .compare-bar-brand h1 {
   color: var(--title);
-}
-
-.compare-bar-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-}
-
-.compare-bar-status strong {
-  color: var(--strong-text);
-  font-size: 0.78rem;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .compare-summary strong,
@@ -854,7 +840,7 @@ h2 {
 .compare-context {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 4px;
   padding-top: 4px;
   padding-bottom: 0;
 }
@@ -866,17 +852,18 @@ h2 {
   padding: 0 2px;
 }
 
-.compare-root,
-.current-file-context {
-  display: grid;
-  gap: 3px;
+.compare-root {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
 }
 
-.compare-root-label,
-.current-file-label {
+.compare-root-label {
   color: var(--muted);
   font-size: 0.7rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .compare-root-value {
@@ -887,6 +874,22 @@ h2 {
   font-family: var(--code);
   font-size: 0.74rem;
   white-space: nowrap;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.compare-root:hover,
+.compare-root:focus-within {
+  align-items: flex-start;
+}
+
+.compare-root:hover .compare-root-value,
+.compare-root:focus-within .compare-root-value {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .compare-root-prefix {
@@ -899,20 +902,6 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--panel-meta);
-}
-
-.current-file-context {
-  padding: 7px 2px 0;
-  border-top: 1px solid var(--border);
-}
-
-.current-file-context strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--strong-text);
-  font-size: 0.9rem;
 }
 
 .compare-layout {
