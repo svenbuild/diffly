@@ -1101,24 +1101,36 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .collapsed-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--diff-line-number-width) var(--diff-prefix-width) minmax(0, 1fr);
   position: relative;
   min-height: 28px;
   height: 28px;
-  padding: 0 12px;
+  padding: 0;
   background: var(--collapsed-row-bg);
   align-items: center;
-  justify-content: flex-start;
+}
+
+.unified-collapsed-row {
+  grid-template-columns:
+    var(--diff-line-number-width)
+    var(--diff-line-number-width)
+    var(--diff-prefix-width)
+    minmax(0, 1fr);
 }
 
 .collapsed-row::before {
   content: '';
   position: absolute;
-  left: 12px;
+  left: calc(var(--diff-line-number-width) + var(--diff-prefix-width) + 6px);
   right: 12px;
   top: 50%;
   border-top: 1px solid var(--collapsed-row-line);
   transform: translateY(-50%);
+}
+
+.unified-collapsed-row::before {
+  left: calc(var(--diff-line-number-width) * 2 + var(--diff-prefix-width) + 6px);
 }
 
 .collapsed-chip {
@@ -1127,6 +1139,9 @@ button.filter-chip.tooLarge:focus-visible {
   justify-content: center;
   position: sticky;
   left: 8px;
+  grid-column: 1 / span 2;
+  justify-self: start;
+  margin-left: 8px;
   z-index: 4;
   width: max-content;
   max-width: calc(100% - 24px);
@@ -1144,6 +1159,10 @@ button.filter-chip.tooLarge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: none;
+}
+
+.unified-collapsed-row > .collapsed-chip {
+  grid-column: 1 / span 3;
 }
 
 .diff-row {
