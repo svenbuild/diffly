@@ -45,8 +45,8 @@
       : 0
     const digitCount = Math.max(1, String(maxLineNumber).length)
 
-    lineNumberColumnWidth = `calc(${digitCount}ch + 10px)`
-    prefixColumnWidth = 'calc(1ch + 8px)'
+    lineNumberColumnWidth = `calc(${digitCount}ch + 8px)`
+    prefixColumnWidth = 'calc(1ch + 6px)'
   }
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
