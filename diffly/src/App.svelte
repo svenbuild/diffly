@@ -22,9 +22,7 @@
   } from './lib/diff-render'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
-    formatBreadcrumbSegments,
     buildFolderSections,
-    formatBreadcrumbPath,
     formatCompactPath,
     formatRelativePathLabel,
     getFileName,
@@ -976,53 +974,6 @@
     return label || formatCompactPath(path, 2) || path
   }
 
-  function buildSetupPathDisplay(path: string, commonSegments: string[], distinctSegments: string[]) {
-    if (!path) {
-      return {
-        muted: '',
-        strong: 'No folder open',
-      }
-    }
-
-    if (commonSegments.length === 0 || distinctSegments.length === 0) {
-      return {
-        muted: '',
-        strong: formatBreadcrumbPath(path),
-      }
-    }
-
-    return {
-      muted: `${formatBreadcrumbSegments(commonSegments, 4)} >`,
-      strong: formatBreadcrumbSegments(distinctSegments, 4),
-    }
-  }
-
-  async function jumpToSelectedTarget(side: Side) {
-    const pane = paneFor(side)
-    const targetPath = pane.selectedTargetPath
-
-    if (!targetPath) {
-      return
-    }
-
-    const info = await pathInfo(targetPath)
-
-    if (!info.exists) {
-      return
-    }
-
-    if (info.isDirectory) {
-      await openDirectory(side, info.path)
-      selectTarget(side, info.path, 'directory')
-      return
-    }
-
-    if (info.isFile && info.parentPath) {
-      await openDirectory(side, info.parentPath)
-      selectTarget(side, info.path, 'file')
-    }
-  }
-
   async function runCompare() {
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
       errorMessage = 'Select valid targets on both sides first.'
@@ -1870,30 +1821,9 @@
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
   $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
-  $: setupCurrentPaths = splitCommonPathPrefix(leftExplorer.currentPath, rightExplorer.currentPath)
-  $: leftSetupPathDisplay = buildSetupPathDisplay(
-    leftExplorer.currentPath,
-    setupCurrentPaths.commonSegments,
-    setupCurrentPaths.leftSegments,
-  )
-  $: rightSetupPathDisplay = buildSetupPathDisplay(
-    rightExplorer.currentPath,
-    setupCurrentPaths.commonSegments,
-    setupCurrentPaths.rightSegments,
-  )
   $: pickerSides = [
-    {
-      side: 'left' as Side,
-      pane: leftExplorer,
-      pathMuted: leftSetupPathDisplay.muted,
-      pathStrong: leftSetupPathDisplay.strong,
-    },
-    {
-      side: 'right' as Side,
-      pane: rightExplorer,
-      pathMuted: rightSetupPathDisplay.muted,
-      pathStrong: rightSetupPathDisplay.strong,
-    },
+    { side: 'left' as Side, pane: leftExplorer },
+    { side: 'right' as Side, pane: rightExplorer },
   ]
   $: sameSelectionWarning =
     pickerCanCompare &&
@@ -1949,6 +1879,16 @@
             Directories
           </button>
         </div>
+
+        <div class="setup-selection-summary">
+          <span>Selected:</span>
+          <strong title={leftExplorer.selectedTargetPath || 'Left target not selected'}>
+            Left {leftSetupTargetLabel}
+          </strong>
+          <strong title={rightExplorer.selectedTargetPath || 'Right target not selected'}>
+            Right {rightSetupTargetLabel}
+          </strong>
+        </div>
       </div>
 
       <div class="app-bar-actions">
@@ -1999,7 +1939,13 @@
             <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
           </svg>
         </button>
-        <button class="primary" disabled={!pickerCanCompare || loading} type="button" on:click={runCompare}>
+        <button
+          class="primary"
+          disabled={!pickerCanCompare || loading}
+          title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
+          type="button"
+          on:click={runCompare}
+        >
           {#if loading}
             Comparing...
           {:else}
@@ -2014,40 +1960,6 @@
     {/if}
 
     <section class="setup-body">
-      <div class="setup-summary-row">
-        <button
-          class="setup-summary-item"
-          disabled={!leftExplorer.selectedTargetPath}
-          title={leftExplorer.selectedTargetPath || 'Left target not selected'}
-          type="button"
-          on:click={() => jumpToSelectedTarget('left')}
-        >
-          <span>Left</span>
-          <strong>{leftSetupTargetLabel}</strong>
-        </button>
-
-        <button
-          class="setup-summary-item"
-          disabled={!rightExplorer.selectedTargetPath}
-          title={rightExplorer.selectedTargetPath || 'Right target not selected'}
-          type="button"
-          on:click={() => jumpToSelectedTarget('right')}
-        >
-          <span>Right</span>
-          <strong>{rightSetupTargetLabel}</strong>
-        </button>
-
-        {#if sameSelectionWarning}
-          <div class="setup-summary-message warning">
-            {sameSelectionWarning}
-          </div>
-        {:else if setupHintMessage}
-          <div class="setup-summary-message">
-            {setupHintMessage}
-          </div>
-        {/if}
-      </div>
-
       <section class="picker-workspace">
         {#each pickerSides as item}
           <PickerPane
@@ -2055,8 +1967,6 @@
             pane={item.pane}
             {mode}
             {pickerLoading}
-            browsePathMuted={item.pathMuted}
-            browsePathStrong={item.pathStrong}
             {canGoBack}
             {canGoForward}
             {currentDrive}
