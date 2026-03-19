@@ -79,15 +79,20 @@
   --collapsed-chip-bg: #141922;
   --collapsed-chip-border: #242d3a;
   --collapsed-chip-text: #b7c4d4;
-  --syntax-comment: #7d8da3;
-  --syntax-keyword: #cf8dff;
-  --syntax-type: #74c6ff;
-  --syntax-string: #8ad38a;
-  --syntax-number: #f4b972;
-  --syntax-function: #f0c872;
-  --syntax-property: #7ed4bf;
-  --syntax-operator: #d7dceb;
-  --syntax-punctuation: #b9c6d6;
+  --syntax-comment: #7f8fa5;
+  --syntax-keyword: #d7a2ff;
+  --syntax-type: #7fcfff;
+  --syntax-string: #9ddf86;
+  --syntax-number: #f6c07a;
+  --syntax-function: #ffd477;
+  --syntax-property: #80dcc8;
+  --syntax-constant: #ff9fb5;
+  --syntax-selector: #8db8ff;
+  --syntax-macro: #ff9aa9;
+  --syntax-tag: #7ed7ff;
+  --syntax-regex: #6fd5c0;
+  --syntax-operator: #d5dceb;
+  --syntax-punctuation: #97a7bc;
   --insert-highlight-bg: rgba(104, 190, 148, 0.34);
   --delete-highlight-bg: rgba(197, 79, 108, 0.32);
   --line-divider: rgba(51, 69, 95, 0.46);
@@ -173,15 +178,20 @@
   --collapsed-chip-bg: #f5f7fa;
   --collapsed-chip-border: #d5dde7;
   --collapsed-chip-text: #55677d;
-  --syntax-comment: #738397;
-  --syntax-keyword: #8b3dba;
-  --syntax-type: #0f78b6;
-  --syntax-string: #2f8f4f;
-  --syntax-number: #b36b13;
-  --syntax-function: #9d6a06;
-  --syntax-property: #0b8a74;
-  --syntax-operator: #334257;
-  --syntax-punctuation: #56657a;
+  --syntax-comment: #718096;
+  --syntax-keyword: #7d2da8;
+  --syntax-type: #0d71ae;
+  --syntax-string: #2f7f44;
+  --syntax-number: #a86000;
+  --syntax-function: #8a5900;
+  --syntax-property: #007965;
+  --syntax-constant: #b03b5c;
+  --syntax-selector: #365ec2;
+  --syntax-macro: #b53d5f;
+  --syntax-tag: #0d74b3;
+  --syntax-regex: #007b64;
+  --syntax-operator: #304055;
+  --syntax-punctuation: #5b6a7f;
   --insert-highlight-bg: rgba(46, 125, 94, 0.18);
   --delete-highlight-bg: rgba(183, 57, 101, 0.18);
   --line-divider: rgba(139, 158, 181, 0.46);
@@ -1154,7 +1164,6 @@ button.filter-chip.tooLarge:focus-visible {
 .prefix,
 .line-text {
   display: block;
-  height: calc(1.45em + 4px);
   padding: 2px 4px;
   line-height: 1.45;
 }
@@ -1169,7 +1178,7 @@ button.filter-chip.tooLarge:focus-visible {
   left: 0;
   z-index: 2;
   background: inherit;
-  border-right: 1px solid var(--line-divider);
+  box-shadow: inset -1px 0 0 var(--line-divider);
   text-align: right;
 }
 
@@ -1178,7 +1187,7 @@ button.filter-chip.tooLarge:focus-visible {
   left: var(--diff-line-number-width);
   z-index: 2;
   background: inherit;
-  border-right: 1px solid var(--line-divider);
+  box-shadow: inset -1px 0 0 var(--line-divider);
   text-align: center;
 }
 
@@ -1204,23 +1213,32 @@ button.filter-chip.tooLarge:focus-visible {
   background: var(--highlight-bg);
 }
 
-.line-fragment.syntax-token.comment {
+.line-fragment.syntax-token.comment,
+.line-fragment.syntax-token.prolog,
+.line-fragment.syntax-token.doctype,
+.line-fragment.syntax-token.cdata {
   color: var(--syntax-comment);
+  font-style: italic;
 }
 
 .line-fragment.syntax-token.keyword,
-.line-fragment.syntax-token.atrule {
+.line-fragment.syntax-token.atrule,
+.line-fragment.syntax-token.directive {
   color: var(--syntax-keyword);
+  font-weight: 600;
 }
 
 .line-fragment.syntax-token.class-name,
 .line-fragment.syntax-token.builtin,
-.line-fragment.syntax-token.attr-name {
+.line-fragment.syntax-token.attr-name,
+.line-fragment.syntax-token.namespace {
   color: var(--syntax-type);
 }
 
 .line-fragment.syntax-token.string,
-.line-fragment.syntax-token.char {
+.line-fragment.syntax-token.char,
+.line-fragment.syntax-token.attr-value,
+.line-fragment.syntax-token.url {
   color: var(--syntax-string);
 }
 
@@ -1229,14 +1247,43 @@ button.filter-chip.tooLarge:focus-visible {
   color: var(--syntax-number);
 }
 
-.line-fragment.syntax-token.function {
+.line-fragment.syntax-token.function,
+.line-fragment.syntax-token.method {
   color: var(--syntax-function);
+  font-weight: 600;
 }
 
 .line-fragment.syntax-token.property,
 .line-fragment.syntax-token.constant,
+.line-fragment.syntax-token.symbol,
 .line-fragment.syntax-token.macro-property {
   color: var(--syntax-property);
+}
+
+.line-fragment.syntax-token.constant,
+.line-fragment.syntax-token.symbol {
+  color: var(--syntax-constant);
+}
+
+.line-fragment.syntax-token.selector,
+.line-fragment.syntax-token.important {
+  color: var(--syntax-selector);
+}
+
+.line-fragment.syntax-token.tag,
+.line-fragment.syntax-token.entity {
+  color: var(--syntax-tag);
+}
+
+.line-fragment.syntax-token.regex {
+  color: var(--syntax-regex);
+}
+
+.line-fragment.syntax-token.macro,
+.line-fragment.syntax-token.macro-name,
+.line-fragment.syntax-token.directive-hash {
+  color: var(--syntax-macro);
+  font-weight: 600;
 }
 
 .line-fragment.syntax-token.operator {
