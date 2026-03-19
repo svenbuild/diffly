@@ -27,6 +27,14 @@ const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 6;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_context_lines() -> u8 {
+    3
+}
+
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompareOptions {
@@ -50,10 +58,22 @@ struct PersistedSession {
     mode: String,
     view_mode: String,
     theme_mode: Option<String>,
+    #[serde(default)]
     ignore_whitespace: bool,
+    #[serde(default)]
     ignore_case: bool,
+    #[serde(default)]
     show_full_file: bool,
+    #[serde(default = "default_true")]
     show_inline_highlights: bool,
+    #[serde(default)]
+    wrap_side_by_side_lines: bool,
+    #[serde(default = "default_true")]
+    show_syntax_highlighting: bool,
+    #[serde(default = "default_true")]
+    sync_side_by_side_scroll: bool,
+    #[serde(default = "default_context_lines")]
+    context_lines: u8,
     left_pane: PersistedExplorerPane,
     right_pane: PersistedExplorerPane,
 }

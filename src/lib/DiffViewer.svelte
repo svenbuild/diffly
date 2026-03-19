@@ -10,6 +10,9 @@
   export let viewMode: ViewMode
   export let currentDiffHunk: number
   export let showInlineHighlights: boolean
+  export let wrapSideBySideLines: boolean
+  export let showSyntaxHighlighting: boolean
+  export let syncSideBySideScroll: boolean
   export let sideBySideRenderItems: SideBySideRenderItem[]
   export let unifiedRenderItems: UnifiedRenderItem[]
   export let getFileName: (path: string) => string
@@ -30,6 +33,7 @@
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
     sideBySideRenderItems
+    wrapSideBySideLines
     void updateSideBySideContentWidth()
   }
 
@@ -39,11 +43,20 @@
   }
 
   function syntaxFragments(text: string, segments: DiffSegment[]) {
-    return renderDiffFragments(text, segments, syntaxLanguage)
+    return renderDiffFragments(
+      text,
+      segments,
+      showSyntaxHighlighting ? syntaxLanguage : null,
+    )
   }
 
   async function updateSideBySideContentWidth() {
     await tick()
+
+    if (wrapSideBySideLines) {
+      sideBySideContentWidth = 0
+      return
+    }
 
     if (!leftPaneScroll || !rightPaneScroll || !leftPaneGrid || !rightPaneGrid) {
       sideBySideContentWidth = 0
@@ -82,7 +95,11 @@
     {#if activeDiff.contentKind !== 'text'}
       <div class="message-card">{activeDiff.summary}</div>
     {:else if viewMode === 'sideBySide'}
-      <div class="split-view">
+      <div
+        class:sync-disabled={!syncSideBySideScroll}
+        class:wrapped-lines={wrapSideBySideLines}
+        class="split-view"
+      >
         <section class="diff-pane">
           <div class="pane-header">
             <span>Left</span>
@@ -100,7 +117,7 @@
             <div
               bind:this={leftPaneGrid}
               class="pane-grid"
-              style:min-width={sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+              style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
             >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
@@ -161,7 +178,7 @@
             <div
               bind:this={rightPaneGrid}
               class="pane-grid"
-              style:min-width={sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+              style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
             >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>

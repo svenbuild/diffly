@@ -291,12 +291,21 @@ button:disabled {
   cursor: default;
 }
 
-input,
+input:not([type='checkbox']),
 select {
   width: 100%;
   padding: 4px 6px;
   background: var(--surface);
   color: var(--text);
+}
+
+input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
 }
 
 button:focus-visible,
@@ -354,6 +363,7 @@ h2 {
 .compare-actions,
 .compare-action-group,
 .inline-actions,
+.compare-options-anchor,
 .segmented-control,
 .nav-buttons,
 .picker-action-row {
@@ -376,6 +386,10 @@ h2 {
 .compare-action-group {
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.display-actions {
+  overflow: visible;
 }
 
 .compare-action-group + .compare-action-group {
@@ -1274,6 +1288,11 @@ button.filter-chip.tooLarge:focus-visible {
   white-space: pre;
 }
 
+.split-view.wrapped-lines .pane-grid .line-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .line-fragment.highlighted {
   background: var(--highlight-bg);
 }
@@ -1428,6 +1447,67 @@ button.filter-chip.tooLarge:focus-visible {
 
 .theme-icon-moon {
   transform: translateX(-0.3px);
+}
+
+.compare-options-anchor {
+  position: relative;
+}
+
+.compare-options-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.compare-options-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.compare-options-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 12;
+  min-width: 220px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.compare-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  font-size: 0.74rem;
+  color: var(--secondary-text);
+}
+
+.compare-options-row span {
+  min-width: 0;
+}
+
+.compare-options-select-row select {
+  width: auto;
+  min-width: 60px;
+}
+
+.compare-options-row.disabled {
+  opacity: 0.58;
+}
+
+.compare-options-divider {
+  height: 1px;
+  background: var(--border);
 }
 
 .refresh-button {
@@ -1632,6 +1712,17 @@ button.filter-chip.tooLarge:focus-visible {
   .compare-action-group + .compare-action-group {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .compare-options-anchor {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .compare-options-popover {
+    position: static;
+    min-width: 0;
+    width: 100%;
   }
 
   .picker-nav-row,
