@@ -31,6 +31,7 @@
   } from './lib/path-utils'
   import type {
     CompareMode,
+    ContextLinesSetting,
     DirectoryEntryResult,
     EntryStatus,
     ExplorerEntry,
@@ -54,14 +55,17 @@
   const THEME_SWITCH_DURATION_MS = 140
   const DIFF_PREFETCH_RADIUS = 2
   const DIFF_PREFETCH_DELAY_MS = 70
+  const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
+  const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
+  const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
 
   type Screen = 'setup' | 'compare'
 
   interface CachedDiffRenderState {
-    sideBySideHunks: DiffHunkRange[] | null
-    unifiedHunks: DiffHunkRange[] | null
-    sideBySideItems: Map<boolean, SideBySideRenderItem[]>
-    unifiedItems: Map<boolean, UnifiedRenderItem[]>
+    sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
+    unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
+    sideBySideItems: Map<string, SideBySideRenderItem[]>
+    unifiedItems: Map<string, UnifiedRenderItem[]>
   }
 
   let screen: Screen = 'setup'
@@ -70,6 +74,11 @@
   let themeMode: ThemeMode = 'dark'
   let showFullFile = false
   let showInlineHighlights = true
+  let wrapSideBySideLines = false
+  let showSyntaxHighlighting = true
+  let syncSideBySideScroll = true
+  let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
+  let compareOptionsOpen = false
   let leftPath = ''
   let rightPath = ''
   let ignoreWhitespace = false
@@ -87,6 +96,9 @@
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
   let unifiedScroll: HTMLDivElement | null = null
+  let compareOptionsTrigger: HTMLButtonElement | null = null
+  let compareOptionsPopover: HTMLDivElement | null = null
+  let compareOptionsFirstControl: HTMLInputElement | null = null
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
@@ -150,10 +162,29 @@
     scheduleCompareRefresh()
   }
 
+  const toggleSyncSideBySideScroll = () => {
+    syncSideBySideScroll = !syncSideBySideScroll
+
+    if (!syncSideBySideScroll) {
+      cancelPaneNavigationScroll()
+    }
+  }
+
+  const toggleCompareOptions = () => {
+    if (compareOptionsOpen) {
+      closeCompareOptions()
+      return
+    }
+
+    void openCompareOptions()
+  }
+
   onMount(() => {
     void initializePickers()
 
     return () => {
+      detachCompareOptionsListeners()
+
       if (saveSessionTimer !== null) {
         window.clearTimeout(saveSessionTimer)
       }
@@ -184,6 +215,82 @@
     }
   })
 
+  function isContextLinesSetting(value: number): value is ContextLinesSetting {
+    return contextLinePresets.includes(value as ContextLinesSetting)
+  }
+
+  function applyContextLines(value: string) {
+    const nextValue = Number(value)
+
+    if (isContextLinesSetting(nextValue)) {
+      contextLines = nextValue
+    }
+  }
+
+  function handleCompareOptionsPointerDown(event: PointerEvent) {
+    const target = event.target
+
+    if (!(target instanceof Node)) {
+      return
+    }
+
+    if (
+      compareOptionsTrigger?.contains(target) ||
+      compareOptionsPopover?.contains(target)
+    ) {
+      return
+    }
+
+    closeCompareOptions(false)
+  }
+
+  function handleCompareOptionsKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape') {
+      return
+    }
+
+    event.preventDefault()
+    closeCompareOptions()
+  }
+
+  function attachCompareOptionsListeners() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return
+    }
+
+    document.addEventListener('pointerdown', handleCompareOptionsPointerDown, true)
+    window.addEventListener('keydown', handleCompareOptionsKeydown)
+  }
+
+  function detachCompareOptionsListeners() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return
+    }
+
+    document.removeEventListener('pointerdown', handleCompareOptionsPointerDown, true)
+    window.removeEventListener('keydown', handleCompareOptionsKeydown)
+  }
+
+  async function openCompareOptions() {
+    compareOptionsOpen = true
+    attachCompareOptionsListeners()
+    await tick()
+    compareOptionsFirstControl?.focus()
+  }
+
+  function closeCompareOptions(restoreFocus = true) {
+    if (!compareOptionsOpen) {
+      return
+    }
+
+    compareOptionsOpen = false
+    detachCompareOptionsListeners()
+
+    if (restoreFocus) {
+      compareOptionsTrigger?.focus()
+    }
+  }
+
   function getCachedDiffRenderState(diff: FileDiffResult) {
     const cached = diffRenderCache.get(diff)
 
@@ -192,8 +299,8 @@
     }
 
     const state: CachedDiffRenderState = {
-      sideBySideHunks: null,
-      unifiedHunks: null,
+      sideBySideHunks: new Map(),
+      unifiedHunks: new Map(),
       sideBySideItems: new Map(),
       unifiedItems: new Map(),
     }
@@ -202,29 +309,47 @@
     return state
   }
 
-  function getCachedSideBySideHunks(diff: FileDiffResult) {
-    const state = getCachedDiffRenderState(diff)
-
-    if (!state.sideBySideHunks) {
-      state.sideBySideHunks = buildSideBySideHunkRanges(diff.sideBySide)
-    }
-
-    return state.sideBySideHunks
+  function getRenderItemsCacheKey(
+    nextContextLines: ContextLinesSetting,
+    includeFullFile: boolean,
+  ) {
+    return `${nextContextLines}:${includeFullFile ? 'full' : 'hunks'}`
   }
 
-  function getCachedUnifiedHunks(diff: FileDiffResult) {
+  function getCachedSideBySideHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
     const state = getCachedDiffRenderState(diff)
+    const cached = state.sideBySideHunks.get(nextContextLines)
 
-    if (!state.unifiedHunks) {
-      state.unifiedHunks = buildUnifiedHunkRanges(diff.unified)
+    if (cached) {
+      return cached
     }
 
-    return state.unifiedHunks
+    const hunks = buildSideBySideHunkRanges(diff.sideBySide, nextContextLines)
+    state.sideBySideHunks.set(nextContextLines, hunks)
+    return hunks
   }
 
-  function getCachedSideBySideRenderItems(diff: FileDiffResult, includeFullFile: boolean) {
+  function getCachedUnifiedHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
     const state = getCachedDiffRenderState(diff)
-    const cached = state.sideBySideItems.get(includeFullFile)
+    const cached = state.unifiedHunks.get(nextContextLines)
+
+    if (cached) {
+      return cached
+    }
+
+    const hunks = buildUnifiedHunkRanges(diff.unified, nextContextLines)
+    state.unifiedHunks.set(nextContextLines, hunks)
+    return hunks
+  }
+
+  function getCachedSideBySideRenderItems(
+    diff: FileDiffResult,
+    includeFullFile: boolean,
+    nextContextLines: ContextLinesSetting,
+  ) {
+    const state = getCachedDiffRenderState(diff)
+    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
+    const cached = state.sideBySideItems.get(cacheKey)
 
     if (cached) {
       return cached
@@ -232,17 +357,22 @@
 
     const items = buildSideBySideRenderItems(
       diff.sideBySide,
-      getCachedSideBySideHunks(diff),
+      getCachedSideBySideHunks(diff, nextContextLines),
       includeFullFile,
     )
 
-    state.sideBySideItems.set(includeFullFile, items)
+    state.sideBySideItems.set(cacheKey, items)
     return items
   }
 
-  function getCachedUnifiedRenderItems(diff: FileDiffResult, includeFullFile: boolean) {
+  function getCachedUnifiedRenderItems(
+    diff: FileDiffResult,
+    includeFullFile: boolean,
+    nextContextLines: ContextLinesSetting,
+  ) {
     const state = getCachedDiffRenderState(diff)
-    const cached = state.unifiedItems.get(includeFullFile)
+    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
+    const cached = state.unifiedItems.get(cacheKey)
 
     if (cached) {
       return cached
@@ -250,11 +380,11 @@
 
     const items = buildUnifiedRenderItems(
       diff.unified,
-      getCachedUnifiedHunks(diff),
+      getCachedUnifiedHunks(diff, nextContextLines),
       includeFullFile,
     )
 
-    state.unifiedItems.set(includeFullFile, items)
+    state.unifiedItems.set(cacheKey, items)
     return items
   }
 
@@ -495,6 +625,14 @@
     ignoreCase = session.ignoreCase
     showFullFile = session.showFullFile
     showInlineHighlights = session.showInlineHighlights ?? true
+    wrapSideBySideLines = session.wrapSideBySideLines ?? false
+    showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
+    syncSideBySideScroll = session.syncSideBySideScroll ?? true
+
+    const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
+    contextLines = isContextLinesSetting(nextContextLines)
+      ? nextContextLines
+      : DEFAULT_CONTEXT_LINES
   }
 
   async function resolveInitialPanePath(
@@ -592,6 +730,7 @@
     activeDetailRequestId += 1
     detailLoading = false
     clearDetailPrefetch()
+    closeCompareOptions(false)
     screen = 'setup'
     errorMessage = ''
   }
@@ -1342,6 +1481,14 @@
       return
     }
 
+    if (!syncSideBySideScroll) {
+      if (source === 'left') {
+        scheduleScrollNavigationRefresh()
+      }
+
+      return
+    }
+
     cancelPaneNavigationScroll()
     event.preventDefault()
 
@@ -1362,6 +1509,14 @@
     const sourcePane = getPaneScroll(source)
 
     if (!sourcePane) {
+      return
+    }
+
+    if (!syncSideBySideScroll) {
+      if (source === 'left') {
+        scheduleScrollNavigationRefresh()
+      }
+
       return
     }
 
@@ -1445,6 +1600,10 @@
       ignoreCase,
       showFullFile,
       showInlineHighlights,
+      wrapSideBySideLines,
+      showSyntaxHighlighting,
+      syncSideBySideScroll,
+      contextLines,
       leftPane: buildPersistedPane(leftExplorer),
       rightPane: buildPersistedPane(rightExplorer),
     }
@@ -1486,13 +1645,13 @@
 
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
-      sideBySideHunkRanges = getCachedSideBySideHunks(activeDiff)
-      sideBySideRenderItems = getCachedSideBySideRenderItems(activeDiff, showFullFile)
+      sideBySideHunkRanges = getCachedSideBySideHunks(activeDiff, contextLines)
+      sideBySideRenderItems = getCachedSideBySideRenderItems(activeDiff, showFullFile, contextLines)
       unifiedHunkRanges = []
       unifiedRenderItems = []
     } else {
-      unifiedHunkRanges = getCachedUnifiedHunks(activeDiff)
-      unifiedRenderItems = getCachedUnifiedRenderItems(activeDiff, showFullFile)
+      unifiedHunkRanges = getCachedUnifiedHunks(activeDiff, contextLines)
+      unifiedRenderItems = getCachedUnifiedRenderItems(activeDiff, showFullFile, contextLines)
       sideBySideHunkRanges = []
       sideBySideRenderItems = []
     }
@@ -1524,10 +1683,12 @@
     activeDiff
     viewMode
     showFullFile
+    contextLines
     sideBySideRenderItems
     unifiedRenderItems
     scheduleDiffNavigationRefresh()
   } else {
+    closeCompareOptions(false)
     currentDiffHunk = -1
   }
 
@@ -1543,6 +1704,10 @@
     ignoreCase
     showFullFile
     showInlineHighlights
+    wrapSideBySideLines
+    showSyntaxHighlighting
+    syncSideBySideScroll
+    contextLines
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
     leftExplorer.selectedTargetKind
@@ -1826,41 +1991,127 @@
             {viewMode === 'sideBySide' ? 'Unified view' : 'Side by side'}
           </button>
 
-          <div class="inline-actions">
+          <div class="compare-options-anchor">
             <button
-              class:active={showFullFile}
-              class="secondary"
+              bind:this={compareOptionsTrigger}
+              aria-controls={COMPARE_OPTIONS_POPOVER_ID}
+              aria-expanded={compareOptionsOpen}
+              aria-label="Compare options"
+              class:active={compareOptionsOpen}
+              class="secondary compare-options-toggle"
+              title="Compare options"
               type="button"
-              on:click={() => (showFullFile = !showFullFile)}
+              on:click={toggleCompareOptions}
             >
-              Full file
+              <svg aria-hidden="true" class="compare-options-icon" viewBox="0 0 16 16">
+                <path
+                  d="M3 4h5.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M9.8 4H13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M3 8h2.2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M7.6 8H13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M3 12h6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M11.4 12H13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="1.4"
+                />
+                <circle cx="7.1" cy="4" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+                <circle cx="6.4" cy="8" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+                <circle cx="10.1" cy="12" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+              </svg>
             </button>
-            <button
-              class:active={showInlineHighlights}
-              class="secondary"
-              type="button"
-              on:click={() => (showInlineHighlights = !showInlineHighlights)}
-            >
-              Inline highlights
-            </button>
-            <button
-              class:active={ignoreWhitespace}
-              class="secondary"
-              aria-pressed={ignoreWhitespace}
-              type="button"
-              on:click={toggleIgnoreWhitespace}
-            >
-              Ignore whitespace
-            </button>
-            <button
-              class:active={ignoreCase}
-              class="secondary"
-              aria-pressed={ignoreCase}
-              type="button"
-              on:click={toggleIgnoreCase}
-            >
-              Ignore case
-            </button>
+
+            {#if compareOptionsOpen}
+              <div
+                bind:this={compareOptionsPopover}
+                aria-label="Compare options"
+                class="compare-options-popover"
+                id={COMPARE_OPTIONS_POPOVER_ID}
+                role="dialog"
+              >
+                <label class="compare-options-row">
+                  <span>Full file</span>
+                  <input bind:this={compareOptionsFirstControl} bind:checked={showFullFile} type="checkbox" />
+                </label>
+
+                <label class:disabled={showFullFile} class="compare-options-row compare-options-select-row">
+                  <span>Context lines</span>
+                  <select
+                    disabled={showFullFile}
+                    value={contextLines}
+                    on:change={(event) =>
+                      applyContextLines((event.currentTarget as HTMLSelectElement).value)}
+                  >
+                    {#each contextLinePresets as preset}
+                      <option value={preset}>{preset}</option>
+                    {/each}
+                  </select>
+                </label>
+
+                <label class="compare-options-row">
+                  <span>Wrap long lines</span>
+                  <input bind:checked={wrapSideBySideLines} type="checkbox" />
+                </label>
+
+                <label class="compare-options-row">
+                  <span>Inline highlights</span>
+                  <input bind:checked={showInlineHighlights} type="checkbox" />
+                </label>
+
+                <label class="compare-options-row">
+                  <span>Syntax highlighting</span>
+                  <input bind:checked={showSyntaxHighlighting} type="checkbox" />
+                </label>
+
+                <label class="compare-options-row">
+                  <span>Sync scrolling</span>
+                  <input checked={syncSideBySideScroll} type="checkbox" on:change={toggleSyncSideBySideScroll} />
+                </label>
+
+                <div class="compare-options-divider"></div>
+
+                <label class="compare-options-row">
+                  <span>Ignore whitespace</span>
+                  <input checked={ignoreWhitespace} type="checkbox" on:change={toggleIgnoreWhitespace} />
+                </label>
+
+                <label class="compare-options-row">
+                  <span>Ignore case</span>
+                  <input checked={ignoreCase} type="checkbox" on:change={toggleIgnoreCase} />
+                </label>
+              </div>
+            {/if}
           </div>
         </div>
 
@@ -1963,6 +2214,9 @@
         {viewMode}
         {currentDiffHunk}
         {showInlineHighlights}
+        {wrapSideBySideLines}
+        {showSyntaxHighlighting}
+        {syncSideBySideScroll}
         {sideBySideRenderItems}
         {unifiedRenderItems}
         {getFileName}

@@ -1,20 +1,25 @@
-import type { SideBySideRow, UnifiedLine } from './types'
+import type { ContextLinesSetting, SideBySideRow, UnifiedLine } from './types'
 import type {
   DiffHunkRange,
   SideBySideRenderItem,
   UnifiedRenderItem,
 } from './ui-types'
 
-const DIFF_CONTEXT_LINES = 3
-
-export function buildSideBySideHunkRanges(rows: SideBySideRow[]) {
+export function buildSideBySideHunkRanges(
+  rows: SideBySideRow[],
+  contextLines: ContextLinesSetting,
+) {
   return buildHunkRanges(
     rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'),
+    contextLines,
   )
 }
 
-export function buildUnifiedHunkRanges(rows: UnifiedLine[]) {
-  return buildHunkRanges(rows.map((row) => row.change !== 'context'))
+export function buildUnifiedHunkRanges(
+  rows: UnifiedLine[],
+  contextLines: ContextLinesSetting,
+) {
+  return buildHunkRanges(rows.map((row) => row.change !== 'context'), contextLines)
 }
 
 export function buildSideBySideRenderItems(
@@ -125,7 +130,7 @@ export function buildUnifiedRenderItems(
   })
 }
 
-function buildHunkRanges(changedRows: boolean[]) {
+function buildHunkRanges(changedRows: boolean[], contextLines: ContextLinesSetting) {
   const ranges: Array<{ start: number; end: number }> = []
 
   for (const [index, isChanged] of changedRows.entries()) {
@@ -133,8 +138,8 @@ function buildHunkRanges(changedRows: boolean[]) {
       continue
     }
 
-    const nextStart = Math.max(0, index - DIFF_CONTEXT_LINES)
-    const nextEnd = Math.min(changedRows.length - 1, index + DIFF_CONTEXT_LINES)
+    const nextStart = Math.max(0, index - contextLines)
+    const nextEnd = Math.min(changedRows.length - 1, index + contextLines)
     const previous = ranges.at(-1)
 
     if (previous && nextStart <= previous.end + 1) {
