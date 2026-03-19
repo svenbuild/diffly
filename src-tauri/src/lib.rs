@@ -2152,10 +2152,11 @@ mod tests {
             Some(text) if text == "// in : RPM or SPEED , out : stepmotor position pos_in_steps"
         ));
         assert!(result.side_by_side[2].right.is_none());
-        assert!(matches!(
-            result.side_by_side[3].left.as_ref().map(|cell| &cell.text),
-            None
-        ));
+        assert!(result.side_by_side[3]
+            .left
+            .as_ref()
+            .map(|cell| &cell.text)
+            .is_none());
         assert!(matches!(
             result.side_by_side[3].right.as_ref().map(|cell| &cell.text),
             Some(text) if text == "// Map the requested engineering value to a compensated microstep target position."
