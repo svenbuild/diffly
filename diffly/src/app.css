@@ -16,6 +16,7 @@
   --surface-strong: #2c2c2c;
   --border: #323232;
   --border-strong: #424242;
+  --toolbar-divider: var(--border-strong);
   --text: #f5f7fa;
   --muted: #b6bec9;
   --accent: #22c7c7;
@@ -121,6 +122,7 @@
   --surface-strong: #eaeef2;
   --border: #d0d7de;
   --border-strong: #afb8c1;
+  --toolbar-divider: var(--border);
   --text: #1f2328;
   --muted: #57606a;
   --accent: #0969da;
@@ -378,7 +380,7 @@ h2 {
 
 .compare-action-group + .compare-action-group {
   padding-left: 10px;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--toolbar-divider);
 }
 
 .app-identity,
