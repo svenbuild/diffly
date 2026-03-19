@@ -31,9 +31,9 @@
       <h2>Files</h2>
       <span>
         {#if activeStatusFilters.length > 0}
-          {filteredDirectoryEntries.length} of {directoryEntries.length} shown
+          {filteredDirectoryEntries.length} of {directoryEntries.length} changed files
         {:else}
-          {directoryEntries.length} shown
+          {directoryEntries.length} changed files
         {/if}
       </span>
     </div>

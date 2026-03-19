@@ -137,8 +137,6 @@
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
-  let compareStatusLabel = ''
-  let currentFileTitle = ''
   let leftCompareRoot: CompareRootDisplay = {
     prefix: '',
     suffix: '',
@@ -1714,11 +1712,6 @@
     return getFileName(side === 'left' ? activeDiff.leftLabel : activeDiff.rightLabel)
   }
 
-  $: compareStatusLabel =
-    mode === 'directory'
-      ? `${directoryEntries.length} changed file${directoryEntries.length === 1 ? '' : 's'}`
-      : 'File compare'
-
   $: {
     const { leftSegments, rightSegments } = splitCommonPathPrefix(leftPath, rightPath)
     leftCompareRoot = buildCompareRootDisplay(leftPath, leftSegments)
@@ -1732,13 +1725,6 @@
     leftAbsolutePath: activeDiff?.leftLabel ?? '',
     rightAbsolutePath: activeDiff?.rightLabel ?? '',
   }
-
-  $: currentFileTitle =
-    mode === 'directory'
-      ? diffHeaderContext.currentFileLabel
-      : [diffHeaderContext.leftAbsolutePath, diffHeaderContext.rightAbsolutePath]
-          .filter((path) => path.length > 0)
-          .join('\n')
 
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
@@ -2021,10 +2007,6 @@
           <h1>Diffly</h1>
           <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
         </div>
-
-        <div class="compare-bar-status">
-          <strong>{compareStatusLabel}</strong>
-        </div>
       </div>
 
       <div class="app-bar-actions compare-actions">
@@ -2275,7 +2257,7 @@
     <section class:refreshing={loading} class="compare-context">
       <div class="compare-roots">
         <div class="compare-root" title={leftCompareRoot.fullPath}>
-          <span class="compare-root-label">Left root</span>
+          <span class="compare-root-label">Left root:</span>
           <span class="compare-root-value">
             {#if leftCompareRoot.prefix}
               <span class="compare-root-prefix">{leftCompareRoot.prefix}</span>
@@ -2285,7 +2267,7 @@
         </div>
 
         <div class="compare-root" title={rightCompareRoot.fullPath}>
-          <span class="compare-root-label">Right root</span>
+          <span class="compare-root-label">Right root:</span>
           <span class="compare-root-value">
             {#if rightCompareRoot.prefix}
               <span class="compare-root-prefix">{rightCompareRoot.prefix}</span>
@@ -2293,11 +2275,6 @@
             <span class="compare-root-suffix">{rightCompareRoot.suffix}</span>
           </span>
         </div>
-      </div>
-
-      <div class="current-file-context" title={currentFileTitle}>
-        <span class="current-file-label">Current file</span>
-        <strong>{diffHeaderContext.currentFileLabel}</strong>
       </div>
     </section>
 
