@@ -1171,9 +1171,9 @@ button.filter-chip.tooLarge:focus-visible {
   font-weight: 600;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: center;
   box-shadow: none;
 }
 
@@ -1291,6 +1291,11 @@ button.filter-chip.tooLarge:focus-visible {
 .split-view.wrapped-lines .pane-grid .line-text {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.split-view.wrapped-lines .diff-row {
+  min-height: var(--diff-row-height);
+  height: auto;
 }
 
 .line-fragment.highlighted {
