@@ -1,35 +1,35 @@
 {
   "name": "diffly",
-  "description": "Desktop diff viewer for comparing files and directories.",
   "private": true,
-  "version": "0.1.1",
-  "license": "MIT",
-  "author": "Sven",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/svenbuild/diffly.git"
-  },
+  "version": "0.1.2",
+  "description": "Desktop file and directory diff tool built with Svelte and Tauri.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build --debug --no-bundle",
+    "tauri:build:release": "tauri build --no-bundle",
+    "tauri:package": "tauri build --bundles nsis",
+    "tauri:package:all": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "prismjs": "^1.30.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tauri-apps/cli": "^2.10.1",
     "@tsconfig/svelte": "^5.0.6",
     "@types/node": "^24.10.1",
+    "@types/prismjs": "^1.26.6",
     "svelte": "^5.45.2",
     "svelte-check": "^4.3.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2.10.1"
   }
 }

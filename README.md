@@ -1,76 +1,88 @@
 # Diffly
 
-Diffly is a desktop diff viewer for comparing files and directories on Windows.
+Diffly is a desktop file and directory diff tool built with Svelte, TypeScript, and Tauri. It focuses on fast local comparisons, folder-aware result browsing, inline token highlights, and persistent compare sessions.
 
-It pairs a Svelte frontend with a Tauri backend and focuses on fast local comparisons, side-by-side review, and practical directory browsing instead of a Git-centric workflow.
+## What It Does
 
-## Features
-
-- Compare two files directly or compare two directories recursively.
-- Browse folders from a dual-pane setup screen with back, forward, and up navigation.
-- Review diffs in side-by-side or unified view.
-- Jump between diff hunks with `Previous difference` and `Next difference`.
-- Toggle full-file rendering, inline highlights, ignore-whitespace, and ignore-case options.
-- Filter directory results by status such as modified, left only, right only, binary, and too large.
-- Preserve session state for compare mode, theme, and viewer preferences between launches.
-- Fall back to status-only output for binary files and large text files.
-
-## Tech Stack
-
-- Svelte 5
-- TypeScript
-- Vite
-- Tauri 2
-- Rust
+- Compare two files directly or compare two directory trees.
+- Browse drives and folders from inside the app before choosing compare targets.
+- Filter changed directory entries by status.
+- Switch between side-by-side and unified diff views.
+- Ignore whitespace and case differences during compare.
+- Persist the current workspace, theme, and navigation state between launches.
 
 ## Development
 
-### Prerequisites
-
-- Node.js 20+
-- Rust toolchain
-- Tauri build prerequisites for your platform
-
-On Windows, install the Visual Studio C++ build tools and WebView2 runtime if they are not already present.
-
-### Install dependencies
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### Run the desktop app in development
-
-```bash
-npm run tauri:dev
-```
-
-### Run checks
+Run the frontend checks:
 
 ```bash
 npm run check
 ```
 
-### Build the web bundle
+Run the Rust test suite:
 
 ```bash
-npm run build
+npm test
 ```
 
-### Build the desktop application
+Start the desktop app in development mode:
+
+```bash
+npm run tauri:dev
+```
+
+Build a fast desktop binary for local verification:
 
 ```bash
 npm run tauri:build
 ```
 
-Tauri outputs the packaged artifacts under `src-tauri/target/release/bundle/`.
+Build a release binary without packaging installers:
 
-## Repository Notes
+```bash
+npm run tauri:build:release
+```
 
-- `src/` contains the Svelte application.
-- `src-tauri/` contains the native commands, file-system access, and application packaging config.
-- `test-fixtures/` contains local compare fixtures used to exercise directory and diff behavior.
+Build the standard Windows installer:
 
-## License
+```bash
+npm run tauri:package
+```
 
-MIT. See [LICENSE](./LICENSE).
+Build every configured installer target:
+
+```bash
+npm run tauri:package:all
+```
+
+## Project Structure
+
+- `src/App.svelte`: app-level state and screen orchestration.
+- `src/lib/PickerPane.svelte`: explorer and target-selection pane UI.
+- `src/lib/DirectoryBrowser.svelte`: changed-file browser for directory compares.
+- `src/lib/DiffViewer.svelte`: side-by-side and unified diff rendering.
+- `src/lib/api.ts`: frontend bridge to Tauri commands.
+- `src-tauri/src/lib.rs`: filesystem access, compare logic, session persistence, and diff generation.
+- `test-fixtures/`: reusable fixtures for directory and diff behavior tests.
+
+## Validation
+
+The current validation path is:
+
+- `npm run check`
+- `npm test`
+- `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+
+## Notes
+
+- `npm run tauri:build` now uses a debug, no-bundle path to keep local desktop builds fast.
+- `npm run tauri:package` keeps installer generation separate so packaging does not slow down every build.
+- Release Rust builds keep incremental artifacts enabled and use `opt-level = 2` to cut compile time without falling all the way back to debug codegen.
+- Large text diffs are capped at 1 MB per file.
+- Binary files are detected automatically and shown as status-only entries.
