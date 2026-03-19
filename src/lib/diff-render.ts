@@ -10,31 +10,11 @@ const DIFF_CONTEXT_LINES = 3
 export function buildSideBySideHunkRanges(rows: SideBySideRow[]) {
   return buildHunkRanges(
     rows.map((row) => row.left?.change !== 'context' || row.right?.change !== 'context'),
-  ).map((range) => {
-    const hunkRows = rows.slice(range.start, range.end + 1)
-
-    return {
-      ...range,
-      header: formatHunkHeader(
-        hunkRows.map((row) => row.left?.lineNumber ?? null),
-        hunkRows.map((row) => row.right?.lineNumber ?? null),
-      ),
-    } satisfies DiffHunkRange
-  })
+  )
 }
 
 export function buildUnifiedHunkRanges(rows: UnifiedLine[]) {
-  return buildHunkRanges(rows.map((row) => row.change !== 'context')).map((range) => {
-    const hunkRows = rows.slice(range.start, range.end + 1)
-
-    return {
-      ...range,
-      header: formatHunkHeader(
-        hunkRows.map((row) => row.leftLineNumber),
-        hunkRows.map((row) => row.rightLineNumber),
-      ),
-    } satisfies DiffHunkRange
-  })
+  return buildHunkRanges(rows.map((row) => row.change !== 'context'))
 }
 
 export function buildSideBySideRenderItems(
@@ -62,16 +42,32 @@ export function buildSideBySideRenderItems(
 
   return hunks.flatMap((hunk, index) => {
     const hunkRows = rows.slice(hunk.start, hunk.end + 1)
+    const previousHunk = hunks[index - 1]
+    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : 0
+    const items: SideBySideRenderItem[] = []
 
-    return [
-      {
+    if (hiddenLineCount > 0) {
+      items.push({
         type: 'hunk',
-        header: hunk.header,
+        header: formatCollapsedLineCount(hiddenLineCount),
         hunkIndex: index,
-        isAnchor: true,
-      } satisfies SideBySideRenderItem,
-      ...hunkRows.map((row) => ({ type: 'row', row }) satisfies SideBySideRenderItem),
-    ]
+        isAnchor: false,
+      } satisfies SideBySideRenderItem)
+    }
+
+    items.push(
+      ...hunkRows.map(
+        (row, rowIndex) =>
+          ({
+            type: 'row',
+            row,
+            hunkIndex: index,
+            isAnchor: rowIndex === 0,
+          }) satisfies SideBySideRenderItem,
+      ),
+    )
+
+    return items
   })
 }
 
@@ -100,16 +96,32 @@ export function buildUnifiedRenderItems(
 
   return hunks.flatMap((hunk, index) => {
     const hunkRows = rows.slice(hunk.start, hunk.end + 1)
+    const previousHunk = hunks[index - 1]
+    const hiddenLineCount = previousHunk ? hunk.start - previousHunk.end - 1 : 0
+    const items: UnifiedRenderItem[] = []
 
-    return [
-      {
+    if (hiddenLineCount > 0) {
+      items.push({
         type: 'hunk',
-        header: hunk.header,
+        header: formatCollapsedLineCount(hiddenLineCount),
         hunkIndex: index,
-        isAnchor: true,
-      } satisfies UnifiedRenderItem,
-      ...hunkRows.map((row) => ({ type: 'row', row }) satisfies UnifiedRenderItem),
-    ]
+        isAnchor: false,
+      } satisfies UnifiedRenderItem)
+    }
+
+    items.push(
+      ...hunkRows.map(
+        (row, rowIndex) =>
+          ({
+            type: 'row',
+            row,
+            hunkIndex: index,
+            isAnchor: rowIndex === 0,
+          }) satisfies UnifiedRenderItem,
+      ),
+    )
+
+    return items
   })
 }
 
@@ -135,28 +147,6 @@ function buildHunkRanges(changedRows: boolean[]) {
   return ranges
 }
 
-function formatHunkHeader(
-  leftLineNumbers: Array<number | null>,
-  rightLineNumbers: Array<number | null>,
-) {
-  const leftRange = summarizeLineNumbers(leftLineNumbers)
-  const rightRange = summarizeLineNumbers(rightLineNumbers)
-
-  return `@@ -${leftRange.start},${leftRange.count} +${rightRange.start},${rightRange.count} @@`
-}
-
-function summarizeLineNumbers(lineNumbers: Array<number | null>) {
-  const present = lineNumbers.filter((value): value is number => value !== null)
-
-  if (present.length === 0) {
-    return {
-      start: 0,
-      count: 0,
-    }
-  }
-
-  return {
-    start: present[0],
-    count: present.length,
-  }
+function formatCollapsedLineCount(hiddenLineCount: number) {
+  return `${hiddenLineCount} unmodified line${hiddenLineCount === 1 ? '' : 's'}`
 }

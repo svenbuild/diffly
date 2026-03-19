@@ -44,17 +44,13 @@
 
               {#each sideBySideRenderItems as item}
                 {#if item.type === 'hunk'}
-                  <div
-                    class:current-diff-target={item.hunkIndex === currentDiffHunk}
-                    class="hunk-row"
-                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                    data-diff-index={item.hunkIndex}
-                  >
-                    {item.header}
+                  <div class="collapsed-row">
+                    <span class="collapsed-chip">{item.header}</span>
                   </div>
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                    class:gap-row={!item.row.left}
                     class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
                     data-diff-index={item.hunkIndex}
@@ -104,12 +100,13 @@
 
               {#each sideBySideRenderItems as item}
                 {#if item.type === 'hunk'}
-                  <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="hunk-row">
-                    {item.header}
+                  <div class="collapsed-row">
+                    <span class="collapsed-chip">{item.header}</span>
                   </div>
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                    class:gap-row={!item.row.right}
                     class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                   >
                     {#if item.row.right}
@@ -157,13 +154,8 @@
 
         {#each unifiedRenderItems as item}
           {#if item.type === 'hunk'}
-            <div
-              class:current-diff-target={item.hunkIndex === currentDiffHunk}
-              class="hunk-row unified-hunk"
-              data-diff-anchor={item.isAnchor ? 'true' : undefined}
-              data-diff-index={item.hunkIndex}
-            >
-              {item.header}
+            <div class="collapsed-row unified-collapsed-row">
+              <span class="collapsed-chip">{item.header}</span>
             </div>
           {:else if item.row}
             <div

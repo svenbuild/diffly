@@ -39,7 +39,6 @@ export interface UnifiedRenderItem {
 export interface DiffHunkRange {
   start: number
   end: number
-  header: string
 }
 
 export interface ExplorerPaneState {
