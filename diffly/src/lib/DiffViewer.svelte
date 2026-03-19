@@ -55,7 +55,7 @@
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class={`diff-row ${item.row.left?.change ?? 'context'}`}
+                    class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
                     data-diff-index={item.hunkIndex}
                   >
@@ -72,6 +72,10 @@
                           </span>
                         {/each}
                       </span>
+                    {:else}
+                      <span class="line-number"></span>
+                      <span class="prefix"></span>
+                      <span class="line-text">{'\u00a0'}</span>
                     {/if}
                   </div>
                 {/if}
@@ -106,7 +110,7 @@
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class={`diff-row ${item.row.right?.change ?? 'context'}`}
+                    class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                   >
                     {#if item.row.right}
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
@@ -121,6 +125,10 @@
                           </span>
                         {/each}
                       </span>
+                    {:else}
+                      <span class="line-number"></span>
+                      <span class="prefix"></span>
+                      <span class="line-text">{'\u00a0'}</span>
                     {/if}
                   </div>
                 {/if}
