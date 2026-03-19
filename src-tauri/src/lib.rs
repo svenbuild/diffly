@@ -20,6 +20,7 @@ const LINE_PAIR_SIGNATURE_MATCH_SCORE: i32 = 220;
 const LINE_PAIR_NORMALIZED_MATCH_SCORE: i32 = 190;
 const LINE_PAIR_COMMENT_MATCH_SCORE: i32 = 140;
 const LINE_PAIR_BLANK_MATCH_SCORE: i32 = 160;
+const LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE: i32 = 70;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1039,17 +1040,13 @@ fn exact_code_anchor_pairs(
     let left_candidates = left_descriptors
         .iter()
         .enumerate()
-        .filter(|(_, descriptor)| {
-            descriptor.kind == LineKind::Code && !descriptor.code_signature.is_empty()
-        })
+        .filter(|(_, descriptor)| is_exact_anchor_candidate(descriptor))
         .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
         .collect::<Vec<_>>();
     let right_candidates = right_descriptors
         .iter()
         .enumerate()
-        .filter(|(_, descriptor)| {
-            descriptor.kind == LineKind::Code && !descriptor.code_signature.is_empty()
-        })
+        .filter(|(_, descriptor)| is_exact_anchor_candidate(descriptor))
         .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
         .collect::<Vec<_>>();
     let left_signatures = left_candidates
@@ -1070,6 +1067,12 @@ fn exact_code_anchor_pairs(
             )
         })
         .collect()
+}
+
+fn is_exact_anchor_candidate(descriptor: &LineDescriptor) -> bool {
+    descriptor.kind == LineKind::Code
+        && !descriptor.code_signature.is_empty()
+        && !is_weak_structural_signature(&descriptor.code_signature)
 }
 
 fn align_replace_subrange(
@@ -1180,12 +1183,22 @@ fn comment_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i
 }
 
 fn code_pair_score(left: &LineDescriptor, right: &LineDescriptor) -> Option<i32> {
+    let weak_structural_match = is_weak_structural_pair(left, right);
+
     if !left.code_signature.is_empty() && left.code_signature == right.code_signature {
-        return Some(LINE_PAIR_SIGNATURE_MATCH_SCORE);
+        return Some(if weak_structural_match {
+            LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE + indentation_bonus(left, right)
+        } else {
+            LINE_PAIR_SIGNATURE_MATCH_SCORE
+        });
     }
 
     if left.trimmed_text == right.trimmed_text || left.normalized_text == right.normalized_text {
-        return Some(LINE_PAIR_NORMALIZED_MATCH_SCORE + indentation_bonus(left, right));
+        return Some(if weak_structural_match {
+            LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE + indentation_bonus(left, right)
+        } else {
+            LINE_PAIR_NORMALIZED_MATCH_SCORE + indentation_bonus(left, right)
+        });
     }
 
     let similarity = line_similarity_score(left, right);
@@ -1315,14 +1328,57 @@ fn primary_identifier(signature: &str) -> String {
         return String::new();
     }
 
-    if signature.trim_start().starts_with("#define") && identifiers.len() > 1 {
-        return identifiers[1].clone();
+    if signature.trim_start().starts_with('#') && identifiers.len() > 1 {
+        return identifiers
+            .into_iter()
+            .skip(1)
+            .find(|identifier| !is_noise_identifier(identifier))
+            .unwrap_or_default();
     }
 
     identifiers
         .into_iter()
         .find(|identifier| !is_noise_identifier(identifier))
         .unwrap_or_default()
+}
+
+fn is_weak_structural_pair(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    is_weak_structural_signature(&left.code_signature)
+        && is_weak_structural_signature(&right.code_signature)
+}
+
+fn is_weak_structural_signature(signature: &str) -> bool {
+    let trimmed = signature.trim();
+
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    if trimmed
+        .chars()
+        .all(|character| character.is_ascii_punctuation())
+    {
+        return true;
+    }
+
+    if matches!(
+        trimmed,
+        "{" | "}" | "else" | "do" | "try" | "catch" | "finally" | "#else" | "#endif"
+    ) {
+        return true;
+    }
+
+    let identifiers = extract_identifiers(trimmed);
+
+    if trimmed.starts_with('#') {
+        return identifiers.len() <= 1
+            || identifiers
+                .iter()
+                .skip(1)
+                .all(|identifier| is_noise_identifier(identifier));
+    }
+
+    identifiers.is_empty()
 }
 
 fn extract_identifiers(text: &str) -> Vec<String> {
@@ -1787,6 +1843,20 @@ mod tests {
 
     fn write_temp_file(path: &Path, contents: &str) {
         fs::write(path, contents).expect("temporary file should be written");
+    }
+
+    fn test_changed_cell(text: &str, change: DiffChange) -> DiffCell {
+        DiffCell {
+            line_number: None,
+            prefix: match change {
+                DiffChange::Delete => "-".to_string(),
+                DiffChange::Insert => "+".to_string(),
+                DiffChange::Context => " ".to_string(),
+            },
+            text: text.to_string(),
+            segments: Vec::new(),
+            change,
+        }
     }
 
     #[test]
@@ -2370,5 +2440,62 @@ mod tests {
         assert_eq!(right[0].code_signature, "#define T_WAIT 10");
         assert_eq!(right[1].code_signature, "#define KOMMA 128");
         assert_eq!(exact_code_anchor_pairs(&left, &right), vec![(1, 0), (3, 1)]);
+    }
+
+    #[test]
+    fn exact_code_anchor_pairs_ignore_braces_and_endif_lines() {
+        let left = vec![
+            build_line_descriptor("}"),
+            build_line_descriptor("#ifdef ULTRON_SM_TEST_ACTIVE"),
+            build_line_descriptor("#endif"),
+            build_line_descriptor("}"),
+        ];
+        let right = vec![
+            build_line_descriptor("}"),
+            build_line_descriptor("}"),
+            build_line_descriptor("#ifdef ULTRON_SM_TEST_ACTIVE"),
+            build_line_descriptor("#endif"),
+            build_line_descriptor("}"),
+            build_line_descriptor("}"),
+        ];
+
+        assert_eq!(exact_code_anchor_pairs(&left, &right), vec![(1, 2)]);
+    }
+
+    #[test]
+    fn replace_block_alignment_prefers_meaningful_anchors_over_repeated_braces() {
+        let left_cells = vec![
+            test_changed_cell("#ifdef ULTRON_SM_TEST_ACTIVE", DiffChange::Delete),
+            test_changed_cell(
+                "DL_GPIO_setPins(GPIO_TT_SECURITY_PORT, GPIO_PIN_0);",
+                DiffChange::Delete,
+            ),
+            test_changed_cell("#endif", DiffChange::Delete),
+            test_changed_cell("SM_synchronized = 0;", DiffChange::Delete),
+        ];
+        let right_cells = vec![
+            test_changed_cell("else", DiffChange::Insert),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("}", DiffChange::Insert),
+            test_changed_cell("#ifdef ULTRON_SM_TEST_ACTIVE", DiffChange::Insert),
+            test_changed_cell(
+                "DL_GPIO_clearPins(GPIO_SM_NOE_PORT, GPIO_PIN_0);",
+                DiffChange::Insert,
+            ),
+            test_changed_cell("#endif", DiffChange::Insert),
+            test_changed_cell("}", DiffChange::Insert),
+            test_changed_cell("}", DiffChange::Insert),
+            test_changed_cell("SM_synchronized = 1;", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(alignment.left_matches[0], Some(3));
+        assert_eq!(alignment.left_matches[3], Some(8));
+        assert!(alignment.right_matches[0].is_none());
+        assert!(alignment.right_matches[1].is_none());
+        assert!(alignment.right_matches[2].is_none());
+        assert!(alignment.right_matches[6].is_none());
+        assert!(alignment.right_matches[7].is_none());
     }
 }
