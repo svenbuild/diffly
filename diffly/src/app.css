@@ -77,8 +77,8 @@
   --diff-line-number-width: calc(1ch + 8px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-font-size: 11px;
-  --diff-row-line-height: 13px;
-  --diff-row-height: 18px;
+  --diff-row-line-height: 14px;
+  --diff-row-height: 19px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
   --collapsed-row-bg: transparent;
@@ -1053,6 +1053,7 @@ button.filter-chip.tooLarge:focus-visible {
   min-width: 0;
   overflow: visible;
   font-size: 0.72rem;
+  padding: 0 6px;
 }
 
 .viewer-root-label {
@@ -1092,8 +1093,6 @@ button.filter-chip.tooLarge:focus-visible {
 
 .viewer-root + .viewer-root {
   border-left: 1px solid var(--border);
-  margin-left: 10px;
-  padding-left: 10px;
 }
 
 .viewer-root:hover .viewer-root-path-compact,
@@ -1189,6 +1188,7 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-scroll,
 .unified-grid {
   background: var(--canvas-alt);
+  scrollbar-gutter: stable both-edges;
 }
 
 .pane-grid,
