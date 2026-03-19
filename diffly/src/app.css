@@ -74,6 +74,9 @@
   --diff-delete-text: #ffd7e2;
   --diff-line-number-width: 64px;
   --diff-prefix-width: 30px;
+  --diff-font-size: 12px;
+  --diff-row-line-height: 17px;
+  --diff-row-height: 22px;
   --diff-gap-bg: #13171d;
   --diff-gap-stripe: rgba(243, 247, 253, 0.055);
   --collapsed-chip-bg: #141922;
@@ -1052,8 +1055,8 @@ button.filter-chip.tooLarge:focus-visible {
 .unified-grid,
 .unified-content-grid {
   font-family: var(--code);
-  font-size: 0.71rem;
-  line-height: 1.45;
+  font-size: var(--diff-font-size);
+  line-height: var(--diff-row-line-height);
 }
 
 .unified-grid {
@@ -1110,8 +1113,8 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row {
   grid-template-columns: var(--diff-line-number-width) var(--diff-prefix-width) minmax(0, 1fr);
   gap: 0;
-  min-height: calc(1.45em + 5px);
-  height: calc(1.45em + 5px);
+  min-height: var(--diff-row-height);
+  height: var(--diff-row-height);
 }
 
 .unified-row {
@@ -1120,8 +1123,8 @@ button.filter-chip.tooLarge:focus-visible {
     var(--diff-line-number-width)
     var(--diff-prefix-width)
     minmax(0, 1fr);
-  min-height: calc(1.45em + 5px);
-  height: calc(1.45em + 5px);
+  min-height: var(--diff-row-height);
+  height: var(--diff-row-height);
 }
 
 .diff-row > *,
@@ -1169,11 +1172,12 @@ button.filter-chip.tooLarge:focus-visible {
 .line-text {
   display: block;
   padding: 2px 4px;
-  line-height: 1.45;
+  line-height: var(--diff-row-line-height);
 }
 
 .line-number,
 .prefix {
+  font-size: var(--diff-font-size);
   user-select: none;
 }
 
