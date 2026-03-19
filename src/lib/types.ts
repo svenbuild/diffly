@@ -1,6 +1,7 @@
 export type CompareMode = 'file' | 'directory'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = 'dark' | 'light'
+export type ContextLinesSetting = 3 | 10 | 20
 export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'tooLarge'
 export type ContentKind = 'text' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
@@ -23,6 +24,10 @@ export interface PersistedSession {
   ignoreCase: boolean
   showFullFile: boolean
   showInlineHighlights: boolean
+  wrapSideBySideLines?: boolean
+  showSyntaxHighlighting?: boolean
+  syncSideBySideScroll?: boolean
+  contextLines?: ContextLinesSetting
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
 }
