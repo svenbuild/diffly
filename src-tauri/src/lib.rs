@@ -16,6 +16,7 @@ const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
+const LINE_PAIR_SIGNATURE_MATCH_SCORE: i32 = 220;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -913,6 +914,13 @@ fn line_pair_score(left: &str, right: &str) -> Option<i32> {
         return Some(100);
     }
 
+    let left_signature = alignment_signature(left);
+    let right_signature = alignment_signature(right);
+
+    if !left_signature.is_empty() && left_signature == right_signature {
+        return Some(LINE_PAIR_SIGNATURE_MATCH_SCORE);
+    }
+
     let left_tokens = tokenize_inline_diff(left);
     let right_tokens = tokenize_inline_diff(right);
     let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
@@ -928,6 +936,58 @@ fn line_pair_score(left: &str, right: &str) -> Option<i32> {
     let similarity = ((common_chars * 200) / (left_length + right_length)) as i32;
 
     (similarity >= LINE_PAIR_MIN_SIMILARITY).then_some(similarity)
+}
+
+fn alignment_signature(line: &str) -> String {
+    let trimmed = line.trim();
+
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if let Some(comment_body) = trimmed.strip_prefix("//") {
+        return collapse_whitespace(comment_body);
+    }
+
+    collapse_whitespace(trim_trailing_line_comment(trimmed))
+}
+
+fn trim_trailing_line_comment(line: &str) -> &str {
+    let mut quoted = false;
+    let mut escaped = false;
+    let characters: Vec<(usize, char)> = line.char_indices().collect();
+    let mut index = 0;
+
+    while index + 1 < characters.len() {
+        let (_, current) = characters[index];
+        let (byte_index, next) = characters[index + 1];
+
+        if escaped {
+            escaped = false;
+            index += 1;
+            continue;
+        }
+
+        if current == '\\' {
+            escaped = true;
+            index += 1;
+            continue;
+        }
+
+        if current == '"' {
+            quoted = !quoted;
+            index += 1;
+            continue;
+        }
+
+        if !quoted && current == '/' && next == '/' {
+            return &line[..byte_index];
+        }
+
+        index += 1;
+    }
+
+    line
 }
 
 fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSegment>) {
@@ -1489,6 +1549,67 @@ mod tests {
         assert!(matches!(
             result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
             Some(text) if text == "config.timeout_ms = 12;"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_aligns_code_lines_after_inserted_comment_define() {
+        let temp_root = unique_temp_dir("file-aligns-commented-defines");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "#define PWM_INDEX_1P DL_TIMER_CC_0_INDEX\n",
+                "#define PWM_INDEX_1M DL_TIMER_CC_1_INDEX\n",
+                "#define PWM_INDEX_2P DL_TIMER_CC_2_INDEX\n",
+                "#define PWM_INDEX_2M DL_TIMER_CC_3_INDEX\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "#define MAXACC (32 * KOMMA) // maximum filtered acceleration per refresh\n",
+                "#define PWM_INDEX_1P DL_TIMER_CC_0_INDEX // positive sine phase\n",
+                "#define PWM_INDEX_1M DL_TIMER_CC_1_INDEX // negative sine phase\n",
+                "#define PWM_INDEX_2P DL_TIMER_CC_2_INDEX // positive cosine phase\n",
+                "#define PWM_INDEX_2M DL_TIMER_CC_3_INDEX // negative cosine phase\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(result.side_by_side[0].left.is_none());
+        assert!(matches!(
+            result.side_by_side[0].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define MAXACC (32 * KOMMA) // maximum filtered acceleration per refresh"
+        ));
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define PWM_INDEX_1P DL_TIMER_CC_0_INDEX"
+        ));
+        assert!(matches!(
+            result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define PWM_INDEX_1P DL_TIMER_CC_0_INDEX // positive sine phase"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define PWM_INDEX_2M DL_TIMER_CC_3_INDEX"
+        ));
+        assert!(matches!(
+            result.side_by_side[4].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "#define PWM_INDEX_2M DL_TIMER_CC_3_INDEX // negative cosine phase"
         ));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");

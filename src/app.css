@@ -1091,6 +1091,11 @@ button.filter-chip.tooLarge:focus-visible {
   white-space: pre-wrap;
 }
 
+.pane-grid .line-text {
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
 .line-fragment.highlighted {
   background: var(--highlight-bg);
 }
