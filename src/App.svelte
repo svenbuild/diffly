@@ -52,6 +52,8 @@
 
   const SESSION_SAVE_DELAY_MS = 180
   const THEME_SWITCH_DURATION_MS = 140
+  const DIFF_PREFETCH_RADIUS = 2
+  const DIFF_PREFETCH_DELAY_MS = 70
 
   type Screen = 'setup' | 'compare'
 
@@ -98,6 +100,7 @@
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareRefreshTimer: number | null = null
+  let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let leftExplorer = createExplorerPane('Left')
@@ -155,6 +158,10 @@
 
       if (compareRefreshTimer !== null) {
         window.clearTimeout(compareRefreshTimer)
+      }
+
+      if (detailPrefetchTimer !== null) {
+        window.clearTimeout(detailPrefetchTimer)
       }
 
       if (themeTransitionTimer !== null) {
@@ -254,6 +261,103 @@
       root.classList.remove('theme-switching')
       themeTransitionTimer = null
     }, THEME_SWITCH_DURATION_MS)
+  }
+
+  function buildDetailCacheKey(relativePath: string, revision = compareRevision) {
+    return [
+      revision,
+      leftPath,
+      rightPath,
+      relativePath,
+      ignoreWhitespace ? '1' : '0',
+      ignoreCase ? '1' : '0',
+    ].join('\u0000')
+  }
+
+  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
+    if (!leftPath || !rightPath) {
+      throw new Error('No active compare is available.')
+    }
+
+    const cacheKey = buildDetailCacheKey(relativePath, revision)
+    let resultPromise = detailDiffCache.get(cacheKey)
+
+    if (resultPromise) {
+      return resultPromise
+    }
+
+    resultPromise = openCompareItem(
+      leftPath,
+      rightPath,
+      relativePath,
+      getOptions(),
+    ).catch((error) => {
+      detailDiffCache.delete(cacheKey)
+      throw error
+    })
+
+    detailDiffCache.set(cacheKey, resultPromise)
+    return resultPromise
+  }
+
+  function clearDetailPrefetch() {
+    if (detailPrefetchTimer !== null) {
+      window.clearTimeout(detailPrefetchTimer)
+      detailPrefetchTimer = null
+    }
+  }
+
+  function scheduleAdjacentDiffPrefetch(centerRelativePath: string, revision = compareRevision) {
+    clearDetailPrefetch()
+
+    if (
+      screen !== 'compare' ||
+      mode !== 'directory' ||
+      !leftPath ||
+      !rightPath ||
+      filteredDirectoryEntries.length < 2
+    ) {
+      return
+    }
+
+    const centerIndex = filteredDirectoryEntries.findIndex(
+      (entry) => entry.relativePath === centerRelativePath,
+    )
+
+    if (centerIndex === -1) {
+      return
+    }
+
+    const candidates: DirectoryEntryResult[] = []
+
+    for (let offset = 1; offset <= DIFF_PREFETCH_RADIUS; offset += 1) {
+      const nextEntry = filteredDirectoryEntries[centerIndex + offset]
+      const previousEntry = filteredDirectoryEntries[centerIndex - offset]
+
+      if (nextEntry) {
+        candidates.push(nextEntry)
+      }
+
+      if (previousEntry) {
+        candidates.push(previousEntry)
+      }
+    }
+
+    if (candidates.length === 0) {
+      return
+    }
+
+    detailPrefetchTimer = window.setTimeout(() => {
+      detailPrefetchTimer = null
+
+      if (revision !== compareRevision || !leftPath || !rightPath) {
+        return
+      }
+
+      for (const entry of candidates) {
+        void getOrCreateDetailDiffPromise(entry.relativePath, revision).catch(() => undefined)
+      }
+    }, DIFF_PREFETCH_DELAY_MS)
   }
 
   function setThemeMode(nextThemeMode: ThemeMode) {
@@ -442,6 +546,7 @@
 
     activeDetailRequestId += 1
     detailDiffCache.clear()
+    clearDetailPrefetch()
     detailLoading = false
     mode = nextMode
     leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
@@ -480,6 +585,7 @@
   function goToSetup() {
     activeDetailRequestId += 1
     detailLoading = false
+    clearDetailPrefetch()
     screen = 'setup'
     errorMessage = ''
   }
@@ -699,6 +805,7 @@
     detailLoading = false
     errorMessage = ''
     activeDetailRequestId += 1
+    clearDetailPrefetch()
     leftPath = nextLeftPath
     rightPath = nextRightPath
 
@@ -760,14 +867,6 @@
     }
 
     const requestId = activeDetailRequestId + 1
-    const cacheKey = [
-      revision,
-      leftPath,
-      rightPath,
-      entry.relativePath,
-      ignoreWhitespace ? '1' : '0',
-      ignoreCase ? '1' : '0',
-    ].join('\u0000')
 
     activeDetailRequestId = requestId
     selectedRelativePath = entry.relativePath
@@ -775,26 +874,14 @@
     errorMessage = ''
 
     try {
-      let resultPromise = detailDiffCache.get(cacheKey)
-
-      if (!resultPromise) {
-        resultPromise = openCompareItem(
-          leftPath,
-          rightPath,
-          entry.relativePath,
-          getOptions(),
-        ).catch((error) => {
-          detailDiffCache.delete(cacheKey)
-          throw error
-        })
-
-        detailDiffCache.set(cacheKey, resultPromise)
-      }
+      const resultPromise = getOrCreateDetailDiffPromise(entry.relativePath, revision)
+      await tick()
 
       const result = await resultPromise
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
+        scheduleAdjacentDiffPrefetch(entry.relativePath, revision)
       }
     } catch (error) {
       if (requestId === activeDetailRequestId) {
