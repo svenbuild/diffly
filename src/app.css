@@ -77,8 +77,8 @@
   --diff-line-number-width: 64px;
   --diff-prefix-width: 30px;
   --diff-font-size: 11px;
-  --diff-row-line-height: 14px;
-  --diff-row-height: 20px;
+  --diff-row-line-height: 13px;
+  --diff-row-height: 18px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
   --collapsed-row-bg: transparent;
@@ -857,6 +857,8 @@ h2 {
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+  position: relative;
+  overflow: visible;
 }
 
 .compare-root-label {
@@ -888,8 +890,9 @@ h2 {
 .compare-root:hover .compare-root-value,
 .compare-root:focus-within .compare-root-value {
   overflow: visible;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  position: relative;
+  z-index: 3;
 }
 
 .compare-root-prefix {
@@ -1345,7 +1348,7 @@ button.filter-chip.tooLarge:focus-visible {
 .prefix,
 .line-text {
   display: block;
-  padding: 2px 4px;
+  padding: 1px 4px;
   line-height: var(--diff-row-line-height);
 }
 
