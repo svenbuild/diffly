@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { DiffSegment, FileDiffResult, ViewMode } from './types'
-  import type { SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
+  import type { DiffHeaderContext, SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
 
   export let activeDiff: FileDiffResult | null
   export let loading: boolean
@@ -15,7 +15,7 @@
   export let syncSideBySideScroll: boolean
   export let sideBySideRenderItems: SideBySideRenderItem[]
   export let unifiedRenderItems: UnifiedRenderItem[]
-  export let getFileName: (path: string) => string
+  export let diffHeaderContext: DiffHeaderContext
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let refreshDiffNavigationState: () => void
@@ -113,12 +113,10 @@
         class="split-view"
       >
         <section class="diff-pane">
-          <div class="pane-header">
-            <span>Left</span>
-            <div class="pane-source">
-              <strong>{getFileName(activeDiff.leftLabel)}</strong>
-              <span class="pane-path">{activeDiff.leftLabel}</span>
-            </div>
+          <div class="pane-header" title={diffHeaderContext.leftAbsolutePath}>
+            <span class="pane-header-side">Left</span>
+            <span aria-hidden="true" class="pane-header-separator">&middot;</span>
+            <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
           </div>
           <div
             bind:this={leftPaneScroll}
@@ -175,12 +173,10 @@
         </section>
 
         <section class="diff-pane">
-          <div class="pane-header">
-            <span>Right</span>
-            <div class="pane-source">
-              <strong>{getFileName(activeDiff.rightLabel)}</strong>
-              <span class="pane-path">{activeDiff.rightLabel}</span>
-            </div>
+          <div class="pane-header" title={diffHeaderContext.rightAbsolutePath}>
+            <span class="pane-header-side">Right</span>
+            <span aria-hidden="true" class="pane-header-separator">&middot;</span>
+            <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
           </div>
           <div
             bind:this={rightPaneScroll}
@@ -237,18 +233,6 @@
         </section>
       </div>
     {:else}
-      <div class="viewer-header">
-        <div class="viewer-source">
-          <span>Left</span>
-          <strong>{getFileName(activeDiff.leftLabel)}</strong>
-          <span class="pane-path">{activeDiff.leftLabel}</span>
-        </div>
-        <div class="viewer-source">
-          <span>Right</span>
-          <strong>{getFileName(activeDiff.rightLabel)}</strong>
-          <span class="pane-path">{activeDiff.rightLabel}</span>
-        </div>
-      </div>
       <div bind:this={unifiedScroll} class="unified-grid" on:scroll={refreshDiffNavigationState}>
         <div
           bind:this={unifiedContentGrid}

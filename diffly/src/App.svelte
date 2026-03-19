@@ -23,11 +23,14 @@
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
+    formatCompactPath,
+    formatRelativePathLabel,
     getFileName,
     getParentPath,
     getVisibleFolderSections,
     normalizeSelectionPath,
     ROOT_GROUP,
+    splitCommonPathPrefix,
   } from './lib/path-utils'
   import type {
     CompareMode,
@@ -42,6 +45,7 @@
     ViewMode,
   } from './lib/types'
   import type {
+    DiffHeaderContext,
     DiffHunkRange,
     EntryGroup,
     ExplorerPaneState,
@@ -66,6 +70,12 @@
     unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
     sideBySideItems: Map<string, SideBySideRenderItem[]>
     unifiedItems: Map<string, UnifiedRenderItem[]>
+  }
+
+  interface CompareRootDisplay {
+    prefix: string
+    suffix: string
+    fullPath: string
   }
 
   let screen: Screen = 'setup'
@@ -127,6 +137,25 @@
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
+  let compareStatusLabel = ''
+  let currentFileTitle = ''
+  let leftCompareRoot: CompareRootDisplay = {
+    prefix: '',
+    suffix: '',
+    fullPath: '',
+  }
+  let rightCompareRoot: CompareRootDisplay = {
+    prefix: '',
+    suffix: '',
+    fullPath: '',
+  }
+  let diffHeaderContext: DiffHeaderContext = {
+    currentFileLabel: '',
+    leftPaneLabel: '',
+    rightPaneLabel: '',
+    leftAbsolutePath: '',
+    rightAbsolutePath: '',
+  }
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
 
@@ -1638,10 +1667,78 @@
     return activeStatusFilters.includes(status)
   }
 
-  $: compareSummary =
+  function buildCompareRootDisplay(fullPath: string, distinctSegments: string[]): CompareRootDisplay {
+    if (!fullPath) {
+      return {
+        prefix: '',
+        suffix: '',
+        fullPath: '',
+      }
+    }
+
+    const distinctPath = distinctSegments.join('/')
+    const suffix = distinctPath ? formatCompactPath(distinctPath, 3) : formatCompactPath(fullPath, 3)
+    const prefix = distinctPath && suffix && !suffix.startsWith('...') ? '...\\' : ''
+
+    return {
+      prefix,
+      suffix: suffix || formatCompactPath(fullPath, 3),
+      fullPath,
+    }
+  }
+
+  function getCurrentFileLabel() {
+    if (mode === 'directory') {
+      return selectedRelativePath ? formatRelativePathLabel(selectedRelativePath) : 'No file selected'
+    }
+
+    if (!activeDiff) {
+      return 'No file selected'
+    }
+
+    const leftName = getFileName(activeDiff.leftLabel)
+    const rightName = getFileName(activeDiff.rightLabel)
+
+    return leftName === rightName ? leftName : `${leftName} <-> ${rightName}`
+  }
+
+  function getPaneLabel(side: Side) {
+    if (mode === 'directory') {
+      return selectedRelativePath ? formatRelativePathLabel(selectedRelativePath) : ''
+    }
+
+    if (!activeDiff) {
+      return ''
+    }
+
+    return getFileName(side === 'left' ? activeDiff.leftLabel : activeDiff.rightLabel)
+  }
+
+  $: compareStatusLabel =
     mode === 'directory'
-      ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
-      : activeDiff?.summary ?? 'File compare'
+      ? `${directoryEntries.length} changed file${directoryEntries.length === 1 ? '' : 's'}`
+      : 'File compare'
+
+  $: {
+    const { leftSegments, rightSegments } = splitCommonPathPrefix(leftPath, rightPath)
+    leftCompareRoot = buildCompareRootDisplay(leftPath, leftSegments)
+    rightCompareRoot = buildCompareRootDisplay(rightPath, rightSegments)
+  }
+
+  $: diffHeaderContext = {
+    currentFileLabel: getCurrentFileLabel(),
+    leftPaneLabel: getPaneLabel('left'),
+    rightPaneLabel: getPaneLabel('right'),
+    leftAbsolutePath: activeDiff?.leftLabel ?? '',
+    rightAbsolutePath: activeDiff?.rightLabel ?? '',
+  }
+
+  $: currentFileTitle =
+    mode === 'directory'
+      ? diffHeaderContext.currentFileLabel
+      : [diffHeaderContext.leftAbsolutePath, diffHeaderContext.rightAbsolutePath]
+          .filter((path) => path.length > 0)
+          .join('\n')
 
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
@@ -1919,50 +2016,18 @@
 {:else}
   <main class="screen compare-screen">
     <header class="app-bar compare-bar">
-      <div class="app-bar-main">
-        <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
-        <div class="compare-summary">
-          <strong>{compareSummary}</strong>
-          <span>{mode === 'directory' ? 'Directory compare' : 'File compare'}</span>
+      <div class="app-bar-main compare-bar-main">
+        <div class="compare-bar-brand">
+          <h1>Diffly</h1>
+          <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
+        </div>
+
+        <div class="compare-bar-status">
+          <strong>{compareStatusLabel}</strong>
         </div>
       </div>
 
       <div class="app-bar-actions compare-actions">
-        <div class="compare-action-group utility-actions">
-          <button
-            class="secondary theme-toggle"
-            aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-            title={themeToggleLabel}
-            type="button"
-            on:click={toggleThemeMode}
-          >
-            {#if themeMode === 'dark'}
-              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-                <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-              </svg>
-            {:else}
-              <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
-                <path
-                  d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.4"
-                />
-              </svg>
-            {/if}
-          </button>
-        </div>
-
         <div class="compare-action-group diff-nav-actions">
           <button
             class="secondary"
@@ -1972,7 +2037,7 @@
             type="button"
             on:click={goToPreviousDifference}
           >
-            Previous difference
+            &lt; Prev
           </button>
           <button
             class="secondary"
@@ -1982,13 +2047,13 @@
             type="button"
             on:click={goToNextDifference}
           >
-            Next difference
+            Next &gt;
           </button>
         </div>
 
         <div class="compare-action-group display-actions">
           <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
-            {viewMode === 'sideBySide' ? 'Unified view' : 'Side by side'}
+            {viewMode === 'sideBySide' ? 'Unified v' : 'Side by side v'}
           </button>
 
           <div class="compare-options-anchor">
@@ -2117,7 +2182,7 @@
 
         <div class="compare-action-group utility-actions">
           <button
-            class="secondary swap-button"
+            class="secondary icon-button swap-button"
             aria-label="Switch left and right sides"
             disabled={loading || detailLoading || pickerLoading}
             title="Switch left and right sides"
@@ -2130,7 +2195,6 @@
               <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
               <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
             </svg>
-            <span>Swap sides</span>
           </button>
 
           <button
@@ -2167,6 +2231,39 @@
               {/if}
             </span>
           </button>
+
+          <button
+            class="secondary theme-toggle"
+            aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+            title={themeToggleLabel}
+            type="button"
+            on:click={toggleThemeMode}
+          >
+            {#if themeMode === 'dark'}
+              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
+                <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
+                <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+              </svg>
+            {:else}
+              <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
+                <path
+                  d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.4"
+                />
+              </svg>
+            {/if}
+          </button>
         </div>
       </div>
     </header>
@@ -2176,13 +2273,31 @@
     {/if}
 
     <section class:refreshing={loading} class="compare-context">
-      <div class="context-card compact">
-        <span>Left</span>
-        <strong>{leftPath}</strong>
+      <div class="compare-roots">
+        <div class="compare-root" title={leftCompareRoot.fullPath}>
+          <span class="compare-root-label">Left root</span>
+          <span class="compare-root-value">
+            {#if leftCompareRoot.prefix}
+              <span class="compare-root-prefix">{leftCompareRoot.prefix}</span>
+            {/if}
+            <span class="compare-root-suffix">{leftCompareRoot.suffix}</span>
+          </span>
+        </div>
+
+        <div class="compare-root" title={rightCompareRoot.fullPath}>
+          <span class="compare-root-label">Right root</span>
+          <span class="compare-root-value">
+            {#if rightCompareRoot.prefix}
+              <span class="compare-root-prefix">{rightCompareRoot.prefix}</span>
+            {/if}
+            <span class="compare-root-suffix">{rightCompareRoot.suffix}</span>
+          </span>
+        </div>
       </div>
-      <div class="context-card compact">
-        <span>Right</span>
-        <strong>{rightPath}</strong>
+
+      <div class="current-file-context" title={currentFileTitle}>
+        <span class="current-file-label">Current file</span>
+        <strong>{diffHeaderContext.currentFileLabel}</strong>
       </div>
     </section>
 
@@ -2219,7 +2334,7 @@
         {syncSideBySideScroll}
         {sideBySideRenderItems}
         {unifiedRenderItems}
-        {getFileName}
+        {diffHeaderContext}
         {syncPaneWheel}
         {syncPaneScroll}
         {refreshDiffNavigationState}
