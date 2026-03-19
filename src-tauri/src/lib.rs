@@ -1784,6 +1784,11 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
     }
 
     let similarity = line_similarity_score(left, right);
+
+    if declaration_family_match(left, right) {
+        return Some(MatchBand::StrongModified);
+    }
+
     let same_primary_identifier =
         !left.primary_identifier.is_empty() && left.primary_identifier == right.primary_identifier;
     let same_seed = left.match_band_seed == right.match_band_seed;
@@ -1822,6 +1827,21 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
         MatchBandSeed::Assignment | MatchBandSeed::Call | MatchBandSeed::OtherCode
     )
     .then_some(MatchBand::StrongModified)
+}
+
+fn declaration_family_match(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    if !looks_like_declaration(&left.code_signature) || !looks_like_declaration(&right.code_signature)
+    {
+        return false;
+    }
+
+    if left.indentation_depth.abs_diff(right.indentation_depth) > 4 {
+        return false;
+    }
+
+    declaration_leading_identifier(&left.code_signature)
+        .zip(declaration_leading_identifier(&right.code_signature))
+        .is_some_and(|(left_identifier, right_identifier)| left_identifier == right_identifier)
 }
 
 fn same_preprocessor_family(left: &LineDescriptor, right: &LineDescriptor) -> bool {
@@ -2247,6 +2267,40 @@ fn looks_like_assignment(signature: &str) -> bool {
 
 fn looks_like_call_or_signature(signature: &str) -> bool {
     signature.contains('(') && signature.contains(')')
+}
+
+fn looks_like_declaration(signature: &str) -> bool {
+    let trimmed = signature.trim();
+
+    trimmed.ends_with(';')
+        && !trimmed.starts_with("return ")
+        && !trimmed.contains('=')
+        && !trimmed.contains('(')
+        && extract_identifiers(trimmed).len() >= 2
+}
+
+fn declaration_leading_identifier(signature: &str) -> Option<String> {
+    extract_identifiers(signature)
+        .into_iter()
+        .find(|identifier| !is_declaration_prefix_qualifier(identifier))
+}
+
+fn is_declaration_prefix_qualifier(identifier: &str) -> bool {
+    matches!(
+        identifier,
+        "static"
+            | "const"
+            | "volatile"
+            | "extern"
+            | "inline"
+            | "register"
+            | "signed"
+            | "unsigned"
+            | "struct"
+            | "enum"
+            | "union"
+            | "typedef"
+    )
 }
 
 fn trim_trailing_line_comment(line: &str) -> &str {
@@ -2798,12 +2852,52 @@ mod tests {
         let left = temp_root.join("left.txt");
         let right = temp_root.join("right.txt");
 
+        write_temp_file(&left, "alpha\nSM_ADC_Threshold = 0;\nomega\n");
+        write_temp_file(
+            &right,
+            concat!(
+                "alpha\n",
+                "SM_ADC_setThreshold();\n",
+                "uint16_t SM_ADC_PeaksRef[SM_ADC_WINDOW_SIZE];\n",
+                "omega\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "SM_ADC_Threshold = 0;"
+        ));
+        assert!(result.side_by_side[1].right.is_none());
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "SM_ADC_setThreshold();"
+        ));
+        assert!(result.side_by_side[2].left.is_none());
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_aligns_deleted_declaration_with_first_inserted_declaration() {
+        let temp_root = unique_temp_dir("file-aligns-declaration-block");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
         write_temp_file(&left, "alpha\nuint16_t SM_ADC_Threshold;\nomega\n");
         write_temp_file(
             &right,
             concat!(
                 "alpha\n",
-                "uint16_t SM_ADC_EffectiveOffset;\n",
                 "uint16_t SM_ADC_PeaksRef[SM_ADC_WINDOW_SIZE];\n",
                 "uint16_t SM_ADC_PeaksLive[SM_ADC_WINDOW_SIZE];\n",
                 "omega\n"
@@ -2824,12 +2918,15 @@ mod tests {
             result.side_by_side[1].left.as_ref().map(|cell| &cell.text),
             Some(text) if text == "uint16_t SM_ADC_Threshold;"
         ));
-        assert!(result.side_by_side[1].right.is_none());
         assert!(matches!(
-            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
-            Some(text) if text == "uint16_t SM_ADC_EffectiveOffset;"
+            result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "uint16_t SM_ADC_PeaksRef[SM_ADC_WINDOW_SIZE];"
         ));
         assert!(result.side_by_side[2].left.is_none());
+        assert!(matches!(
+            result.side_by_side[2].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "uint16_t SM_ADC_PeaksLive[SM_ADC_WINDOW_SIZE];"
+        ));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
