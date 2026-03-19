@@ -1883,10 +1883,10 @@
         <div class="setup-selection-summary">
           <span>Selected:</span>
           <strong title={leftExplorer.selectedTargetPath || 'Left target not selected'}>
-            Left {leftSetupTargetLabel}
+            L {leftSetupTargetLabel}
           </strong>
           <strong title={rightExplorer.selectedTargetPath || 'Right target not selected'}>
-            Right {rightSetupTargetLabel}
+            R {rightSetupTargetLabel}
           </strong>
         </div>
       </div>
