@@ -51,8 +51,16 @@
   } from './lib/ui-types'
 
   const SESSION_SAVE_DELAY_MS = 180
+  const THEME_SWITCH_DURATION_MS = 140
 
   type Screen = 'setup' | 'compare'
+
+  interface CachedDiffRenderState {
+    sideBySideHunks: DiffHunkRange[] | null
+    unifiedHunks: DiffHunkRange[] | null
+    sideBySideItems: Map<boolean, SideBySideRenderItem[]>
+    unifiedItems: Map<boolean, UnifiedRenderItem[]>
+  }
 
   let screen: Screen = 'setup'
   let mode: CompareMode = 'directory'
@@ -90,6 +98,8 @@
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareRefreshTimer: number | null = null
+  let themeTransitionTimer: number | null = null
+  let activeDetailRequestId = 0
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
   let sideBySideHunkRanges: DiffHunkRange[] = []
@@ -100,6 +110,8 @@
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
+  const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
+  const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
 
   const statusLabel = {
     modified: 'Modified',
@@ -116,7 +128,7 @@
   })
 
   const toggleThemeMode = () => {
-    themeMode = themeMode === 'dark' ? 'light' : 'dark'
+    setThemeMode(themeMode === 'dark' ? 'light' : 'dark')
   }
 
   const toggleViewMode = () => {
@@ -145,6 +157,10 @@
         window.clearTimeout(compareRefreshTimer)
       }
 
+      if (themeTransitionTimer !== null) {
+        window.clearTimeout(themeTransitionTimer)
+      }
+
       if (scrollEchoResetFrame !== null) {
         window.cancelAnimationFrame(scrollEchoResetFrame)
       }
@@ -154,6 +170,120 @@
       }
     }
   })
+
+  function getCachedDiffRenderState(diff: FileDiffResult) {
+    const cached = diffRenderCache.get(diff)
+
+    if (cached) {
+      return cached
+    }
+
+    const state: CachedDiffRenderState = {
+      sideBySideHunks: null,
+      unifiedHunks: null,
+      sideBySideItems: new Map(),
+      unifiedItems: new Map(),
+    }
+
+    diffRenderCache.set(diff, state)
+    return state
+  }
+
+  function getCachedSideBySideHunks(diff: FileDiffResult) {
+    const state = getCachedDiffRenderState(diff)
+
+    if (!state.sideBySideHunks) {
+      state.sideBySideHunks = buildSideBySideHunkRanges(diff.sideBySide)
+    }
+
+    return state.sideBySideHunks
+  }
+
+  function getCachedUnifiedHunks(diff: FileDiffResult) {
+    const state = getCachedDiffRenderState(diff)
+
+    if (!state.unifiedHunks) {
+      state.unifiedHunks = buildUnifiedHunkRanges(diff.unified)
+    }
+
+    return state.unifiedHunks
+  }
+
+  function getCachedSideBySideRenderItems(diff: FileDiffResult, includeFullFile: boolean) {
+    const state = getCachedDiffRenderState(diff)
+    const cached = state.sideBySideItems.get(includeFullFile)
+
+    if (cached) {
+      return cached
+    }
+
+    const items = buildSideBySideRenderItems(
+      diff.sideBySide,
+      getCachedSideBySideHunks(diff),
+      includeFullFile,
+    )
+
+    state.sideBySideItems.set(includeFullFile, items)
+    return items
+  }
+
+  function getCachedUnifiedRenderItems(diff: FileDiffResult, includeFullFile: boolean) {
+    const state = getCachedDiffRenderState(diff)
+    const cached = state.unifiedItems.get(includeFullFile)
+
+    if (cached) {
+      return cached
+    }
+
+    const items = buildUnifiedRenderItems(
+      diff.unified,
+      getCachedUnifiedHunks(diff),
+      includeFullFile,
+    )
+
+    state.unifiedItems.set(includeFullFile, items)
+    return items
+  }
+
+  function scheduleThemeTransitionCleanup(root: HTMLElement) {
+    if (themeTransitionTimer !== null) {
+      window.clearTimeout(themeTransitionTimer)
+    }
+
+    themeTransitionTimer = window.setTimeout(() => {
+      root.classList.remove('theme-switching')
+      themeTransitionTimer = null
+    }, THEME_SWITCH_DURATION_MS)
+  }
+
+  function setThemeMode(nextThemeMode: ThemeMode) {
+    if (themeMode === nextThemeMode) {
+      return
+    }
+
+    if (typeof document === 'undefined') {
+      themeMode = nextThemeMode
+      return
+    }
+
+    const root = document.documentElement
+    root.classList.add('theme-switching')
+
+    if (typeof document.startViewTransition === 'function') {
+      void document
+        .startViewTransition(() => {
+          themeMode = nextThemeMode
+        })
+        .finished.finally(() => {
+          scheduleThemeTransitionCleanup(root)
+        })
+
+      return
+    }
+
+    themeMode = nextThemeMode
+    scheduleThemeTransitionCleanup(root)
+  }
 
   function createExplorerPane(title: string): ExplorerPaneState {
     return {
@@ -310,6 +440,9 @@
       return
     }
 
+    activeDetailRequestId += 1
+    detailDiffCache.clear()
+    detailLoading = false
     mode = nextMode
     leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
@@ -345,6 +478,8 @@
   }
 
   function goToSetup() {
+    activeDetailRequestId += 1
+    detailLoading = false
     screen = 'setup'
     errorMessage = ''
   }
@@ -563,12 +698,14 @@
     loading = true
     detailLoading = false
     errorMessage = ''
+    activeDetailRequestId += 1
     leftPath = nextLeftPath
     rightPath = nextRightPath
 
     try {
       const response = await comparePaths(nextLeftPath, nextRightPath, mode, getOptions())
       compareRevision += 1
+      detailDiffCache.clear()
       screen = 'compare'
 
       if (response.kind === 'directory') {
@@ -618,25 +755,55 @@
       return
     }
 
+    if (selectedRelativePath === entry.relativePath && detailLoading) {
+      return
+    }
+
+    const requestId = activeDetailRequestId + 1
+    const cacheKey = [
+      revision,
+      leftPath,
+      rightPath,
+      entry.relativePath,
+      ignoreWhitespace ? '1' : '0',
+      ignoreCase ? '1' : '0',
+    ].join('\u0000')
+
+    activeDetailRequestId = requestId
     selectedRelativePath = entry.relativePath
     detailLoading = true
     errorMessage = ''
 
     try {
-      const result = await openCompareItem(
-        leftPath,
-        rightPath,
-        entry.relativePath,
-        getOptions(),
-      )
+      let resultPromise = detailDiffCache.get(cacheKey)
 
-      if (revision === compareRevision) {
+      if (!resultPromise) {
+        resultPromise = openCompareItem(
+          leftPath,
+          rightPath,
+          entry.relativePath,
+          getOptions(),
+        ).catch((error) => {
+          detailDiffCache.delete(cacheKey)
+          throw error
+        })
+
+        detailDiffCache.set(cacheKey, resultPromise)
+      }
+
+      const result = await resultPromise
+
+      if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
       }
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'Unable to open the file diff.'
+      if (requestId === activeDetailRequestId) {
+        errorMessage = error instanceof Error ? error.message : 'Unable to open the file diff.'
+      }
     } finally {
-      detailLoading = false
+      if (requestId === activeDetailRequestId) {
+        detailLoading = false
+      }
     }
   }
 
@@ -1092,19 +1259,24 @@
       ? `${directoryEntries.length} difference${directoryEntries.length === 1 ? '' : 's'}`
       : activeDiff?.summary ?? 'File compare'
 
-  $: sideBySideHunkRanges = activeDiff ? buildSideBySideHunkRanges(activeDiff.sideBySide) : []
-
-  $: unifiedHunkRanges = activeDiff ? buildUnifiedHunkRanges(activeDiff.unified) : []
-
-  $: sideBySideRenderItems =
-    activeDiff
-      ? buildSideBySideRenderItems(activeDiff.sideBySide, sideBySideHunkRanges, showFullFile)
-      : []
-
-  $: unifiedRenderItems =
-    activeDiff
-      ? buildUnifiedRenderItems(activeDiff.unified, unifiedHunkRanges, showFullFile)
-      : []
+  $: if (activeDiff?.contentKind === 'text') {
+    if (viewMode === 'sideBySide') {
+      sideBySideHunkRanges = getCachedSideBySideHunks(activeDiff)
+      sideBySideRenderItems = getCachedSideBySideRenderItems(activeDiff, showFullFile)
+      unifiedHunkRanges = []
+      unifiedRenderItems = []
+    } else {
+      unifiedHunkRanges = getCachedUnifiedHunks(activeDiff)
+      unifiedRenderItems = getCachedUnifiedRenderItems(activeDiff, showFullFile)
+      sideBySideHunkRanges = []
+      sideBySideRenderItems = []
+    }
+  } else {
+    sideBySideHunkRanges = []
+    unifiedHunkRanges = []
+    sideBySideRenderItems = []
+    unifiedRenderItems = []
+  }
 
   $: visibleDiffHunkCount =
     viewMode === 'sideBySide' ? sideBySideHunkRanges.length : unifiedHunkRanges.length

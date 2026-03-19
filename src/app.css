@@ -230,6 +230,18 @@ body {
   transition: background-color 180ms ease, color 180ms ease;
 }
 
+:root::view-transition-old(root),
+:root::view-transition-new(root) {
+  animation-duration: 140ms;
+  animation-timing-function: ease;
+}
+
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition: none !important;
+}
+
 button,
 input,
 select {
