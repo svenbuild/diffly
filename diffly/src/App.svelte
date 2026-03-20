@@ -63,7 +63,7 @@
   const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
-  const DEFAULT_VIEWER_TEXT_SIZE = 11
+  const DEFAULT_VIEWER_TEXT_SIZE = 10
   const MIN_VIEWER_TEXT_SIZE = 8
   const MAX_VIEWER_TEXT_SIZE = 24
 

@@ -1679,6 +1679,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .compare-options-row span {
   min-width: 0;
+  white-space: nowrap;
 }
 
 .compare-options-select-row select {
@@ -1704,8 +1705,8 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .compare-options-stepper-value {
-  width: 42px;
-  min-width: 42px;
+  width: 34px;
+  min-width: 34px;
   padding: 1px 4px;
   border: 1px solid var(--border);
   border-radius: 4px;
