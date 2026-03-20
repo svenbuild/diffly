@@ -2050,7 +2050,6 @@
             <h1>Diffly</h1>
             <span>Compare</span>
           </div>
-          <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
         </div>
       </div>
 
@@ -2326,6 +2325,7 @@
               </svg>
             {/if}
           </button>
+          <button class="primary" type="button" on:click={goToSetup}>Setup</button>
         </div>
       </div>
     </header>
