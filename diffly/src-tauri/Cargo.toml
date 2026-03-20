@@ -12,7 +12,7 @@ rust-version = "1.77.2"
 
 [lib]
 name = "diffly_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.5.6", features = [] }
@@ -27,6 +27,11 @@ tauri-plugin-log = "2"
 tauri-plugin-window-state = "2.4.1"
 walkdir = "2.5"
 rfd = "0.15"
+
+[profile.dev]
+debug = 0
+incremental = true
+codegen-units = 256
 
 [profile.release]
 incremental = true
