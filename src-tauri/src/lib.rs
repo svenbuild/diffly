@@ -1830,7 +1830,8 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
 }
 
 fn declaration_family_match(left: &LineDescriptor, right: &LineDescriptor) -> bool {
-    if !looks_like_declaration(&left.code_signature) || !looks_like_declaration(&right.code_signature)
+    if !looks_like_declaration(&left.code_signature)
+        || !looks_like_declaration(&right.code_signature)
     {
         return false;
     }
@@ -1899,7 +1900,10 @@ fn match_band_rank(band: MatchBand) -> i32 {
 }
 
 fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
-    if left.tokens.is_empty() || right.tokens.is_empty() {
+    if left.tokens.is_empty()
+        || right.tokens.is_empty()
+        || should_skip_lcs(left.tokens.len(), right.tokens.len())
+    {
         return 0;
     }
 
@@ -1923,7 +1927,10 @@ fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
 }
 
 fn commented_code_similarity_score(comment: &LineDescriptor, code: &LineDescriptor) -> i32 {
-    if comment.commented_code_tokens.is_empty() || code.tokens.is_empty() {
+    if comment.commented_code_tokens.is_empty()
+        || code.tokens.is_empty()
+        || should_skip_lcs(comment.commented_code_tokens.len(), code.tokens.len())
+    {
         return 0;
     }
 
@@ -2344,6 +2351,11 @@ fn trim_trailing_line_comment(line: &str) -> &str {
 fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSegment>) {
     let left_tokens = tokenize_inline_diff(left);
     let right_tokens = tokenize_inline_diff(right);
+
+    if should_skip_lcs(left_tokens.len(), right_tokens.len()) {
+        return (plain_segments(left, false), plain_segments(right, false));
+    }
+
     let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
 
     if common_pairs.is_empty() {
@@ -2362,6 +2374,19 @@ fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSeg
         collapse_segments(&left_tokens, &left_common),
         collapse_segments(&right_tokens, &right_common),
     )
+}
+
+fn should_skip_lcs(left_len: usize, right_len: usize) -> bool {
+    const MAX_LCS_MATRIX_CELLS: usize = 200_000;
+
+    left_len
+        .checked_add(1)
+        .and_then(|left| {
+            right_len
+                .checked_add(1)
+                .and_then(|right| left.checked_mul(right))
+        })
+        .is_none_or(|cells| cells > MAX_LCS_MATRIX_CELLS)
 }
 
 fn tokenize_inline_diff(text: &str) -> Vec<String> {
@@ -2728,6 +2753,36 @@ mod tests {
             segments: Vec::new(),
             change,
         }
+    }
+
+    #[test]
+    fn skips_lcs_when_token_matrix_exceeds_limit() {
+        assert!(should_skip_lcs(500, 500));
+        assert!(!should_skip_lcs(200, 200));
+    }
+
+    #[test]
+    fn highlight_segments_falls_back_to_plain_segments_when_lcs_is_skipped() {
+        let left = "a ".repeat(300);
+        let right = "b ".repeat(300);
+
+        let (left_segments, right_segments) = highlight_segments(&left, &right);
+
+        assert_eq!(left_segments.len(), 1);
+        assert_eq!(right_segments.len(), 1);
+        assert_eq!(left_segments[0].text, left);
+        assert_eq!(right_segments[0].text, right);
+        assert!(!left_segments[0].highlighted);
+        assert!(!right_segments[0].highlighted);
+    }
+
+    #[test]
+    fn line_similarity_returns_zero_when_lcs_is_skipped() {
+        let repeated = "a ! ".repeat(300);
+        let left = build_line_descriptor(&repeated);
+        let right = build_line_descriptor(&repeated.replace('a', "b"));
+
+        assert_eq!(line_similarity_score(&left, &right), 0);
     }
 
     #[test]
