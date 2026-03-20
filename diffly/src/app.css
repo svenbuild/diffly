@@ -461,10 +461,12 @@ h2 {
 }
 
 .view-mode-button {
-  min-width: 118px;
+  min-height: 28px;
+  padding: 0 10px;
+  min-width: 0;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
+  justify-content: center;
+  gap: 7px;
 }
 
 .view-mode-button:hover:not(:disabled),
@@ -491,7 +493,7 @@ h2 {
   align-items: center;
   flex: 0 0 auto;
   line-height: 1;
-  text-align: left;
+  text-align: center;
 }
 
 .segmented-control {
@@ -1218,6 +1220,12 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
 }
 
+.pane-scroll-shell,
+.unified-grid-shell {
+  position: relative;
+  min-height: 0;
+}
+
 .pane-scroll,
 .unified-grid {
   position: relative;
@@ -1443,30 +1451,54 @@ button.filter-chip.tooLarge:focus-visible {
   height: auto;
 }
 
-.scroll-marker-rail {
+.scroll-marker-overlay {
   position: absolute;
   top: 2px;
-  right: 2px;
+  right: 1px;
   bottom: 2px;
-  width: 6px;
-  z-index: 3;
-  pointer-events: auto;
-  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  width: 11px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.scroll-marker-rail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: color-mix(in srgb, var(--scrollbar-track) 88%, transparent);
   border-radius: 999px;
+  pointer-events: none;
 }
 
 .scroll-marker {
   position: absolute;
-  left: 1px;
-  right: 1px;
+  left: 2px;
+  right: 2px;
   min-height: 6px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 76%, var(--text) 24%);
-  opacity: 0.72;
+  border-radius: 3px;
+  opacity: 0.82;
   box-shadow: none;
   cursor: pointer;
+  pointer-events: auto;
+}
+
+.scroll-marker.insert {
+  background: color-mix(in srgb, var(--success) 88%, var(--text) 12%);
+}
+
+.scroll-marker.delete {
+  background: color-mix(in srgb, var(--danger) 84%, var(--text) 16%);
+}
+
+.scroll-marker.mixed {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--danger) 84%, var(--text) 16%) 0 50%,
+      color-mix(in srgb, var(--success) 88%, var(--text) 12%) 50% 100%
+    );
 }
 
 .scroll-marker:hover {
@@ -1690,31 +1722,34 @@ button.filter-chip.tooLarge:focus-visible {
 .compare-options-stepper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex: 0 0 auto;
 }
 
 .compare-options-stepper-button {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
   padding: 0;
   justify-content: center;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 .compare-options-stepper-value {
-  width: 34px;
-  min-width: 34px;
-  padding: 1px 4px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 20px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
   text-align: center;
   color: var(--text);
-  pointer-events: none;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .compare-options-row.disabled {
@@ -1727,28 +1762,28 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
 }
 
 .refresh-icon-slot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 12px;
+  flex: 0 0 14px;
 }
 
 .refresh-icon {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 
 .refresh-spinner {
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   border: 1.4px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;

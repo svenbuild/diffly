@@ -2031,10 +2031,10 @@
           on:click={swapComparedSides}
         >
           <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
           </svg>
         </button>
         <button
@@ -2264,13 +2264,7 @@
                     >
                       -
                     </button>
-                    <input
-                      class="compare-options-stepper-value"
-                      readonly
-                      tabindex="-1"
-                      type="text"
-                      value={String(viewerTextSize)}
-                    />
+                    <span class="compare-options-stepper-value" aria-live="polite">{String(viewerTextSize)}</span>
                     <button
                       class="secondary compare-options-stepper-button"
                       aria-label="Increase text size"
@@ -2327,15 +2321,15 @@
             disabled={loading || detailLoading || pickerLoading}
             title="Switch left and right sides"
             type="button"
-            on:click={swapComparedSides}
-          >
-            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-              <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-              <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            </svg>
-          </button>
+          on:click={swapComparedSides}
+        >
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
+        </button>
 
           <button
             class="secondary theme-toggle"
@@ -2385,14 +2379,7 @@
               {:else}
                 <svg class="refresh-icon" viewBox="0 0 16 16">
                   <path
-                    d="M12.9 8A4.9 4.9 0 1 1 8 3.1"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-width="1.5"
-                  />
-                  <path
-                    d="M8.8 1.9h3v3"
+                    d="M12.6 8.2A4.6 4.6 0 1 1 8 3.3"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
@@ -2400,10 +2387,19 @@
                     stroke-width="1.5"
                   />
                   <path
-                    d="m11.8 1.9-2 2"
+                    d="M9.1 2.3h3v3"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="m12.1 2.3-2.2 2.2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                     stroke-width="1.5"
                   />
                 </svg>
