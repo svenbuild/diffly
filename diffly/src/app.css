@@ -1459,9 +1459,9 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker-overlay {
   position: absolute;
   top: 2px;
-  right: 2px;
+  right: 1px;
   bottom: 2px;
-  width: 8px;
+  width: 6px;
   z-index: 4;
   pointer-events: none;
 }
@@ -1477,13 +1477,13 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker {
   position: absolute;
   left: 2px;
-  right: 2px;
+  right: 1px;
   min-height: 6px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 74%, transparent);
-  opacity: 0.5;
+  opacity: 0.28;
   box-shadow: none;
   cursor: pointer;
   pointer-events: auto;
@@ -1502,12 +1502,12 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .scroll-marker:hover {
-  opacity: 0.78;
+  opacity: 0.48;
 }
 
 .scroll-marker.active {
   background: var(--accent);
-  opacity: 1;
+  opacity: 0.68;
 }
 
 .line-fragment.highlighted {

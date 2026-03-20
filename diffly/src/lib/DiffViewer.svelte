@@ -278,6 +278,18 @@
     return 'mixed'
   }
 
+  function isChangedSideBySideRow(item: SideBySideRenderItem) {
+    if (!item.row) {
+      return false
+    }
+
+    return item.row.left?.change !== 'context' || item.row.right?.change !== 'context'
+  }
+
+  function isChangedUnifiedRow(item: UnifiedRenderItem) {
+    return item.row?.change !== 'context'
+  }
+
   function syncScrollMarkerObserver() {
     if (typeof ResizeObserver === 'undefined') {
       return
@@ -399,7 +411,7 @@
                     class:gap-row={!item.row.left}
                     class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                    data-diff-index={item.hunkIndex}
+                    data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                   >
                     {#if item.row.left}
                       <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
@@ -476,7 +488,7 @@
                     class:gap-row={!item.row.right}
                     class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                    data-diff-index={item.hunkIndex}
+                    data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                   >
                     {#if item.row.right}
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
@@ -541,7 +553,7 @@
                 class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                 class={`unified-row ${item.row.change}`}
                 data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                data-diff-index={item.hunkIndex}
+                data-diff-index={isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
               >
                 <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
                 <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
