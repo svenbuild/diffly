@@ -30,7 +30,7 @@
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
-  let lineNumberColumnWidth = 'calc(1ch + 14px)'
+  let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
@@ -45,7 +45,7 @@
       : 0
     const digitCount = Math.max(1, String(maxLineNumber).length)
 
-    lineNumberColumnWidth = `calc(${digitCount}ch + 14px)`
+    lineNumberColumnWidth = `calc(${digitCount}ch + 18px)`
     prefixColumnWidth = 'calc(1ch + 6px)'
   }
 
@@ -60,11 +60,15 @@
     void updateUnifiedContentWidth()
   }
 
-  function syntaxFragments(text: string, segments: DiffSegment[]) {
+  function syntaxFragments(
+    text: string,
+    segments: DiffSegment[],
+    syntaxHighlightingEnabled: boolean,
+  ) {
     return renderDiffFragments(
       text,
       segments,
-      showSyntaxHighlighting ? syntaxLanguage : null,
+      syntaxHighlightingEnabled ? syntaxLanguage : null,
     )
   }
 
@@ -190,7 +194,7 @@
                       <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.left.prefix}</span>
                       <span class="line-text">
-                        {#each syntaxFragments(item.row.left.text, item.row.left.segments) as fragment}
+                        {#each syntaxFragments(item.row.left.text, item.row.left.segments, showSyntaxHighlighting) as fragment}
                           <span
                             class:highlighted={showInlineHighlights && fragment.highlighted}
                             class={`line-fragment ${fragment.className ?? ''}`}
@@ -250,7 +254,7 @@
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.right.prefix}</span>
                       <span class="line-text">
-                        {#each syntaxFragments(item.row.right.text, item.row.right.segments) as fragment}
+                        {#each syntaxFragments(item.row.right.text, item.row.right.segments, showSyntaxHighlighting) as fragment}
                           <span
                             class:highlighted={showInlineHighlights && fragment.highlighted}
                             class={`line-fragment ${fragment.className ?? ''}`}
@@ -298,7 +302,7 @@
               <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
               <span class="prefix">{item.row.prefix}</span>
               <span class="line-text">
-                {#each syntaxFragments(item.row.text, item.row.segments) as fragment}
+                {#each syntaxFragments(item.row.text, item.row.segments, showSyntaxHighlighting) as fragment}
                   <span
                     class:highlighted={showInlineHighlights && fragment.highlighted}
                     class={`line-fragment ${fragment.className ?? ''}`}

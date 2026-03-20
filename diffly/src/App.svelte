@@ -990,7 +990,6 @@
 
     const nextLeftPath = leftExplorer.selectedTargetPath
     const nextRightPath = rightExplorer.selectedTargetPath
-    const previousRelativePath = selectedRelativePath
 
     loading = true
     detailLoading = false
@@ -1012,10 +1011,7 @@
         syncFilteredDirectoryState(response.entries)
 
         if (filteredDirectoryEntries.length > 0) {
-          const retainedEntry =
-            filteredDirectoryEntries.find((entry) => entry.relativePath === previousRelativePath) ??
-            filteredDirectoryEntries[0]
-          await selectEntry(retainedEntry, compareRevision)
+          await selectEntry(filteredDirectoryEntries[0], compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
@@ -2046,7 +2042,10 @@
     <header class="app-bar compare-bar">
       <div class="app-bar-main compare-bar-main">
         <div class="compare-bar-brand">
-          <h1>Diffly</h1>
+          <div class="app-identity">
+            <h1>Diffly</h1>
+            <span>Compare</span>
+          </div>
           <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
         </div>
       </div>
@@ -2054,30 +2053,76 @@
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
           <button
-            class="secondary"
+            class="secondary nav-button"
             aria-label="Jump to the previous difference"
             disabled={!canGoToPreviousDiff}
             title="Jump to the previous difference"
             type="button"
             on:click={goToPreviousDifference}
           >
-            &lt; Prev
+            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+              <path
+                d="M9.8 3.2 5.4 8l4.4 4.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.7"
+              />
+            </svg>
+            <span>Prev</span>
           </button>
           <button
-            class="secondary"
+            class="secondary nav-button"
             aria-label="Jump to the next difference"
             disabled={!canGoToNextDiff}
             title="Jump to the next difference"
             type="button"
             on:click={goToNextDifference}
           >
-            Next &gt;
+            <span>Next</span>
+            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+              <path
+                d="M6.2 3.2 10.6 8l-4.4 4.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.7"
+              />
+            </svg>
           </button>
         </div>
 
         <div class="compare-action-group display-actions">
-          <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
-            {viewMode === 'sideBySide' ? 'Unified v' : 'Side by side v'}
+          <button
+            class:active={viewMode === 'unified'}
+            class="secondary view-mode-button"
+            type="button"
+            on:click={toggleViewMode}
+          >
+            <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
+              {#if viewMode === 'sideBySide'}
+                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+              {:else}
+                <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+              {/if}
+            </svg>
+            <span class="view-mode-button-label">
+              {viewMode === 'sideBySide' ? 'Unified' : 'Side by side'}
+            </span>
+            <svg aria-hidden="true" class="button-caret-icon" viewBox="0 0 16 16">
+              <path
+                d="m4.5 6.3 3.5 3.7 3.5-3.7"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+              />
+            </svg>
           </button>
 
           <div class="compare-options-anchor">
