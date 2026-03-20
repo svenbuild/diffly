@@ -1,11 +1,12 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{HashMap, HashSet},
     fs,
     io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
+use rayon::prelude::*;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use similar::{DiffOp, TextDiff};
@@ -441,7 +442,7 @@ fn compare_directories(
 
     let left_files = collect_directory_files(left)?;
     let right_files = collect_directory_files(right)?;
-    let mut all_paths = BTreeSet::new();
+    let mut all_paths = HashSet::with_capacity(left_files.len() + right_files.len());
 
     for key in left_files.keys() {
         all_paths.insert(key.clone());
@@ -451,47 +452,61 @@ fn compare_directories(
         all_paths.insert(key.clone());
     }
 
-    let mut entries = Vec::new();
+    let mut sorted_paths = all_paths.into_iter().collect::<Vec<_>>();
+    sorted_paths.sort_unstable();
 
-    for relative_path in all_paths {
-        let left_file = left_files.get(&relative_path);
-        let right_file = right_files.get(&relative_path);
+    let entry_results = sorted_paths
+        .par_iter()
+        .map(
+            |relative_path| -> Result<Option<DirectoryEntryResult>, String> {
+                let left_file = left_files.get(relative_path);
+                let right_file = right_files.get(relative_path);
 
-        let entry = match (left_file, right_file) {
-            (Some(left_file), Some(right_file)) => {
-                if files_match(left_file, right_file, options)? {
-                    continue;
-                }
+                let entry = match (left_file, right_file) {
+                    (Some(left_file), Some(right_file)) => {
+                        if files_match(left_file, right_file, options)? {
+                            return Ok(None);
+                        }
 
-                DirectoryEntryResult {
-                    relative_path,
-                    status: classify_entry_status(left_file, right_file)?,
-                    left_path: Some(left_file.to_string_lossy().to_string()),
-                    right_path: Some(right_file.to_string_lossy().to_string()),
-                    left_size: file_size(left_file),
-                    right_size: file_size(right_file),
-                }
-            }
-            (Some(left_file), None) => DirectoryEntryResult {
-                relative_path,
-                status: EntryStatus::LeftOnly,
-                left_path: Some(left_file.to_string_lossy().to_string()),
-                right_path: None,
-                left_size: file_size(left_file),
-                right_size: None,
+                        DirectoryEntryResult {
+                            relative_path: relative_path.clone(),
+                            status: classify_entry_status(left_file, right_file)?,
+                            left_path: Some(left_file.to_string_lossy().to_string()),
+                            right_path: Some(right_file.to_string_lossy().to_string()),
+                            left_size: file_size(left_file),
+                            right_size: file_size(right_file),
+                        }
+                    }
+                    (Some(left_file), None) => DirectoryEntryResult {
+                        relative_path: relative_path.clone(),
+                        status: EntryStatus::LeftOnly,
+                        left_path: Some(left_file.to_string_lossy().to_string()),
+                        right_path: None,
+                        left_size: file_size(left_file),
+                        right_size: None,
+                    },
+                    (None, Some(right_file)) => DirectoryEntryResult {
+                        relative_path: relative_path.clone(),
+                        status: EntryStatus::RightOnly,
+                        left_path: None,
+                        right_path: Some(right_file.to_string_lossy().to_string()),
+                        left_size: None,
+                        right_size: file_size(right_file),
+                    },
+                    (None, None) => return Ok(None),
+                };
+
+                Ok(Some(entry))
             },
-            (None, Some(right_file)) => DirectoryEntryResult {
-                relative_path,
-                status: EntryStatus::RightOnly,
-                left_path: None,
-                right_path: Some(right_file.to_string_lossy().to_string()),
-                left_size: None,
-                right_size: file_size(right_file),
-            },
-            (None, None) => continue,
-        };
+        )
+        .collect::<Vec<_>>();
 
-        entries.push(entry);
+    let mut entries = Vec::with_capacity(entry_results.len());
+
+    for entry_result in entry_results {
+        if let Some(entry) = entry_result? {
+            entries.push(entry);
+        }
     }
 
     Ok(entries)
@@ -584,8 +599,8 @@ fn session_file_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir.join("session.json"))
 }
 
-fn collect_directory_files(base: &Path) -> Result<BTreeMap<String, PathBuf>, String> {
-    let mut files = BTreeMap::new();
+fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, String> {
+    let mut files = HashMap::new();
 
     for entry in WalkDir::new(base) {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -1830,7 +1845,8 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
 }
 
 fn declaration_family_match(left: &LineDescriptor, right: &LineDescriptor) -> bool {
-    if !looks_like_declaration(&left.code_signature) || !looks_like_declaration(&right.code_signature)
+    if !looks_like_declaration(&left.code_signature)
+        || !looks_like_declaration(&right.code_signature)
     {
         return false;
     }

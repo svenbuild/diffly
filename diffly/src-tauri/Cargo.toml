@@ -27,6 +27,7 @@ tauri-plugin-log = "2"
 tauri-plugin-window-state = "2.4.1"
 walkdir = "2.5"
 rfd = "0.15"
+rayon = "1.10"
 
 [profile.dev]
 debug = 0
