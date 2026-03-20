@@ -27,6 +27,7 @@ export interface PersistedSession {
   wrapSideBySideLines?: boolean
   showSyntaxHighlighting?: boolean
   syncSideBySideScroll?: boolean
+  viewerTextSize?: number
   contextLines?: ContextLinesSetting
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
