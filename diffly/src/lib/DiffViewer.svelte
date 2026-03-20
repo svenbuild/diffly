@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { RenderedDiffFragment } from './syntax'
   import type { DiffCell, FileDiffResult, UnifiedLine, ViewMode } from './types'
@@ -29,6 +29,9 @@
   let leftPaneGrid: HTMLDivElement | null = null
   let rightPaneGrid: HTMLDivElement | null = null
   let unifiedContentGrid: HTMLDivElement | null = null
+  let leftScrollMarkers: ScrollMarker[] = []
+  let rightScrollMarkers: ScrollMarker[] = []
+  let unifiedScrollMarkers: ScrollMarker[] = []
   let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
   let sideBySideContentWidth = 0
   let unifiedContentWidth = 0
@@ -36,12 +39,19 @@
   let rightPaneTrailingSpace = 0
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
+  let scrollMarkerRefreshQueued = false
+  let scrollMarkerObserver: ResizeObserver | null = null
   const diffCellFragmentCache = new WeakMap<DiffCell, CachedFragments>()
   const unifiedLineFragmentCache = new WeakMap<UnifiedLine, CachedFragments>()
 
   interface CachedFragments {
     fragments: RenderedDiffFragment[]
     syntaxKey: string
+  }
+
+  interface ScrollMarker {
+    top: number
+    height: number
   }
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
@@ -69,6 +79,31 @@
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'unified') {
     unifiedRenderItems
     void updateUnifiedContentWidth()
+  }
+
+  $: if (activeDiff?.contentKind === 'text') {
+    viewMode
+    wrapSideBySideLines
+    diffFontSize
+    diffRowLineHeight
+    diffRowHeight
+    sideBySideRenderItems
+    unifiedRenderItems
+    scheduleScrollMarkerRefresh()
+  } else {
+    leftScrollMarkers = []
+    rightScrollMarkers = []
+    unifiedScrollMarkers = []
+  }
+
+  $: {
+    leftPaneScroll
+    rightPaneScroll
+    unifiedScroll
+    leftPaneGrid
+    rightPaneGrid
+    unifiedContentGrid
+    syncScrollMarkerObserver()
   }
 
   function currentSyntaxKey() {
@@ -152,12 +187,117 @@
 
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
   }
+
+  function scheduleScrollMarkerRefresh() {
+    if (scrollMarkerRefreshQueued) {
+      return
+    }
+
+    scrollMarkerRefreshQueued = true
+
+    void tick().then(() => {
+      scrollMarkerRefreshQueued = false
+      updateScrollMarkers()
+    })
+  }
+
+  function updateScrollMarkers() {
+    leftScrollMarkers = buildScrollMarkers(leftPaneScroll, leftPaneGrid, '.diff-row.insert, .diff-row.delete')
+    rightScrollMarkers = buildScrollMarkers(rightPaneScroll, rightPaneGrid, '.diff-row.insert, .diff-row.delete')
+    unifiedScrollMarkers = buildScrollMarkers(
+      unifiedScroll,
+      unifiedContentGrid,
+      '.unified-row.insert, .unified-row.delete',
+    )
+  }
+
+  function buildScrollMarkers(
+    scrollContainer: HTMLDivElement | null,
+    contentRoot: HTMLDivElement | null,
+    selector: string,
+  ) {
+    if (!scrollContainer || !contentRoot) {
+      return []
+    }
+
+    const scrollHeight = scrollContainer.scrollHeight
+
+    if (scrollHeight <= 0) {
+      return []
+    }
+
+    const nodes = Array.from(contentRoot.querySelectorAll<HTMLElement>(selector))
+
+    if (nodes.length === 0) {
+      return []
+    }
+
+    const markers: ScrollMarker[] = []
+
+    for (const node of nodes) {
+      const top = node.offsetTop / scrollHeight
+      const height = Math.max(node.offsetHeight / scrollHeight, 0.003)
+      const previous = markers.at(-1)
+
+      if (previous && top <= previous.top + previous.height + 0.002) {
+        previous.height = Math.max(previous.height, top + height - previous.top)
+        continue
+      }
+
+      markers.push({ top, height })
+    }
+
+    return markers
+  }
+
+  function syncScrollMarkerObserver() {
+    if (typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    if (!scrollMarkerObserver) {
+      scrollMarkerObserver = new ResizeObserver(() => {
+        scheduleScrollMarkerRefresh()
+      })
+    }
+
+    scrollMarkerObserver.disconnect()
+
+    if (leftPaneScroll) {
+      scrollMarkerObserver.observe(leftPaneScroll)
+    }
+
+    if (rightPaneScroll) {
+      scrollMarkerObserver.observe(rightPaneScroll)
+    }
+
+    if (unifiedScroll) {
+      scrollMarkerObserver.observe(unifiedScroll)
+    }
+
+    if (leftPaneGrid) {
+      scrollMarkerObserver.observe(leftPaneGrid)
+    }
+
+    if (rightPaneGrid) {
+      scrollMarkerObserver.observe(rightPaneGrid)
+    }
+
+    if (unifiedContentGrid) {
+      scrollMarkerObserver.observe(unifiedContentGrid)
+    }
+  }
+
+  onDestroy(() => {
+    scrollMarkerObserver?.disconnect()
+  })
 </script>
 
 <svelte:window
   on:resize={() => {
     void updateSideBySideContentMetrics()
     void updateUnifiedContentWidth()
+    scheduleScrollMarkerRefresh()
   }}
 />
 
@@ -209,6 +349,15 @@
             on:wheel={(event) => syncPaneWheel(event, 'left')}
             on:scroll={() => syncPaneScroll('left')}
           >
+            <div class="scroll-marker-rail" aria-hidden="true">
+              {#each leftScrollMarkers as marker}
+                <span
+                  class="scroll-marker"
+                  style:top={`${marker.top * 100}%`}
+                  style:height={`${marker.height * 100}%`}
+                ></span>
+              {/each}
+            </div>
             <div
               bind:this={leftPaneGrid}
               class="pane-grid"
@@ -269,6 +418,15 @@
             on:wheel={(event) => syncPaneWheel(event, 'right')}
             on:scroll={() => syncPaneScroll('right')}
           >
+            <div class="scroll-marker-rail" aria-hidden="true">
+              {#each rightScrollMarkers as marker}
+                <span
+                  class="scroll-marker"
+                  style:top={`${marker.top * 100}%`}
+                  style:height={`${marker.height * 100}%`}
+                ></span>
+              {/each}
+            </div>
             <div
               bind:this={rightPaneGrid}
               class="pane-grid"
@@ -319,6 +477,15 @@
       </div>
     {:else}
       <div bind:this={unifiedScroll} class="unified-grid" on:scroll={scheduleScrollNavigationRefresh}>
+        <div class="scroll-marker-rail" aria-hidden="true">
+          {#each unifiedScrollMarkers as marker}
+            <span
+              class="scroll-marker"
+              style:top={`${marker.top * 100}%`}
+              style:height={`${marker.height * 100}%`}
+            ></span>
+          {/each}
+        </div>
         <div
           bind:this={unifiedContentGrid}
           class="unified-content-grid"
