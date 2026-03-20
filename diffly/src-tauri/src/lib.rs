@@ -24,7 +24,7 @@ const LINE_PAIR_BLANK_MATCH_SCORE: i32 = 160;
 const LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE: i32 = 70;
 const LINE_PAIR_STRONG_MODIFIED_SCORE: i32 = 150;
 const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
-const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 6;
+const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 
@@ -245,6 +245,13 @@ enum MatchBandSeed {
     Assignment,
     Call,
     OtherCode,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum CallableCodeFamily {
+    Prototype,
+    Signature,
+    Call,
 }
 
 struct LineDescriptor {
@@ -1138,16 +1145,54 @@ fn exact_code_anchor_pairs(
     left_descriptors: &[LineDescriptor],
     right_descriptors: &[LineDescriptor],
 ) -> Vec<(usize, usize)> {
+    let left_signature_counts = left_descriptors
+        .iter()
+        .filter(|descriptor| is_exact_anchor_candidate(descriptor))
+        .fold(HashMap::new(), |mut counts, descriptor| {
+            *counts.entry(descriptor.code_signature.clone()).or_insert(0) += 1;
+            counts
+        });
+    let right_signature_counts = right_descriptors
+        .iter()
+        .filter(|descriptor| is_exact_anchor_candidate(descriptor))
+        .fold(HashMap::new(), |mut counts, descriptor| {
+            *counts.entry(descriptor.code_signature.clone()).or_insert(0) += 1;
+            counts
+        });
     let left_candidates = left_descriptors
         .iter()
         .enumerate()
         .filter(|(_, descriptor)| is_exact_anchor_candidate(descriptor))
+        .filter(|(_, descriptor)| {
+            left_signature_counts
+                .get(&descriptor.code_signature)
+                .copied()
+                .unwrap_or(0)
+                == 1
+                && right_signature_counts
+                    .get(&descriptor.code_signature)
+                    .copied()
+                    .unwrap_or(0)
+                    == 1
+        })
         .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
         .collect::<Vec<_>>();
     let right_candidates = right_descriptors
         .iter()
         .enumerate()
         .filter(|(_, descriptor)| is_exact_anchor_candidate(descriptor))
+        .filter(|(_, descriptor)| {
+            left_signature_counts
+                .get(&descriptor.code_signature)
+                .copied()
+                .unwrap_or(0)
+                == 1
+                && right_signature_counts
+                    .get(&descriptor.code_signature)
+                    .copied()
+                    .unwrap_or(0)
+                    == 1
+        })
         .map(|(index, descriptor)| (index, descriptor.code_signature.clone()))
         .collect::<Vec<_>>();
     let left_signatures = left_candidates
@@ -1248,6 +1293,24 @@ fn align_replace_subrange_local(
             continue;
         }
 
+        let remaining_left = left_descriptors.len() - left_index;
+        let remaining_right = right_descriptors.len() - right_index;
+
+        if remaining_left <= LINE_PAIR_FALLBACK_DP_LIMIT
+            && remaining_right <= LINE_PAIR_FALLBACK_DP_LIMIT
+        {
+            for (left_match, right_match) in align_replace_subrange_fallback_dp(
+                &left_descriptors[left_index..],
+                &right_descriptors[right_index..],
+            ) {
+                aligned.push((
+                    left_match.map(|index| index + left_index),
+                    right_match.map(|index| index + right_index),
+                ));
+            }
+            break;
+        }
+
         if let Some(candidate) = find_next_resync_match(
             left_descriptors,
             right_descriptors,
@@ -1291,24 +1354,6 @@ fn align_replace_subrange_local(
                 right_index += 1;
                 continue;
             }
-        }
-
-        let remaining_left = left_descriptors.len() - left_index;
-        let remaining_right = right_descriptors.len() - right_index;
-
-        if remaining_left <= LINE_PAIR_FALLBACK_DP_LIMIT
-            && remaining_right <= LINE_PAIR_FALLBACK_DP_LIMIT
-        {
-            for (left_match, right_match) in align_replace_subrange_fallback_dp(
-                &left_descriptors[left_index..],
-                &right_descriptors[right_index..],
-            ) {
-                aligned.push((
-                    left_match.map(|index| index + left_index),
-                    right_match.map(|index| index + right_index),
-                ));
-            }
-            break;
         }
 
         match choose_gap_side(
@@ -1798,6 +1843,10 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
         return None;
     }
 
+    if !callable_code_families_are_compatible(left, right) {
+        return None;
+    }
+
     let similarity = line_similarity_score(left, right);
 
     if declaration_family_match(left, right) {
@@ -1842,6 +1891,51 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
         MatchBandSeed::Assignment | MatchBandSeed::Call | MatchBandSeed::OtherCode
     )
     .then_some(MatchBand::StrongModified)
+}
+
+fn callable_code_families_are_compatible(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    match (
+        callable_code_family(&left.code_signature),
+        callable_code_family(&right.code_signature),
+    ) {
+        (Some(CallableCodeFamily::Call), Some(CallableCodeFamily::Call)) => true,
+        (Some(CallableCodeFamily::Prototype), Some(CallableCodeFamily::Prototype)) => true,
+        (Some(CallableCodeFamily::Signature), Some(CallableCodeFamily::Signature)) => true,
+        (Some(CallableCodeFamily::Prototype), Some(CallableCodeFamily::Signature)) => true,
+        (Some(CallableCodeFamily::Signature), Some(CallableCodeFamily::Prototype)) => true,
+        (Some(_), Some(_)) => false,
+        _ => true,
+    }
+}
+
+fn callable_code_family(signature: &str) -> Option<CallableCodeFamily> {
+    let trimmed = signature.trim();
+
+    if trimmed.is_empty()
+        || is_control_header(trimmed)
+        || trimmed.starts_with("return ")
+        || !trimmed.contains('(')
+        || !trimmed.contains(')')
+    {
+        return None;
+    }
+
+    let prefix = trimmed.split('(').next().unwrap_or("").trim_end();
+    let prefix_identifier_count = extract_identifiers(prefix).len();
+
+    if prefix_identifier_count == 0 {
+        return None;
+    }
+
+    if prefix_identifier_count == 1 {
+        return trimmed.ends_with(';').then_some(CallableCodeFamily::Call);
+    }
+
+    if trimmed.ends_with(';') {
+        Some(CallableCodeFamily::Prototype)
+    } else {
+        Some(CallableCodeFamily::Signature)
+    }
 }
 
 fn declaration_family_match(left: &LineDescriptor, right: &LineDescriptor) -> bool {
@@ -3466,6 +3560,86 @@ mod tests {
     }
 
     #[test]
+    fn file_diff_keeps_existing_function_aligned_when_new_helper_is_inserted_before_it() {
+        let temp_root = unique_temp_dir("file-inserted-helper-before-existing-function");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "static int32_t SM_GetPeakMargin(void)\n",
+                "{\n",
+                "    return SM_ADC_PEAK_MARGIN_BASE;\n",
+                "}\n",
+                "\n",
+                "static void SM_RunWindow(void)\n",
+                "{\n",
+                "    SM_ADC_ActiveMargin = SM_GetPeakMargin();\n",
+                "}\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "static int32_t SM_GetPeakMargin(void)\n",
+                "{\n",
+                "    if (SM_ADC_TempBucket < 0)\n",
+                "    {\n",
+                "        return SM_ADC_PEAK_MARGIN_COLD;\n",
+                "    }\n",
+                "\n",
+                "    if (SM_ADC_TempBucket > 0)\n",
+                "    {\n",
+                "        return SM_ADC_PEAK_MARGIN_HOT;\n",
+                "    }\n",
+                "\n",
+                "    return SM_ADC_PEAK_MARGIN_BASE;\n",
+                "}\n",
+                "\n",
+                "static void SM_UpdateMeasurementWindow(void);\n",
+                "static void SM_UpdateMeasurementWindow(void)\n",
+                "{\n",
+                "    SM_ADC_ActiveMargin = SM_GetPeakMargin();\n",
+                "}\n",
+                "\n",
+                "static void SM_RunWindow(void)\n",
+                "{\n",
+                "    SM_ADC_ActiveMargin = SM_GetPeakMargin();\n",
+                "}\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        assert!(matches!(
+            result.side_by_side[21].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_RunWindow(void)"
+        ));
+        assert!(matches!(
+            result.side_by_side[21].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "static void SM_RunWindow(void)"
+        ));
+        assert!(matches!(
+            result.side_by_side[23].left.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "    SM_ADC_ActiveMargin = SM_GetPeakMargin();"
+        ));
+        assert!(matches!(
+            result.side_by_side[23].right.as_ref().map(|cell| &cell.text),
+            Some(text) if text == "    SM_ADC_ActiveMargin = SM_GetPeakMargin();"
+        ));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
     fn exact_code_anchor_pairs_match_defines_with_inline_comments() {
         let left = vec![
             build_line_descriptor(
@@ -3703,5 +3877,49 @@ mod tests {
             &build_line_descriptor("#define ULTRON_LOGGER_MODE_ACTIVE")
         )
         .is_none());
+    }
+
+    #[test]
+    fn callable_signatures_do_not_pair_with_same_named_calls() {
+        assert!(pair_band(
+            &build_line_descriptor("static void SM_UpdateMeasurementWindow(void);"),
+            &build_line_descriptor("SM_UpdateMeasurementWindow();")
+        )
+        .is_none());
+        assert!(pair_band(
+            &build_line_descriptor("static void SM_UpdateMeasurementWindow(void)"),
+            &build_line_descriptor("SM_UpdateMeasurementWindow();")
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn replace_block_alignment_keeps_inserted_helper_signature_from_matching_call_site() {
+        let left_cells = vec![
+            test_changed_cell("SM_UpdateMeasurementWindow();", DiffChange::Delete),
+            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Delete),
+        ];
+        let right_cells = vec![
+            test_changed_cell(
+                "static void SM_UpdateMeasurementWindow(void);",
+                DiffChange::Insert,
+            ),
+            test_changed_cell("static void SM_UpdateMeasurementWindow(void)", DiffChange::Insert),
+            test_changed_cell("{", DiffChange::Insert),
+            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Insert),
+            test_changed_cell("}", DiffChange::Insert),
+            test_changed_cell("SM_UpdateMeasurementWindow();", DiffChange::Insert),
+            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Insert),
+        ];
+
+        let alignment = align_replace_block_rows(&left_cells, &right_cells);
+
+        assert_eq!(alignment.row_pairs[0], (None, Some(0)), "{:#?}", alignment.row_pairs);
+        assert_eq!(alignment.row_pairs[1], (None, Some(1)), "{:#?}", alignment.row_pairs);
+        assert_eq!(alignment.row_pairs[2], (None, Some(2)), "{:#?}", alignment.row_pairs);
+        assert_eq!(alignment.row_pairs[3], (None, Some(3)), "{:#?}", alignment.row_pairs);
+        assert_eq!(alignment.row_pairs[4], (None, Some(4)), "{:#?}", alignment.row_pairs);
+        assert_eq!(alignment.left_matches[0], Some(5));
+        assert_eq!(alignment.left_matches[1], Some(6));
     }
 }
