@@ -100,15 +100,17 @@
       </button>
     </div>
 
-    <select
-      class="drive-select"
-      value={currentDrive(pane)}
-      on:change={(event) => changeDrive(side, event.currentTarget.value)}
-    >
-      {#each pane.roots as root}
-        <option value={root.path}>{root.name}</option>
-      {/each}
-    </select>
+    {#if pane.roots.length > 0}
+      <select
+        class="drive-select"
+        value={currentDrive(pane)}
+        on:change={(event) => changeDrive(side, event.currentTarget.value)}
+      >
+        {#each pane.roots as root}
+          <option value={root.path}>{root.name}</option>
+        {/each}
+      </select>
+    {/if}
 
     <input
       class="path-input"
@@ -132,7 +134,7 @@
 
     <div class="list-rows">
       {#if pickerLoading}
-        <div class="empty-state">Loading drives...</div>
+        <div class="empty-state">Loading picker...</div>
       {:else if pane.loading}
         <div class="empty-state">Loading folder...</div>
       {:else if pane.currentListing}

@@ -8,7 +8,6 @@
     choosePath,
     comparePaths,
     listDirectory,
-    listRoots,
     loadSessionState,
     openCompareItem,
     pathInfo,
@@ -636,40 +635,12 @@
     pickerLoading = true
 
     try {
-      const [roots, savedSession] = await Promise.all([
-        listRoots(),
-        loadSessionState().catch(() => null),
-      ])
+      const savedSession = await loadSessionState().catch(() => null)
 
       applyPersistedSession(savedSession)
 
-      leftExplorer = {
-        ...createExplorerPane('Left'),
-        roots,
-      }
-
-      rightExplorer = {
-        ...createExplorerPane('Right'),
-        roots,
-      }
-
-      if (roots.length > 0) {
-        const leftRoot = await resolveInitialPanePath(savedSession?.leftPane ?? null, roots[0].path)
-        const rightRoot = await resolveInitialPanePath(
-          savedSession?.rightPane ?? null,
-          roots[1]?.path ?? roots[0].path,
-        )
-
-        await Promise.all([
-          openDirectory('left', leftRoot),
-          openDirectory('right', rightRoot),
-        ])
-
-        await Promise.all([
-          restorePaneSelection('left', savedSession?.leftPane ?? null),
-          restorePaneSelection('right', savedSession?.rightPane ?? null),
-        ])
-      }
+      leftExplorer = createExplorerPane('Left')
+      rightExplorer = createExplorerPane('Right')
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
     } finally {
@@ -943,29 +914,36 @@
       return
     }
 
-    const info = await pathInfo(nextPath)
+    try {
+      const info = await pathInfo(nextPath)
 
-    if (!info.exists) {
+      if (!info.exists) {
+        updatePane(side, (current) => ({
+          ...current,
+          error: 'The requested path does not exist.',
+        }))
+        return
+      }
+
+      if (info.isDirectory) {
+        await openDirectory(side, info.path)
+        if (mode === 'directory') {
+          selectTarget(side, info.path, 'directory')
+        }
+        return
+      }
+
+      if (info.isFile && info.parentPath) {
+        await openDirectory(side, info.parentPath)
+        if (mode === 'file') {
+          selectTarget(side, info.path, 'file')
+        }
+      }
+    } catch (error) {
       updatePane(side, (current) => ({
         ...current,
-        error: 'The requested path does not exist.',
+        error: error instanceof Error ? error.message : 'Unable to open the requested path.',
       }))
-      return
-    }
-
-    if (info.isDirectory) {
-      await openDirectory(side, info.path)
-      if (mode === 'directory') {
-        selectTarget(side, info.path, 'directory')
-      }
-      return
-    }
-
-    if (info.isFile && info.parentPath) {
-      await openDirectory(side, info.parentPath)
-      if (mode === 'file') {
-        selectTarget(side, info.path, 'file')
-      }
     }
   }
 

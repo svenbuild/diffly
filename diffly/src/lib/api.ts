@@ -4,7 +4,6 @@ import type {
   CompareOptions,
   CompareResponse,
   DirectoryListing,
-  ExplorerEntry,
   FileDiffResult,
   PathInfo,
   PathKind,
@@ -13,8 +12,6 @@ import type {
 
 export const choosePath = (kind: PathKind) =>
   invoke<string | null>('choose_path', { kind })
-
-export const listRoots = () => invoke<ExplorerEntry[]>('list_roots')
 
 export const listDirectory = (path: string) =>
   invoke<DirectoryListing>('list_directory', { path })

@@ -3,6 +3,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    sync::Mutex,
     time::UNIX_EPOCH,
 };
 
@@ -27,6 +28,7 @@ const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
 const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
+const MAX_DIRECTORY_COMPARE_FILES: usize = 20_000;
 
 fn default_true() -> bool {
     true
@@ -53,6 +55,18 @@ struct PersistedExplorerPane {
     selected_target_kind: Option<String>,
 }
 
+impl Default for PersistedExplorerPane {
+    fn default() -> Self {
+        Self {
+            current_path: String::new(),
+            history: Vec::new(),
+            history_index: -1,
+            selected_target_path: String::new(),
+            selected_target_kind: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PersistedSession {
@@ -75,8 +89,17 @@ struct PersistedSession {
     sync_side_by_side_scroll: bool,
     #[serde(default = "default_context_lines")]
     context_lines: u8,
+    #[serde(default)]
     left_pane: PersistedExplorerPane,
+    #[serde(default)]
     right_pane: PersistedExplorerPane,
+}
+
+impl PersistedSession {
+    fn sanitize_sensitive_paths(&mut self) {
+        self.left_pane = PersistedExplorerPane::default();
+        self.right_pane = PersistedExplorerPane::default();
+    }
 }
 
 #[derive(Serialize)]
@@ -99,7 +122,6 @@ struct ExplorerEntry {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum ExplorerEntryKind {
-    Drive,
     Directory,
     File,
 }
@@ -279,6 +301,11 @@ struct ReplaceBlockAlignment {
     right_matches: Vec<Option<usize>>,
 }
 
+#[derive(Default)]
+struct ApprovedPathStore {
+    roots: Mutex<Vec<PathBuf>>,
+}
+
 #[derive(Clone, Copy)]
 struct ResyncCandidate {
     left_index: usize,
@@ -310,16 +337,30 @@ enum DiffBlock {
 }
 
 #[tauri::command]
-fn choose_path(kind: String) -> Option<String> {
-    match kind.as_str() {
-        "directory" => FileDialog::new()
-            .pick_folder()
-            .map(|path| path.to_string_lossy().to_string()),
-        "file" => FileDialog::new()
-            .pick_file()
-            .map(|path| path.to_string_lossy().to_string()),
-        _ => None,
-    }
+fn choose_path(
+    approved_paths: tauri::State<'_, ApprovedPathStore>,
+    kind: String,
+) -> Result<Option<String>, String> {
+    let selected = match kind.as_str() {
+        "directory" => FileDialog::new().pick_folder(),
+        "file" => FileDialog::new().pick_file(),
+        _ => return Ok(None),
+    };
+
+    let Some(selected_path) = selected else {
+        return Ok(None);
+    };
+
+    let approved_root = approved_root_for_selected_path(&selected_path)?;
+    remember_approved_root(&approved_paths, &approved_root)?;
+
+    Ok(Some(
+        selected_path
+            .canonicalize()
+            .map_err(|error| error.to_string())?
+            .to_string_lossy()
+            .to_string(),
+    ))
 }
 
 #[tauri::command]
@@ -331,7 +372,9 @@ fn load_session_state(app: AppHandle) -> Result<Option<PersistedSession>, String
     }
 
     let contents = fs::read_to_string(&session_path).map_err(|error| error.to_string())?;
-    let session = serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+    let mut session: PersistedSession =
+        serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+    session.sanitize_sensitive_paths();
 
     Ok(Some(session))
 }
@@ -339,19 +382,20 @@ fn load_session_state(app: AppHandle) -> Result<Option<PersistedSession>, String
 #[tauri::command]
 fn save_session_state(app: AppHandle, session: PersistedSession) -> Result<(), String> {
     let session_path = session_file_path(&app)?;
-    let json = serde_json::to_string_pretty(&session).map_err(|error| error.to_string())?;
+    let mut sanitized_session = session;
+    sanitized_session.sanitize_sensitive_paths();
+    let json =
+        serde_json::to_string_pretty(&sanitized_session).map_err(|error| error.to_string())?;
 
     fs::write(session_path, json).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn list_roots() -> Result<Vec<ExplorerEntry>, String> {
-    Ok(available_roots())
-}
-
-#[tauri::command]
-fn list_directory(path: String) -> Result<DirectoryListing, String> {
-    let directory = PathBuf::from(&path);
+fn list_directory(
+    approved_paths: tauri::State<'_, ApprovedPathStore>,
+    path: String,
+) -> Result<DirectoryListing, String> {
+    let directory = authorized_existing_directory(&approved_paths, Path::new(&path))?;
 
     if !directory.exists() {
         return Err("The requested path does not exist.".to_string());
@@ -371,8 +415,12 @@ fn list_directory(path: String) -> Result<DirectoryListing, String> {
 }
 
 #[tauri::command]
-fn path_info(path: String) -> Result<PathInfo, String> {
-    let value = PathBuf::from(&path);
+fn path_info(
+    approved_paths: tauri::State<'_, ApprovedPathStore>,
+    path: String,
+) -> Result<PathInfo, String> {
+    let raw_path = PathBuf::from(&path);
+    let value = authorized_path(&approved_paths, &raw_path)?;
 
     match fs::metadata(&value) {
         Ok(metadata) => Ok(PathInfo {
@@ -396,13 +444,14 @@ fn path_info(path: String) -> Result<PathInfo, String> {
 
 #[tauri::command]
 fn compare_paths(
+    approved_paths: tauri::State<'_, ApprovedPathStore>,
     left_path: String,
     right_path: String,
     mode: String,
     options: CompareOptions,
 ) -> Result<CompareResponse, String> {
-    let left = PathBuf::from(&left_path);
-    let right = PathBuf::from(&right_path);
+    let left = authorized_path(&approved_paths, Path::new(&left_path))?;
+    let right = authorized_path(&approved_paths, Path::new(&right_path))?;
 
     match mode.as_str() {
         "directory" => Ok(CompareResponse::Directory {
@@ -417,13 +466,17 @@ fn compare_paths(
 
 #[tauri::command]
 fn open_compare_item(
+    approved_paths: tauri::State<'_, ApprovedPathStore>,
     left_base: String,
     right_base: String,
     relative_path: String,
     options: CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let left = Path::new(&left_base).join(&relative_path);
-    let right = Path::new(&right_base).join(&relative_path);
+    let left_root = authorized_existing_directory(&approved_paths, Path::new(&left_base))?;
+    let right_root = authorized_existing_directory(&approved_paths, Path::new(&right_base))?;
+    let relative_path = sanitize_relative_compare_path(&relative_path)?;
+    let left = resolve_compare_item_path(&left_root, &relative_path)?;
+    let right = resolve_compare_item_path(&right_root, &relative_path)?;
 
     build_file_diff(
         &left,
@@ -561,37 +614,142 @@ fn read_directory_entries(base: &Path) -> Result<(Vec<ExplorerEntry>, Vec<Explor
     Ok((directories, files))
 }
 
-fn available_roots() -> Vec<ExplorerEntry> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut roots = Vec::new();
+fn approved_root_for_selected_path(path: &Path) -> Result<PathBuf, String> {
+    let canonical_path = path.canonicalize().map_err(|error| error.to_string())?;
 
-        for drive in 'A'..='Z' {
-            let candidate = PathBuf::from(format!("{drive}:\\"));
+    if canonical_path.is_dir() {
+        Ok(canonical_path)
+    } else {
+        canonical_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "The selected file does not have an accessible parent directory.".to_string())
+    }
+}
 
-            if candidate.exists() {
-                roots.push(ExplorerEntry {
-                    name: candidate.to_string_lossy().to_string(),
-                    path: candidate.to_string_lossy().to_string(),
-                    kind: ExplorerEntryKind::Drive,
-                    size: None,
-                    modified_ms: None,
-                });
-            }
-        }
+fn remember_approved_root(
+    approved_paths: &ApprovedPathStore,
+    candidate_root: &Path,
+) -> Result<(), String> {
+    let mut roots = approved_paths
+        .roots
+        .lock()
+        .map_err(|_| "The approved path store is unavailable.".to_string())?;
+    let canonical_root = candidate_root
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
 
-        roots
+    if roots.iter().any(|root| canonical_root.starts_with(root)) {
+        return Ok(());
     }
 
-    #[cfg(not(target_os = "windows"))]
+    roots.retain(|root| !root.starts_with(&canonical_root));
+    roots.push(canonical_root);
+    roots.sort_unstable();
+
+    Ok(())
+}
+
+fn approved_roots_snapshot(approved_paths: &ApprovedPathStore) -> Result<Vec<PathBuf>, String> {
+    approved_paths
+        .roots
+        .lock()
+        .map(|roots| roots.clone())
+        .map_err(|_| "The approved path store is unavailable.".to_string())
+}
+
+fn authorized_existing_directory(
+    approved_paths: &ApprovedPathStore,
+    path: &Path,
+) -> Result<PathBuf, String> {
+    let authorized = authorized_path(approved_paths, path)?;
+
+    if authorized.is_dir() {
+        Ok(authorized)
+    } else {
+        Err("The requested path is not a directory.".to_string())
+    }
+}
+
+fn authorized_path(approved_paths: &ApprovedPathStore, path: &Path) -> Result<PathBuf, String> {
+    let candidate = if path.exists() {
+        path.canonicalize().map_err(|error| error.to_string())?
+    } else {
+        normalized_absolute_path(path)?
+    };
+
+    if approved_roots_snapshot(approved_paths)?
+        .iter()
+        .any(|root| candidate.starts_with(root))
     {
-        vec![ExplorerEntry {
-            name: "/".to_string(),
-            path: "/".to_string(),
-            kind: ExplorerEntryKind::Directory,
-            size: None,
-            modified_ms: None,
-        }]
+        Ok(candidate)
+    } else {
+        Err("Access to the requested path is not allowed.".to_string())
+    }
+}
+
+fn normalized_absolute_path(path: &Path) -> Result<PathBuf, String> {
+    if !path.is_absolute() {
+        return Err("Only absolute paths are supported.".to_string());
+    }
+
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            std::path::Component::RootDir => normalized.push(component.as_os_str()),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err("The requested path is invalid.".to_string());
+                }
+            }
+            std::path::Component::Normal(part) => normalized.push(part),
+        }
+    }
+
+    Ok(normalized)
+}
+
+fn sanitize_relative_compare_path(relative_path: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(relative_path);
+    let mut sanitized = PathBuf::new();
+
+    for component in candidate.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => sanitized.push(part),
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err("The requested compare item path is invalid.".to_string());
+            }
+        }
+    }
+
+    if sanitized.as_os_str().is_empty() {
+        return Err("The requested compare item path is invalid.".to_string());
+    }
+
+    Ok(sanitized)
+}
+
+fn resolve_compare_item_path(base: &Path, relative_path: &Path) -> Result<PathBuf, String> {
+    let candidate = base.join(relative_path);
+
+    if candidate.exists() {
+        let canonical = candidate.canonicalize().map_err(|error| error.to_string())?;
+
+        if !canonical.starts_with(base) {
+            return Err("The requested compare item escapes the approved directory.".to_string());
+        }
+
+        Ok(canonical)
+    } else if candidate.starts_with(base) {
+        Ok(candidate)
+    } else {
+        Err("The requested compare item escapes the approved directory.".to_string())
     }
 }
 
@@ -621,6 +779,12 @@ fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, Stri
                 .replace('\\', "/");
 
             files.insert(relative, entry.path().to_path_buf());
+
+            if files.len() > MAX_DIRECTORY_COMPARE_FILES {
+                return Err(format!(
+                    "Directory compare is limited to {MAX_DIRECTORY_COMPARE_FILES} files per side."
+                ));
+            }
         }
     }
 
@@ -2767,12 +2931,12 @@ fn parent_path(path: &Path) -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(ApprovedPathStore::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
             save_session_state,
-            list_roots,
             list_directory,
             path_info,
             compare_paths,
@@ -3921,5 +4085,78 @@ mod tests {
         assert_eq!(alignment.row_pairs[4], (None, Some(4)), "{:#?}", alignment.row_pairs);
         assert_eq!(alignment.left_matches[0], Some(5));
         assert_eq!(alignment.left_matches[1], Some(6));
+    }
+
+    #[test]
+    fn sanitize_relative_compare_path_rejects_parent_segments() {
+        assert!(sanitize_relative_compare_path("../secret.txt").is_err());
+        assert!(sanitize_relative_compare_path("nested/../../secret.txt").is_err());
+        assert!(sanitize_relative_compare_path("folder/file.txt").is_ok());
+    }
+
+    #[test]
+    fn approved_root_allows_children_and_blocks_outside_paths() {
+        let temp_root = unique_temp_dir("approved-root-scope");
+        let approved = temp_root.join("approved");
+        let other = temp_root.join("other");
+        let nested = approved.join("nested");
+
+        fs::create_dir_all(&nested).expect("nested approved directory should exist");
+        fs::create_dir_all(&other).expect("other directory should exist");
+        write_temp_file(&nested.join("inside.txt"), "alpha\n");
+        write_temp_file(&other.join("outside.txt"), "beta\n");
+
+        let approved_store = ApprovedPathStore::default();
+        remember_approved_root(&approved_store, &approved)
+            .expect("approved root should be recorded");
+
+        assert!(authorized_path(&approved_store, &nested.join("inside.txt")).is_ok());
+        assert!(authorized_path(&approved_store, &other.join("outside.txt")).is_err());
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn persisted_session_redacts_sensitive_paths() {
+        let mut session = PersistedSession {
+            mode: "directory".to_string(),
+            view_mode: "sideBySide".to_string(),
+            theme_mode: Some("dark".to_string()),
+            ignore_whitespace: false,
+            ignore_case: false,
+            show_full_file: false,
+            show_inline_highlights: true,
+            wrap_side_by_side_lines: false,
+            show_syntax_highlighting: true,
+            sync_side_by_side_scroll: true,
+            context_lines: 3,
+            left_pane: PersistedExplorerPane {
+                current_path: "C:\\secret".to_string(),
+                history: vec!["C:\\secret".to_string()],
+                history_index: 0,
+                selected_target_path: "C:\\secret\\a.txt".to_string(),
+                selected_target_kind: Some("file".to_string()),
+            },
+            right_pane: PersistedExplorerPane {
+                current_path: "C:\\other".to_string(),
+                history: vec!["C:\\other".to_string()],
+                history_index: 0,
+                selected_target_path: "C:\\other\\b.txt".to_string(),
+                selected_target_kind: Some("file".to_string()),
+            },
+        };
+
+        session.sanitize_sensitive_paths();
+
+        assert!(session.left_pane.current_path.is_empty());
+        assert!(session.left_pane.history.is_empty());
+        assert_eq!(session.left_pane.history_index, -1);
+        assert!(session.left_pane.selected_target_path.is_empty());
+        assert!(session.left_pane.selected_target_kind.is_none());
+        assert!(session.right_pane.current_path.is_empty());
+        assert!(session.right_pane.history.is_empty());
+        assert_eq!(session.right_pane.history_index, -1);
+        assert!(session.right_pane.selected_target_path.is_empty());
+        assert!(session.right_pane.selected_target_kind.is_none());
     }
 }
