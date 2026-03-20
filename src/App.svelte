@@ -158,6 +158,7 @@
     leftRootFullPath: '',
     rightRootFullPath: '',
   }
+  const MAX_DETAIL_DIFF_CACHE_ENTRIES = 12
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
 
@@ -441,6 +442,24 @@
     ].join('\u0000')
   }
 
+  function touchDetailDiffCacheEntry(cacheKey: string, resultPromise: Promise<FileDiffResult>) {
+    if (detailDiffCache.has(cacheKey)) {
+      detailDiffCache.delete(cacheKey)
+    }
+
+    detailDiffCache.set(cacheKey, resultPromise)
+
+    while (detailDiffCache.size > MAX_DETAIL_DIFF_CACHE_ENTRIES) {
+      const oldestCacheKey = detailDiffCache.keys().next().value
+
+      if (!oldestCacheKey) {
+        break
+      }
+
+      detailDiffCache.delete(oldestCacheKey)
+    }
+  }
+
   function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
     if (!leftPath || !rightPath) {
       throw new Error('No active compare is available.')
@@ -450,6 +469,7 @@
     let resultPromise = detailDiffCache.get(cacheKey)
 
     if (resultPromise) {
+      touchDetailDiffCacheEntry(cacheKey, resultPromise)
       return resultPromise
     }
 
@@ -463,7 +483,7 @@
       throw error
     })
 
-    detailDiffCache.set(cacheKey, resultPromise)
+    touchDetailDiffCacheEntry(cacheKey, resultPromise)
     return resultPromise
   }
 
@@ -2288,4 +2308,3 @@
     </section>
   </main>
 {/if}
-
