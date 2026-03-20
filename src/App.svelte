@@ -59,9 +59,13 @@
   const THEME_SWITCH_DURATION_MS = 140
   const DIFF_PREFETCH_RADIUS = 2
   const DIFF_PREFETCH_DELAY_MS = 70
+  const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
+  const DEFAULT_VIEWER_TEXT_SIZE = 10
+  const MIN_VIEWER_TEXT_SIZE = 8
+  const MAX_VIEWER_TEXT_SIZE = 24
 
   type Screen = 'setup' | 'compare'
 
@@ -87,6 +91,7 @@
   let wrapSideBySideLines = false
   let showSyntaxHighlighting = true
   let syncSideBySideScroll = true
+  let viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
   let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
   let compareOptionsOpen = false
   let leftPath = ''
@@ -118,8 +123,12 @@
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
   let paneNavigationSyncActive = false
+  let paneWheelScrollFrame: number | null = null
+  let paneWheelScrollSource: 'left' | 'right' | null = null
+  let paneWheelScrollTargetTop = 0
   let diffNavigationRefreshQueued = false
   let diffNavigationScrollFrame: number | null = null
+  let diffNavigationIdleTimer: number | null = null
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
@@ -158,9 +167,11 @@
     leftRootFullPath: '',
     rightRootFullPath: '',
   }
-  const MAX_DETAIL_DIFF_CACHE_ENTRIES = 12
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
+  let diffFontSize = `${DEFAULT_VIEWER_TEXT_SIZE}px`
+  let diffRowLineHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 3}px`
+  let diffRowHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 8}px`
 
   const statusLabel = {
     modified: 'Modified',
@@ -199,6 +210,7 @@
 
     if (!syncSideBySideScroll) {
       cancelPaneNavigationScroll()
+      cancelPaneWheelScroll()
     }
   }
 
@@ -241,8 +253,16 @@
         window.cancelAnimationFrame(paneNavigationScrollFrame)
       }
 
+      if (paneWheelScrollFrame !== null) {
+        window.cancelAnimationFrame(paneWheelScrollFrame)
+      }
+
       if (diffNavigationScrollFrame !== null) {
         window.cancelAnimationFrame(diffNavigationScrollFrame)
+      }
+
+      if (diffNavigationIdleTimer !== null) {
+        window.clearTimeout(diffNavigationIdleTimer)
       }
     }
   })
@@ -257,6 +277,13 @@
     if (isContextLinesSetting(nextValue)) {
       contextLines = nextValue
     }
+  }
+
+  function stepViewerTextSize(direction: -1 | 1) {
+    viewerTextSize = Math.min(
+      MAX_VIEWER_TEXT_SIZE,
+      Math.max(MIN_VIEWER_TEXT_SIZE, viewerTextSize + direction),
+    )
   }
 
   function handleCompareOptionsPointerDown(event: PointerEvent) {
@@ -442,24 +469,6 @@
     ].join('\u0000')
   }
 
-  function touchDetailDiffCacheEntry(cacheKey: string, resultPromise: Promise<FileDiffResult>) {
-    if (detailDiffCache.has(cacheKey)) {
-      detailDiffCache.delete(cacheKey)
-    }
-
-    detailDiffCache.set(cacheKey, resultPromise)
-
-    while (detailDiffCache.size > MAX_DETAIL_DIFF_CACHE_ENTRIES) {
-      const oldestCacheKey = detailDiffCache.keys().next().value
-
-      if (!oldestCacheKey) {
-        break
-      }
-
-      detailDiffCache.delete(oldestCacheKey)
-    }
-  }
-
   function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
     if (!leftPath || !rightPath) {
       throw new Error('No active compare is available.')
@@ -469,7 +478,6 @@
     let resultPromise = detailDiffCache.get(cacheKey)
 
     if (resultPromise) {
-      touchDetailDiffCacheEntry(cacheKey, resultPromise)
       return resultPromise
     }
 
@@ -483,7 +491,7 @@
       throw error
     })
 
-    touchDetailDiffCacheEntry(cacheKey, resultPromise)
+    detailDiffCache.set(cacheKey, resultPromise)
     return resultPromise
   }
 
@@ -679,6 +687,14 @@
     wrapSideBySideLines = session.wrapSideBySideLines ?? false
     showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
     syncSideBySideScroll = session.syncSideBySideScroll ?? true
+    const restoredViewerTextSize =
+      typeof session.viewerTextSize === 'number'
+        ? session.viewerTextSize
+        : DEFAULT_VIEWER_TEXT_SIZE
+    viewerTextSize = Math.min(
+      MAX_VIEWER_TEXT_SIZE,
+      Math.max(MIN_VIEWER_TEXT_SIZE, restoredViewerTextSize),
+    )
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -1002,7 +1018,6 @@
 
     const nextLeftPath = leftExplorer.selectedTargetPath
     const nextRightPath = rightExplorer.selectedTargetPath
-    const previousRelativePath = selectedRelativePath
 
     loading = true
     detailLoading = false
@@ -1024,10 +1039,7 @@
         syncFilteredDirectoryState(response.entries)
 
         if (filteredDirectoryEntries.length > 0) {
-          const retainedEntry =
-            filteredDirectoryEntries.find((entry) => entry.relativePath === previousRelativePath) ??
-            filteredDirectoryEntries[0]
-          await selectEntry(retainedEntry, compareRevision)
+          await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
@@ -1133,6 +1145,10 @@
     return entries.filter((entry) => statusFilters.includes(entry.status))
   }
 
+  function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {
+    return entries.find((entry) => getParentPath(entry.relativePath) === ROOT_GROUP) ?? entries[0]
+  }
+
   function reconcileCollapsedState(
     previousState: Record<string, boolean>,
     sections: FolderSection[],
@@ -1176,7 +1192,7 @@
     }
 
     if (filteredDirectoryEntries.length > 0) {
-      await selectEntry(filteredDirectoryEntries[0])
+      await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries))
       return
     }
 
@@ -1258,6 +1274,19 @@
   }
 
   function scheduleScrollNavigationRefresh() {
+    if (showFullFile) {
+      if (diffNavigationIdleTimer !== null) {
+        window.clearTimeout(diffNavigationIdleTimer)
+      }
+
+      diffNavigationIdleTimer = window.setTimeout(() => {
+        diffNavigationIdleTimer = null
+        refreshDiffNavigationState()
+      }, FULL_FILE_NAVIGATION_REFRESH_DELAY_MS)
+
+      return
+    }
+
     if (diffNavigationScrollFrame !== null) {
       return
     }
@@ -1283,6 +1312,15 @@
     if (paneNavigationScrollFrame !== null) {
       window.cancelAnimationFrame(paneNavigationScrollFrame)
       paneNavigationScrollFrame = null
+    }
+  }
+
+  function cancelPaneWheelScroll() {
+    paneWheelScrollSource = null
+
+    if (paneWheelScrollFrame !== null) {
+      window.cancelAnimationFrame(paneWheelScrollFrame)
+      paneWheelScrollFrame = null
     }
   }
 
@@ -1322,6 +1360,7 @@
     }
 
     cancelPaneNavigationScroll()
+    cancelPaneWheelScroll()
 
     const nextLeftTop = clampScrollOffset(leftTop, getMaxScrollTop(leftPaneScroll))
     const nextRightTop = clampScrollOffset(rightTop, getMaxScrollTop(rightPaneScroll))
@@ -1551,17 +1590,51 @@
     cancelPaneNavigationScroll()
     event.preventDefault()
 
-    const nextSourceTop = clampScrollOffset(
-      sourcePane.scrollTop + normalizeWheelDelta(event.deltaY, event.deltaMode),
-      getMaxScrollTop(sourcePane),
-    )
+    const deltaTop = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    const maxScrollTop = getMaxScrollTop(sourcePane)
 
-    if (Math.abs(nextSourceTop - sourcePane.scrollTop) < 0.5) {
+    if (paneWheelScrollSource && paneWheelScrollSource !== source) {
+      cancelPaneWheelScroll()
+    }
+
+    const baseTop =
+      paneWheelScrollSource === source ? paneWheelScrollTargetTop : sourcePane.scrollTop
+    const nextSourceTop = clampScrollOffset(baseTop + deltaTop, maxScrollTop)
+
+    if (Math.abs(nextSourceTop - baseTop) < 0.5) {
       return
     }
 
-    sourcePane.scrollTop = nextSourceTop
-    applyPaneScrollSync(source)
+    paneWheelScrollSource = source
+    paneWheelScrollTargetTop = nextSourceTop
+
+    if (paneWheelScrollFrame !== null) {
+      return
+    }
+
+    const animate = () => {
+      const activePane = getPaneScroll(source)
+
+      if (!activePane || paneWheelScrollSource !== source) {
+        cancelPaneWheelScroll()
+        return
+      }
+
+      const remaining = paneWheelScrollTargetTop - activePane.scrollTop
+
+      if (Math.abs(remaining) < 0.5) {
+        activePane.scrollTop = paneWheelScrollTargetTop
+        applyPaneScrollSync(source)
+        cancelPaneWheelScroll()
+        return
+      }
+
+      activePane.scrollTop += remaining * 0.28
+      applyPaneScrollSync(source)
+      paneWheelScrollFrame = window.requestAnimationFrame(animate)
+    }
+
+    paneWheelScrollFrame = window.requestAnimationFrame(animate)
   }
 
   function syncPaneScroll(source: 'left' | 'right') {
@@ -1662,6 +1735,7 @@
       wrapSideBySideLines,
       showSyntaxHighlighting,
       syncSideBySideScroll,
+      viewerTextSize,
       contextLines,
       leftPane: buildPersistedPane(leftExplorer),
       rightPane: buildPersistedPane(rightExplorer),
@@ -1797,6 +1871,9 @@
     canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
   $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
+  $: diffFontSize = `${viewerTextSize}px`
+  $: diffRowLineHeight = `${viewerTextSize + 3}px`
+  $: diffRowHeight = `${viewerTextSize + 8}px`
 
   $: if (screen === 'compare') {
     activeDiff
@@ -1825,6 +1902,7 @@
     wrapSideBySideLines
     showSyntaxHighlighting
     syncSideBySideScroll
+    viewerTextSize
     contextLines
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
@@ -1953,10 +2031,10 @@
           on:click={swapComparedSides}
         >
           <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
           </svg>
         </button>
         <button
@@ -2014,38 +2092,75 @@
     <header class="app-bar compare-bar">
       <div class="app-bar-main compare-bar-main">
         <div class="compare-bar-brand">
-          <h1>Diffly</h1>
-          <button class="secondary" type="button" on:click={goToSetup}>Setup</button>
+          <div class="app-identity">
+            <h1>Diffly</h1>
+            <span>Compare</span>
+          </div>
         </div>
       </div>
 
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
           <button
-            class="secondary"
+            class="secondary nav-button"
             aria-label="Jump to the previous difference"
             disabled={!canGoToPreviousDiff}
             title="Jump to the previous difference"
             type="button"
             on:click={goToPreviousDifference}
           >
-            &lt; Prev
+            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+              <path
+                d="M9.8 3.2 5.4 8l4.4 4.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.7"
+              />
+            </svg>
+            <span>Prev</span>
           </button>
           <button
-            class="secondary"
+            class="secondary nav-button"
             aria-label="Jump to the next difference"
             disabled={!canGoToNextDiff}
             title="Jump to the next difference"
             type="button"
             on:click={goToNextDifference}
           >
-            Next &gt;
+            <span>Next</span>
+            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+              <path
+                d="M6.2 3.2 10.6 8l-4.4 4.8"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.7"
+              />
+            </svg>
           </button>
         </div>
 
         <div class="compare-action-group display-actions">
-          <button class:active={viewMode === 'unified'} class="secondary" type="button" on:click={toggleViewMode}>
-            {viewMode === 'sideBySide' ? 'Unified v' : 'Side by side v'}
+          <button
+            class="secondary view-mode-button"
+            type="button"
+            on:click={toggleViewMode}
+          >
+            <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
+              {#if viewMode === 'sideBySide'}
+                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+              {:else}
+                <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+              {/if}
+            </svg>
+            <span class="view-mode-button-label">
+              {viewMode === 'sideBySide' ? 'Unified view' : 'Split view'}
+            </span>
           </button>
 
           <div class="compare-options-anchor">
@@ -2136,6 +2251,33 @@
                   </select>
                 </label>
 
+                <div class="compare-options-row">
+                  <span>Text size</span>
+                  <div class="compare-options-stepper">
+                    <button
+                      class="secondary compare-options-stepper-button"
+                      aria-label="Decrease text size"
+                      disabled={viewerTextSize <= MIN_VIEWER_TEXT_SIZE}
+                      title="Decrease text size"
+                      type="button"
+                      on:click={() => stepViewerTextSize(-1)}
+                    >
+                      -
+                    </button>
+                    <span class="compare-options-stepper-value" aria-live="polite">{String(viewerTextSize)}</span>
+                    <button
+                      class="secondary compare-options-stepper-button"
+                      aria-label="Increase text size"
+                      disabled={viewerTextSize >= MAX_VIEWER_TEXT_SIZE}
+                      title="Increase text size"
+                      type="button"
+                      on:click={() => stepViewerTextSize(1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
                 <label class="compare-options-row">
                   <span>Wrap long lines</span>
                   <input bind:checked={wrapSideBySideLines} type="checkbox" />
@@ -2179,50 +2321,15 @@
             disabled={loading || detailLoading || pickerLoading}
             title="Switch left and right sides"
             type="button"
-            on:click={swapComparedSides}
-          >
-            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-              <path d="M2.5 5h8.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m8.5 2 3 3-3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-              <path d="M13.5 11H5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m7.5 8-3 3 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            </svg>
-          </button>
-
-          <button
-            aria-label="Refresh compare"
-            aria-busy={loading}
-            class="refresh-button"
-            title="Refresh compare"
-            type="button"
-            disabled={loading}
-            on:click={runCompare}
-          >
-            <span class="refresh-icon-slot" aria-hidden="true">
-              {#if loading}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <svg class="refresh-icon" viewBox="0 0 16 16">
-                  <path
-                    d="M13 5.5V2.8L11.3 4.5A5.4 5.4 0 0 0 2.8 6.3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                  />
-                  <path
-                    d="M3 10.5v2.7l1.7-1.7A5.4 5.4 0 0 0 13.2 9.7"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                  />
-                </svg>
-              {/if}
-            </span>
-          </button>
+          on:click={swapComparedSides}
+        >
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
+        </button>
 
           <button
             class="secondary theme-toggle"
@@ -2252,10 +2359,62 @@
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="1.4"
-                />
-              </svg>
-            {/if}
+              />
+            </svg>
+          {/if}
+        </button>
+
+          <button
+            aria-label="Refresh compare"
+            aria-busy={loading}
+            class="secondary icon-button refresh-button"
+            title="Refresh compare"
+            type="button"
+            disabled={loading}
+            on:click={runCompare}
+          >
+            <span class="refresh-icon-slot" aria-hidden="true">
+              {#if loading}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <svg class="refresh-icon" viewBox="0 0 16 16">
+                  <path
+                    d="M13 5.8A5.2 5.2 0 0 0 3.6 4.2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="m11.3 2.5 2 3.3-3.8.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M3 10.2a5.2 5.2 0 0 0 9.4 1.6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="m4.7 13.5-2-3.3 3.8-.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              {/if}
+            </span>
           </button>
+          <button class="primary" type="button" on:click={goToSetup}>Setup</button>
         </div>
       </div>
     </header>
@@ -2298,9 +2457,13 @@
         {sideBySideRenderItems}
         {unifiedRenderItems}
         {diffHeaderContext}
+        {diffFontSize}
+        {diffRowLineHeight}
+        {diffRowHeight}
         {syncPaneWheel}
         {syncPaneScroll}
-        {refreshDiffNavigationState}
+        {scrollDiffHunkIntoView}
+        {scheduleScrollNavigationRefresh}
         bind:leftPaneScroll
         bind:rightPaneScroll
         bind:unifiedScroll
@@ -2308,3 +2471,4 @@
     </section>
   </main>
 {/if}
+

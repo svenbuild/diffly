@@ -28,19 +28,15 @@ export function buildSideBySideRenderItems(
   showFullFile: boolean,
 ) {
   if (showFullFile) {
-    const anchorRows = new Map<number, number>()
-
-    hunks.forEach((hunk, index) => {
-      anchorRows.set(hunk.start, index)
-    })
+    const rowHunkIndexes = buildRowHunkIndexMap(rows.length, hunks)
 
     return rows.map(
       (row, index) =>
         ({
           type: 'row',
           row,
-          hunkIndex: anchorRows.get(index),
-          isAnchor: anchorRows.has(index),
+          hunkIndex: rowHunkIndexes[index],
+          isAnchor: rowHunkIndexes[index] !== undefined && hunks[rowHunkIndexes[index]]?.start === index,
         }) satisfies SideBySideRenderItem,
     )
   }
@@ -82,19 +78,15 @@ export function buildUnifiedRenderItems(
   showFullFile: boolean,
 ) {
   if (showFullFile) {
-    const anchorRows = new Map<number, number>()
-
-    hunks.forEach((hunk, index) => {
-      anchorRows.set(hunk.start, index)
-    })
+    const rowHunkIndexes = buildRowHunkIndexMap(rows.length, hunks)
 
     return rows.map(
       (row, index) =>
         ({
           type: 'row',
           row,
-          hunkIndex: anchorRows.get(index),
-          isAnchor: anchorRows.has(index),
+          hunkIndex: rowHunkIndexes[index],
+          isAnchor: rowHunkIndexes[index] !== undefined && hunks[rowHunkIndexes[index]]?.start === index,
         }) satisfies UnifiedRenderItem,
     )
   }
@@ -154,4 +146,16 @@ function buildHunkRanges(changedRows: boolean[], contextLines: ContextLinesSetti
 
 function formatCollapsedLineCount(hiddenLineCount: number) {
   return `${hiddenLineCount} unmodified line${hiddenLineCount === 1 ? '' : 's'}`
+}
+
+function buildRowHunkIndexMap(rowCount: number, hunks: DiffHunkRange[]) {
+  const indexes = new Array<number | undefined>(rowCount).fill(undefined)
+
+  hunks.forEach((hunk, index) => {
+    for (let rowIndex = hunk.start; rowIndex <= hunk.end; rowIndex += 1) {
+      indexes[rowIndex] = index
+    }
+  })
+
+  return indexes
 }

@@ -74,7 +74,7 @@
   --diff-insert-text: #f4fff7;
   --diff-delete-bg: #471b23;
   --diff-delete-text: #fff1f3;
-  --diff-line-number-width: calc(1ch + 14px);
+  --diff-line-number-width: calc(1ch + 18px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-font-size: 11px;
   --diff-row-line-height: 14px;
@@ -180,7 +180,7 @@
   --diff-insert-text: #074b1d;
   --diff-delete-bg: #ffd7d5;
   --diff-delete-text: #8b1021;
-  --diff-line-number-width: calc(1ch + 14px);
+  --diff-line-number-width: calc(1ch + 18px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-gap-bg: #f6f8fa;
   --diff-gap-stripe: rgba(31, 35, 40, 0.06);
@@ -437,31 +437,63 @@ h2 {
   min-width: 0;
 }
 
+.compare-bar-brand .app-identity {
+  flex: 0 0 19ch;
+  min-width: 19ch;
+}
+
 .compare-bar-brand h1 {
   color: var(--title);
 }
 
-.compare-summary strong,
-.browser-title h2 {
-  color: var(--strong-text);
+.nav-button {
+  min-width: 76px;
 }
 
-.app-identity span,
-.compare-summary span,
-.browser-title span,
-.target-summary span,
-.picker-pane-title span,
-.pane-source span,
-.viewer-source span,
-.context-card span,
-.definition-list dt,
-.list-columns,
-.entry-type,
-.entry-date,
-.entry-meta,
-.file-row-bottom,
-.pane-path {
-  color: var(--muted);
+.nav-button-icon,
+.view-mode-icon {
+  flex: 0 0 auto;
+}
+
+.nav-button-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.view-mode-button {
+  min-height: 28px;
+  padding: 0 10px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.view-mode-button:hover:not(:disabled),
+.view-mode-button:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--secondary-text);
+}
+
+.view-mode-button:active:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--active-text);
+}
+
+.view-mode-icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.view-mode-button-label {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  line-height: 1;
+  text-align: center;
 }
 
 .segmented-control {
@@ -835,10 +867,12 @@ h2 {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
   align-items: stretch;
-  gap: 8px;
+  gap: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  padding-top: 0;
+  background: var(--pane-bg);
 }
 
 .compare-layout.single-pane {
@@ -847,7 +881,7 @@ h2 {
 
 .file-browser,
 .viewer {
-  padding: 7px;
+  padding: 0;
 }
 
 .file-browser {
@@ -855,9 +889,12 @@ h2 {
   gap: 4px;
   height: 100%;
   max-height: 100%;
-  background: var(--pane-bg);
+  background: transparent;
   overflow: hidden;
   overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
 }
 
 .browser-header {
@@ -867,7 +904,8 @@ h2 {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding-bottom: 4px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border);
   background: var(--pane-bg);
 }
 
@@ -945,9 +983,9 @@ button.filter-chip.tooLarge:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--list-bg);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1009,7 +1047,7 @@ button.filter-chip.tooLarge:focus-visible {
 .file-row {
   display: grid;
   gap: 4px;
-  padding: 5px 6px;
+  padding: 5px 10px;
   background: transparent;
   border-bottom: 1px solid var(--border);
 }
@@ -1027,16 +1065,18 @@ button.filter-chip.tooLarge:focus-visible {
 
 .viewer {
   overflow: hidden;
-  background: var(--pane-bg);
+  background: transparent;
   grid-template-rows: auto minmax(0, 1fr);
   position: relative;
+  border: 0;
+  border-radius: 0;
 }
 
 .viewer-root-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
-  padding: 0 0 6px;
+  padding: 8px 0 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1047,7 +1087,7 @@ button.filter-chip.tooLarge:focus-visible {
   min-width: 0;
   overflow: visible;
   font-size: 0.72rem;
-  padding: 0 6px;
+  padding: 0 10px 8px;
 }
 
 .viewer-root-label {
@@ -1125,6 +1165,7 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   min-height: 0;
+  background: var(--canvas-alt);
 }
 
 .diff-pane {
@@ -1139,7 +1180,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-header,
 .viewer-header {
-  padding: 4px 6px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--pane-header-bg);
   box-shadow: inset 0 1px 0 var(--pane-header-shadow);
@@ -1179,10 +1220,22 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
 }
 
+.pane-scroll-shell,
+.unified-grid-shell {
+  display: grid;
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .pane-scroll,
 .unified-grid {
+  position: relative;
+  min-height: 0;
+  height: 100%;
   background: var(--canvas-alt);
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .pane-grid,
@@ -1357,6 +1410,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .line-number {
+  padding-right: 6px;
   position: sticky;
   left: 0;
   z-index: 2;
@@ -1400,6 +1454,60 @@ button.filter-chip.tooLarge:focus-visible {
 .split-view.wrapped-lines .diff-row {
   min-height: var(--diff-row-height);
   height: auto;
+}
+
+.scroll-marker-overlay {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  bottom: 2px;
+  width: 6px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.scroll-marker-rail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.scroll-marker {
+  position: absolute;
+  left: 2px;
+  right: 1px;
+  min-height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+  opacity: 0.28;
+  box-shadow: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.scroll-marker.insert {
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+}
+
+.scroll-marker.delete {
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+}
+
+.scroll-marker.mixed {
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+}
+
+.scroll-marker:hover {
+  opacity: 0.48;
+}
+
+.scroll-marker.active {
+  background: var(--accent);
+  opacity: 0.68;
 }
 
 .line-fragment.highlighted {
@@ -1603,11 +1711,45 @@ button.filter-chip.tooLarge:focus-visible {
 
 .compare-options-row span {
   min-width: 0;
+  white-space: nowrap;
 }
 
 .compare-options-select-row select {
   width: auto;
   min-width: 60px;
+}
+
+.compare-options-stepper {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.compare-options-stepper-button {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.compare-options-stepper-value {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .compare-options-row.disabled {
@@ -1620,42 +1762,29 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-alt));
-  color: color-mix(in srgb, var(--accent-strong) 84%, var(--text));
-}
-
-.refresh-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 78%, var(--surface-strong));
-}
-
-.refresh-button:disabled {
-  opacity: 1;
-  color: color-mix(in srgb, var(--accent-strong) 66%, var(--muted));
 }
 
 .refresh-icon-slot {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 14px;
+  flex: 0 0 16px;
 }
 
 .refresh-icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   display: block;
 }
 
 .refresh-spinner {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid currentColor;
+  width: 14px;
+  height: 14px;
+  border: 1.7px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
   opacity: 0.88;
