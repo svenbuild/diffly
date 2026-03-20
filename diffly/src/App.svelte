@@ -291,10 +291,14 @@
     return viewerTextSizeOptions.includes(value as ViewerTextSize)
   }
 
-  function applyViewerTextSize(value: string) {
-    if (isViewerTextSize(value)) {
-      viewerTextSize = value
-    }
+  function stepViewerTextSize(direction: -1 | 1) {
+    const currentIndex = viewerTextSizeOptions.indexOf(viewerTextSize)
+    const nextIndex = Math.min(
+      viewerTextSizeOptions.length - 1,
+      Math.max(0, currentIndex + direction),
+    )
+
+    viewerTextSize = viewerTextSizeOptions[nextIndex]
   }
 
   function handleCompareOptionsPointerDown(event: PointerEvent) {
@@ -2257,18 +2261,38 @@
                   </select>
                 </label>
 
-                <label class="compare-options-row compare-options-select-row">
+                <div class="compare-options-row">
                   <span>Text size</span>
-                  <select
-                    value={viewerTextSize}
-                    on:change={(event) =>
-                      applyViewerTextSize((event.currentTarget as HTMLSelectElement).value)}
-                  >
-                    {#each viewerTextSizeOptions as option}
-                      <option value={option}>{option[0].toUpperCase() + option.slice(1)}</option>
-                    {/each}
-                  </select>
-                </label>
+                  <div class="compare-options-stepper">
+                    <button
+                      class="secondary compare-options-stepper-button"
+                      aria-label="Decrease text size"
+                      disabled={viewerTextSize === 'small'}
+                      title="Decrease text size"
+                      type="button"
+                      on:click={() => stepViewerTextSize(-1)}
+                    >
+                      -
+                    </button>
+                    <input
+                      class="compare-options-stepper-value"
+                      readonly
+                      tabindex="-1"
+                      type="text"
+                      value={viewerTextSize[0].toUpperCase() + viewerTextSize.slice(1)}
+                    />
+                    <button
+                      class="secondary compare-options-stepper-button"
+                      aria-label="Increase text size"
+                      disabled={viewerTextSize === 'large'}
+                      title="Increase text size"
+                      type="button"
+                      on:click={() => stepViewerTextSize(1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
 
                 <label class="compare-options-row">
                   <span>Wrap long lines</span>
