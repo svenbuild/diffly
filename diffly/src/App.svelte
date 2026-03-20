@@ -2114,7 +2114,7 @@
               {/if}
             </svg>
             <span class="view-mode-button-label">
-              {viewMode === 'sideBySide' ? 'Unified' : 'Side by side'}
+              {viewMode === 'sideBySide' ? 'Unified view' : 'Split view'}
             </span>
           </button>
 
