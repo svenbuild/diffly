@@ -865,10 +865,12 @@ h2 {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
   align-items: stretch;
-  gap: 8px;
+  gap: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  padding-top: 0;
+  background: var(--pane-bg);
 }
 
 .compare-layout.single-pane {
@@ -877,7 +879,7 @@ h2 {
 
 .file-browser,
 .viewer {
-  padding: 7px;
+  padding: 0;
 }
 
 .file-browser {
@@ -885,9 +887,12 @@ h2 {
   gap: 4px;
   height: 100%;
   max-height: 100%;
-  background: var(--pane-bg);
+  background: transparent;
   overflow: hidden;
   overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
 }
 
 .browser-header {
@@ -897,7 +902,8 @@ h2 {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding-bottom: 4px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border);
   background: var(--pane-bg);
 }
 
@@ -975,9 +981,9 @@ button.filter-chip.tooLarge:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--list-bg);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1039,7 +1045,7 @@ button.filter-chip.tooLarge:focus-visible {
 .file-row {
   display: grid;
   gap: 4px;
-  padding: 5px 6px;
+  padding: 5px 10px;
   background: transparent;
   border-bottom: 1px solid var(--border);
 }
@@ -1057,16 +1063,18 @@ button.filter-chip.tooLarge:focus-visible {
 
 .viewer {
   overflow: hidden;
-  background: var(--pane-bg);
+  background: transparent;
   grid-template-rows: auto minmax(0, 1fr);
   position: relative;
+  border: 0;
+  border-radius: 0;
 }
 
 .viewer-root-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
-  padding: 0 0 6px;
+  padding: 8px 0 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1077,7 +1085,7 @@ button.filter-chip.tooLarge:focus-visible {
   min-width: 0;
   overflow: visible;
   font-size: 0.72rem;
-  padding: 0 6px;
+  padding: 0 10px 8px;
 }
 
 .viewer-root-label {
@@ -1155,6 +1163,7 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   min-height: 0;
+  background: var(--canvas-alt);
 }
 
 .diff-pane {
@@ -1169,7 +1178,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-header,
 .viewer-header {
-  padding: 4px 6px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--pane-header-bg);
   box-shadow: inset 0 1px 0 var(--pane-header-shadow);
