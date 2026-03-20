@@ -1212,7 +1212,7 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-scroll,
 .unified-grid {
   background: var(--canvas-alt);
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .pane-grid,
