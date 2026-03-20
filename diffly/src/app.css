@@ -1459,9 +1459,9 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker-overlay {
   position: absolute;
   top: 2px;
-  right: 1px;
+  right: 2px;
   bottom: 2px;
-  width: 11px;
+  width: 8px;
   z-index: 4;
   pointer-events: none;
 }
@@ -1470,8 +1470,7 @@ button.filter-chip.tooLarge:focus-visible {
   position: absolute;
   inset: 0;
   width: 100%;
-  background: color-mix(in srgb, var(--scrollbar-track) 88%, transparent);
-  border-radius: 999px;
+  background: transparent;
   pointer-events: none;
 }
 
@@ -1482,32 +1481,28 @@ button.filter-chip.tooLarge:focus-visible {
   min-height: 6px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
-  opacity: 0.82;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+  opacity: 0.5;
   box-shadow: none;
   cursor: pointer;
   pointer-events: auto;
 }
 
 .scroll-marker.insert {
-  background: color-mix(in srgb, var(--success) 88%, var(--text) 12%);
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
 }
 
 .scroll-marker.delete {
-  background: color-mix(in srgb, var(--danger) 84%, var(--text) 16%);
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
 }
 
 .scroll-marker.mixed {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--danger) 84%, var(--text) 16%) 0 50%,
-      color-mix(in srgb, var(--success) 88%, var(--text) 12%) 50% 100%
-    );
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
 }
 
 .scroll-marker:hover {
-  opacity: 1;
+  opacity: 0.78;
 }
 
 .scroll-marker.active {
