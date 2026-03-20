@@ -2379,7 +2379,7 @@
               {:else}
                 <svg class="refresh-icon" viewBox="0 0 16 16">
                   <path
-                    d="M12.6 8.2A4.6 4.6 0 1 1 8 3.3"
+                    d="M13 5.8A5.2 5.2 0 0 0 3.6 4.2"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
@@ -2387,7 +2387,7 @@
                     stroke-width="1.5"
                   />
                   <path
-                    d="M9.1 2.3h3v3"
+                    d="m11.3 2.5 2 3.3-3.8.5"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
@@ -2395,7 +2395,15 @@
                     stroke-width="1.5"
                   />
                   <path
-                    d="m12.1 2.3-2.2 2.2"
+                    d="M3 10.2a5.2 5.2 0 0 0 9.4 1.6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="m4.7 13.5-2-3.3 3.8-.5"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"

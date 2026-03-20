@@ -1768,23 +1768,23 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-icon-slot {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 14px;
+  flex: 0 0 16px;
 }
 
 .refresh-icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   display: block;
 }
 
 .refresh-spinner {
-  width: 13px;
-  height: 13px;
-  border: 1.4px solid currentColor;
+  width: 14px;
+  height: 14px;
+  border: 1.7px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
   opacity: 0.88;
