@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
-  import type { DiffSegment, FileDiffResult, ViewMode } from './types'
+  import type { RenderedDiffFragment } from './syntax'
+  import type { DiffCell, FileDiffResult, UnifiedLine, ViewMode } from './types'
   import type { DiffHeaderContext, SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
 
   export let activeDiff: FileDiffResult | null
@@ -18,7 +19,7 @@
   export let diffHeaderContext: DiffHeaderContext
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
-  export let refreshDiffNavigationState: () => void
+  export let scheduleScrollNavigationRefresh: () => void
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
@@ -32,6 +33,13 @@
   let rightPaneTrailingSpace = 0
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
+  const diffCellFragmentCache = new WeakMap<DiffCell, CachedFragments>()
+  const unifiedLineFragmentCache = new WeakMap<UnifiedLine, CachedFragments>()
+
+  interface CachedFragments {
+    fragments: RenderedDiffFragment[]
+    syntaxKey: string
+  }
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
@@ -60,16 +68,44 @@
     void updateUnifiedContentWidth()
   }
 
-  function syntaxFragments(
-    text: string,
-    segments: DiffSegment[],
-    syntaxHighlightingEnabled: boolean,
-  ) {
-    return renderDiffFragments(
-      text,
-      segments,
-      syntaxHighlightingEnabled ? syntaxLanguage : null,
+  function currentSyntaxKey() {
+    return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
+  }
+
+  function getCachedDiffCellFragments(cell: DiffCell) {
+    const syntaxKey = currentSyntaxKey()
+    const cached = diffCellFragmentCache.get(cell)
+
+    if (cached && cached.syntaxKey === syntaxKey) {
+      return cached.fragments
+    }
+
+    const fragments = renderDiffFragments(
+      cell.text,
+      cell.segments,
+      syntaxKey ? syntaxLanguage : null,
     )
+
+    diffCellFragmentCache.set(cell, { fragments, syntaxKey })
+    return fragments
+  }
+
+  function getCachedUnifiedLineFragments(line: UnifiedLine) {
+    const syntaxKey = currentSyntaxKey()
+    const cached = unifiedLineFragmentCache.get(line)
+
+    if (cached && cached.syntaxKey === syntaxKey) {
+      return cached.fragments
+    }
+
+    const fragments = renderDiffFragments(
+      line.text,
+      line.segments,
+      syntaxKey ? syntaxLanguage : null,
+    )
+
+    unifiedLineFragmentCache.set(line, { fragments, syntaxKey })
+    return fragments
   }
 
   async function updateSideBySideContentMetrics() {
@@ -194,7 +230,7 @@
                       <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.left.prefix}</span>
                       <span class="line-text">
-                        {#each syntaxFragments(item.row.left.text, item.row.left.segments, showSyntaxHighlighting) as fragment}
+                        {#each getCachedDiffCellFragments(item.row.left) as fragment}
                           <span
                             class:highlighted={showInlineHighlights && fragment.highlighted}
                             class={`line-fragment ${fragment.className ?? ''}`}
@@ -254,7 +290,7 @@
                       <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
                       <span class="prefix">{item.row.right.prefix}</span>
                       <span class="line-text">
-                        {#each syntaxFragments(item.row.right.text, item.row.right.segments, showSyntaxHighlighting) as fragment}
+                        {#each getCachedDiffCellFragments(item.row.right) as fragment}
                           <span
                             class:highlighted={showInlineHighlights && fragment.highlighted}
                             class={`line-fragment ${fragment.className ?? ''}`}
@@ -276,7 +312,7 @@
         </section>
       </div>
     {:else}
-      <div bind:this={unifiedScroll} class="unified-grid" on:scroll={refreshDiffNavigationState}>
+      <div bind:this={unifiedScroll} class="unified-grid" on:scroll={scheduleScrollNavigationRefresh}>
         <div
           bind:this={unifiedContentGrid}
           class="unified-content-grid"
@@ -302,7 +338,7 @@
               <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
               <span class="prefix">{item.row.prefix}</span>
               <span class="line-text">
-                {#each syntaxFragments(item.row.text, item.row.segments, showSyntaxHighlighting) as fragment}
+                {#each getCachedUnifiedLineFragments(item.row) as fragment}
                   <span
                     class:highlighted={showInlineHighlights && fragment.highlighted}
                     class={`line-fragment ${fragment.className ?? ''}`}

@@ -59,6 +59,7 @@
   const THEME_SWITCH_DURATION_MS = 140
   const DIFF_PREFETCH_RADIUS = 2
   const DIFF_PREFETCH_DELAY_MS = 70
+  const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
@@ -123,6 +124,7 @@
   let paneWheelScrollTargetTop = 0
   let diffNavigationRefreshQueued = false
   let diffNavigationScrollFrame: number | null = null
+  let diffNavigationIdleTimer: number | null = null
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
@@ -250,6 +252,10 @@
 
       if (diffNavigationScrollFrame !== null) {
         window.cancelAnimationFrame(diffNavigationScrollFrame)
+      }
+
+      if (diffNavigationIdleTimer !== null) {
+        window.clearTimeout(diffNavigationIdleTimer)
       }
     }
   })
@@ -1246,6 +1252,19 @@
   }
 
   function scheduleScrollNavigationRefresh() {
+    if (showFullFile) {
+      if (diffNavigationIdleTimer !== null) {
+        window.clearTimeout(diffNavigationIdleTimer)
+      }
+
+      diffNavigationIdleTimer = window.setTimeout(() => {
+        diffNavigationIdleTimer = null
+        refreshDiffNavigationState()
+      }, FULL_FILE_NAVIGATION_REFRESH_DELAY_MS)
+
+      return
+    }
+
     if (diffNavigationScrollFrame !== null) {
       return
     }
@@ -2370,7 +2389,7 @@
         {diffHeaderContext}
         {syncPaneWheel}
         {syncPaneScroll}
-        {refreshDiffNavigationState}
+        {scheduleScrollNavigationRefresh}
         bind:leftPaneScroll
         bind:rightPaneScroll
         bind:unifiedScroll
