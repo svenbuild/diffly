@@ -118,6 +118,9 @@
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
   let paneNavigationSyncActive = false
+  let paneWheelScrollFrame: number | null = null
+  let paneWheelScrollSource: 'left' | 'right' | null = null
+  let paneWheelScrollTargetTop = 0
   let diffNavigationRefreshQueued = false
   let diffNavigationScrollFrame: number | null = null
   let currentDiffHunk = -1
@@ -198,6 +201,7 @@
 
     if (!syncSideBySideScroll) {
       cancelPaneNavigationScroll()
+      cancelPaneWheelScroll()
     }
   }
 
@@ -238,6 +242,10 @@
 
       if (paneNavigationScrollFrame !== null) {
         window.cancelAnimationFrame(paneNavigationScrollFrame)
+      }
+
+      if (paneWheelScrollFrame !== null) {
+        window.cancelAnimationFrame(paneWheelScrollFrame)
       }
 
       if (diffNavigationScrollFrame !== null) {
@@ -1266,6 +1274,15 @@
     }
   }
 
+  function cancelPaneWheelScroll() {
+    paneWheelScrollSource = null
+
+    if (paneWheelScrollFrame !== null) {
+      window.cancelAnimationFrame(paneWheelScrollFrame)
+      paneWheelScrollFrame = null
+    }
+  }
+
   function getScrollTopForAnchor(container: HTMLDivElement, anchor: HTMLElement) {
     return clampScrollOffset(
       container.scrollTop + anchor.getBoundingClientRect().top - container.getBoundingClientRect().top - 8,
@@ -1302,6 +1319,7 @@
     }
 
     cancelPaneNavigationScroll()
+    cancelPaneWheelScroll()
 
     const nextLeftTop = clampScrollOffset(leftTop, getMaxScrollTop(leftPaneScroll))
     const nextRightTop = clampScrollOffset(rightTop, getMaxScrollTop(rightPaneScroll))
@@ -1531,17 +1549,51 @@
     cancelPaneNavigationScroll()
     event.preventDefault()
 
-    const nextSourceTop = clampScrollOffset(
-      sourcePane.scrollTop + normalizeWheelDelta(event.deltaY, event.deltaMode),
-      getMaxScrollTop(sourcePane),
-    )
+    const deltaTop = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    const maxScrollTop = getMaxScrollTop(sourcePane)
 
-    if (Math.abs(nextSourceTop - sourcePane.scrollTop) < 0.5) {
+    if (paneWheelScrollSource && paneWheelScrollSource !== source) {
+      cancelPaneWheelScroll()
+    }
+
+    const baseTop =
+      paneWheelScrollSource === source ? paneWheelScrollTargetTop : sourcePane.scrollTop
+    const nextSourceTop = clampScrollOffset(baseTop + deltaTop, maxScrollTop)
+
+    if (Math.abs(nextSourceTop - baseTop) < 0.5) {
       return
     }
 
-    sourcePane.scrollTop = nextSourceTop
-    applyPaneScrollSync(source)
+    paneWheelScrollSource = source
+    paneWheelScrollTargetTop = nextSourceTop
+
+    if (paneWheelScrollFrame !== null) {
+      return
+    }
+
+    const animate = () => {
+      const activePane = getPaneScroll(source)
+
+      if (!activePane || paneWheelScrollSource !== source) {
+        cancelPaneWheelScroll()
+        return
+      }
+
+      const remaining = paneWheelScrollTargetTop - activePane.scrollTop
+
+      if (Math.abs(remaining) < 0.5) {
+        activePane.scrollTop = paneWheelScrollTargetTop
+        applyPaneScrollSync(source)
+        cancelPaneWheelScroll()
+        return
+      }
+
+      activePane.scrollTop += remaining * 0.28
+      applyPaneScrollSync(source)
+      paneWheelScrollFrame = window.requestAnimationFrame(animate)
+    }
+
+    paneWheelScrollFrame = window.requestAnimationFrame(animate)
   }
 
   function syncPaneScroll(source: 'left' | 'right') {
