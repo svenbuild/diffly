@@ -1445,23 +1445,37 @@ button.filter-chip.tooLarge:focus-visible {
 
 .scroll-marker-rail {
   position: absolute;
-  top: 0;
-  right: 1px;
-  bottom: 0;
-  width: 8px;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  width: 6px;
   z-index: 3;
-  pointer-events: none;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  border-radius: 999px;
 }
 
 .scroll-marker {
   position: absolute;
   left: 1px;
   right: 1px;
-  min-height: 2px;
+  min-height: 6px;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 82%, white 18%);
-  opacity: 0.95;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--canvas-alt) 72%, transparent);
+  background: color-mix(in srgb, var(--accent) 76%, var(--text) 24%);
+  opacity: 0.72;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.scroll-marker:hover {
+  opacity: 1;
+}
+
+.scroll-marker.active {
+  background: var(--accent);
+  opacity: 1;
 }
 
 .line-fragment.highlighted {
@@ -1675,28 +1689,31 @@ button.filter-chip.tooLarge:focus-visible {
 .compare-options-stepper {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 0 0 auto;
 }
 
 .compare-options-stepper-button {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
   padding: 0;
   justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .compare-options-stepper-value {
-  width: 58px;
-  min-width: 58px;
-  padding: 2px 6px;
+  width: 42px;
+  min-width: 42px;
+  padding: 1px 4px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface-alt);
+  background: var(--surface);
   text-align: center;
   color: var(--text);
   pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .compare-options-row.disabled {
@@ -1709,42 +1726,29 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-alt));
-  color: color-mix(in srgb, var(--accent-strong) 84%, var(--text));
-}
-
-.refresh-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 78%, var(--surface-strong));
-}
-
-.refresh-button:disabled {
-  opacity: 1;
-  color: color-mix(in srgb, var(--accent-strong) 66%, var(--muted));
 }
 
 .refresh-icon-slot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 14px;
+  flex: 0 0 12px;
 }
 
 .refresh-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 
 .refresh-spinner {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid currentColor;
+  width: 11px;
+  height: 11px;
+  border: 1.4px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
   opacity: 0.88;

@@ -22,6 +22,7 @@
   export let diffRowHeight = '19px'
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
+  export let scrollDiffHunkIntoView: (targetIndex: number) => void
   export let scheduleScrollNavigationRefresh: () => void
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
@@ -50,6 +51,7 @@
   }
 
   interface ScrollMarker {
+    hunkIndex: number
     top: number
     height: number
   }
@@ -202,19 +204,14 @@
   }
 
   function updateScrollMarkers() {
-    leftScrollMarkers = buildScrollMarkers(leftPaneScroll, leftPaneGrid, '.diff-row.insert, .diff-row.delete')
-    rightScrollMarkers = buildScrollMarkers(rightPaneScroll, rightPaneGrid, '.diff-row.insert, .diff-row.delete')
-    unifiedScrollMarkers = buildScrollMarkers(
-      unifiedScroll,
-      unifiedContentGrid,
-      '.unified-row.insert, .unified-row.delete',
-    )
+    leftScrollMarkers = buildScrollMarkers(leftPaneScroll, leftPaneGrid)
+    rightScrollMarkers = buildScrollMarkers(rightPaneScroll, rightPaneGrid)
+    unifiedScrollMarkers = buildScrollMarkers(unifiedScroll, unifiedContentGrid)
   }
 
   function buildScrollMarkers(
     scrollContainer: HTMLDivElement | null,
     contentRoot: HTMLDivElement | null,
-    selector: string,
   ) {
     if (!scrollContainer || !contentRoot) {
       return []
@@ -226,28 +223,42 @@
       return []
     }
 
-    const nodes = Array.from(contentRoot.querySelectorAll<HTMLElement>(selector))
+    const nodes = Array.from(contentRoot.querySelectorAll<HTMLElement>('[data-diff-index]'))
 
     if (nodes.length === 0) {
       return []
     }
 
-    const markers: ScrollMarker[] = []
+    const markerRanges = new Map<number, { top: number; bottom: number }>()
 
     for (const node of nodes) {
-      const top = node.offsetTop / scrollHeight
-      const height = Math.max(node.offsetHeight / scrollHeight, 0.003)
-      const previous = markers.at(-1)
+      const rawIndex = Number(node.dataset.diffIndex)
 
-      if (previous && top <= previous.top + previous.height + 0.002) {
-        previous.height = Math.max(previous.height, top + height - previous.top)
+      if (!Number.isFinite(rawIndex)) {
         continue
       }
 
-      markers.push({ top, height })
+      const hunkIndex = rawIndex
+      const top = node.offsetTop
+      const bottom = top + node.offsetHeight
+      const currentRange = markerRanges.get(hunkIndex)
+
+      if (currentRange) {
+        currentRange.top = Math.min(currentRange.top, top)
+        currentRange.bottom = Math.max(currentRange.bottom, bottom)
+        continue
+      }
+
+      markerRanges.set(hunkIndex, { top, bottom })
     }
 
-    return markers
+    return [...markerRanges.entries()]
+      .sort((left, right) => left[0] - right[0])
+      .map(([hunkIndex, range]) => ({
+        hunkIndex,
+        top: range.top / scrollHeight,
+        height: Math.max((range.bottom - range.top) / scrollHeight, 0.004),
+      }))
   }
 
   function syncScrollMarkerObserver() {
@@ -349,13 +360,17 @@
             on:wheel={(event) => syncPaneWheel(event, 'left')}
             on:scroll={() => syncPaneScroll('left')}
           >
-            <div class="scroll-marker-rail" aria-hidden="true">
+            <div class="scroll-marker-rail">
               {#each leftScrollMarkers as marker}
-                <span
+                <button
+                  aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+                  class:active={marker.hunkIndex === currentDiffHunk}
                   class="scroll-marker"
                   style:top={`${marker.top * 100}%`}
                   style:height={`${marker.height * 100}%`}
-                ></span>
+                  type="button"
+                  on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+                ></button>
               {/each}
             </div>
             <div
@@ -418,13 +433,17 @@
             on:wheel={(event) => syncPaneWheel(event, 'right')}
             on:scroll={() => syncPaneScroll('right')}
           >
-            <div class="scroll-marker-rail" aria-hidden="true">
+            <div class="scroll-marker-rail">
               {#each rightScrollMarkers as marker}
-                <span
+                <button
+                  aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+                  class:active={marker.hunkIndex === currentDiffHunk}
                   class="scroll-marker"
                   style:top={`${marker.top * 100}%`}
                   style:height={`${marker.height * 100}%`}
-                ></span>
+                  type="button"
+                  on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+                ></button>
               {/each}
             </div>
             <div
@@ -477,13 +496,17 @@
       </div>
     {:else}
       <div bind:this={unifiedScroll} class="unified-grid" on:scroll={scheduleScrollNavigationRefresh}>
-        <div class="scroll-marker-rail" aria-hidden="true">
+        <div class="scroll-marker-rail">
           {#each unifiedScrollMarkers as marker}
-            <span
+            <button
+              aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+              class:active={marker.hunkIndex === currentDiffHunk}
               class="scroll-marker"
               style:top={`${marker.top * 100}%`}
               style:height={`${marker.height * 100}%`}
-            ></span>
+              type="button"
+              on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+            ></button>
           {/each}
         </div>
         <div

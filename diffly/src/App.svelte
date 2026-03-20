@@ -42,7 +42,6 @@
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
-    ViewerTextSize,
     ViewMode,
   } from './lib/types'
   import type {
@@ -64,16 +63,9 @@
   const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
-  const DEFAULT_VIEWER_TEXT_SIZE: ViewerTextSize = 'small'
-  const viewerTextSizeOptions: ViewerTextSize[] = ['small', 'medium', 'large']
-  const viewerTextSizeStyles: Record<
-    ViewerTextSize,
-    { fontSize: string; lineHeight: string; rowHeight: string }
-  > = {
-    small: { fontSize: '11px', lineHeight: '14px', rowHeight: '19px' },
-    medium: { fontSize: '12px', lineHeight: '16px', rowHeight: '22px' },
-    large: { fontSize: '13px', lineHeight: '18px', rowHeight: '25px' },
-  }
+  const DEFAULT_VIEWER_TEXT_SIZE = 11
+  const MIN_VIEWER_TEXT_SIZE = 8
+  const MAX_VIEWER_TEXT_SIZE = 24
 
   type Screen = 'setup' | 'compare'
 
@@ -99,7 +91,7 @@
   let wrapSideBySideLines = false
   let showSyntaxHighlighting = true
   let syncSideBySideScroll = true
-  let viewerTextSize: ViewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
+  let viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
   let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
   let compareOptionsOpen = false
   let leftPath = ''
@@ -177,9 +169,9 @@
   }
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
-  let diffFontSize = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].fontSize
-  let diffRowLineHeight = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].lineHeight
-  let diffRowHeight = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].rowHeight
+  let diffFontSize = `${DEFAULT_VIEWER_TEXT_SIZE}px`
+  let diffRowLineHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 3}px`
+  let diffRowHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 8}px`
 
   const statusLabel = {
     modified: 'Modified',
@@ -287,18 +279,11 @@
     }
   }
 
-  function isViewerTextSize(value: string): value is ViewerTextSize {
-    return viewerTextSizeOptions.includes(value as ViewerTextSize)
-  }
-
   function stepViewerTextSize(direction: -1 | 1) {
-    const currentIndex = viewerTextSizeOptions.indexOf(viewerTextSize)
-    const nextIndex = Math.min(
-      viewerTextSizeOptions.length - 1,
-      Math.max(0, currentIndex + direction),
+    viewerTextSize = Math.min(
+      MAX_VIEWER_TEXT_SIZE,
+      Math.max(MIN_VIEWER_TEXT_SIZE, viewerTextSize + direction),
     )
-
-    viewerTextSize = viewerTextSizeOptions[nextIndex]
   }
 
   function handleCompareOptionsPointerDown(event: PointerEvent) {
@@ -702,9 +687,14 @@
     wrapSideBySideLines = session.wrapSideBySideLines ?? false
     showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
     syncSideBySideScroll = session.syncSideBySideScroll ?? true
-    viewerTextSize = isViewerTextSize(session.viewerTextSize ?? DEFAULT_VIEWER_TEXT_SIZE)
-      ? session.viewerTextSize ?? DEFAULT_VIEWER_TEXT_SIZE
-      : DEFAULT_VIEWER_TEXT_SIZE
+    const restoredViewerTextSize =
+      typeof session.viewerTextSize === 'number'
+        ? session.viewerTextSize
+        : DEFAULT_VIEWER_TEXT_SIZE
+    viewerTextSize = Math.min(
+      MAX_VIEWER_TEXT_SIZE,
+      Math.max(MIN_VIEWER_TEXT_SIZE, restoredViewerTextSize),
+    )
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -1881,9 +1871,9 @@
     canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
   $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
-  $: diffFontSize = viewerTextSizeStyles[viewerTextSize].fontSize
-  $: diffRowLineHeight = viewerTextSizeStyles[viewerTextSize].lineHeight
-  $: diffRowHeight = viewerTextSizeStyles[viewerTextSize].rowHeight
+  $: diffFontSize = `${viewerTextSize}px`
+  $: diffRowLineHeight = `${viewerTextSize + 3}px`
+  $: diffRowHeight = `${viewerTextSize + 8}px`
 
   $: if (screen === 'compare') {
     activeDiff
@@ -2267,7 +2257,7 @@
                     <button
                       class="secondary compare-options-stepper-button"
                       aria-label="Decrease text size"
-                      disabled={viewerTextSize === 'small'}
+                      disabled={viewerTextSize <= MIN_VIEWER_TEXT_SIZE}
                       title="Decrease text size"
                       type="button"
                       on:click={() => stepViewerTextSize(-1)}
@@ -2279,12 +2269,12 @@
                       readonly
                       tabindex="-1"
                       type="text"
-                      value={viewerTextSize[0].toUpperCase() + viewerTextSize.slice(1)}
+                      value={String(viewerTextSize)}
                     />
                     <button
                       class="secondary compare-options-stepper-button"
                       aria-label="Increase text size"
-                      disabled={viewerTextSize === 'large'}
+                      disabled={viewerTextSize >= MAX_VIEWER_TEXT_SIZE}
                       title="Increase text size"
                       type="button"
                       on:click={() => stepViewerTextSize(1)}
@@ -2383,7 +2373,7 @@
           <button
             aria-label="Refresh compare"
             aria-busy={loading}
-            class="refresh-button"
+            class="secondary icon-button refresh-button"
             title="Refresh compare"
             type="button"
             disabled={loading}
@@ -2468,6 +2458,7 @@
         {diffRowHeight}
         {syncPaneWheel}
         {syncPaneScroll}
+        {scrollDiffHunkIntoView}
         {scheduleScrollNavigationRefresh}
         bind:leftPaneScroll
         bind:rightPaneScroll
