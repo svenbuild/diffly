@@ -255,7 +255,6 @@ enum CallableCodeFamily {
 }
 
 struct LineDescriptor {
-    original_text: String,
     trimmed_text: String,
     normalized_text: String,
     code_signature: String,
@@ -2023,7 +2022,7 @@ fn line_similarity_score(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
         .into_iter()
         .map(|(left_index, _)| left.tokens[left_index].chars().count())
         .sum::<usize>();
-    let total_chars = left.original_text.chars().count() + right.original_text.chars().count();
+    let total_chars = token_character_count(&left.tokens) + token_character_count(&right.tokens);
 
     if total_chars == 0 {
         0
@@ -2055,6 +2054,13 @@ fn commented_code_similarity_score(comment: &LineDescriptor, code: &LineDescript
     } else {
         ((common_chars * 200) / total_chars) as i32
     }
+}
+
+fn token_character_count(tokens: &[String]) -> usize {
+    tokens
+        .iter()
+        .map(|token| token.chars().count())
+        .sum::<usize>()
 }
 
 fn indentation_bonus(left: &LineDescriptor, right: &LineDescriptor) -> i32 {
@@ -2101,7 +2107,6 @@ fn build_line_descriptor(text: &str) -> LineDescriptor {
     };
 
     LineDescriptor {
-        original_text: text.to_string(),
         trimmed_text: trimmed_text.clone(),
         normalized_text,
         code_signature: code_signature.clone(),
@@ -3503,6 +3508,68 @@ mod tests {
     }
 
     #[test]
+    fn file_diff_highlights_changed_initializer_literal_inline() {
+        let temp_root = unique_temp_dir("file-highlights-changed-initializer-literal");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "static int32_t step;\n",
+                "static int32_t damp_fact = 16;             // 1 -> no damping\n",
+                "static int32_t rem_val;\n"
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "static int32_t step;\n",
+                "static int32_t damp_fact = 8;              // 1 -> no damping\n",
+                "static int32_t rem_val;\n"
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        let changed_row = result
+            .side_by_side
+            .iter()
+            .find(|row| {
+                row.left
+                    .as_ref()
+                    .is_some_and(|cell| cell.text.contains("damp_fact = 16"))
+            })
+            .expect("changed damp_fact row should exist");
+        let left_cell = changed_row
+            .left
+            .as_ref()
+            .expect("left damp_fact cell should exist");
+        let right_cell = changed_row
+            .right
+            .as_ref()
+            .expect("right damp_fact cell should exist");
+
+        assert!(left_cell
+            .segments
+            .iter()
+            .any(|segment| { segment.highlighted && segment.text.contains("16") }));
+        assert!(right_cell
+            .segments
+            .iter()
+            .any(|segment| { segment.highlighted && segment.text.contains("8") }));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
     fn file_diff_resyncs_immediately_after_deleted_comment_before_function_declaration() {
         let temp_root = unique_temp_dir("file-comment-delete-before-function");
         let left = temp_root.join("left.txt");
@@ -3634,6 +3701,31 @@ mod tests {
         assert!(matches!(
             result.side_by_side[23].right.as_ref().map(|cell| &cell.text),
             Some(text) if text == "    SM_ADC_ActiveMargin = SM_GetPeakMargin();"
+        ));
+        let helper_signature_row = result
+            .side_by_side
+            .iter()
+            .position(|row| {
+                row.right.as_ref().is_some_and(|cell| {
+                    cell.text == "static void SM_UpdateMeasurementWindow(void);"
+                })
+            })
+            .expect("inserted helper signature should exist");
+        let blank_separator = result
+            .side_by_side
+            .get(helper_signature_row.saturating_sub(1))
+            .expect("blank separator row should exist");
+
+        assert!(matches!(
+            blank_separator.left.as_ref().map(|cell| cell.text.as_str()),
+            Some("")
+        ));
+        assert!(matches!(
+            blank_separator
+                .right
+                .as_ref()
+                .map(|cell| cell.text.as_str()),
+            Some("")
         ));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
@@ -3897,28 +3989,65 @@ mod tests {
     fn replace_block_alignment_keeps_inserted_helper_signature_from_matching_call_site() {
         let left_cells = vec![
             test_changed_cell("SM_UpdateMeasurementWindow();", DiffChange::Delete),
-            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Delete),
+            test_changed_cell(
+                "SM_ADC_ActiveMargin = SM_GetPeakMargin();",
+                DiffChange::Delete,
+            ),
         ];
         let right_cells = vec![
             test_changed_cell(
                 "static void SM_UpdateMeasurementWindow(void);",
                 DiffChange::Insert,
             ),
-            test_changed_cell("static void SM_UpdateMeasurementWindow(void)", DiffChange::Insert),
+            test_changed_cell(
+                "static void SM_UpdateMeasurementWindow(void)",
+                DiffChange::Insert,
+            ),
             test_changed_cell("{", DiffChange::Insert),
-            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Insert),
+            test_changed_cell(
+                "SM_ADC_ActiveMargin = SM_GetPeakMargin();",
+                DiffChange::Insert,
+            ),
             test_changed_cell("}", DiffChange::Insert),
             test_changed_cell("SM_UpdateMeasurementWindow();", DiffChange::Insert),
-            test_changed_cell("SM_ADC_ActiveMargin = SM_GetPeakMargin();", DiffChange::Insert),
+            test_changed_cell(
+                "SM_ADC_ActiveMargin = SM_GetPeakMargin();",
+                DiffChange::Insert,
+            ),
         ];
 
         let alignment = align_replace_block_rows(&left_cells, &right_cells);
 
-        assert_eq!(alignment.row_pairs[0], (None, Some(0)), "{:#?}", alignment.row_pairs);
-        assert_eq!(alignment.row_pairs[1], (None, Some(1)), "{:#?}", alignment.row_pairs);
-        assert_eq!(alignment.row_pairs[2], (None, Some(2)), "{:#?}", alignment.row_pairs);
-        assert_eq!(alignment.row_pairs[3], (None, Some(3)), "{:#?}", alignment.row_pairs);
-        assert_eq!(alignment.row_pairs[4], (None, Some(4)), "{:#?}", alignment.row_pairs);
+        assert_eq!(
+            alignment.row_pairs[0],
+            (None, Some(0)),
+            "{:#?}",
+            alignment.row_pairs
+        );
+        assert_eq!(
+            alignment.row_pairs[1],
+            (None, Some(1)),
+            "{:#?}",
+            alignment.row_pairs
+        );
+        assert_eq!(
+            alignment.row_pairs[2],
+            (None, Some(2)),
+            "{:#?}",
+            alignment.row_pairs
+        );
+        assert_eq!(
+            alignment.row_pairs[3],
+            (None, Some(3)),
+            "{:#?}",
+            alignment.row_pairs
+        );
+        assert_eq!(
+            alignment.row_pairs[4],
+            (None, Some(4)),
+            "{:#?}",
+            alignment.row_pairs
+        );
         assert_eq!(alignment.left_matches[0], Some(5));
         assert_eq!(alignment.left_matches[1], Some(6));
     }
