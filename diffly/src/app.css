@@ -461,7 +461,7 @@ h2 {
 }
 
 .view-mode-button {
-  width: 132px;
+  min-width: 118px;
   justify-content: flex-start;
   gap: 8px;
 }
@@ -485,8 +485,7 @@ h2 {
 }
 
 .view-mode-button-label {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   text-align: left;
 }
 
