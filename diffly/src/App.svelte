@@ -42,6 +42,7 @@
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
+    ViewerTextSize,
     ViewMode,
   } from './lib/types'
   import type {
@@ -63,6 +64,16 @@
   const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
+  const DEFAULT_VIEWER_TEXT_SIZE: ViewerTextSize = 'small'
+  const viewerTextSizeOptions: ViewerTextSize[] = ['small', 'medium', 'large']
+  const viewerTextSizeStyles: Record<
+    ViewerTextSize,
+    { fontSize: string; lineHeight: string; rowHeight: string }
+  > = {
+    small: { fontSize: '11px', lineHeight: '14px', rowHeight: '19px' },
+    medium: { fontSize: '12px', lineHeight: '16px', rowHeight: '22px' },
+    large: { fontSize: '13px', lineHeight: '18px', rowHeight: '25px' },
+  }
 
   type Screen = 'setup' | 'compare'
 
@@ -88,6 +99,7 @@
   let wrapSideBySideLines = false
   let showSyntaxHighlighting = true
   let syncSideBySideScroll = true
+  let viewerTextSize: ViewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
   let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
   let compareOptionsOpen = false
   let leftPath = ''
@@ -165,6 +177,9 @@
   }
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
+  let diffFontSize = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].fontSize
+  let diffRowLineHeight = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].lineHeight
+  let diffRowHeight = viewerTextSizeStyles[DEFAULT_VIEWER_TEXT_SIZE].rowHeight
 
   const statusLabel = {
     modified: 'Modified',
@@ -269,6 +284,16 @@
 
     if (isContextLinesSetting(nextValue)) {
       contextLines = nextValue
+    }
+  }
+
+  function isViewerTextSize(value: string): value is ViewerTextSize {
+    return viewerTextSizeOptions.includes(value as ViewerTextSize)
+  }
+
+  function applyViewerTextSize(value: string) {
+    if (isViewerTextSize(value)) {
+      viewerTextSize = value
     }
   }
 
@@ -673,6 +698,9 @@
     wrapSideBySideLines = session.wrapSideBySideLines ?? false
     showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
     syncSideBySideScroll = session.syncSideBySideScroll ?? true
+    viewerTextSize = isViewerTextSize(session.viewerTextSize ?? DEFAULT_VIEWER_TEXT_SIZE)
+      ? session.viewerTextSize ?? DEFAULT_VIEWER_TEXT_SIZE
+      : DEFAULT_VIEWER_TEXT_SIZE
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -1713,6 +1741,7 @@
       wrapSideBySideLines,
       showSyntaxHighlighting,
       syncSideBySideScroll,
+      viewerTextSize,
       contextLines,
       leftPane: buildPersistedPane(leftExplorer),
       rightPane: buildPersistedPane(rightExplorer),
@@ -1848,6 +1877,9 @@
     canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
   $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
+  $: diffFontSize = viewerTextSizeStyles[viewerTextSize].fontSize
+  $: diffRowLineHeight = viewerTextSizeStyles[viewerTextSize].lineHeight
+  $: diffRowHeight = viewerTextSizeStyles[viewerTextSize].rowHeight
 
   $: if (screen === 'compare') {
     activeDiff
@@ -1876,6 +1908,7 @@
     wrapSideBySideLines
     showSyntaxHighlighting
     syncSideBySideScroll
+    viewerTextSize
     contextLines
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
@@ -2224,6 +2257,19 @@
                   </select>
                 </label>
 
+                <label class="compare-options-row compare-options-select-row">
+                  <span>Text size</span>
+                  <select
+                    value={viewerTextSize}
+                    on:change={(event) =>
+                      applyViewerTextSize((event.currentTarget as HTMLSelectElement).value)}
+                  >
+                    {#each viewerTextSizeOptions as option}
+                      <option value={option}>{option[0].toUpperCase() + option.slice(1)}</option>
+                    {/each}
+                  </select>
+                </label>
+
                 <label class="compare-options-row">
                   <span>Wrap long lines</span>
                   <input bind:checked={wrapSideBySideLines} type="checkbox" />
@@ -2387,6 +2433,9 @@
         {sideBySideRenderItems}
         {unifiedRenderItems}
         {diffHeaderContext}
+        {diffFontSize}
+        {diffRowLineHeight}
+        {diffRowHeight}
         {syncPaneWheel}
         {syncPaneScroll}
         {scheduleScrollNavigationRefresh}

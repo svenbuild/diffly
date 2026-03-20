@@ -17,6 +17,9 @@
   export let sideBySideRenderItems: SideBySideRenderItem[]
   export let unifiedRenderItems: UnifiedRenderItem[]
   export let diffHeaderContext: DiffHeaderContext
+  export let diffFontSize = '11px'
+  export let diffRowLineHeight = '14px'
+  export let diffRowHeight = '19px'
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let scheduleScrollNavigationRefresh: () => void
@@ -161,6 +164,9 @@
 <section
   class:refreshing={loading}
   class="viewer"
+  style:--diff-font-size={diffFontSize}
+  style:--diff-row-line-height={diffRowLineHeight}
+  style:--diff-row-height={diffRowHeight}
   style:--diff-line-number-width={lineNumberColumnWidth}
   style:--diff-prefix-width={prefixColumnWidth}
 >
