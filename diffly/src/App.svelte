@@ -2348,41 +2348,6 @@
           </button>
 
           <button
-            aria-label="Refresh compare"
-            aria-busy={loading}
-            class="refresh-button"
-            title="Refresh compare"
-            type="button"
-            disabled={loading}
-            on:click={runCompare}
-          >
-            <span class="refresh-icon-slot" aria-hidden="true">
-              {#if loading}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <svg class="refresh-icon" viewBox="0 0 16 16">
-                  <path
-                    d="M13 5.5V2.8L11.3 4.5A5.4 5.4 0 0 0 2.8 6.3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                  />
-                  <path
-                    d="M3 10.5v2.7l1.7-1.7A5.4 5.4 0 0 0 13.2 9.7"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                  />
-                </svg>
-              {/if}
-            </span>
-          </button>
-
-          <button
             class="secondary theme-toggle"
             aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
             title={themeToggleLabel}
@@ -2410,9 +2375,50 @@
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="1.4"
-                />
-              </svg>
-            {/if}
+              />
+            </svg>
+          {/if}
+        </button>
+
+          <button
+            aria-label="Refresh compare"
+            aria-busy={loading}
+            class="refresh-button"
+            title="Refresh compare"
+            type="button"
+            disabled={loading}
+            on:click={runCompare}
+          >
+            <span class="refresh-icon-slot" aria-hidden="true">
+              {#if loading}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <svg class="refresh-icon" viewBox="0 0 16 16">
+                  <path
+                    d="M12.9 8A4.9 4.9 0 1 1 8 3.1"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M8.8 1.9h3v3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="m11.8 1.9-2 2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              {/if}
+            </span>
           </button>
           <button class="primary" type="button" on:click={goToSetup}>Setup</button>
         </div>
