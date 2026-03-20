@@ -462,6 +462,7 @@ h2 {
 
 .view-mode-button {
   min-width: 118px;
+  align-items: center;
   justify-content: flex-start;
   gap: 8px;
 }
@@ -480,12 +481,16 @@ h2 {
 }
 
 .view-mode-icon {
+  display: block;
   width: 14px;
   height: 14px;
 }
 
 .view-mode-button-label {
+  display: flex;
+  align-items: center;
   flex: 0 0 auto;
+  line-height: 1;
   text-align: left;
 }
 
