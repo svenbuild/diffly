@@ -451,20 +451,32 @@ h2 {
 }
 
 .nav-button-icon,
-.view-mode-icon,
-.button-caret-icon {
+.view-mode-icon {
   flex: 0 0 auto;
 }
 
-.nav-button-icon,
-.button-caret-icon {
+.nav-button-icon {
   width: 13px;
   height: 13px;
 }
 
 .view-mode-button {
-  width: 146px;
-  justify-content: space-between;
+  width: 132px;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.view-mode-button:hover:not(:disabled),
+.view-mode-button:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--secondary-text);
+}
+
+.view-mode-button:active:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--active-text);
 }
 
 .view-mode-icon {
@@ -475,30 +487,7 @@ h2 {
 .view-mode-button-label {
   flex: 1 1 auto;
   min-width: 0;
-  text-align: center;
-}
-
-.compare-summary strong,
-.browser-title h2 {
-  color: var(--strong-text);
-}
-
-.app-identity span,
-.compare-summary span,
-.browser-title span,
-.target-summary span,
-.picker-pane-title span,
-.pane-source span,
-.viewer-source span,
-.context-card span,
-.definition-list dt,
-.list-columns,
-.entry-type,
-.entry-date,
-.entry-meta,
-.file-row-bottom,
-.pane-path {
-  color: var(--muted);
+  text-align: left;
 }
 
 .segmented-control {

@@ -2100,7 +2100,6 @@
 
         <div class="compare-action-group display-actions">
           <button
-            class:active={viewMode === 'unified'}
             class="secondary view-mode-button"
             type="button"
             on:click={toggleViewMode}
@@ -2117,16 +2116,6 @@
             <span class="view-mode-button-label">
               {viewMode === 'sideBySide' ? 'Unified' : 'Side by side'}
             </span>
-            <svg aria-hidden="true" class="button-caret-icon" viewBox="0 0 16 16">
-              <path
-                d="m4.5 6.3 3.5 3.7 3.5-3.7"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.5"
-              />
-            </svg>
           </button>
 
           <div class="compare-options-anchor">
