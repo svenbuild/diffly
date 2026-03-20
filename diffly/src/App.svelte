@@ -1011,7 +1011,7 @@
         syncFilteredDirectoryState(response.entries)
 
         if (filteredDirectoryEntries.length > 0) {
-          await selectEntry(filteredDirectoryEntries[0], compareRevision)
+          await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
@@ -1117,6 +1117,10 @@
     return entries.filter((entry) => statusFilters.includes(entry.status))
   }
 
+  function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {
+    return entries.find((entry) => getParentPath(entry.relativePath) === ROOT_GROUP) ?? entries[0]
+  }
+
   function reconcileCollapsedState(
     previousState: Record<string, boolean>,
     sections: FolderSection[],
@@ -1160,7 +1164,7 @@
     }
 
     if (filteredDirectoryEntries.length > 0) {
-      await selectEntry(filteredDirectoryEntries[0])
+      await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries))
       return
     }
 
