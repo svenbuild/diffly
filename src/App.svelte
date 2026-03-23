@@ -1958,13 +1958,15 @@
 
 {#if screen === 'setup'}
   <main class="screen setup-screen">
-    <header class="app-bar">
-      <div class="app-bar-main setup-bar-main">
+    <header class="app-bar setup-app-bar">
+      <div class="app-bar-main">
         <div class="app-identity">
           <h1>Diffly</h1>
           <span>Setup</span>
         </div>
+      </div>
 
+      <div class="setup-bar-center">
         <div class="setup-selection-summary" aria-label="Selected targets">
           <span class="setup-selection-label">Selected</span>
           <div
@@ -1985,7 +1987,7 @@
         </div>
       </div>
 
-      <div class="app-bar-actions">
+      <div class="app-bar-actions setup-bar-actions">
         <div class="setup-mode-switch">
           <span>Compare</span>
           <div class="segmented-control" aria-label="Compare mode">
