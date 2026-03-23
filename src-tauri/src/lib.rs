@@ -16,6 +16,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
@@ -855,12 +856,26 @@ fn session_file_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir.join("session.json"))
 }
 
+fn validate_session_state_size(byte_len: u64) -> Result<(), String> {
+    if byte_len > MAX_SESSION_STATE_BYTES {
+        return Err(format!(
+            "Session state exceeds the {} byte limit",
+            MAX_SESSION_STATE_BYTES
+        ));
+    }
+
+    Ok(())
+}
+
 fn read_session_state(app: &AppHandle) -> Result<Option<PersistedSession>, String> {
     let session_path = session_file_path(app)?;
 
     if !session_path.exists() {
         return Ok(None);
     }
+
+    let session_metadata = fs::metadata(&session_path).map_err(|error| error.to_string())?;
+    validate_session_state_size(session_metadata.len())?;
 
     let contents = fs::read_to_string(&session_path).map_err(|error| error.to_string())?;
     let session = serde_json::from_str(&contents).map_err(|error| error.to_string())?;
@@ -871,6 +886,8 @@ fn read_session_state(app: &AppHandle) -> Result<Option<PersistedSession>, Strin
 fn write_session_state(app: &AppHandle, session: &PersistedSession) -> Result<(), String> {
     let session_path = session_file_path(app)?;
     let json = serde_json::to_string_pretty(session).map_err(|error| error.to_string())?;
+
+    validate_session_state_size(json.len() as u64)?;
 
     fs::write(session_path, json).map_err(|error| error.to_string())
 }
@@ -4445,5 +4462,11 @@ mod tests {
         );
         assert_eq!(alignment.left_matches[0], Some(5));
         assert_eq!(alignment.left_matches[1], Some(6));
+    }
+
+    #[test]
+    fn session_state_size_validation_rejects_oversized_payloads() {
+        assert!(validate_session_state_size(MAX_SESSION_STATE_BYTES).is_ok());
+        assert!(validate_session_state_size(MAX_SESSION_STATE_BYTES + 1).is_err());
     }
 }

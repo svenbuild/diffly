@@ -25,7 +25,7 @@ export function getFileName(relativePath: string) {
 }
 
 export function normalizeSelectionPath(path: string) {
-  return path.replaceAll('\\', '/').replace(/\/+$/, '')
+  return path.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase()
 }
 
 function splitPathSegments(path: string) {
