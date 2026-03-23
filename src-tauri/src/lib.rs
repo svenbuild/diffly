@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     io::Read,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -485,11 +485,7 @@ async fn download_update(
         });
     };
 
-    let downloaded_bytes = match pending_update
-        .update
-        .download(|_, _| {}, || {})
-        .await
-    {
+    let downloaded_bytes = match pending_update.update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(error) => {
             set_pending_update(&state, pending_update)?;
@@ -523,11 +519,7 @@ async fn install_update(
 
     let bytes = match pending_update.downloaded_bytes.take() {
         Some(bytes) => bytes,
-        None => match pending_update
-            .update
-            .download(|_, _| {}, || {})
-            .await
-        {
+        None => match pending_update.update.download(|_, _| {}, || {}).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 set_pending_update(&state, pending_update)?;
@@ -637,8 +629,14 @@ fn open_compare_item(
     relative_path: String,
     options: CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let left = Path::new(&left_base).join(&relative_path);
-    let right = Path::new(&right_base).join(&relative_path);
+    let left_base_path = PathBuf::from(&left_base);
+    let right_base_path = PathBuf::from(&right_base);
+    let relative_path = safe_relative_path(&relative_path)?;
+    let left = left_base_path.join(&relative_path);
+    let right = right_base_path.join(&relative_path);
+
+    ensure_within_base(&left_base_path, &left)?;
+    ensure_within_base(&right_base_path, &right)?;
 
     build_file_diff(
         &left,
@@ -647,6 +645,41 @@ fn open_compare_item(
         right.to_string_lossy().to_string(),
         &options,
     )
+}
+
+fn safe_relative_path(value: &str) -> Result<PathBuf, String> {
+    let relative = PathBuf::from(value);
+
+    if relative.as_os_str().is_empty() {
+        return Err(
+            "The requested path must be relative to the selected compare root.".to_string(),
+        );
+    }
+
+    if relative.is_absolute() {
+        return Err("The requested path must stay within the selected compare root.".to_string());
+    }
+
+    for component in relative.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(
+                    "The requested path must stay within the selected compare root.".to_string(),
+                )
+            }
+        }
+    }
+
+    Ok(relative)
+}
+
+fn ensure_within_base(base: &Path, candidate: &Path) -> Result<(), String> {
+    if candidate.starts_with(base) {
+        Ok(())
+    } else {
+        Err("The requested path must stay within the selected compare root.".to_string())
+    }
 }
 
 fn compare_directories(
@@ -867,7 +900,9 @@ fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), Str
     Ok(())
 }
 
-fn take_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<Option<PendingUpdate>, String> {
+fn take_pending_update(
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Option<PendingUpdate>, String> {
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     Ok(pending.take())
 }
@@ -3126,6 +3161,60 @@ mod tests {
             segments: Vec::new(),
             change,
         }
+    }
+
+    #[test]
+    fn open_compare_item_rejects_parent_dir_segments() {
+        let temp_root = unique_temp_dir("open-compare-item-parent-dir");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+        write_temp_file(&temp_root.join("secret.txt"), "top secret\n");
+
+        let error = open_compare_item(
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            "../secret.txt".to_string(),
+            default_options(),
+        )
+        .expect_err("parent dir traversal should be rejected");
+
+        assert_eq!(
+            error,
+            "The requested path must stay within the selected compare root."
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn open_compare_item_rejects_absolute_relative_path() {
+        let temp_root = unique_temp_dir("open-compare-item-absolute");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+
+        let absolute_path = temp_root.join("outside.txt");
+        write_temp_file(&absolute_path, "outside\n");
+
+        let error = open_compare_item(
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            absolute_path.to_string_lossy().to_string(),
+            default_options(),
+        )
+        .expect_err("absolute paths should be rejected");
+
+        assert_eq!(
+            error,
+            "The requested path must stay within the selected compare root."
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
 
     #[test]
