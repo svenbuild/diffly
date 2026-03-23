@@ -1,5 +1,6 @@
 {
   "build": {
+    "frontendDist": "../dist-debug",
     "beforeBuildCommand": ""
   }
 }

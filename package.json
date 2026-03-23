@@ -7,13 +7,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:debug": "vite build --minify false --outDir dist-debug",
     "build:ensure": "node scripts/ensure-frontend-build.mjs",
+    "build:ensure:debug": "node scripts/ensure-frontend-build.mjs --debug",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "npx tauri",
     "tauri:dev": "npx tauri dev",
-    "tauri:build": "npm run build:ensure && npx tauri build --debug --no-bundle --config src-tauri/tauri.build.conf.json",
+    "tauri:build": "node scripts/ensure-frontend-build.mjs --debug && npx tauri build --debug --no-bundle --config src-tauri/tauri.build.conf.json",
     "tauri:build:release": "npm run build && npx tauri build --no-bundle --config src-tauri/tauri.build.conf.json",
     "tauri:package": "npx tauri build --bundles nsis",
     "tauri:package:all": "npx tauri build"
