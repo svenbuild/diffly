@@ -1959,15 +1959,49 @@
 {#if screen === 'setup'}
   <main class="screen setup-screen">
     <header class="app-bar">
-      <div class="app-bar-main">
+      <div class="app-bar-main setup-bar-main">
         <div class="app-identity">
           <h1>Diffly</h1>
           <span>Setup</span>
         </div>
 
+        <div class="setup-selection-summary" aria-label="Selected targets">
+          <span class="setup-selection-label">Selected</span>
+          <div
+            class="setup-selection-segment"
+            title={leftExplorer.selectedTargetPath || 'Left target not selected'}
+          >
+            <strong class="setup-selection-side">Left</strong>
+            <span class="setup-selection-value">{leftSetupTargetLabel}</span>
+          </div>
+          <span aria-hidden="true" class="setup-selection-divider"></span>
+          <div
+            class="setup-selection-segment"
+            title={rightExplorer.selectedTargetPath || 'Right target not selected'}
+          >
+            <strong class="setup-selection-side">Right</strong>
+            <span class="setup-selection-value">{rightSetupTargetLabel}</span>
+          </div>
+        </div>
       </div>
 
       <div class="app-bar-actions">
+        <div class="setup-mode-switch">
+          <span>Compare</span>
+          <div class="segmented-control" aria-label="Compare mode">
+            <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
+              Files
+            </button>
+            <button
+              class:active={mode === 'directory'}
+              type="button"
+              on:click={() => setMode('directory')}
+            >
+              Directories
+            </button>
+          </div>
+        </div>
+
         <button
           class="secondary theme-toggle"
           aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
@@ -2036,71 +2070,32 @@
     {/if}
 
     <section class="setup-body">
-      <section class="setup-shell">
-        <section class="setup-toolbar">
-          <div class="setup-selection-summary" aria-label="Selected targets">
-            <span class="setup-selection-label">Selected</span>
-            <div
-              class="setup-selection-segment"
-              title={leftExplorer.selectedTargetPath || 'Left target not selected'}
-            >
-              <strong class="setup-selection-side">Left</strong>
-              <span class="setup-selection-value">{leftSetupTargetLabel}</span>
-            </div>
-            <span aria-hidden="true" class="setup-selection-divider"></span>
-            <div
-              class="setup-selection-segment"
-              title={rightExplorer.selectedTargetPath || 'Right target not selected'}
-            >
-              <strong class="setup-selection-side">Right</strong>
-              <span class="setup-selection-value">{rightSetupTargetLabel}</span>
-            </div>
-          </div>
-
-          <div class="setup-mode-switch">
-            <span>Compare</span>
-            <div class="segmented-control" aria-label="Compare mode">
-              <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
-                Files
-              </button>
-              <button
-                class:active={mode === 'directory'}
-                type="button"
-                on:click={() => setMode('directory')}
-              >
-                Directories
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section class="picker-workspace">
-          {#each pickerSides as item}
-            <PickerPane
-              side={item.side}
-              pane={item.pane}
-              {mode}
-              {pickerLoading}
-              {canGoBack}
-              {canGoForward}
-              {currentDrive}
-              {formatModified}
-              {formatSize}
-              {entryTypeLabel}
-              {changeDrive}
-              {navigateHistory}
-              {navigateTo}
-              {updatePathInput}
-              {submitPathInput}
-              {browseSystem}
-              setCurrentFolderAsTarget={useCurrentFolder}
-              {isCurrentFolderSelected}
-              {selectListEntry}
-              {activateListEntry}
-              {isTargetSelected}
-            />
-          {/each}
-        </section>
+      <section class="picker-workspace">
+        {#each pickerSides as item}
+          <PickerPane
+            side={item.side}
+            pane={item.pane}
+            {mode}
+            {pickerLoading}
+            {canGoBack}
+            {canGoForward}
+            {currentDrive}
+            {formatModified}
+            {formatSize}
+            {entryTypeLabel}
+            {changeDrive}
+            {navigateHistory}
+            {navigateTo}
+            {updatePathInput}
+            {submitPathInput}
+            {browseSystem}
+            setCurrentFolderAsTarget={useCurrentFolder}
+            {isCurrentFolderSelected}
+            {selectListEntry}
+            {activateListEntry}
+            {isTargetSelected}
+          />
+        {/each}
       </section>
     </section>
   </main>
