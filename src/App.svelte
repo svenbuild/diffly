@@ -3,10 +3,15 @@
   import DirectoryBrowser from './lib/DirectoryBrowser.svelte'
   import DiffViewer from './lib/DiffViewer.svelte'
   import PickerPane from './lib/PickerPane.svelte'
+  import SettingsScreen from './lib/SettingsScreen.svelte'
 
   import {
     choosePath,
+    checkForUpdates,
     comparePaths,
+    downloadUpdate,
+    getAppVersion,
+    installUpdate,
     listDirectory,
     listRoots,
     loadSessionState,
@@ -42,6 +47,8 @@
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
+    UpdateChannel,
+    UpdateMetadata,
     ViewMode,
   } from './lib/types'
   import type {
@@ -50,6 +57,7 @@
     EntryGroup,
     ExplorerPaneState,
     FolderSection,
+    SettingsSection,
     Side,
     SideBySideRenderItem,
     UnifiedRenderItem,
@@ -60,14 +68,23 @@
   const DIFF_PREFETCH_RADIUS = 2
   const DIFF_PREFETCH_DELAY_MS = 70
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
-  const COMPARE_OPTIONS_POPOVER_ID = 'compare-options-popover'
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
   const DEFAULT_VIEWER_TEXT_SIZE = 10
   const MIN_VIEWER_TEXT_SIZE = 8
   const MAX_VIEWER_TEXT_SIZE = 24
+  const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
-  type Screen = 'setup' | 'compare'
+  type Screen = 'setup' | 'compare' | 'settings'
+  type UpdateStatus =
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'upToDate'
+    | 'downloading'
+    | 'downloaded'
+    | 'failed'
+    | 'unavailable'
 
   interface CachedDiffRenderState {
     sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
@@ -82,7 +99,16 @@
     fullPath: string
   }
 
+  interface UpdateIndicatorState {
+    status: UpdateStatus
+    currentVersion: string
+    metadata: UpdateMetadata | null
+    message: string
+  }
+
   let screen: Screen = 'setup'
+  let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
+  let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
   let themeMode: ThemeMode = 'dark'
@@ -93,7 +119,9 @@
   let syncSideBySideScroll = true
   let viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
   let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
-  let compareOptionsOpen = false
+  let checkForUpdatesOnLaunch = true
+  let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
+  let lastUpdateCheckAt = ''
   let leftPath = ''
   let rightPath = ''
   let ignoreWhitespace = false
@@ -111,9 +139,6 @@
   let leftPaneScroll: HTMLDivElement | null = null
   let rightPaneScroll: HTMLDivElement | null = null
   let unifiedScroll: HTMLDivElement | null = null
-  let compareOptionsTrigger: HTMLButtonElement | null = null
-  let compareOptionsPopover: HTMLDivElement | null = null
-  let compareOptionsFirstControl: HTMLInputElement | null = null
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
@@ -172,6 +197,13 @@
   let diffFontSize = `${DEFAULT_VIEWER_TEXT_SIZE}px`
   let diffRowLineHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 3}px`
   let diffRowHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 8}px`
+  let updateIndicatorState: UpdateIndicatorState = {
+    status: 'idle',
+    currentVersion: '',
+    metadata: null,
+    message: 'Check for updates from any screen.',
+  }
+  let startupUpdateCheckStarted = false
 
   const statusLabel = {
     modified: 'Modified',
@@ -186,10 +218,6 @@
     ignoreWhitespace,
     ignoreCase,
   })
-
-  const toggleThemeMode = () => {
-    setThemeMode(themeMode === 'dark' ? 'light' : 'dark')
-  }
 
   const toggleViewMode = () => {
     viewMode = viewMode === 'sideBySide' ? 'unified' : 'sideBySide'
@@ -214,21 +242,11 @@
     }
   }
 
-  const toggleCompareOptions = () => {
-    if (compareOptionsOpen) {
-      closeCompareOptions()
-      return
-    }
-
-    void openCompareOptions()
-  }
-
   onMount(() => {
     void initializePickers()
+    void initializeUpdateVersion()
 
     return () => {
-      detachCompareOptionsListeners()
-
       if (saveSessionTimer !== null) {
         window.clearTimeout(saveSessionTimer)
       }
@@ -286,68 +304,255 @@
     )
   }
 
-  function handleCompareOptionsPointerDown(event: PointerEvent) {
-    const target = event.target
+  function setViewMode(nextViewMode: ViewMode) {
+    viewMode = nextViewMode
+  }
 
-    if (!(target instanceof Node)) {
-      return
+  function setShowFullFile(nextValue: boolean) {
+    showFullFile = nextValue
+  }
+
+  function setWrapSideBySideLines(nextValue: boolean) {
+    wrapSideBySideLines = nextValue
+  }
+
+  function setShowInlineHighlights(nextValue: boolean) {
+    showInlineHighlights = nextValue
+  }
+
+  function setShowSyntaxHighlighting(nextValue: boolean) {
+    showSyntaxHighlighting = nextValue
+  }
+
+  function setCheckForUpdatesOnLaunch(nextValue: boolean) {
+    checkForUpdatesOnLaunch = nextValue
+  }
+
+  function setUpdateChannel(nextChannel: UpdateChannel) {
+    updateChannel = nextChannel
+  }
+
+  function formatLastUpdateCheck(value: string) {
+    if (!value) {
+      return 'Never'
+    }
+
+    const numericValue = Number(value)
+    const date = Number.isFinite(numericValue) && value.trim() !== ''
+      ? new Date(numericValue * 1000)
+      : new Date(value)
+
+    if (Number.isNaN(date.getTime())) {
+      return 'Never'
+    }
+
+    return date.toLocaleString()
+  }
+
+  function updateIndicatorTitle() {
+    const versionSuffix = updateIndicatorState.currentVersion
+      ? `Current version ${updateIndicatorState.currentVersion}.`
+      : ''
+
+    if (updateIndicatorState.status === 'available' && updateIndicatorState.metadata) {
+      return `Update available: ${updateIndicatorState.metadata.version}. ${versionSuffix}`.trim()
+    }
+
+    if (updateIndicatorState.status === 'checking') {
+      return 'Checking for updates.'
+    }
+
+    if (updateIndicatorState.status === 'downloaded') {
+      return 'Update downloaded. Install and restart from Settings.'
     }
 
     if (
-      compareOptionsTrigger?.contains(target) ||
-      compareOptionsPopover?.contains(target)
+      updateIndicatorState.status === 'failed' ||
+      updateIndicatorState.status === 'unavailable'
     ) {
+      return updateIndicatorState.message
+    }
+
+    if (updateIndicatorState.status === 'upToDate') {
+      return `Diffly is up to date. ${versionSuffix}`.trim()
+    }
+
+    return `Open update settings. ${versionSuffix}`.trim()
+  }
+
+  async function initializeUpdateVersion() {
+    try {
+      const version = await getAppVersion()
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        currentVersion: version,
+      }
+    } catch {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'unavailable',
+        message: 'Update information is unavailable in this build.',
+      }
+    }
+  }
+
+  async function runUpdateCheck() {
+    if (updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading') {
       return
     }
 
-    closeCompareOptions(false)
+    updateIndicatorState = {
+      ...updateIndicatorState,
+      status: 'checking',
+      message: 'Checking for updates...',
+    }
+
+    try {
+      const result = await checkForUpdates()
+      lastUpdateCheckAt = new Date().toISOString()
+
+      if (result.kind === 'available' && result.available && result.metadata) {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'available',
+          metadata: result.metadata,
+          message: result.message ?? `Version ${result.metadata.version} is available.`,
+        }
+        return
+      }
+
+      if (result.kind === 'unavailable') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'unavailable',
+          metadata: null,
+          message: result.message ?? 'Update checks are unavailable in this build.',
+        }
+        return
+      }
+
+      if (result.kind === 'error') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'failed',
+          metadata: null,
+          message: result.message ?? 'Unable to check for updates.',
+        }
+        return
+      }
+
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'upToDate',
+        metadata: null,
+        message: result.message ?? 'Diffly is up to date.',
+      }
+    } catch (error) {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'failed',
+        metadata: null,
+        message: error instanceof Error ? error.message : 'Unable to check for updates.',
+      }
+    }
   }
 
-  function handleCompareOptionsKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') {
+  async function beginUpdateDownload() {
+    if (updateIndicatorState.status !== 'available') {
       return
     }
 
-    event.preventDefault()
-    closeCompareOptions()
+    updateIndicatorState = {
+      ...updateIndicatorState,
+      status: 'downloading',
+      message: 'Downloading update...',
+    }
+
+    try {
+      const result = await downloadUpdate()
+
+      if (result.kind === 'unavailable') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'unavailable',
+          message: result.message ?? 'Update downloads are unavailable in this build.',
+        }
+        return
+      }
+
+      if (result.kind === 'error') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'failed',
+          message: result.message ?? 'Unable to download the update.',
+        }
+        return
+      }
+
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'downloaded',
+        message: 'Update downloaded. Install and restart when ready.',
+      }
+    } catch (error) {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unable to download the update.',
+      }
+    }
   }
 
-  function attachCompareOptionsListeners() {
-    if (typeof document === 'undefined' || typeof window === 'undefined') {
+  async function applyDownloadedUpdate() {
+    if (updateIndicatorState.status !== 'downloaded') {
       return
     }
 
-    document.addEventListener('pointerdown', handleCompareOptionsPointerDown, true)
-    window.addEventListener('keydown', handleCompareOptionsKeydown)
+    try {
+      const result = await installUpdate()
+
+      if (result.kind === 'unavailable') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'unavailable',
+          message: result.message ?? 'Update installation is unavailable in this build.',
+        }
+        return
+      }
+
+      if (result.kind === 'error') {
+        updateIndicatorState = {
+          ...updateIndicatorState,
+          status: 'failed',
+          message: result.message ?? 'Unable to install the update.',
+        }
+      }
+    } catch (error) {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unable to install the update.',
+      }
+    }
   }
 
-  function detachCompareOptionsListeners() {
-    if (typeof document === 'undefined' || typeof window === 'undefined') {
-      return
-    }
-
-    document.removeEventListener('pointerdown', handleCompareOptionsPointerDown, true)
-    window.removeEventListener('keydown', handleCompareOptionsKeydown)
+  function openUpdateSettings() {
+    openSettings('updates')
   }
 
-  async function openCompareOptions() {
-    compareOptionsOpen = true
-    attachCompareOptionsListeners()
-    await tick()
-    compareOptionsFirstControl?.focus()
+  function openSettings(section: SettingsSection = 'appearance') {
+    if (screen !== 'settings') {
+      settingsReturnScreen = screen
+    }
+
+    activeSettingsSection = section
+    screen = 'settings'
+    errorMessage = ''
   }
 
-  function closeCompareOptions(restoreFocus = true) {
-    if (!compareOptionsOpen) {
-      return
-    }
-
-    compareOptionsOpen = false
-    detachCompareOptionsListeners()
-
-    if (restoreFocus) {
-      compareOptionsTrigger?.focus()
-    }
+  function goBackFromSettings() {
+    screen = settingsReturnScreen
+    errorMessage = ''
   }
 
   function getCachedDiffRenderState(diff: FileDiffResult) {
@@ -687,6 +892,9 @@
     wrapSideBySideLines = session.wrapSideBySideLines ?? false
     showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
     syncSideBySideScroll = session.syncSideBySideScroll ?? true
+    checkForUpdatesOnLaunch = session.checkForUpdatesOnLaunch ?? true
+    updateChannel = session.updateChannel ?? DEFAULT_UPDATE_CHANNEL
+    lastUpdateCheckAt = session.lastUpdateCheckAt ?? ''
     const restoredViewerTextSize =
       typeof session.viewerTextSize === 'number'
         ? session.viewerTextSize
@@ -797,9 +1005,81 @@
     activeDetailRequestId += 1
     detailLoading = false
     clearDetailPrefetch()
-    closeCompareOptions(false)
     screen = 'setup'
     errorMessage = ''
+  }
+
+  function resetPreferenceState() {
+    mode = 'directory'
+    viewMode = 'sideBySide'
+    themeMode = 'dark'
+    ignoreWhitespace = false
+    ignoreCase = false
+    showFullFile = false
+    showInlineHighlights = true
+    wrapSideBySideLines = false
+    showSyntaxHighlighting = true
+    syncSideBySideScroll = true
+    viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
+    contextLines = DEFAULT_CONTEXT_LINES
+    checkForUpdatesOnLaunch = true
+    updateChannel = DEFAULT_UPDATE_CHANNEL
+    lastUpdateCheckAt = ''
+    updateIndicatorState = {
+      ...updateIndicatorState,
+      status: 'idle',
+      metadata: null,
+      message: 'Check for updates from any screen.',
+    }
+  }
+
+  function clearRememberedSelections() {
+    leftExplorer = {
+      ...leftExplorer,
+      selectedTargetPath: '',
+      selectedTargetKind: null,
+      history: leftExplorer.currentPath ? [leftExplorer.currentPath] : [],
+      historyIndex: leftExplorer.currentPath ? 0 : -1,
+    }
+    rightExplorer = {
+      ...rightExplorer,
+      selectedTargetPath: '',
+      selectedTargetKind: null,
+      history: rightExplorer.currentPath ? [rightExplorer.currentPath] : [],
+      historyIndex: rightExplorer.currentPath ? 0 : -1,
+    }
+  }
+
+  function confirmResetPreferences() {
+    if (typeof window !== 'undefined' && !window.confirm('Reset saved preferences to defaults?')) {
+      return
+    }
+
+    resetPreferenceState()
+  }
+
+  function confirmClearRememberedSelections() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Clear remembered folders, files, and navigation history?')
+    ) {
+      return
+    }
+
+    clearRememberedSelections()
+  }
+
+  function confirmResetEverything() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Reset all settings and remembered selections?')
+    ) {
+      return
+    }
+
+    resetPreferenceState()
+    clearRememberedSelections()
+    goToSetup()
   }
 
   function retitlePane(pane: ExplorerPaneState, title: string): ExplorerPaneState {
@@ -1022,7 +1302,6 @@
     loading = true
     detailLoading = false
     errorMessage = ''
-    closeCompareOptions(false)
     activeDetailRequestId += 1
     clearDetailPrefetch()
     leftPath = nextLeftPath
@@ -1737,6 +2016,9 @@
       syncSideBySideScroll,
       viewerTextSize,
       contextLines,
+      checkForUpdatesOnLaunch,
+      updateChannel,
+      lastUpdateCheckAt,
       leftPane: buildPersistedPane(leftExplorer),
       rightPane: buildPersistedPane(rightExplorer),
     }
@@ -1870,7 +2152,6 @@
   $: canGoToNextDiff =
     canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
-  $: themeToggleLabel = themeMode === 'dark' ? 'Light mode' : 'Dark mode'
   $: diffFontSize = `${viewerTextSize}px`
   $: diffRowLineHeight = `${viewerTextSize + 3}px`
   $: diffRowHeight = `${viewerTextSize + 8}px`
@@ -1904,6 +2185,9 @@
     syncSideBySideScroll
     viewerTextSize
     contextLines
+    checkForUpdatesOnLaunch
+    updateChannel
+    lastUpdateCheckAt
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
     leftExplorer.selectedTargetKind
@@ -1915,6 +2199,11 @@
     rightExplorer.history
     rightExplorer.historyIndex
     scheduleSessionSave()
+  }
+
+  $: if (persistenceReady && checkForUpdatesOnLaunch && !startupUpdateCheckStarted) {
+    startupUpdateCheckStarted = true
+    void runUpdateCheck()
   }
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
@@ -1960,9 +2249,31 @@
   <main class="screen setup-screen">
     <header class="app-bar setup-app-bar">
       <div class="app-bar-main">
-        <div class="app-identity">
-          <h1>Diffly</h1>
-          <span>Setup</span>
+        <div class="app-brand-group">
+          <div class="app-identity">
+            <h1>Diffly</h1>
+            <span>Setup</span>
+          </div>
+
+          <button
+            aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+            class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            class="secondary update-indicator"
+            title={updateIndicatorTitle()}
+            type="button"
+            on:click={openUpdateSettings}
+          >
+            {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+              <span class="refresh-spinner visible"></span>
+            {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+              <span class="update-indicator-badge">Update</span>
+            {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+              <span class="update-indicator-badge">Issue</span>
+            {:else}
+              Updates
+            {/if}
+          </button>
         </div>
       </div>
 
@@ -2003,37 +2314,8 @@
           </div>
         </div>
 
-        <button
-          class="secondary theme-toggle"
-          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-          title={themeToggleLabel}
-          type="button"
-          on:click={toggleThemeMode}
-        >
-          {#if themeMode === 'dark'}
-            <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-              <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-            </svg>
-          {:else}
-            <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
-              <path
-                d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.4"
-              />
-            </svg>
-          {/if}
+        <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
+          Settings
         </button>
         <button
           class="secondary icon-button swap-button"
@@ -2100,14 +2382,36 @@
       </section>
     </section>
   </main>
-{:else}
+{:else if screen === 'compare'}
   <main class="screen compare-screen">
     <header class="app-bar compare-bar">
       <div class="app-bar-main compare-bar-main">
         <div class="compare-bar-brand">
-          <div class="app-identity">
-            <h1>Diffly</h1>
-            <span>Compare</span>
+          <div class="app-brand-group">
+            <div class="app-identity">
+              <h1>Diffly</h1>
+              <span>Compare</span>
+            </div>
+
+            <button
+              aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+              class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+              class="secondary update-indicator"
+              title={updateIndicatorTitle()}
+              type="button"
+              on:click={openUpdateSettings}
+            >
+              {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+                <span class="refresh-spinner visible"></span>
+              {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+                <span class="update-indicator-badge">Update</span>
+              {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+                <span class="update-indicator-badge">Issue</span>
+              {:else}
+                Updates
+              {/if}
+            </button>
           </div>
         </div>
       </div>
@@ -2175,156 +2479,9 @@
               {viewMode === 'sideBySide' ? 'Unified view' : 'Split view'}
             </span>
           </button>
-
-          <div class="compare-options-anchor">
-            <button
-              bind:this={compareOptionsTrigger}
-              aria-controls={COMPARE_OPTIONS_POPOVER_ID}
-              aria-expanded={compareOptionsOpen}
-              aria-label="Compare options"
-              class:active={compareOptionsOpen}
-              class="secondary compare-options-toggle"
-              title="Compare options"
-              type="button"
-              on:click={toggleCompareOptions}
-            >
-              <svg aria-hidden="true" class="compare-options-icon" viewBox="0 0 16 16">
-                <path
-                  d="M3 4h5.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M9.8 4H13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M3 8h2.2"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M7.6 8H13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M3 12h6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M11.4 12H13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-width="1.4"
-                />
-                <circle cx="7.1" cy="4" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
-                <circle cx="6.4" cy="8" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
-                <circle cx="10.1" cy="12" r="1.3" fill="none" stroke="currentColor" stroke-width="1.4" />
-              </svg>
-            </button>
-
-            {#if compareOptionsOpen}
-              <div
-                bind:this={compareOptionsPopover}
-                aria-label="Compare options"
-                class="compare-options-popover"
-                id={COMPARE_OPTIONS_POPOVER_ID}
-                role="dialog"
-              >
-                <label class="compare-options-row">
-                  <span>Full file</span>
-                  <input bind:this={compareOptionsFirstControl} bind:checked={showFullFile} type="checkbox" />
-                </label>
-
-                <label class:disabled={showFullFile} class="compare-options-row compare-options-select-row">
-                  <span>Context lines</span>
-                  <select
-                    disabled={showFullFile}
-                    value={contextLines}
-                    on:change={(event) =>
-                      applyContextLines((event.currentTarget as HTMLSelectElement).value)}
-                  >
-                    {#each contextLinePresets as preset}
-                      <option value={preset}>{preset}</option>
-                    {/each}
-                  </select>
-                </label>
-
-                <div class="compare-options-row">
-                  <span>Text size</span>
-                  <div class="compare-options-stepper">
-                    <button
-                      class="secondary compare-options-stepper-button"
-                      aria-label="Decrease text size"
-                      disabled={viewerTextSize <= MIN_VIEWER_TEXT_SIZE}
-                      title="Decrease text size"
-                      type="button"
-                      on:click={() => stepViewerTextSize(-1)}
-                    >
-                      -
-                    </button>
-                    <span class="compare-options-stepper-value" aria-live="polite">{String(viewerTextSize)}</span>
-                    <button
-                      class="secondary compare-options-stepper-button"
-                      aria-label="Increase text size"
-                      disabled={viewerTextSize >= MAX_VIEWER_TEXT_SIZE}
-                      title="Increase text size"
-                      type="button"
-                      on:click={() => stepViewerTextSize(1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                <label class="compare-options-row">
-                  <span>Wrap long lines</span>
-                  <input bind:checked={wrapSideBySideLines} type="checkbox" />
-                </label>
-
-                <label class="compare-options-row">
-                  <span>Inline highlights</span>
-                  <input bind:checked={showInlineHighlights} type="checkbox" />
-                </label>
-
-                <label class="compare-options-row">
-                  <span>Syntax highlighting</span>
-                  <input bind:checked={showSyntaxHighlighting} type="checkbox" />
-                </label>
-
-                <label class="compare-options-row">
-                  <span>Sync scrolling</span>
-                  <input checked={syncSideBySideScroll} type="checkbox" on:change={toggleSyncSideBySideScroll} />
-                </label>
-
-                <div class="compare-options-divider"></div>
-
-                <label class="compare-options-row">
-                  <span>Ignore whitespace</span>
-                  <input checked={ignoreWhitespace} type="checkbox" on:change={toggleIgnoreWhitespace} />
-                </label>
-
-                <label class="compare-options-row">
-                  <span>Ignore case</span>
-                  <input checked={ignoreCase} type="checkbox" on:change={toggleIgnoreCase} />
-                </label>
-              </div>
-            {/if}
-          </div>
+          <button class="secondary" type="button" on:click={() => openSettings('viewer')}>
+            Settings
+          </button>
         </div>
 
         <div class="compare-action-group utility-actions">
@@ -2342,39 +2499,6 @@
             <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
             <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
           </svg>
-        </button>
-
-          <button
-            class="secondary theme-toggle"
-            aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-            title={themeToggleLabel}
-            type="button"
-            on:click={toggleThemeMode}
-          >
-            {#if themeMode === 'dark'}
-              <svg aria-hidden="true" class="theme-icon" viewBox="0 0 16 16">
-                <path d="M8 3.2v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M8 14.5v-1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M12.1 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="M2.2 8h1.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m11 5 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m3.8 12.2 1.2-1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m11 11 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <path d="m3.8 3.8 1.2 1.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4" />
-                <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-              </svg>
-            {:else}
-              <svg aria-hidden="true" class="theme-icon theme-icon-moon" viewBox="0 0 16 16">
-                <path
-                  d="M8.9 1.9a5.6 5.6 0 1 0 5.2 8.6 5.9 5.9 0 0 1-5.2-8.6Z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.4"
-              />
-            </svg>
-          {/if}
         </button>
 
           <button
@@ -2482,6 +2606,95 @@
         bind:unifiedScroll
       />
     </section>
+  </main>
+{:else}
+  <main class="screen settings-view">
+    <header class="app-bar settings-app-bar">
+      <div class="app-bar-main settings-bar-main">
+        <button class="secondary settings-back-button" type="button" on:click={goBackFromSettings}>
+          Back
+        </button>
+
+        <div class="app-brand-group">
+          <div class="app-identity">
+            <h1>Diffly</h1>
+            <span>Settings</span>
+          </div>
+
+          <button
+            aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+            class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            class="secondary update-indicator"
+            title={updateIndicatorTitle()}
+            type="button"
+            on:click={openUpdateSettings}
+          >
+            {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+              <span class="refresh-spinner visible"></span>
+            {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+              <span class="update-indicator-badge">Update</span>
+            {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+              <span class="update-indicator-badge">Issue</span>
+            {:else}
+              Updates
+            {/if}
+          </button>
+        </div>
+      </div>
+    </header>
+
+    {#if errorMessage}
+      <p class="error-banner">{errorMessage}</p>
+    {/if}
+
+    <SettingsScreen
+      activeSection={activeSettingsSection}
+      {themeMode}
+      {mode}
+      {ignoreWhitespace}
+      {ignoreCase}
+      {viewMode}
+      {showFullFile}
+      {contextLines}
+      {contextLinePresets}
+      {viewerTextSize}
+      minViewerTextSize={MIN_VIEWER_TEXT_SIZE}
+      maxViewerTextSize={MAX_VIEWER_TEXT_SIZE}
+      {wrapSideBySideLines}
+      {showInlineHighlights}
+      {showSyntaxHighlighting}
+      {syncSideBySideScroll}
+      {checkForUpdatesOnLaunch}
+      {updateChannel}
+      currentVersion={updateIndicatorState.currentVersion}
+      updateIndicatorState={updateIndicatorState.status}
+      updateStatusMessage={updateIndicatorState.message}
+      availableUpdate={updateIndicatorState.metadata}
+      lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
+      updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+      onSelectSection={(section) => (activeSettingsSection = section)}
+      onSetThemeMode={setThemeMode}
+      onSetMode={setMode}
+      onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
+      onToggleIgnoreCase={toggleIgnoreCase}
+      onSetViewMode={setViewMode}
+      onToggleShowFullFile={() => setShowFullFile(!showFullFile)}
+      onSetContextLines={applyContextLines}
+      onStepViewerTextSize={stepViewerTextSize}
+      onToggleWrapSideBySideLines={() => setWrapSideBySideLines(!wrapSideBySideLines)}
+      onToggleShowInlineHighlights={() => setShowInlineHighlights(!showInlineHighlights)}
+      onToggleShowSyntaxHighlighting={() => setShowSyntaxHighlighting(!showSyntaxHighlighting)}
+      onToggleSyncSideBySideScroll={toggleSyncSideBySideScroll}
+      onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
+      onSetUpdateChannel={setUpdateChannel}
+      onCheckForUpdates={runUpdateCheck}
+      onDownloadUpdate={beginUpdateDownload}
+      onInstallUpdate={applyDownloadedUpdate}
+      onResetPreferences={confirmResetPreferences}
+      onClearRememberedSelections={confirmClearRememberedSelections}
+      onResetEverything={confirmResetEverything}
+    />
   </main>
 {/if}
 
