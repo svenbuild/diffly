@@ -29,6 +29,7 @@ const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
 const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
+const LCS_MAX_MATRIX_CELLS: usize = 16_384;
 
 fn default_true() -> bool {
     true
@@ -485,11 +486,7 @@ async fn download_update(
         });
     };
 
-    let downloaded_bytes = match pending_update
-        .update
-        .download(|_, _| {}, || {})
-        .await
-    {
+    let downloaded_bytes = match pending_update.update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(error) => {
             set_pending_update(&state, pending_update)?;
@@ -523,11 +520,7 @@ async fn install_update(
 
     let bytes = match pending_update.downloaded_bytes.take() {
         Some(bytes) => bytes,
-        None => match pending_update
-            .update
-            .download(|_, _| {}, || {})
-            .await
-        {
+        None => match pending_update.update.download(|_, _| {}, || {}).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 set_pending_update(&state, pending_update)?;
@@ -867,7 +860,9 @@ fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), Str
     Ok(())
 }
 
-fn take_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<Option<PendingUpdate>, String> {
+fn take_pending_update(
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Option<PendingUpdate>, String> {
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     Ok(pending.take())
 }
@@ -2791,7 +2786,14 @@ fn tokenize_inline_diff(text: &str) -> Vec<String> {
 }
 
 fn lcs_pairs(left: &[String], right: &[String]) -> Vec<(usize, usize)> {
-    let mut dp = vec![vec![0; right.len() + 1]; left.len() + 1];
+    let rows = left.len().saturating_add(1);
+    let columns = right.len().saturating_add(1);
+
+    if rows.saturating_mul(columns) > LCS_MAX_MATRIX_CELLS {
+        return Vec::new();
+    }
+
+    let mut dp = vec![vec![0; columns]; rows];
 
     for left_index in (0..left.len()).rev() {
         for right_index in (0..right.len()).rev() {
@@ -4265,6 +4267,18 @@ mod tests {
             &build_line_descriptor("SM_UpdateMeasurementWindow();")
         )
         .is_none());
+    }
+
+    #[test]
+    fn lcs_pairs_returns_empty_when_matrix_budget_is_exceeded() {
+        let left = (0..200)
+            .map(|index| format!("left_{index}"))
+            .collect::<Vec<_>>();
+        let right = (0..200)
+            .map(|index| format!("right_{index}"))
+            .collect::<Vec<_>>();
+
+        assert!(lcs_pairs(&left, &right).is_empty());
     }
 
     #[test]
