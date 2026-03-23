@@ -3,7 +3,8 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rayon::prelude::*;
@@ -11,6 +12,7 @@ use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_updater::{Update, UpdaterExt};
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
@@ -34,6 +36,14 @@ fn default_true() -> bool {
 
 fn default_context_lines() -> u8 {
     3
+}
+
+fn default_viewer_text_size() -> u8 {
+    10
+}
+
+fn default_update_channel() -> String {
+    "stable".to_string()
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -73,10 +83,53 @@ struct PersistedSession {
     show_syntax_highlighting: bool,
     #[serde(default = "default_true")]
     sync_side_by_side_scroll: bool,
+    #[serde(default = "default_viewer_text_size")]
+    viewer_text_size: u8,
     #[serde(default = "default_context_lines")]
     context_lines: u8,
+    #[serde(default = "default_true")]
+    check_for_updates_on_launch: bool,
+    #[serde(default = "default_update_channel")]
+    update_channel: String,
+    #[serde(default)]
+    last_update_check_at: Option<String>,
     left_pane: PersistedExplorerPane,
     right_pane: PersistedExplorerPane,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateMetadata {
+    version: String,
+    current_version: String,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResponse {
+    kind: String,
+    available: bool,
+    metadata: Option<UpdateMetadata>,
+    message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateActionResponse {
+    kind: String,
+    message: Option<String>,
+}
+
+struct PendingUpdate {
+    update: Update,
+    downloaded_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Default)]
+struct UpdateState {
+    pending: Mutex<Option<PendingUpdate>>,
 }
 
 #[derive(Serialize)]
@@ -323,24 +376,187 @@ fn choose_path(kind: String) -> Option<String> {
 
 #[tauri::command]
 fn load_session_state(app: AppHandle) -> Result<Option<PersistedSession>, String> {
-    let session_path = session_file_path(&app)?;
-
-    if !session_path.exists() {
-        return Ok(None);
-    }
-
-    let contents = fs::read_to_string(&session_path).map_err(|error| error.to_string())?;
-    let session = serde_json::from_str(&contents).map_err(|error| error.to_string())?;
-
-    Ok(Some(session))
+    read_session_state(&app)
 }
 
 #[tauri::command]
 fn save_session_state(app: AppHandle, session: PersistedSession) -> Result<(), String> {
-    let session_path = session_file_path(&app)?;
-    let json = serde_json::to_string_pretty(&session).map_err(|error| error.to_string())?;
+    write_session_state(&app, &session)
+}
 
-    fs::write(session_path, json).map_err(|error| error.to_string())
+#[tauri::command]
+fn get_app_version(app: AppHandle) -> Result<String, String> {
+    Ok(current_app_version(&app))
+}
+
+#[tauri::command]
+async fn check_for_updates(
+    app: AppHandle,
+    state: tauri::State<'_, UpdateState>,
+) -> Result<UpdateCheckResponse, String> {
+    let current_version = app.package_info().version.to_string();
+    let checked_at = current_unix_timestamp_string();
+
+    if tauri_plugin_updater::target().is_none() {
+        let response = UpdateCheckResponse {
+            kind: "unavailable".to_string(),
+            available: false,
+            metadata: None,
+            message: Some("Updates are not supported on this platform.".to_string()),
+        };
+        let _ = touch_last_update_check_at(&app, &checked_at);
+        clear_pending_update(&state)?;
+        return Ok(response);
+    }
+
+    let updater = match app.updater_builder().build() {
+        Ok(updater) => updater,
+        Err(error) => {
+            let response = UpdateCheckResponse {
+                kind: "unavailable".to_string(),
+                available: false,
+                metadata: None,
+                message: Some(error.to_string()),
+            };
+            let _ = touch_last_update_check_at(&app, &checked_at);
+            clear_pending_update(&state)?;
+            return Ok(response);
+        }
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let metadata = UpdateMetadata {
+                version: update.version.clone(),
+                current_version: current_version.clone(),
+                body: update.body.clone(),
+                date: update.date.map(|value| value.to_string()),
+            };
+            set_pending_update(
+                &state,
+                PendingUpdate {
+                    update,
+                    downloaded_bytes: None,
+                },
+            )?;
+            let response = UpdateCheckResponse {
+                kind: "available".to_string(),
+                available: true,
+                metadata: Some(metadata),
+                message: Some("A new Diffly build is available.".to_string()),
+            };
+            let _ = touch_last_update_check_at(&app, &checked_at);
+            Ok(response)
+        }
+        Ok(None) => {
+            clear_pending_update(&state)?;
+            let response = UpdateCheckResponse {
+                kind: "upToDate".to_string(),
+                available: false,
+                metadata: None,
+                message: Some(format!("Diffly {} is up to date.", current_version)),
+            };
+            let _ = touch_last_update_check_at(&app, &checked_at);
+            Ok(response)
+        }
+        Err(error) => {
+            clear_pending_update(&state)?;
+            let response = UpdateCheckResponse {
+                kind: "error".to_string(),
+                available: false,
+                metadata: None,
+                message: Some(error.to_string()),
+            };
+            let _ = touch_last_update_check_at(&app, &checked_at);
+            Ok(response)
+        }
+    }
+}
+
+#[tauri::command]
+async fn download_update(
+    _app: AppHandle,
+    state: tauri::State<'_, UpdateState>,
+) -> Result<UpdateActionResponse, String> {
+    let Some(mut pending_update) = take_pending_update(&state)? else {
+        return Ok(UpdateActionResponse {
+            kind: "unavailable".to_string(),
+            message: Some("Check for updates before downloading an update.".to_string()),
+        });
+    };
+
+    let downloaded_bytes = match pending_update
+        .update
+        .download(|_, _| {}, || {})
+        .await
+    {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            set_pending_update(&state, pending_update)?;
+            return Ok(UpdateActionResponse {
+                kind: "error".to_string(),
+                message: Some(error.to_string()),
+            });
+        }
+    };
+
+    pending_update.downloaded_bytes = Some(downloaded_bytes);
+    set_pending_update(&state, pending_update)?;
+
+    Ok(UpdateActionResponse {
+        kind: "downloaded".to_string(),
+        message: Some("Update downloaded. Install and restart when ready.".to_string()),
+    })
+}
+
+#[tauri::command]
+async fn install_update(
+    app: AppHandle,
+    state: tauri::State<'_, UpdateState>,
+) -> Result<UpdateActionResponse, String> {
+    let Some(mut pending_update) = take_pending_update(&state)? else {
+        return Ok(UpdateActionResponse {
+            kind: "unavailable".to_string(),
+            message: Some("Check for updates before installing an update.".to_string()),
+        });
+    };
+
+    let bytes = match pending_update.downloaded_bytes.take() {
+        Some(bytes) => bytes,
+        None => match pending_update
+            .update
+            .download(|_, _| {}, || {})
+            .await
+        {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                set_pending_update(&state, pending_update)?;
+                return Ok(UpdateActionResponse {
+                    kind: "error".to_string(),
+                    message: Some(error.to_string()),
+                });
+            }
+        },
+    };
+
+    if let Err(error) = pending_update.update.install(&bytes) {
+        pending_update.downloaded_bytes = Some(bytes);
+        set_pending_update(&state, pending_update)?;
+        return Ok(UpdateActionResponse {
+            kind: "error".to_string(),
+            message: Some(error.to_string()),
+        });
+    }
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        handle.restart();
+    });
+
+    Ok(UpdateActionResponse {
+        kind: "installed".to_string(),
+        message: Some("Update installed. Restarting Diffly.".to_string()),
+    })
 }
 
 #[tauri::command]
@@ -603,6 +819,66 @@ fn session_file_path(app: &AppHandle) -> Result<PathBuf, String> {
     fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
 
     Ok(app_data_dir.join("session.json"))
+}
+
+fn read_session_state(app: &AppHandle) -> Result<Option<PersistedSession>, String> {
+    let session_path = session_file_path(app)?;
+
+    if !session_path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&session_path).map_err(|error| error.to_string())?;
+    let session = serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+
+    Ok(Some(session))
+}
+
+fn write_session_state(app: &AppHandle, session: &PersistedSession) -> Result<(), String> {
+    let session_path = session_file_path(app)?;
+    let json = serde_json::to_string_pretty(session).map_err(|error| error.to_string())?;
+
+    fs::write(session_path, json).map_err(|error| error.to_string())
+}
+
+fn current_unix_timestamp_string() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn current_app_version(app: &AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+fn touch_last_update_check_at(app: &AppHandle, checked_at: &str) -> Result<(), String> {
+    let Some(mut session) = read_session_state(app)? else {
+        return Ok(());
+    };
+
+    session.last_update_check_at = Some(checked_at.to_string());
+    write_session_state(app, &session)
+}
+
+fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), String> {
+    let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
+    pending.take();
+    Ok(())
+}
+
+fn take_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<Option<PendingUpdate>, String> {
+    let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
+    Ok(pending.take())
+}
+
+fn set_pending_update(
+    state: &tauri::State<'_, UpdateState>,
+    update: PendingUpdate,
+) -> Result<(), String> {
+    let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
+    *pending = Some(update);
+    Ok(())
 }
 
 fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, String> {
@@ -2773,10 +3049,16 @@ fn parent_path(path: &Path) -> Option<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
             save_session_state,
+            get_app_version,
+            check_for_updates,
+            download_update,
+            install_update,
             list_roots,
             list_directory,
             path_info,

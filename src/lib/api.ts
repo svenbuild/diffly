@@ -9,6 +9,8 @@ import type {
   PathInfo,
   PathKind,
   PersistedSession,
+  UpdateActionResult,
+  UpdateCheckResult,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -26,6 +28,18 @@ export const loadSessionState = () =>
 
 export const saveSessionState = (session: PersistedSession) =>
   invoke<void>('save_session_state', { session })
+
+export const getAppVersion = () =>
+  invoke<string>('get_app_version')
+
+export const checkForUpdates = () =>
+  invoke<UpdateCheckResult>('check_for_updates')
+
+export const downloadUpdate = () =>
+  invoke<UpdateActionResult>('download_update')
+
+export const installUpdate = () =>
+  invoke<UpdateActionResult>('install_update')
 
 export const comparePaths = (
   leftPath: string,
