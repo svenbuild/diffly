@@ -361,6 +361,18 @@
     return message
   }
 
+  function normalizeFailedUpdateMessage(message: string | null | undefined) {
+    if (!message) {
+      return 'Unable to contact the published update feed.'
+    }
+
+    if (message.includes('404')) {
+      return 'No published updater release is available yet.'
+    }
+
+    return message
+  }
+
   function updateIndicatorTitle() {
     const versionSuffix = updateIndicatorState.currentVersion
       ? `Current version ${updateIndicatorState.currentVersion}.`
@@ -448,7 +460,7 @@
           ...updateIndicatorState,
           status: 'failed',
           metadata: null,
-          message: result.message ?? 'Unable to check for updates.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
         return
       }
@@ -464,7 +476,9 @@
         ...updateIndicatorState,
         status: 'failed',
         metadata: null,
-        message: error instanceof Error ? error.message : 'Unable to check for updates.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to check for updates.',
+        ),
       }
     }
   }
@@ -496,7 +510,7 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'failed',
-          message: result.message ?? 'Unable to download the update.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
         return
       }
@@ -510,7 +524,9 @@
       updateIndicatorState = {
         ...updateIndicatorState,
         status: 'failed',
-        message: error instanceof Error ? error.message : 'Unable to download the update.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to download the update.',
+        ),
       }
     }
   }
@@ -536,14 +552,16 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'failed',
-          message: result.message ?? 'Unable to install the update.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
       }
     } catch (error) {
       updateIndicatorState = {
         ...updateIndicatorState,
         status: 'failed',
-        message: error instanceof Error ? error.message : 'Unable to install the update.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to install the update.',
+        ),
       }
     }
   }
