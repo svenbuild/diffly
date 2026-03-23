@@ -73,6 +73,7 @@
   const DEFAULT_VIEWER_TEXT_SIZE = 10
   const MIN_VIEWER_TEXT_SIZE = 8
   const MAX_VIEWER_TEXT_SIZE = 24
+  const DEFAULT_THEME_MODE: ThemeMode = 'system'
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
@@ -111,7 +112,12 @@
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
-  let themeMode: ThemeMode = 'dark'
+  let themeMode: ThemeMode = DEFAULT_THEME_MODE
+  let systemPrefersDark =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : true
+  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
   let showFullFile = false
   let showInlineHighlights = true
   let wrapSideBySideLines = false
@@ -243,10 +249,36 @@
   }
 
   onMount(() => {
+    const colorSchemeQuery =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null
+    const handleColorSchemeChange = (event: MediaQueryListEvent) => {
+      systemPrefersDark = event.matches
+    }
+
+    if (colorSchemeQuery) {
+      systemPrefersDark = colorSchemeQuery.matches
+
+      if (typeof colorSchemeQuery.addEventListener === 'function') {
+        colorSchemeQuery.addEventListener('change', handleColorSchemeChange)
+      } else {
+        colorSchemeQuery.addListener(handleColorSchemeChange)
+      }
+    }
+
     void initializePickers()
     void initializeUpdateVersion()
 
     return () => {
+      if (colorSchemeQuery) {
+        if (typeof colorSchemeQuery.removeEventListener === 'function') {
+          colorSchemeQuery.removeEventListener('change', handleColorSchemeChange)
+        } else {
+          colorSchemeQuery.removeListener(handleColorSchemeChange)
+        }
+      }
+
       if (saveSessionTimer !== null) {
         window.clearTimeout(saveSessionTimer)
       }
@@ -328,9 +360,13 @@
     checkForUpdatesOnLaunch = nextValue
   }
 
-  function formatLastUpdateCheck(value: string) {
+  function isThemeMode(value: string): value is ThemeMode {
+    return value === 'dark' || value === 'light' || value === 'system'
+  }
+
+  function parseUpdateTimestamp(value: string) {
     if (!value) {
-      return 'Never'
+      return null
     }
 
     const numericValue = Number(value)
@@ -339,10 +375,55 @@
       : new Date(value)
 
     if (Number.isNaN(date.getTime())) {
+      return null
+    }
+
+    return date
+  }
+
+  function formatLastUpdateCheck(value: string) {
+    const date = parseUpdateTimestamp(value)
+
+    if (!date) {
       return 'Never'
     }
 
-    return date.toLocaleString()
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date)
+  }
+
+  function formatLastUpdateCheckRelative(value: string) {
+    const date = parseUpdateTimestamp(value)
+
+    if (!date) {
+      return 'No checks yet'
+    }
+
+    const diffMs = date.getTime() - Date.now()
+    const absDiffMs = Math.abs(diffMs)
+    const relativeTime = new Intl.RelativeTimeFormat(undefined, {
+      numeric: 'auto',
+    })
+
+    if (absDiffMs < 60_000) {
+      return 'Just now'
+    }
+
+    if (absDiffMs < 3_600_000) {
+      return relativeTime.format(Math.round(diffMs / 60_000), 'minute')
+    }
+
+    if (absDiffMs < 86_400_000) {
+      return relativeTime.format(Math.round(diffMs / 3_600_000), 'hour')
+    }
+
+    return relativeTime.format(Math.round(diffMs / 86_400_000), 'day')
+  }
+
+  function formatUpdateChannelLabel(channel: UpdateChannel) {
+    return channel.charAt(0).toUpperCase() + channel.slice(1)
   }
 
   function normalizeUnavailableUpdateMessage(message: string | null | undefined) {
@@ -914,7 +995,7 @@
       viewMode = session.viewMode
     }
 
-    if (session.themeMode === 'dark' || session.themeMode === 'light') {
+    if (session.themeMode && isThemeMode(session.themeMode)) {
       themeMode = session.themeMode
     }
 
@@ -1045,7 +1126,7 @@
   function resetPreferenceState() {
     mode = 'directory'
     viewMode = 'sideBySide'
-    themeMode = 'dark'
+    themeMode = DEFAULT_THEME_MODE
     ignoreWhitespace = false
     ignoreCase = false
     showFullFile = false
@@ -1102,14 +1183,7 @@
     clearRememberedSelections()
   }
 
-  function confirmResetEverything() {
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm('Reset all settings and remembered selections?')
-    ) {
-      return
-    }
-
+  function resetEverything() {
     resetPreferenceState()
     clearRememberedSelections()
     goToSetup()
@@ -2188,6 +2262,7 @@
   $: diffFontSize = `${viewerTextSize}px`
   $: diffRowLineHeight = `${viewerTextSize + 3}px`
   $: diffRowHeight = `${viewerTextSize + 8}px`
+  $: resolvedThemeMode = themeMode === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themeMode
 
   $: if (screen === 'compare') {
     activeDiff
@@ -2202,7 +2277,7 @@
   }
 
   $: if (typeof document !== 'undefined') {
-    document.documentElement.dataset.theme = themeMode
+    document.documentElement.dataset.theme = resolvedThemeMode
   }
 
   $: if (persistenceReady) {
@@ -2685,12 +2760,13 @@
       {showSyntaxHighlighting}
       {syncSideBySideScroll}
       {checkForUpdatesOnLaunch}
-      {updateChannel}
+      updateChannelLabel={formatUpdateChannelLabel(updateChannel)}
       currentVersion={updateIndicatorState.currentVersion}
       updateIndicatorState={updateIndicatorState.status}
       updateStatusMessage={updateIndicatorState.message}
       availableUpdate={updateIndicatorState.metadata}
       lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
+      lastUpdateCheckRelativeLabel={formatLastUpdateCheckRelative(lastUpdateCheckAt)}
       updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
       onBack={goBackFromSettings}
       onSelectSection={(section) => (activeSettingsSection = section)}
@@ -2711,7 +2787,7 @@
       onInstallUpdate={applyDownloadedUpdate}
       onResetPreferences={confirmResetPreferences}
       onClearRememberedSelections={confirmClearRememberedSelections}
-      onResetEverything={confirmResetEverything}
+      onResetEverything={resetEverything}
     />
   </main>
 {/if}
