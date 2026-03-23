@@ -3181,13 +3181,15 @@ mod tests {
         fs::create_dir_all(&right).expect("right directory should exist");
         write_temp_file(&temp_root.join("secret.txt"), "top secret\n");
 
-        let error = open_compare_item(
+        let error = match open_compare_item(
             left.to_string_lossy().to_string(),
             right.to_string_lossy().to_string(),
             "../secret.txt".to_string(),
             default_options(),
-        )
-        .expect_err("parent dir traversal should be rejected");
+        ) {
+            Ok(_) => panic!("parent dir traversal should be rejected"),
+            Err(error) => error,
+        };
 
         assert_eq!(
             error,
@@ -3209,13 +3211,15 @@ mod tests {
         let absolute_path = temp_root.join("outside.txt");
         write_temp_file(&absolute_path, "outside\n");
 
-        let error = open_compare_item(
+        let error = match open_compare_item(
             left.to_string_lossy().to_string(),
             right.to_string_lossy().to_string(),
             absolute_path.to_string_lossy().to_string(),
             default_options(),
-        )
-        .expect_err("absolute paths should be rejected");
+        ) {
+            Ok(_) => panic!("absolute paths should be rejected"),
+            Err(error) => error,
+        };
 
         assert_eq!(
             error,
