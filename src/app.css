@@ -587,35 +587,81 @@ h2 {
 
 .setup-body {
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
   overflow: hidden;
 }
 
+.setup-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
 .setup-selection-summary {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
   flex-wrap: wrap;
 }
 
-.setup-selection-summary span {
+.setup-selection-label,
+.setup-mode-switch > span {
   color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.setup-selection-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: min(28ch, 100%);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--strong-text);
+}
+
+.setup-selection-chip-side {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   flex: 0 0 auto;
 }
 
-.setup-selection-summary strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.setup-selection-chip-value {
   min-width: 0;
-  max-width: 20ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--strong-text);
+}
+
+.setup-selection-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--toolbar-divider);
+  flex: 0 0 auto;
+}
+
+.setup-mode-switch {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .picker-workspace {
@@ -1930,6 +1976,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 @media (max-width: 860px) {
   .app-bar,
+  .setup-toolbar,
   .picker-pane-header,
   .picker-pane-topbar,
   .pane-header,
@@ -1953,6 +2000,15 @@ button.filter-chip.tooLarge:focus-visible {
     position: static;
     min-width: 0;
     width: 100%;
+  }
+
+  .setup-mode-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .setup-selection-divider {
+    display: none;
   }
 
   .picker-nav-row,
