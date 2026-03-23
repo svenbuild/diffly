@@ -7,6 +7,7 @@ export type ContentKind = 'text' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
+export type UpdateChannel = 'stable'
 
 export interface PersistedExplorerPane {
   currentPath: string
@@ -29,6 +30,9 @@ export interface PersistedSession {
   syncSideBySideScroll?: boolean
   viewerTextSize?: number
   contextLines?: ContextLinesSetting
+  checkForUpdatesOnLaunch?: boolean
+  updateChannel?: UpdateChannel
+  lastUpdateCheckAt?: string
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
 }
@@ -105,6 +109,25 @@ export interface FileDiffResult {
   rightLabel: string
   sideBySide: SideBySideRow[]
   unified: UnifiedLine[]
+}
+
+export interface UpdateMetadata {
+  version: string
+  currentVersion: string
+  body?: string | null
+  date?: string | null
+}
+
+export interface UpdateCheckResult {
+  kind: 'available' | 'upToDate' | 'unavailable' | 'error'
+  available: boolean
+  metadata: UpdateMetadata | null
+  message?: string | null
+}
+
+export interface UpdateActionResult {
+  kind: 'downloaded' | 'installed' | 'unavailable' | 'error'
+  message?: string | null
 }
 
 export type CompareResponse =
