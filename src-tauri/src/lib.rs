@@ -485,11 +485,7 @@ async fn download_update(
         });
     };
 
-    let downloaded_bytes = match pending_update
-        .update
-        .download(|_, _| {}, || {})
-        .await
-    {
+    let downloaded_bytes = match pending_update.update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(error) => {
             set_pending_update(&state, pending_update)?;
@@ -523,11 +519,7 @@ async fn install_update(
 
     let bytes = match pending_update.downloaded_bytes.take() {
         Some(bytes) => bytes,
-        None => match pending_update
-            .update
-            .download(|_, _| {}, || {})
-            .await
-        {
+        None => match pending_update.update.download(|_, _| {}, || {}).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 set_pending_update(&state, pending_update)?;
@@ -637,8 +629,9 @@ fn open_compare_item(
     relative_path: String,
     options: CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let left = Path::new(&left_base).join(&relative_path);
-    let right = Path::new(&right_base).join(&relative_path);
+    let validated_relative_path = validate_relative_compare_path(&relative_path)?;
+    let left = Path::new(&left_base).join(validated_relative_path);
+    let right = Path::new(&right_base).join(validated_relative_path);
 
     build_file_diff(
         &left,
@@ -647,6 +640,21 @@ fn open_compare_item(
         right.to_string_lossy().to_string(),
         &options,
     )
+}
+
+fn validate_relative_compare_path(relative_path: &str) -> Result<&Path, String> {
+    let path = Path::new(relative_path);
+
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return Err("The requested path escapes the selected directories.".to_string());
+    }
+
+    Ok(path)
 }
 
 fn compare_directories(
@@ -867,7 +875,9 @@ fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), Str
     Ok(())
 }
 
-fn take_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<Option<PendingUpdate>, String> {
+fn take_pending_update(
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Option<PendingUpdate>, String> {
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     Ok(pending.take())
 }
@@ -3201,6 +3211,58 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.relative_path == "too-large.txt" && matches!(entry.status, EntryStatus::TooLarge)
         }));
+    }
+
+    #[test]
+    fn open_compare_item_rejects_parent_directory_traversal() {
+        let temp_root = unique_temp_dir("open-compare-item-parent-traversal");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+
+        let error = open_compare_item(
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            "../secret.txt".to_string(),
+            default_options(),
+        )
+        .expect_err("parent-directory traversal should be rejected");
+
+        assert_eq!(
+            error,
+            "The requested path escapes the selected directories."
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn open_compare_item_rejects_absolute_paths() {
+        let temp_root = unique_temp_dir("open-compare-item-absolute-path");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+        let absolute_target = temp_root.join("secret.txt");
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+        write_temp_file(&absolute_target, "super secret\n");
+
+        let error = open_compare_item(
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            absolute_target.to_string_lossy().to_string(),
+            default_options(),
+        )
+        .expect_err("absolute paths should be rejected");
+
+        assert_eq!(
+            error,
+            "The requested path escapes the selected directories."
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
 
     #[test]
