@@ -29,6 +29,8 @@ const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
 const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
+const INLINE_DIFF_MAX_TOKENS_PER_SIDE: usize = 4096;
+const INLINE_DIFF_MAX_DP_CELLS: usize = 250_000;
 
 fn default_true() -> bool {
     true
@@ -485,11 +487,7 @@ async fn download_update(
         });
     };
 
-    let downloaded_bytes = match pending_update
-        .update
-        .download(|_, _| {}, || {})
-        .await
-    {
+    let downloaded_bytes = match pending_update.update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(error) => {
             set_pending_update(&state, pending_update)?;
@@ -523,11 +521,7 @@ async fn install_update(
 
     let bytes = match pending_update.downloaded_bytes.take() {
         Some(bytes) => bytes,
-        None => match pending_update
-            .update
-            .download(|_, _| {}, || {})
-            .await
-        {
+        None => match pending_update.update.download(|_, _| {}, || {}).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 set_pending_update(&state, pending_update)?;
@@ -867,7 +861,9 @@ fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), Str
     Ok(())
 }
 
-fn take_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<Option<PendingUpdate>, String> {
+fn take_pending_update(
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Option<PendingUpdate>, String> {
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     Ok(pending.take())
 }
@@ -2735,6 +2731,11 @@ fn trim_trailing_line_comment(line: &str) -> &str {
 fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSegment>) {
     let left_tokens = tokenize_inline_diff(left);
     let right_tokens = tokenize_inline_diff(right);
+
+    if !inline_diff_within_limit(&left_tokens, &right_tokens) {
+        return (plain_segments(left, false), plain_segments(right, false));
+    }
+
     let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
 
     if common_pairs.is_empty() {
@@ -2788,6 +2789,23 @@ fn tokenize_inline_diff(text: &str) -> Vec<String> {
     }
 
     tokens
+}
+
+fn inline_diff_within_limit(left: &[String], right: &[String]) -> bool {
+    if left.len() > INLINE_DIFF_MAX_TOKENS_PER_SIDE || right.len() > INLINE_DIFF_MAX_TOKENS_PER_SIDE
+    {
+        return false;
+    }
+
+    match left.len().checked_add(1).and_then(|left_len| {
+        right
+            .len()
+            .checked_add(1)
+            .and_then(|right_len| left_len.checked_mul(right_len))
+    }) {
+        Some(cells) => cells <= INLINE_DIFF_MAX_DP_CELLS,
+        None => false,
+    }
 }
 
 fn lcs_pairs(left: &[String], right: &[String]) -> Vec<(usize, usize)> {
@@ -3632,6 +3650,39 @@ mod tests {
         ));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn highlight_segments_falls_back_to_plain_segments_when_token_count_is_too_large() {
+        let left = "a ".repeat(INLINE_DIFF_MAX_TOKENS_PER_SIDE / 2 + 1);
+        let right = "b ".repeat(INLINE_DIFF_MAX_TOKENS_PER_SIDE / 2 + 1);
+
+        let (left_segments, right_segments) = highlight_segments(&left, &right);
+
+        assert_eq!(left_segments.len(), 1);
+        assert_eq!(right_segments.len(), 1);
+        assert_eq!(left_segments[0].text, left);
+        assert!(!left_segments[0].highlighted);
+        assert_eq!(right_segments[0].text, right);
+        assert!(!right_segments[0].highlighted);
+    }
+
+    #[test]
+    fn highlight_segments_falls_back_to_plain_segments_when_dp_budget_is_exceeded() {
+        let left = "a ".repeat(251);
+        let right = "b ".repeat(251);
+
+        let left_tokens = tokenize_inline_diff(&left);
+        let right_tokens = tokenize_inline_diff(&right);
+
+        assert!(left_tokens.len() <= INLINE_DIFF_MAX_TOKENS_PER_SIDE);
+        assert!(right_tokens.len() <= INLINE_DIFF_MAX_TOKENS_PER_SIDE);
+        assert!(!inline_diff_within_limit(&left_tokens, &right_tokens));
+
+        let (left_segments, right_segments) = highlight_segments(&left, &right);
+
+        assert_eq!(left_segments, plain_segments(&left, false));
+        assert_eq!(right_segments, plain_segments(&right, false));
     }
 
     #[test]
