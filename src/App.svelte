@@ -328,10 +328,6 @@
     checkForUpdatesOnLaunch = nextValue
   }
 
-  function setUpdateChannel(nextChannel: UpdateChannel) {
-    updateChannel = nextChannel
-  }
-
   function formatLastUpdateCheck(value: string) {
     if (!value) {
       return 'Never'
@@ -2675,7 +2671,6 @@
     <SettingsScreen
       activeSection={activeSettingsSection}
       {themeMode}
-      {mode}
       {ignoreWhitespace}
       {ignoreCase}
       {viewMode}
@@ -2711,7 +2706,6 @@
       onToggleShowSyntaxHighlighting={() => setShowSyntaxHighlighting(!showSyntaxHighlighting)}
       onToggleSyncSideBySideScroll={toggleSyncSideBySideScroll}
       onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
-      onSetUpdateChannel={setUpdateChannel}
       onCheckForUpdates={runUpdateCheck}
       onDownloadUpdate={beginUpdateDownload}
       onInstallUpdate={applyDownloadedUpdate}
