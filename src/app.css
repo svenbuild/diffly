@@ -418,9 +418,13 @@ h2 {
 
 .setup-app-bar {
   display: grid;
-  grid-template-columns: 19ch minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
+}
+
+.setup-app-bar > .app-bar-main {
+  justify-self: start;
 }
 
 .setup-bar-center {
@@ -428,6 +432,7 @@ h2 {
 }
 
 .setup-bar-actions {
+  justify-self: end;
   justify-content: flex-end;
 }
 
@@ -609,15 +614,13 @@ h2 {
 }
 
 .setup-selection-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  column-gap: 10px;
   min-width: 0;
-  flex-wrap: wrap;
 }
 
-.setup-selection-label,
 .setup-mode-switch > span {
   color: var(--muted);
   flex: 0 0 auto;
@@ -630,8 +633,17 @@ h2 {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  max-width: min(30ch, 100%);
   color: var(--strong-text);
+}
+
+.setup-selection-segment:first-child {
+  justify-self: end;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.setup-selection-segment:last-child {
+  justify-self: start;
 }
 
 .setup-selection-side {
@@ -644,6 +656,7 @@ h2 {
 
 .setup-selection-value {
   min-width: 0;
+  max-width: 24ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1968,7 +1981,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 @media (max-width: 1280px) {
   .setup-app-bar {
-    grid-template-columns: 19ch minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .setup-bar-actions {
@@ -2033,6 +2046,8 @@ button.filter-chip.tooLarge:focus-visible {
 
   .setup-selection-summary {
     width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 6px;
   }
 
   .setup-mode-switch {
@@ -2042,6 +2057,13 @@ button.filter-chip.tooLarge:focus-visible {
 
   .setup-selection-divider {
     display: none;
+  }
+
+  .setup-selection-segment:first-child,
+  .setup-selection-segment:last-child {
+    justify-self: stretch;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .picker-nav-row,

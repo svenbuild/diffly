@@ -1968,7 +1968,6 @@
 
       <div class="setup-bar-center">
         <div class="setup-selection-summary" aria-label="Selected targets">
-          <span class="setup-selection-label">Selected</span>
           <div
             class="setup-selection-segment"
             title={leftExplorer.selectedTargetPath || 'Left target not selected'}
