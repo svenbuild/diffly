@@ -28,7 +28,7 @@
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
 </script>
 
-<section class="picker-pane">
+<section class:left-picker-pane={side === 'left'} class:right-picker-pane={side === 'right'} class="picker-pane">
   <header class="picker-pane-header">
     <div class="picker-pane-topbar">
       <strong>{pane.title}</strong>
