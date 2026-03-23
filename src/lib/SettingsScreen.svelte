@@ -22,7 +22,6 @@
   const sections: { id: SettingsSection; label: string }[] = [
     { id: 'appearance', label: 'Appearance' },
     { id: 'general', label: 'General' },
-    { id: 'comparison', label: 'Comparison' },
     { id: 'viewer', label: 'Viewer' },
     { id: 'updates', label: 'Updates' },
     { id: 'reset', label: 'Reset' },
@@ -52,9 +51,9 @@
   export let availableUpdate: UpdateMetadata | null
   export let lastUpdateCheckLabel: string
   export let updateBusy: boolean
+  export let onBack: () => void
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (theme: ThemeMode) => void
-  export let onSetMode: (mode: CompareMode) => void
   export let onToggleIgnoreWhitespace: () => void
   export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
@@ -77,18 +76,36 @@
 
 <section class="settings-screen-body">
   <nav aria-label="Settings sections" class="settings-section-rail">
-    <div class="settings-section-list">
-      {#each sections as section}
-        <button
-          aria-current={activeSection === section.id ? 'page' : undefined}
-          class:active={activeSection === section.id}
-          class="settings-section-link"
-          type="button"
-          on:click={() => onSelectSection(section.id)}
-        >
-          {section.label}
+    <div class="settings-rail-inner">
+      <div class="settings-section-list">
+        {#each sections as section}
+          <button
+            aria-current={activeSection === section.id ? 'page' : undefined}
+            class:active={activeSection === section.id}
+            class="settings-section-link"
+            type="button"
+            on:click={() => onSelectSection(section.id)}
+          >
+            {section.label}
+          </button>
+        {/each}
+      </div>
+
+      <div class="settings-rail-footer">
+        <button class="secondary settings-back-link" type="button" on:click={onBack}>
+          <svg aria-hidden="true" class="settings-back-icon" viewBox="0 0 16 16">
+            <path
+              d="M9.8 3.2 5.4 8l4.4 4.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.6"
+            />
+          </svg>
+          <span>Back</span>
         </button>
-      {/each}
+      </div>
     </div>
   </nav>
 
@@ -146,65 +163,16 @@
         <section class="settings-card">
           <div class="settings-card-header">
             <h2>General</h2>
-            <p>Default behavior before a compare starts.</p>
+            <p>Workflow controls that stay outside the settings screen.</p>
           </div>
 
-          <div class="settings-choice-list">
-            <button
-              class:active={mode === 'directory'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetMode('directory')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Directories</strong>
-                <small>Start in directory compare mode.</small>
-              </span>
-              {#if mode === 'directory'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
-
-            <button
-              class:active={mode === 'file'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetMode('file')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Files</strong>
-                <small>Start in file compare mode.</small>
-              </span>
-              {#if mode === 'file'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
+          <div class="settings-info-note">
+            <strong>Compare mode stays in the setup toolbar.</strong>
+            <p>
+              Use the existing `Files` and `Directories` switch on the setup page. Current mode:
+              {mode === 'directory' ? ' Directories' : ' Files'}.
+            </p>
           </div>
-        </section>
-      {/if}
-
-      {#if activeSection === 'comparison'}
-        <section class="settings-card">
-          <div class="settings-card-header">
-            <h2>Comparison</h2>
-            <p>How Diffly should detect differences by default.</p>
-          </div>
-
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Ignore whitespace</strong>
-              <small>Treat whitespace-only changes as unchanged.</small>
-            </span>
-            <input checked={ignoreWhitespace} type="checkbox" on:change={onToggleIgnoreWhitespace} />
-          </label>
-
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Ignore case</strong>
-              <small>Treat case-only edits as unchanged.</small>
-            </span>
-            <input checked={ignoreCase} type="checkbox" on:change={onToggleIgnoreCase} />
-          </label>
         </section>
       {/if}
 
@@ -246,6 +214,22 @@
               {/if}
             </button>
           </div>
+
+          <label class="settings-toggle-row">
+            <span>
+              <strong>Ignore whitespace</strong>
+              <small>Treat whitespace-only changes as unchanged.</small>
+            </span>
+            <input checked={ignoreWhitespace} type="checkbox" on:change={onToggleIgnoreWhitespace} />
+          </label>
+
+          <label class="settings-toggle-row">
+            <span>
+              <strong>Ignore case</strong>
+              <small>Treat case-only edits as unchanged.</small>
+            </span>
+            <input checked={ignoreCase} type="checkbox" on:change={onToggleIgnoreCase} />
+          </label>
 
           <label class="settings-toggle-row">
             <span>
@@ -388,8 +372,10 @@
                 Update ready
               {:else if updateIndicatorState === 'upToDate'}
                 Up to date
-              {:else if updateIndicatorState === 'failed' || updateIndicatorState === 'unavailable'}
+              {:else if updateIndicatorState === 'failed'}
                 Update issue
+              {:else if updateIndicatorState === 'unavailable'}
+                Updates not configured
               {:else}
                 Update status
               {/if}

@@ -349,6 +349,30 @@
     return date.toLocaleString()
   }
 
+  function normalizeUnavailableUpdateMessage(message: string | null | undefined) {
+    if (!message) {
+      return 'Updates are not configured for this build yet.'
+    }
+
+    if (message.includes('does not have any endpoints set')) {
+      return 'Updates are not configured for this build yet.'
+    }
+
+    return message
+  }
+
+  function normalizeFailedUpdateMessage(message: string | null | undefined) {
+    if (!message) {
+      return 'Unable to contact the published update feed.'
+    }
+
+    if (message.includes('404')) {
+      return 'No published updater release is available yet.'
+    }
+
+    return message
+  }
+
   function updateIndicatorTitle() {
     const versionSuffix = updateIndicatorState.currentVersion
       ? `Current version ${updateIndicatorState.currentVersion}.`
@@ -391,7 +415,7 @@
       updateIndicatorState = {
         ...updateIndicatorState,
         status: 'unavailable',
-        message: 'Update information is unavailable in this build.',
+        message: 'Updates are not configured for this build yet.',
       }
     }
   }
@@ -426,7 +450,7 @@
           ...updateIndicatorState,
           status: 'unavailable',
           metadata: null,
-          message: result.message ?? 'Update checks are unavailable in this build.',
+          message: normalizeUnavailableUpdateMessage(result.message),
         }
         return
       }
@@ -436,7 +460,7 @@
           ...updateIndicatorState,
           status: 'failed',
           metadata: null,
-          message: result.message ?? 'Unable to check for updates.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
         return
       }
@@ -452,7 +476,9 @@
         ...updateIndicatorState,
         status: 'failed',
         metadata: null,
-        message: error instanceof Error ? error.message : 'Unable to check for updates.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to check for updates.',
+        ),
       }
     }
   }
@@ -475,7 +501,7 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'unavailable',
-          message: result.message ?? 'Update downloads are unavailable in this build.',
+          message: normalizeUnavailableUpdateMessage(result.message),
         }
         return
       }
@@ -484,7 +510,7 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'failed',
-          message: result.message ?? 'Unable to download the update.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
         return
       }
@@ -498,7 +524,9 @@
       updateIndicatorState = {
         ...updateIndicatorState,
         status: 'failed',
-        message: error instanceof Error ? error.message : 'Unable to download the update.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to download the update.',
+        ),
       }
     }
   }
@@ -515,7 +543,7 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'unavailable',
-          message: result.message ?? 'Update installation is unavailable in this build.',
+          message: normalizeUnavailableUpdateMessage(result.message),
         }
         return
       }
@@ -524,14 +552,16 @@
         updateIndicatorState = {
           ...updateIndicatorState,
           status: 'failed',
-          message: result.message ?? 'Unable to install the update.',
+          message: normalizeFailedUpdateMessage(result.message),
         }
       }
     } catch (error) {
       updateIndicatorState = {
         ...updateIndicatorState,
         status: 'failed',
-        message: error instanceof Error ? error.message : 'Unable to install the update.',
+        message: normalizeFailedUpdateMessage(
+          error instanceof Error ? error.message : 'Unable to install the update.',
+        ),
       }
     }
   }
@@ -2258,7 +2288,7 @@
           <button
             aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
             class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            class:error-state={updateIndicatorState.status === 'failed'}
             class="secondary update-indicator"
             title={updateIndicatorTitle()}
             type="button"
@@ -2268,7 +2298,7 @@
               <span class="refresh-spinner visible"></span>
             {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
               <span class="update-indicator-badge">Update</span>
-            {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            {:else if updateIndicatorState.status === 'failed'}
               <span class="update-indicator-badge">Issue</span>
             {:else}
               Updates
@@ -2396,7 +2426,7 @@
             <button
               aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
               class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+              class:error-state={updateIndicatorState.status === 'failed'}
               class="secondary update-indicator"
               title={updateIndicatorTitle()}
               type="button"
@@ -2406,7 +2436,7 @@
                 <span class="refresh-spinner visible"></span>
               {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
                 <span class="update-indicator-badge">Update</span>
-              {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+              {:else if updateIndicatorState.status === 'failed'}
                 <span class="update-indicator-badge">Issue</span>
               {:else}
                 Updates
@@ -2611,10 +2641,6 @@
   <main class="screen settings-view">
     <header class="app-bar settings-app-bar">
       <div class="app-bar-main settings-bar-main">
-        <button class="secondary settings-back-button" type="button" on:click={goBackFromSettings}>
-          Back
-        </button>
-
         <div class="app-brand-group">
           <div class="app-identity">
             <h1>Diffly</h1>
@@ -2624,7 +2650,7 @@
           <button
             aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
             class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class:error-state={updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            class:error-state={updateIndicatorState.status === 'failed'}
             class="secondary update-indicator"
             title={updateIndicatorTitle()}
             type="button"
@@ -2634,7 +2660,7 @@
               <span class="refresh-spinner visible"></span>
             {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
               <span class="update-indicator-badge">Update</span>
-            {:else if updateIndicatorState.status === 'failed' || updateIndicatorState.status === 'unavailable'}
+            {:else if updateIndicatorState.status === 'failed'}
               <span class="update-indicator-badge">Issue</span>
             {:else}
               Updates
@@ -2673,9 +2699,9 @@
       availableUpdate={updateIndicatorState.metadata}
       lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
       updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+      onBack={goBackFromSettings}
       onSelectSection={(section) => (activeSettingsSection = section)}
       onSetThemeMode={setThemeMode}
-      onSetMode={setMode}
       onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
       onToggleIgnoreCase={toggleIgnoreCase}
       onSetViewMode={setViewMode}
