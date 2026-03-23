@@ -71,7 +71,6 @@ export interface ExplorerPaneState {
 export type Side = 'left' | 'right'
 export type SettingsSection =
   | 'appearance'
-  | 'general'
   | 'viewer'
   | 'updates'
   | 'reset'

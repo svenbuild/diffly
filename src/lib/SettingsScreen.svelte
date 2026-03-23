@@ -1,9 +1,8 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import type {
-    CompareMode,
     ContextLinesSetting,
     ThemeMode,
-    UpdateChannel,
     UpdateMetadata,
     ViewMode,
   } from './types'
@@ -19,9 +18,15 @@
     | 'failed'
     | 'unavailable'
 
-  const sections: { id: SettingsSection; label: string }[] = [
+  interface SectionItem {
+    id: SettingsSection
+    label: string
+  }
+
+  const RESET_CONFIRMATION_PHRASE = 'RESET'
+
+  const sections: SectionItem[] = [
     { id: 'appearance', label: 'Appearance' },
-    { id: 'general', label: 'General' },
     { id: 'viewer', label: 'Viewer' },
     { id: 'updates', label: 'Updates' },
     { id: 'reset', label: 'Reset' },
@@ -29,7 +34,6 @@
 
   export let activeSection: SettingsSection
   export let themeMode: ThemeMode
-  export let mode: CompareMode
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let viewMode: ViewMode
@@ -44,12 +48,13 @@
   export let showSyntaxHighlighting: boolean
   export let syncSideBySideScroll: boolean
   export let checkForUpdatesOnLaunch: boolean
-  export let updateChannel: UpdateChannel
+  export let updateChannelLabel: string
   export let currentVersion: string
   export let updateIndicatorState: UpdateIndicatorStatus
   export let updateStatusMessage: string
   export let availableUpdate: UpdateMetadata | null
   export let lastUpdateCheckLabel: string
+  export let lastUpdateCheckRelativeLabel: string
   export let updateBusy: boolean
   export let onBack: () => void
   export let onSelectSection: (section: SettingsSection) => void
@@ -65,18 +70,124 @@
   export let onToggleShowSyntaxHighlighting: () => void
   export let onToggleSyncSideBySideScroll: () => void
   export let onSetCheckForUpdatesOnLaunch: (value: boolean) => void
-  export let onSetUpdateChannel: (channel: UpdateChannel) => void
   export let onCheckForUpdates: () => void
   export let onDownloadUpdate: () => void
   export let onInstallUpdate: () => void
   export let onResetPreferences: () => void
   export let onClearRememberedSelections: () => void
   export let onResetEverything: () => void
+
+  let showResetEverythingDialog = false
+  let resetEverythingConfirmationValue = ''
+  let resetEverythingInput: HTMLInputElement | null = null
+
+  function getUpdateStatusTitle(status: UpdateIndicatorStatus) {
+    if (status === 'available') {
+      return 'Update available'
+    }
+
+    if (status === 'downloaded') {
+      return 'Ready to install'
+    }
+
+    if (status === 'upToDate') {
+      return 'Up to date'
+    }
+
+    if (status === 'failed') {
+      return 'Update issue'
+    }
+
+    if (status === 'unavailable') {
+      return 'Updates unavailable'
+    }
+
+    if (status === 'checking') {
+      return 'Checking for updates'
+    }
+
+    if (status === 'downloading') {
+      return 'Downloading update'
+    }
+
+    return 'Not checked yet'
+  }
+
+  function getUpdateStatusTone(status: UpdateIndicatorStatus) {
+    if (status === 'available' || status === 'downloaded') {
+      return 'accent'
+    }
+
+    if (status === 'failed' || status === 'unavailable') {
+      return 'danger'
+    }
+
+    return 'neutral'
+  }
+
+  function shouldShowUpdateDetail(status: UpdateIndicatorStatus) {
+    return status !== 'idle' && status !== 'upToDate'
+  }
+
+  function setIgnoreWhitespace(nextValue: boolean) {
+    if (ignoreWhitespace !== nextValue) {
+      onToggleIgnoreWhitespace()
+    }
+  }
+
+  function setIgnoreCase(nextValue: boolean) {
+    if (ignoreCase !== nextValue) {
+      onToggleIgnoreCase()
+    }
+  }
+
+  async function openResetEverythingDialog() {
+    resetEverythingConfirmationValue = ''
+    showResetEverythingDialog = true
+    await tick()
+    resetEverythingInput?.focus()
+  }
+
+  function closeResetEverythingDialog() {
+    showResetEverythingDialog = false
+    resetEverythingConfirmationValue = ''
+  }
+
+  function confirmResetEverything() {
+    if (resetEverythingConfirmationValue !== RESET_CONFIRMATION_PHRASE) {
+      return
+    }
+
+    closeResetEverythingDialog()
+    onResetEverything()
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (showResetEverythingDialog && event.key === 'Escape') {
+      closeResetEverythingDialog()
+    }
+  }
 </script>
+
+<svelte:window on:keydown={handleWindowKeydown} />
 
 <section class="settings-screen-body">
   <nav aria-label="Settings sections" class="settings-section-rail">
     <div class="settings-rail-inner">
+      <button class="secondary settings-back-link" type="button" on:click={onBack}>
+        <svg aria-hidden="true" class="settings-back-icon" viewBox="0 0 16 16">
+          <path
+            d="M9.8 3.2 5.4 8l4.4 4.8"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.6"
+          />
+        </svg>
+        <span>Back</span>
+      </button>
+
       <div class="settings-section-list">
         {#each sections as section}
           <button
@@ -86,25 +197,32 @@
             type="button"
             on:click={() => onSelectSection(section.id)}
           >
-            {section.label}
+            <span aria-hidden="true" class="settings-section-icon">
+              {#if section.id === 'appearance'}
+                <svg viewBox="0 0 16 16">
+                  <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  <path d="M8 2.8v10.4" fill="none" stroke="currentColor" stroke-width="1.3" />
+                </svg>
+              {:else if section.id === 'viewer'}
+                <svg viewBox="0 0 16 16">
+                  <rect x="2.5" y="3.2" width="11" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  <path d="M8 3.4v9.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                </svg>
+              {:else if section.id === 'updates'}
+                <svg viewBox="0 0 16 16">
+                  <path d="M11.6 5.4A4.6 4.6 0 1 0 12 8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+                  <path d="M10.3 3.3h2.8V6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3" />
+                </svg>
+              {:else}
+                <svg viewBox="0 0 16 16">
+                  <path d="M8 2.7v2.2M8 11.1v2.2M3.8 8h-2M14.2 8h-2M4.9 4.9 3.4 3.4M12.6 12.6l-1.5-1.5M11.1 4.9l1.5-1.5M4.9 11.1l-1.5 1.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2" />
+                  <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3" />
+                </svg>
+              {/if}
+            </span>
+            <span>{section.label}</span>
           </button>
         {/each}
-      </div>
-
-      <div class="settings-rail-footer">
-        <button class="secondary settings-back-link" type="button" on:click={onBack}>
-          <svg aria-hidden="true" class="settings-back-icon" viewBox="0 0 16 16">
-            <path
-              d="M9.8 3.2 5.4 8l4.4 4.8"
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.6"
-            />
-          </svg>
-          <span>Back</span>
-        </button>
       </div>
     </div>
   </nav>
@@ -114,338 +232,604 @@
       <header class="settings-panel-header">
         <div class="settings-panel-heading">
           <h1>Settings</h1>
-          <p>Configure Diffly defaults and maintenance options.</p>
+          <p>Changes apply instantly.</p>
         </div>
       </header>
 
       {#if activeSection === 'appearance'}
-        <section class="settings-card">
-          <div class="settings-card-header">
+        <section class="settings-page">
+          <div class="settings-page-heading">
             <h2>Appearance</h2>
-            <p>Visual preferences that apply across the app.</p>
+            <p>Choose how Diffly should look across the app.</p>
           </div>
 
-          <div class="settings-choice-list">
-            <button
-              class:active={themeMode === 'dark'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetThemeMode('dark')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Dark</strong>
-                <small>Use the dark theme.</small>
-              </span>
-              {#if themeMode === 'dark'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Color scheme</h3>
+              <p>Dark and light are fixed themes. System follows your OS setting.</p>
+            </div>
 
-            <button
-              class:active={themeMode === 'light'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetThemeMode('light')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Light</strong>
-                <small>Use the light theme.</small>
-              </span>
-              {#if themeMode === 'light'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
-          </div>
-        </section>
-      {/if}
+            <div class="settings-group-grid">
+              <div class="settings-row settings-row-span-full">
+                <div class="settings-row-copy">
+                  <strong>Theme</strong>
+                  <p>Pick the palette Diffly uses by default.</p>
+                </div>
 
-      {#if activeSection === 'general'}
-        <section class="settings-card">
-          <div class="settings-card-header">
-            <h2>General</h2>
-            <p>Workflow controls that stay outside the settings screen.</p>
-          </div>
+                <div class="settings-control settings-control-wide">
+                  <div class="settings-theme-grid settings-theme-grid-three">
+                    <button
+                      aria-pressed={themeMode === 'dark'}
+                      class:active={themeMode === 'dark'}
+                      class="settings-theme-tile"
+                      type="button"
+                      on:click={() => onSetThemeMode('dark')}
+                    >
+                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-dark">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </span>
+                      <span class="settings-theme-meta">
+                        <strong>Dark</strong>
+                        <small>Best for long diff sessions.</small>
+                      </span>
+                    </button>
 
-          <div class="settings-info-note">
-            <strong>Compare mode stays in the setup toolbar.</strong>
-            <p>
-              Use the existing `Files` and `Directories` switch on the setup page. Current mode:
-              {mode === 'directory' ? ' Directories' : ' Files'}.
-            </p>
-          </div>
+                    <button
+                      aria-pressed={themeMode === 'light'}
+                      class:active={themeMode === 'light'}
+                      class="settings-theme-tile"
+                      type="button"
+                      on:click={() => onSetThemeMode('light')}
+                    >
+                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-light">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </span>
+                      <span class="settings-theme-meta">
+                        <strong>Light</strong>
+                        <small>Higher contrast in bright rooms.</small>
+                      </span>
+                    </button>
+
+                    <button
+                      aria-pressed={themeMode === 'system'}
+                      class:active={themeMode === 'system'}
+                      class="settings-theme-tile"
+                      type="button"
+                      on:click={() => onSetThemeMode('system')}
+                    >
+                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-system">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </span>
+                      <span class="settings-theme-meta">
+                        <strong>System</strong>
+                        <small>Follow the OS setting.</small>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
         </section>
       {/if}
 
       {#if activeSection === 'viewer'}
-        <section class="settings-card">
-          <div class="settings-card-header">
+        <section class="settings-page">
+          <div class="settings-page-heading">
             <h2>Viewer</h2>
-            <p>Defaults for the diff presentation after compare starts.</p>
+            <p>Defaults for reading and navigating diffs.</p>
           </div>
 
-          <div class="settings-choice-list">
-            <button
-              class:active={viewMode === 'sideBySide'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetViewMode('sideBySide')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Split view</strong>
-                <small>Show left and right panes side by side.</small>
-              </span>
-              {#if viewMode === 'sideBySide'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
-
-            <button
-              class:active={viewMode === 'unified'}
-              class="settings-choice-row"
-              type="button"
-              on:click={() => onSetViewMode('unified')}
-            >
-              <span class="settings-choice-copy">
-                <strong>Unified view</strong>
-                <small>Show one merged diff view.</small>
-              </span>
-              {#if viewMode === 'unified'}
-                <span class="settings-choice-state">Active</span>
-              {/if}
-            </button>
-          </div>
-
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Ignore whitespace</strong>
-              <small>Treat whitespace-only changes as unchanged.</small>
-            </span>
-            <input checked={ignoreWhitespace} type="checkbox" on:change={onToggleIgnoreWhitespace} />
-          </label>
-
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Ignore case</strong>
-              <small>Treat case-only edits as unchanged.</small>
-            </span>
-            <input checked={ignoreCase} type="checkbox" on:change={onToggleIgnoreCase} />
-          </label>
-
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Full file</strong>
-              <small>Show the complete file instead of contextual hunks.</small>
-            </span>
-            <input checked={showFullFile} type="checkbox" on:change={onToggleShowFullFile} />
-          </label>
-
-          <label class="settings-select-row">
-            <span>
-              <strong>Context lines</strong>
-              <small>Lines shown around each change when full file is off.</small>
-            </span>
-            <select
-              disabled={showFullFile}
-              value={contextLines}
-              on:change={(event) => onSetContextLines((event.currentTarget as HTMLSelectElement).value)}
-            >
-              {#each contextLinePresets as preset}
-                <option value={preset}>{preset}</option>
-              {/each}
-            </select>
-          </label>
-
-          <div class="settings-stepper-row">
-            <span>
-              <strong>Text size</strong>
-              <small>Adjust the size of diff text.</small>
-            </span>
-            <div class="settings-stepper">
-              <button
-                class="secondary settings-stepper-button"
-                disabled={viewerTextSize <= minViewerTextSize}
-                type="button"
-                on:click={() => onStepViewerTextSize(-1)}
-              >
-                -
-              </button>
-              <span class="settings-stepper-value">{String(viewerTextSize)}</span>
-              <button
-                class="secondary settings-stepper-button"
-                disabled={viewerTextSize >= maxViewerTextSize}
-                type="button"
-                on:click={() => onStepViewerTextSize(1)}
-              >
-                +
-              </button>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Layout</h3>
+              <p>Choose the default diff arrangement.</p>
             </div>
-          </div>
 
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Wrap long lines</strong>
-              <small>Wrap lines instead of scrolling horizontally.</small>
-            </span>
-            <input checked={wrapSideBySideLines} type="checkbox" on:change={onToggleWrapSideBySideLines} />
-          </label>
+            <div class="settings-group-grid">
+              <div class="settings-row settings-row-span-full">
+                <div class="settings-row-copy">
+                  <strong>View mode</strong>
+                  <p>Use split or unified view when a compare opens.</p>
+                </div>
 
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Inline highlights</strong>
-              <small>Highlight changed fragments inside a line.</small>
-            </span>
-            <input checked={showInlineHighlights} type="checkbox" on:change={onToggleShowInlineHighlights} />
-          </label>
+                <div class="settings-control">
+                  <div class="settings-segmented-control" role="group" aria-label="Default diff view">
+                    <button
+                      aria-pressed={viewMode === 'sideBySide'}
+                      class:active={viewMode === 'sideBySide'}
+                      type="button"
+                      on:click={() => onSetViewMode('sideBySide')}
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 16 16">
+                        <rect x="2.6" y="3.2" width="11" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M8 3.4v9.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                      </svg>
+                      <span>Split</span>
+                    </button>
 
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Syntax highlighting</strong>
-              <small>Apply language coloring in the diff viewer.</small>
-            </span>
-            <input checked={showSyntaxHighlighting} type="checkbox" on:change={onToggleShowSyntaxHighlighting} />
-          </label>
+                    <button
+                      aria-pressed={viewMode === 'unified'}
+                      class:active={viewMode === 'unified'}
+                      type="button"
+                      on:click={() => onSetViewMode('unified')}
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 16 16">
+                        <rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M5 6h6M5 8h5.1M5 10h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+                      </svg>
+                      <span>Unified</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Sync scrolling</strong>
-              <small>Keep both panes aligned while scrolling.</small>
-            </span>
-            <input checked={syncSideBySideScroll} type="checkbox" on:change={onToggleSyncSideBySideScroll} />
-          </label>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Readability</h3>
+              <p>Control text density and line rendering.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Wrap long lines</strong>
+                  <p>Wrap side-by-side lines instead of horizontal scrolling.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={wrapSideBySideLines}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleWrapSideBySideLines}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Text size</strong>
+                  <p>Adjust the base size of diff text.</p>
+                </div>
+
+                <div class="settings-control">
+                  <div class="settings-stepper">
+                    <button
+                      class="secondary settings-stepper-button"
+                      disabled={viewerTextSize <= minViewerTextSize}
+                      type="button"
+                      on:click={() => onStepViewerTextSize(-1)}
+                    >
+                      -
+                    </button>
+                    <span class="settings-stepper-value">{viewerTextSize}</span>
+                    <button
+                      class="secondary settings-stepper-button"
+                      disabled={viewerTextSize >= maxViewerTextSize}
+                      type="button"
+                      on:click={() => onStepViewerTextSize(1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Syntax highlighting</strong>
+                  <p>Apply language colors inside the diff viewer.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={showSyntaxHighlighting}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleShowSyntaxHighlighting}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Inline highlights</strong>
+                  <p>Mark changed fragments inside each edited line.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={showInlineHighlights}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleShowInlineHighlights}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Comparison rules</h3>
+              <p>Choose what counts as a meaningful change.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Whitespace</strong>
+                  <p>Compare spacing exactly or ignore whitespace-only edits.</p>
+                </div>
+
+                <div class="settings-control">
+                  <div class="settings-segmented-control" role="group" aria-label="Whitespace handling">
+                    <button
+                      aria-pressed={!ignoreWhitespace}
+                      class:active={!ignoreWhitespace}
+                      type="button"
+                      on:click={() => setIgnoreWhitespace(false)}
+                    >
+                      Exact
+                    </button>
+
+                    <button
+                      aria-pressed={ignoreWhitespace}
+                      class:active={ignoreWhitespace}
+                      type="button"
+                      on:click={() => setIgnoreWhitespace(true)}
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Case sensitivity</strong>
+                  <p>Choose whether letter case should count as a change.</p>
+                </div>
+
+                <div class="settings-control">
+                  <div class="settings-segmented-control" role="group" aria-label="Case sensitivity">
+                    <button
+                      aria-pressed={!ignoreCase}
+                      class:active={!ignoreCase}
+                      type="button"
+                      on:click={() => setIgnoreCase(false)}
+                    >
+                      Sensitive
+                    </button>
+
+                    <button
+                      aria-pressed={ignoreCase}
+                      class:active={ignoreCase}
+                      type="button"
+                      on:click={() => setIgnoreCase(true)}
+                    >
+                      Insensitive
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Navigation</h3>
+              <p>Keep long files and split panes easier to follow.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Full file</strong>
+                  <p>Show the entire file instead of context-only hunks.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={showFullFile}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleShowFullFile}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+
+              <div class:settings-row-disabled={showFullFile} class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Context lines</strong>
+                  <p>Visible lines around each change. Only used when Full file is off.</p>
+                </div>
+
+                <div class="settings-control">
+                  <select
+                    disabled={showFullFile}
+                    value={contextLines}
+                    on:change={(event) =>
+                      onSetContextLines((event.currentTarget as HTMLSelectElement).value)}
+                  >
+                    {#each contextLinePresets as preset}
+                      <option value={preset}>{preset}</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Sync scrolling</strong>
+                  <p>Keep both panes aligned while you scroll.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={syncSideBySideScroll}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleSyncSideBySideScroll}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
         </section>
       {/if}
 
       {#if activeSection === 'updates'}
-        <section class="settings-card">
-          <div class="settings-card-header">
+        <section class="settings-page">
+          <div class="settings-page-heading">
             <h2>Updates</h2>
-            <p>Check for new Diffly builds and manage installation.</p>
+            <p>Current release status and automatic checks.</p>
           </div>
 
-          <div class="settings-info-grid">
-            <div class="settings-info-row">
-              <strong>Current version</strong>
-              <span>{currentVersion || 'Unavailable'}</span>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Status</h3>
+              <p>Version, channel, and the latest update check.</p>
             </div>
-            <div class="settings-info-row">
-              <strong>Release channel</strong>
-              <span>{updateChannel}</span>
+
+            <div class="settings-update-summary">
+              <div class="settings-summary-item">
+                <span>Version</span>
+                <strong>{currentVersion || 'Unavailable'}</strong>
+              </div>
+
+              <div class="settings-summary-item">
+                <span>Last checked</span>
+                <strong>{lastUpdateCheckLabel}</strong>
+                <small>{lastUpdateCheckRelativeLabel}</small>
+              </div>
+
+              <div class="settings-summary-item">
+                <span>Channel</span>
+                <strong>{updateChannelLabel}</strong>
+                <small>Stable builds only in this release.</small>
+              </div>
+
+              <div class="settings-summary-item">
+                <span>Status</span>
+                <strong>{getUpdateStatusTitle(updateIndicatorState)}</strong>
+                {#if availableUpdate}
+                  <small>Latest version {availableUpdate.version}</small>
+                {/if}
+              </div>
             </div>
-            <div class="settings-info-row">
-              <strong>Last checked</strong>
-              <span>{lastUpdateCheckLabel}</span>
-            </div>
-          </div>
 
-          <label class="settings-toggle-row">
-            <span>
-              <strong>Check for updates on startup</strong>
-              <small>Run a background check after app startup.</small>
-            </span>
-            <input
-              checked={checkForUpdatesOnLaunch}
-              type="checkbox"
-              on:change={(event) =>
-                onSetCheckForUpdatesOnLaunch((event.currentTarget as HTMLInputElement).checked)}
-            />
-          </label>
+            <div class="settings-update-actions">
+              <button
+                class="secondary"
+                disabled={updateBusy}
+                type="button"
+                on:click={onCheckForUpdates}
+              >
+                Check now
+              </button>
 
-          <label class="settings-select-row">
-            <span>
-              <strong>Release channel</strong>
-              <small>Only the stable channel is available in this version.</small>
-            </span>
-            <select
-              value={updateChannel}
-              on:change={(event) =>
-                onSetUpdateChannel((event.currentTarget as HTMLSelectElement).value as UpdateChannel)}
-            >
-              <option value="stable">Stable</option>
-            </select>
-          </label>
-
-          <div class="settings-update-status" data-status={updateIndicatorState}>
-            <strong>
               {#if updateIndicatorState === 'available'}
-                Update available
-              {:else if updateIndicatorState === 'downloaded'}
-                Update ready
-              {:else if updateIndicatorState === 'upToDate'}
-                Up to date
-              {:else if updateIndicatorState === 'failed'}
-                Update issue
-              {:else if updateIndicatorState === 'unavailable'}
-                Updates not configured
-              {:else}
-                Update status
+                <button class="primary" type="button" on:click={onDownloadUpdate}>
+                  Download update
+                </button>
               {/if}
-            </strong>
-            <p>{updateStatusMessage}</p>
-            {#if availableUpdate}
-              <span class="settings-update-meta">Latest version {availableUpdate.version}</span>
-            {/if}
-          </div>
 
-          <div class="settings-action-row">
-            <button class="secondary" disabled={updateBusy} type="button" on:click={onCheckForUpdates}>
-              Check for updates
-            </button>
+              {#if updateIndicatorState === 'downloaded'}
+                <button class="primary" type="button" on:click={onInstallUpdate}>
+                  Install and restart
+                </button>
+              {/if}
+            </div>
 
-            {#if updateIndicatorState === 'available'}
-              <button class="primary" type="button" on:click={onDownloadUpdate}>
-                Download update
-              </button>
+            {#if shouldShowUpdateDetail(updateIndicatorState)}
+              <div class="settings-update-status" data-tone={getUpdateStatusTone(updateIndicatorState)}>
+                <div class="settings-update-copy">
+                  <strong>{getUpdateStatusTitle(updateIndicatorState)}</strong>
+                  <p>{updateStatusMessage}</p>
+                </div>
+              </div>
             {/if}
+          </section>
 
-            {#if updateIndicatorState === 'downloaded'}
-              <button class="primary" type="button" on:click={onInstallUpdate}>
-                Install and restart
-              </button>
-            {/if}
-          </div>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Automatic checks</h3>
+              <p>Control whether Diffly checks for updates after launch.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <label class="settings-row settings-row-interactive settings-row-span-full">
+                <div class="settings-row-copy">
+                  <strong>Check for updates on startup</strong>
+                  <p>Run a background update check after launch.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={checkForUpdatesOnLaunch}
+                      role="switch"
+                      type="checkbox"
+                      on:change={(event) =>
+                        onSetCheckForUpdatesOnLaunch(
+                          (event.currentTarget as HTMLInputElement).checked,
+                        )}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
         </section>
       {/if}
 
       {#if activeSection === 'reset'}
-        <section class="settings-card settings-card-danger">
-          <div class="settings-card-header">
+        <section class="settings-page">
+          <div class="settings-page-heading">
             <h2>Reset</h2>
-            <p>Clear saved preferences or remembered compare selections.</p>
+            <p>Clear saved state when you need a clean slate.</p>
           </div>
 
-          <div class="settings-reset-list">
-            <div class="settings-reset-row">
-              <span>
-                <strong>Reset preferences</strong>
-                <small>Restore appearance, comparison, viewer, and update defaults.</small>
-              </span>
-              <button class="secondary" type="button" on:click={onResetPreferences}>
-                Reset preferences
-              </button>
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Local data</h3>
+              <p>Reset preferences or remove remembered compare targets.</p>
             </div>
 
-            <div class="settings-reset-row">
-              <span>
-                <strong>Clear remembered selections</strong>
-                <small>Remove stored pane selections and history.</small>
-              </span>
-              <button class="secondary" type="button" on:click={onClearRememberedSelections}>
-                Clear selections
-              </button>
+            <div class="settings-group-grid">
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Reset preferences</strong>
+                  <p>Restore appearance, viewer, and update settings to defaults.</p>
+                </div>
+
+                <div class="settings-control">
+                  <button class="secondary" type="button" on:click={onResetPreferences}>
+                    Reset preferences
+                  </button>
+                </div>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Clear remembered selections</strong>
+                  <p>Remove recent compare targets and stored file history.</p>
+                </div>
+
+                <div class="settings-control">
+                  <button class="secondary" type="button" on:click={onClearRememberedSelections}>
+                    Clear selections
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-group settings-group-danger">
+            <div class="settings-group-header">
+              <h3>Danger zone</h3>
+              <p>Use this only when you want Diffly back in a first-run state.</p>
             </div>
 
-            <div class="settings-reset-row">
-              <span>
-                <strong>Reset everything</strong>
-                <small>Return Diffly to a clean first-run state.</small>
-              </span>
-              <button class="primary" type="button" on:click={onResetEverything}>
-                Reset everything
-              </button>
+            <div class="settings-group-grid">
+              <div class="settings-row settings-row-span-full">
+                <div class="settings-row-copy">
+                  <strong>Reset everything</strong>
+                  <p>Clear all saved local app data and return Diffly to first-run state.</p>
+                </div>
+
+                <div class="settings-control">
+                  <button class="primary danger-button" type="button" on:click={openResetEverythingDialog}>
+                    Reset everything
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
         </section>
       {/if}
     </div>
   </div>
+
+  {#if showResetEverythingDialog}
+    <div class="settings-dialog-backdrop" role="presentation">
+      <button
+        aria-label="Close reset confirmation"
+        class="settings-dialog-scrim"
+        type="button"
+        on:click={closeResetEverythingDialog}
+      ></button>
+      <div
+        aria-describedby="reset-everything-description"
+        aria-labelledby="reset-everything-title"
+        aria-modal="true"
+        class="settings-dialog"
+        role="dialog"
+      >
+        <div class="settings-dialog-header">
+          <h2 id="reset-everything-title">Reset everything?</h2>
+          <p id="reset-everything-description">
+            This clears the saved local state for Diffly and returns the app to setup mode.
+          </p>
+        </div>
+
+        <ul class="settings-dialog-list">
+          <li>Restore appearance, viewer, and update settings to defaults.</li>
+          <li>Remove remembered compare targets and navigation history.</li>
+          <li>Return Diffly to a clean first-run state.</li>
+        </ul>
+
+        <label class="settings-dialog-field">
+          <span>Type {RESET_CONFIRMATION_PHRASE} to continue</span>
+          <input
+            bind:this={resetEverythingInput}
+            bind:value={resetEverythingConfirmationValue}
+            autocomplete="off"
+            spellcheck="false"
+            type="text"
+          />
+        </label>
+
+        <div class="settings-dialog-actions">
+          <button class="secondary" type="button" on:click={closeResetEverythingDialog}>
+            Cancel
+          </button>
+          <button
+            class="primary danger-button"
+            disabled={resetEverythingConfirmationValue !== RESET_CONFIRMATION_PHRASE}
+            type="button"
+            on:click={confirmResetEverything}
+          >
+            Reset everything
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </section>
