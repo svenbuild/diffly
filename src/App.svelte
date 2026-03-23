@@ -2036,63 +2036,71 @@
     {/if}
 
     <section class="setup-body">
-      <section class="setup-toolbar">
-        <div class="setup-selection-summary" aria-label="Selected targets">
-          <span class="setup-selection-label">Selected</span>
-          <strong class="setup-selection-chip" title={leftExplorer.selectedTargetPath || 'Left target not selected'}>
-            <span class="setup-selection-chip-side">Left</span>
-            <span class="setup-selection-chip-value">{leftSetupTargetLabel}</span>
-          </strong>
-          <span aria-hidden="true" class="setup-selection-divider"></span>
-          <strong class="setup-selection-chip" title={rightExplorer.selectedTargetPath || 'Right target not selected'}>
-            <span class="setup-selection-chip-side">Right</span>
-            <span class="setup-selection-chip-value">{rightSetupTargetLabel}</span>
-          </strong>
-        </div>
-
-        <div class="setup-mode-switch">
-          <span>Compare</span>
-          <div class="segmented-control" aria-label="Compare mode">
-            <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
-              Files
-            </button>
-            <button
-              class:active={mode === 'directory'}
-              type="button"
-              on:click={() => setMode('directory')}
+      <section class="setup-shell">
+        <section class="setup-toolbar">
+          <div class="setup-selection-summary" aria-label="Selected targets">
+            <span class="setup-selection-label">Selected</span>
+            <div
+              class="setup-selection-segment"
+              title={leftExplorer.selectedTargetPath || 'Left target not selected'}
             >
-              Directories
-            </button>
+              <strong class="setup-selection-side">Left</strong>
+              <span class="setup-selection-value">{leftSetupTargetLabel}</span>
+            </div>
+            <span aria-hidden="true" class="setup-selection-divider"></span>
+            <div
+              class="setup-selection-segment"
+              title={rightExplorer.selectedTargetPath || 'Right target not selected'}
+            >
+              <strong class="setup-selection-side">Right</strong>
+              <span class="setup-selection-value">{rightSetupTargetLabel}</span>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <section class="picker-workspace">
-        {#each pickerSides as item}
-          <PickerPane
-            side={item.side}
-            pane={item.pane}
-            {mode}
-            {pickerLoading}
-            {canGoBack}
-            {canGoForward}
-            {currentDrive}
-            {formatModified}
-            {formatSize}
-            {entryTypeLabel}
-            {changeDrive}
-            {navigateHistory}
-            {navigateTo}
-            {updatePathInput}
-            {submitPathInput}
-            {browseSystem}
-            setCurrentFolderAsTarget={useCurrentFolder}
-            {isCurrentFolderSelected}
-            {selectListEntry}
-            {activateListEntry}
-            {isTargetSelected}
-          />
-        {/each}
+          <div class="setup-mode-switch">
+            <span>Compare</span>
+            <div class="segmented-control" aria-label="Compare mode">
+              <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
+                Files
+              </button>
+              <button
+                class:active={mode === 'directory'}
+                type="button"
+                on:click={() => setMode('directory')}
+              >
+                Directories
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="picker-workspace">
+          {#each pickerSides as item}
+            <PickerPane
+              side={item.side}
+              pane={item.pane}
+              {mode}
+              {pickerLoading}
+              {canGoBack}
+              {canGoForward}
+              {currentDrive}
+              {formatModified}
+              {formatSize}
+              {entryTypeLabel}
+              {changeDrive}
+              {navigateHistory}
+              {navigateTo}
+              {updatePathInput}
+              {submitPathInput}
+              {browseSystem}
+              setCurrentFolderAsTarget={useCurrentFolder}
+              {isCurrentFolderSelected}
+              {selectListEntry}
+              {activateListEntry}
+              {isTargetSelected}
+            />
+          {/each}
+        </section>
       </section>
     </section>
   </main>
@@ -2388,36 +2396,36 @@
               {:else}
                 <svg class="refresh-icon" viewBox="0 0 16 16">
                   <path
-                    d="M13 5.8A5.2 5.2 0 0 0 3.6 4.2"
+                    d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.5"
+                    stroke-width="1.7"
                   />
                   <path
-                    d="m11.3 2.5 2 3.3-3.8.5"
+                    d="M10.1 10.9h2.7v2.6"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.5"
+                    stroke-width="1.7"
                   />
                   <path
-                    d="M3 10.2a5.2 5.2 0 0 0 9.4 1.6"
+                    d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.5"
+                    stroke-width="1.7"
                   />
                   <path
-                    d="m4.7 13.5-2-3.3 3.8-.5"
+                    d="M5.9 5.1H3.2V2.5"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.5"
+                    stroke-width="1.7"
                   />
                 </svg>
               {/if}
