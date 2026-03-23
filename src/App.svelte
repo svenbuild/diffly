@@ -1965,28 +1965,6 @@
           <span>Setup</span>
         </div>
 
-        <div class="segmented-control">
-          <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
-            Files
-          </button>
-          <button
-            class:active={mode === 'directory'}
-            type="button"
-            on:click={() => setMode('directory')}
-          >
-            Directories
-          </button>
-        </div>
-
-        <div class="setup-selection-summary">
-          <span>Selected:</span>
-          <strong title={leftExplorer.selectedTargetPath || 'Left target not selected'}>
-            L {leftSetupTargetLabel}
-          </strong>
-          <strong title={rightExplorer.selectedTargetPath || 'Right target not selected'}>
-            R {rightSetupTargetLabel}
-          </strong>
-        </div>
       </div>
 
       <div class="app-bar-actions">
@@ -2058,6 +2036,37 @@
     {/if}
 
     <section class="setup-body">
+      <section class="setup-toolbar">
+        <div class="setup-selection-summary" aria-label="Selected targets">
+          <span class="setup-selection-label">Selected</span>
+          <strong class="setup-selection-chip" title={leftExplorer.selectedTargetPath || 'Left target not selected'}>
+            <span class="setup-selection-chip-side">Left</span>
+            <span class="setup-selection-chip-value">{leftSetupTargetLabel}</span>
+          </strong>
+          <span aria-hidden="true" class="setup-selection-divider"></span>
+          <strong class="setup-selection-chip" title={rightExplorer.selectedTargetPath || 'Right target not selected'}>
+            <span class="setup-selection-chip-side">Right</span>
+            <span class="setup-selection-chip-value">{rightSetupTargetLabel}</span>
+          </strong>
+        </div>
+
+        <div class="setup-mode-switch">
+          <span>Compare</span>
+          <div class="segmented-control" aria-label="Compare mode">
+            <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
+              Files
+            </button>
+            <button
+              class:active={mode === 'directory'}
+              type="button"
+              on:click={() => setMode('directory')}
+            >
+              Directories
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section class="picker-workspace">
         {#each pickerSides as item}
           <PickerPane
