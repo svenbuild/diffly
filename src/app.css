@@ -416,10 +416,19 @@ h2 {
   min-width: 19ch;
 }
 
-.setup-bar-main {
-  flex: 1 1 auto;
-  justify-content: flex-start;
+.setup-app-bar {
+  display: grid;
+  grid-template-columns: 19ch minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
+}
+
+.setup-bar-center {
+  min-width: 0;
+}
+
+.setup-bar-actions {
+  justify-content: flex-end;
 }
 
 .app-identity h1 {
@@ -602,9 +611,9 @@ h2 {
 .setup-selection-summary {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   min-width: 0;
-  flex: 1 1 auto;
   flex-wrap: wrap;
 }
 
@@ -1958,6 +1967,14 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 @media (max-width: 1280px) {
+  .setup-app-bar {
+    grid-template-columns: 19ch minmax(0, 1fr);
+  }
+
+  .setup-bar-actions {
+    grid-column: 1 / -1;
+  }
+
   .setup-selection-summary {
     width: 100%;
   }
@@ -1991,6 +2008,11 @@ button.filter-chip.tooLarge:focus-visible {
   .compare-context {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .setup-app-bar {
+    display: flex;
+    gap: 8px;
   }
 
   .compare-action-group + .compare-action-group {
