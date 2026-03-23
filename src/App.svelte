@@ -404,6 +404,13 @@
     return `Open update settings. ${versionSuffix}`.trim()
   }
 
+  function shouldShowUpdateIndicator() {
+    return (
+      updateIndicatorState.status === 'available' ||
+      updateIndicatorState.status === 'downloaded'
+    )
+  }
+
   async function initializeUpdateVersion() {
     try {
       const version = await getAppVersion()
@@ -2285,25 +2292,22 @@
             <span>Setup</span>
           </div>
 
-          <button
-            aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class:error-state={updateIndicatorState.status === 'failed'}
-            class="secondary update-indicator"
-            title={updateIndicatorTitle()}
-            type="button"
-            on:click={openUpdateSettings}
-          >
-            {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-              <span class="refresh-spinner visible"></span>
-            {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              <span class="update-indicator-badge">Update</span>
-            {:else if updateIndicatorState.status === 'failed'}
-              <span class="update-indicator-badge">Issue</span>
-            {:else}
-              Updates
-            {/if}
-          </button>
+          {#if shouldShowUpdateIndicator()}
+            <button
+              aria-busy={updateIndicatorState.status === 'downloading'}
+              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+              class="secondary update-indicator"
+              title={updateIndicatorTitle()}
+              type="button"
+              on:click={openUpdateSettings}
+            >
+              {#if updateIndicatorState.status === 'downloading'}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <span class="update-indicator-badge">Update</span>
+              {/if}
+            </button>
+          {/if}
         </div>
       </div>
 
@@ -2423,25 +2427,22 @@
               <span>Compare</span>
             </div>
 
-            <button
-              aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              class:error-state={updateIndicatorState.status === 'failed'}
-              class="secondary update-indicator"
-              title={updateIndicatorTitle()}
-              type="button"
-              on:click={openUpdateSettings}
-            >
-              {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-                <span class="refresh-spinner visible"></span>
-              {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-                <span class="update-indicator-badge">Update</span>
-              {:else if updateIndicatorState.status === 'failed'}
-                <span class="update-indicator-badge">Issue</span>
-              {:else}
-                Updates
-              {/if}
-            </button>
+            {#if shouldShowUpdateIndicator()}
+              <button
+                aria-busy={updateIndicatorState.status === 'downloading'}
+                class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+                class="secondary update-indicator"
+                title={updateIndicatorTitle()}
+                type="button"
+                on:click={openUpdateSettings}
+              >
+                {#if updateIndicatorState.status === 'downloading'}
+                  <span class="refresh-spinner visible"></span>
+                {:else}
+                  <span class="update-indicator-badge">Update</span>
+                {/if}
+              </button>
+            {/if}
           </div>
         </div>
       </div>
@@ -2647,25 +2648,22 @@
             <span>Settings</span>
           </div>
 
-          <button
-            aria-busy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class:error-state={updateIndicatorState.status === 'failed'}
-            class="secondary update-indicator"
-            title={updateIndicatorTitle()}
-            type="button"
-            on:click={openUpdateSettings}
-          >
-            {#if updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-              <span class="refresh-spinner visible"></span>
-            {:else if updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              <span class="update-indicator-badge">Update</span>
-            {:else if updateIndicatorState.status === 'failed'}
-              <span class="update-indicator-badge">Issue</span>
-            {:else}
-              Updates
-            {/if}
-          </button>
+          {#if shouldShowUpdateIndicator()}
+            <button
+              aria-busy={updateIndicatorState.status === 'downloading'}
+              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+              class="secondary update-indicator"
+              title={updateIndicatorTitle()}
+              type="button"
+              on:click={openUpdateSettings}
+            >
+              {#if updateIndicatorState.status === 'downloading'}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <span class="update-indicator-badge">Update</span>
+              {/if}
+            </button>
+          {/if}
         </div>
       </div>
     </header>
