@@ -1299,15 +1299,16 @@ h2 {
   font-family: var(--preview-code-font);
 }
 
-.settings-appearance-preview-pane span {
-  color: var(--preview-ink);
+.settings-appearance-preview-line-number {
+  color: var(--preview-line-number);
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
 }
 
-.settings-appearance-preview-pane code {
+.settings-appearance-preview-code {
   min-width: 0;
   overflow: hidden;
+  display: block;
   color: var(--preview-ink);
   font-family: var(--preview-code-font);
   font-size: 0.8rem;
@@ -1437,6 +1438,18 @@ h2 {
 .settings-color-control span:last-child {
   min-width: 74px;
   text-align: right;
+}
+
+.settings-color-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--settings-color-value-bg);
+  color: var(--settings-color-value-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-color-value-text) 16%, transparent);
 }
 
 .settings-theme-text-input {
