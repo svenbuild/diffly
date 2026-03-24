@@ -238,8 +238,8 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-  height: 100dvh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 100%;
   background: var(--canvas);
   font-family: var(--ui-font);
   font-size: var(--ui-font-size);
@@ -328,8 +328,8 @@ select:focus-visible {
 }
 
 #app {
-  height: 100dvh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 100%;
   overflow: hidden;
 }
 
