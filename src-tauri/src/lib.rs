@@ -48,6 +48,22 @@ fn default_update_channel() -> String {
     "stable".to_string()
 }
 
+fn default_appearance_mode() -> String {
+    "system".to_string()
+}
+
+fn default_theme_id() -> String {
+    "codex".to_string()
+}
+
+fn default_ui_font_size() -> u8 {
+    12
+}
+
+fn default_code_font_size() -> u8 {
+    11
+}
+
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompareOptions {
@@ -65,12 +81,46 @@ struct PersistedExplorerPane {
     selected_target_kind: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedThemeOverrides {
+    accent: Option<String>,
+    surface: Option<String>,
+    ink: Option<String>,
+    contrast: Option<u8>,
+    ui_font: Option<String>,
+    code_font: Option<String>,
+    opaque_windows: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedAppearanceSettings {
+    #[serde(default = "default_appearance_mode")]
+    mode: String,
+    #[serde(default = "default_theme_id")]
+    light_theme_id: String,
+    #[serde(default = "default_theme_id")]
+    dark_theme_id: String,
+    #[serde(default)]
+    light_overrides: PersistedThemeOverrides,
+    #[serde(default)]
+    dark_overrides: PersistedThemeOverrides,
+    #[serde(default = "default_true")]
+    use_pointer_cursor: bool,
+    #[serde(default = "default_ui_font_size")]
+    ui_font_size: u8,
+    #[serde(default = "default_code_font_size")]
+    code_font_size: u8,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PersistedSession {
     mode: String,
     view_mode: String,
     theme_mode: Option<String>,
+    appearance: Option<PersistedAppearanceSettings>,
     #[serde(default)]
     ignore_whitespace: bool,
     #[serde(default)]

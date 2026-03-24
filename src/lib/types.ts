@@ -1,6 +1,8 @@
+import type { AppearanceMode, AppearanceSettings } from './theme'
+
 export type CompareMode = 'file' | 'directory'
 export type ViewMode = 'sideBySide' | 'unified'
-export type ThemeMode = 'dark' | 'light' | 'system'
+export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
 export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'tooLarge'
 export type ContentKind = 'text' | 'binary' | 'tooLarge'
@@ -21,6 +23,7 @@ export interface PersistedSession {
   mode: CompareMode
   viewMode: ViewMode
   themeMode?: ThemeMode
+  appearance?: AppearanceSettings
   ignoreWhitespace: boolean
   ignoreCase: boolean
   showFullFile: boolean

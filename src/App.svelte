@@ -51,6 +51,27 @@
     UpdateMetadata,
     ViewMode,
   } from './lib/types'
+  import {
+    getAvailableThemes,
+    getDefaultAppearanceSettings,
+    resolveVariant,
+    type AppearanceSettings,
+    type ThemeDefinition,
+    type ThemeId,
+    type ThemeVariant,
+  } from './lib/theme'
+  import {
+    createThemeExport,
+    normalizeAppearanceSettings,
+    resolveThemeCssVariables,
+    resolveThemeForVariant,
+    setVariantOverride,
+    setVariantThemeId,
+    MAX_CODE_FONT_SIZE,
+    MAX_UI_FONT_SIZE,
+    MIN_CODE_FONT_SIZE,
+    MIN_UI_FONT_SIZE,
+  } from './lib/theme/runtime'
   import type {
     DiffHeaderContext,
     DiffHunkRange,
@@ -70,11 +91,8 @@
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
-  const DEFAULT_VIEWER_TEXT_SIZE = 10
-  const MIN_VIEWER_TEXT_SIZE = 8
-  const MAX_VIEWER_TEXT_SIZE = 24
-  const DEFAULT_THEME_MODE: ThemeMode = 'system'
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
+  const THEME_COPY_FEEDBACK_DURATION_MS = 1400
 
   type Screen = 'setup' | 'compare' | 'settings'
   type UpdateStatus =
@@ -107,23 +125,31 @@
     message: string
   }
 
+  export let initialSession: PersistedSession | null = null
+
   let screen: Screen = 'setup'
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
   let viewMode: ViewMode = 'sideBySide'
-  let themeMode: ThemeMode = DEFAULT_THEME_MODE
+  let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
+    initialSession?.appearance,
+    initialSession?.themeMode,
+    initialSession?.viewerTextSize
+  )
   let systemPrefersDark =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
-  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
+  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = resolveVariant(
+    appearanceSettings.mode,
+    systemPrefersDark
+  )
   let showFullFile = false
   let showInlineHighlights = true
   let wrapSideBySideLines = false
   let showSyntaxHighlighting = true
   let syncSideBySideScroll = true
-  let viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
   let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
@@ -166,6 +192,7 @@
   let compareRefreshTimer: number | null = null
   let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
+  let copyThemeTimer: number | null = null
   let activeDetailRequestId = 0
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
@@ -200,9 +227,10 @@
   }
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
-  let diffFontSize = `${DEFAULT_VIEWER_TEXT_SIZE}px`
-  let diffRowLineHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 3}px`
-  let diffRowHeight = `${DEFAULT_VIEWER_TEXT_SIZE + 8}px`
+  let diffFontSize = `${appearanceSettings.codeFontSize}px`
+  let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
+  let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
+  let copiedThemeVariant: ThemeVariant | null = null
   let updateIndicatorState: UpdateIndicatorState = {
     status: 'idle',
     currentVersion: '',
@@ -219,6 +247,11 @@
     tooLarge: 'Too large',
   }
   const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'binary', 'tooLarge']
+  const availableLightThemes = getAvailableThemes('light')
+  const availableDarkThemes = getAvailableThemes('dark')
+  let lightAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'light')
+  let darkAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'dark')
+  let visibleAppearanceVariants: ThemeVariant[] = [appearanceSettings.mode === 'dark' ? 'dark' : 'light']
 
   const getOptions = () => ({
     ignoreWhitespace,
@@ -295,6 +328,10 @@
         window.clearTimeout(themeTransitionTimer)
       }
 
+      if (copyThemeTimer !== null) {
+        window.clearTimeout(copyThemeTimer)
+      }
+
       if (scrollEchoResetFrame !== null) {
         window.cancelAnimationFrame(scrollEchoResetFrame)
       }
@@ -329,11 +366,30 @@
     }
   }
 
-  function stepViewerTextSize(direction: -1 | 1) {
-    viewerTextSize = Math.min(
-      MAX_VIEWER_TEXT_SIZE,
-      Math.max(MIN_VIEWER_TEXT_SIZE, viewerTextSize + direction),
-    )
+  function clampAppearanceSize(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, Math.round(value)))
+  }
+
+  function setUiFontSize(value: number) {
+    appearanceSettings = {
+      ...appearanceSettings,
+      uiFontSize: clampAppearanceSize(value, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE),
+    }
+  }
+
+  function stepUiFontSize(direction: -1 | 1) {
+    setUiFontSize(appearanceSettings.uiFontSize + direction)
+  }
+
+  function setCodeFontSize(value: number) {
+    appearanceSettings = {
+      ...appearanceSettings,
+      codeFontSize: clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE),
+    }
+  }
+
+  function stepCodeFontSize(direction: -1 | 1) {
+    setCodeFontSize(appearanceSettings.codeFontSize + direction)
   }
 
   function setViewMode(nextViewMode: ViewMode) {
@@ -360,8 +416,148 @@
     checkForUpdatesOnLaunch = nextValue
   }
 
-  function isThemeMode(value: string): value is ThemeMode {
-    return value === 'dark' || value === 'light' || value === 'system'
+  function setUsePointerCursor(nextValue: boolean) {
+    appearanceSettings = {
+      ...appearanceSettings,
+      usePointerCursor: nextValue,
+    }
+  }
+
+  function normalizeHexColor(value: string) {
+    return `#${value.trim().replace(/^#/, '').toUpperCase()}`
+  }
+
+  function setThemeMode(nextThemeMode: ThemeMode) {
+    if (appearanceSettings.mode === nextThemeMode) {
+      return
+    }
+
+    if (typeof document === 'undefined') {
+      appearanceSettings = {
+        ...appearanceSettings,
+        mode: nextThemeMode,
+      }
+      return
+    }
+
+    const root = document.documentElement
+    root.classList.add('theme-switching')
+
+    if (typeof document.startViewTransition === 'function') {
+      void document
+        .startViewTransition(() => {
+          appearanceSettings = {
+            ...appearanceSettings,
+            mode: nextThemeMode,
+          }
+        })
+        .finished.finally(() => {
+          scheduleThemeTransitionCleanup(root)
+        })
+
+      return
+    }
+
+    appearanceSettings = {
+      ...appearanceSettings,
+      mode: nextThemeMode,
+    }
+    scheduleThemeTransitionCleanup(root)
+  }
+
+  function setThemePreset(variant: ThemeVariant, themeId: string) {
+    if (
+      (variant === 'light' && availableLightThemes.some((theme) => theme.id === themeId)) ||
+      (variant === 'dark' && availableDarkThemes.some((theme) => theme.id === themeId))
+    ) {
+      appearanceSettings = setVariantThemeId(appearanceSettings, variant, themeId as ThemeId)
+    }
+  }
+
+  function setThemeColorOverride(
+    variant: ThemeVariant,
+    field: 'accent' | 'surface' | 'ink',
+    value: string
+  ) {
+    const nextColor = normalizeHexColor(value)
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      if (nextColor === base[field].toUpperCase()) {
+        delete next[field]
+      } else {
+        next[field] = nextColor
+      }
+
+      return next
+    })
+  }
+
+  function setThemeFontOverride(
+    variant: ThemeVariant,
+    field: 'ui' | 'code',
+    value: string
+  ) {
+    const nextValue = value.trim() ? value.trim() : null
+    const overrideKey = field === 'ui' ? 'uiFont' : 'codeFont'
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      const baseValue = field === 'ui' ? base.fonts.ui : base.fonts.code
+
+      if (nextValue === baseValue) {
+        delete next[overrideKey]
+      } else {
+        next[overrideKey] = nextValue
+      }
+
+      return next
+    })
+  }
+
+  function setThemeContrast(variant: ThemeVariant, value: number) {
+    const nextContrast = Math.min(100, Math.max(0, Math.round(value)))
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      if (nextContrast === base.contrast) {
+        delete next.contrast
+      } else {
+        next.contrast = nextContrast
+      }
+
+      return next
+    })
+  }
+
+  function setThemeTranslucency(variant: ThemeVariant, enabled: boolean) {
+    const nextOpaqueWindows = !enabled
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      if (nextOpaqueWindows === base.opaqueWindows) {
+        delete next.opaqueWindows
+      } else {
+        next.opaqueWindows = nextOpaqueWindows
+      }
+
+      return next
+    })
+  }
+
+  async function copyTheme(variant: ThemeVariant) {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      return
+    }
+
+    const theme = resolveThemeForVariant(appearanceSettings, variant)
+    await navigator.clipboard.writeText(createThemeExport(theme))
+    copiedThemeVariant = variant
+
+    if (copyThemeTimer !== null) {
+      window.clearTimeout(copyThemeTimer)
+    }
+
+    copyThemeTimer = window.setTimeout(() => {
+      copiedThemeVariant = null
+      copyThemeTimer = null
+    }, THEME_COPY_FEEDBACK_DURATION_MS)
   }
 
   function parseUpdateTimestamp(value: string) {
@@ -874,35 +1070,6 @@
     }, DIFF_PREFETCH_DELAY_MS)
   }
 
-  function setThemeMode(nextThemeMode: ThemeMode) {
-    if (themeMode === nextThemeMode) {
-      return
-    }
-
-    if (typeof document === 'undefined') {
-      themeMode = nextThemeMode
-      return
-    }
-
-    const root = document.documentElement
-    root.classList.add('theme-switching')
-
-    if (typeof document.startViewTransition === 'function') {
-      void document
-        .startViewTransition(() => {
-          themeMode = nextThemeMode
-        })
-        .finished.finally(() => {
-          scheduleThemeTransitionCleanup(root)
-        })
-
-      return
-    }
-
-    themeMode = nextThemeMode
-    scheduleThemeTransitionCleanup(root)
-  }
-
   function createExplorerPane(title: string): ExplorerPaneState {
     return {
       title,
@@ -940,9 +1107,13 @@
     pickerLoading = true
 
     try {
+      const savedSessionPromise =
+        initialSession === null
+          ? loadSessionState().catch(() => null)
+          : Promise.resolve(initialSession)
       const [roots, savedSession] = await Promise.all([
         listRoots(),
-        loadSessionState().catch(() => null),
+        savedSessionPromise,
       ])
 
       applyPersistedSession(savedSession)
@@ -995,9 +1166,11 @@
       viewMode = session.viewMode
     }
 
-    if (session.themeMode && isThemeMode(session.themeMode)) {
-      themeMode = session.themeMode
-    }
+    appearanceSettings = normalizeAppearanceSettings(
+      session.appearance,
+      session.themeMode,
+      session.viewerTextSize
+    )
 
     ignoreWhitespace = session.ignoreWhitespace
     ignoreCase = session.ignoreCase
@@ -1009,14 +1182,6 @@
     checkForUpdatesOnLaunch = session.checkForUpdatesOnLaunch ?? true
     updateChannel = session.updateChannel ?? DEFAULT_UPDATE_CHANNEL
     lastUpdateCheckAt = session.lastUpdateCheckAt ?? ''
-    const restoredViewerTextSize =
-      typeof session.viewerTextSize === 'number'
-        ? session.viewerTextSize
-        : DEFAULT_VIEWER_TEXT_SIZE
-    viewerTextSize = Math.min(
-      MAX_VIEWER_TEXT_SIZE,
-      Math.max(MIN_VIEWER_TEXT_SIZE, restoredViewerTextSize),
-    )
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -1126,7 +1291,7 @@
   function resetPreferenceState() {
     mode = 'directory'
     viewMode = 'sideBySide'
-    themeMode = DEFAULT_THEME_MODE
+    appearanceSettings = getDefaultAppearanceSettings()
     ignoreWhitespace = false
     ignoreCase = false
     showFullFile = false
@@ -1134,7 +1299,6 @@
     wrapSideBySideLines = false
     showSyntaxHighlighting = true
     syncSideBySideScroll = true
-    viewerTextSize = DEFAULT_VIEWER_TEXT_SIZE
     contextLines = DEFAULT_CONTEXT_LINES
     checkForUpdatesOnLaunch = true
     updateChannel = DEFAULT_UPDATE_CHANNEL
@@ -2113,7 +2277,8 @@
     return {
       mode,
       viewMode,
-      themeMode,
+      themeMode: appearanceSettings.mode,
+      appearance: appearanceSettings,
       ignoreWhitespace,
       ignoreCase,
       showFullFile,
@@ -2121,7 +2286,7 @@
       wrapSideBySideLines,
       showSyntaxHighlighting,
       syncSideBySideScroll,
-      viewerTextSize,
+      viewerTextSize: appearanceSettings.codeFontSize,
       contextLines,
       checkForUpdatesOnLaunch,
       updateChannel,
@@ -2259,10 +2424,14 @@
   $: canGoToNextDiff =
     canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
 
-  $: diffFontSize = `${viewerTextSize}px`
-  $: diffRowLineHeight = `${viewerTextSize + 3}px`
-  $: diffRowHeight = `${viewerTextSize + 8}px`
-  $: resolvedThemeMode = themeMode === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themeMode
+  $: diffFontSize = `${appearanceSettings.codeFontSize}px`
+  $: diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
+  $: diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
+  $: resolvedThemeMode = resolveVariant(appearanceSettings.mode, systemPrefersDark)
+  $: lightAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'light')
+  $: darkAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'dark')
+  $: visibleAppearanceVariants =
+    appearanceSettings.mode === 'system' ? ['light', 'dark'] : [appearanceSettings.mode]
 
   $: if (screen === 'compare') {
     activeDiff
@@ -2277,13 +2446,21 @@
   }
 
   $: if (typeof document !== 'undefined') {
-    document.documentElement.dataset.theme = resolvedThemeMode
+    const root = document.documentElement
+    root.dataset.theme = resolvedThemeMode
+    root.style.colorScheme = resolvedThemeMode
+
+    for (const [name, value] of Object.entries(
+      resolveThemeCssVariables(appearanceSettings, systemPrefersDark),
+    )) {
+      root.style.setProperty(name, value)
+    }
   }
 
   $: if (persistenceReady) {
     mode
     viewMode
-    themeMode
+    appearanceSettings
     ignoreWhitespace
     ignoreCase
     showFullFile
@@ -2291,7 +2468,6 @@
     wrapSideBySideLines
     showSyntaxHighlighting
     syncSideBySideScroll
-    viewerTextSize
     contextLines
     checkForUpdatesOnLaunch
     updateChannel
@@ -2761,16 +2937,23 @@
 
     <SettingsScreen
       activeSection={activeSettingsSection}
-      {themeMode}
+      {appearanceSettings}
+      lightTheme={lightAppearanceTheme}
+      darkTheme={darkAppearanceTheme}
+      visibleThemeVariants={visibleAppearanceVariants}
+      availableLightThemes={availableLightThemes}
+      availableDarkThemes={availableDarkThemes}
+      {copiedThemeVariant}
       {ignoreWhitespace}
       {ignoreCase}
       {viewMode}
       {showFullFile}
       {contextLines}
       {contextLinePresets}
-      {viewerTextSize}
-      minViewerTextSize={MIN_VIEWER_TEXT_SIZE}
-      maxViewerTextSize={MAX_VIEWER_TEXT_SIZE}
+      minUiFontSize={MIN_UI_FONT_SIZE}
+      maxUiFontSize={MAX_UI_FONT_SIZE}
+      minCodeFontSize={MIN_CODE_FONT_SIZE}
+      maxCodeFontSize={MAX_CODE_FONT_SIZE}
       {wrapSideBySideLines}
       {showInlineHighlights}
       {showSyntaxHighlighting}
@@ -2787,12 +2970,20 @@
       onBack={goBackFromSettings}
       onSelectSection={(section) => (activeSettingsSection = section)}
       onSetThemeMode={setThemeMode}
+      onSetThemePreset={setThemePreset}
+      onSetThemeColor={setThemeColorOverride}
+      onSetThemeFont={setThemeFontOverride}
+      onSetThemeTranslucency={setThemeTranslucency}
+      onSetThemeContrast={setThemeContrast}
+      onSetUsePointerCursor={setUsePointerCursor}
+      onStepUiFontSize={stepUiFontSize}
+      onStepCodeFontSize={stepCodeFontSize}
+      onCopyTheme={copyTheme}
       onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
       onToggleIgnoreCase={toggleIgnoreCase}
       onSetViewMode={setViewMode}
       onToggleShowFullFile={() => setShowFullFile(!showFullFile)}
       onSetContextLines={applyContextLines}
-      onStepViewerTextSize={stepViewerTextSize}
       onToggleWrapSideBySideLines={() => setWrapSideBySideLines(!wrapSideBySideLines)}
       onToggleShowInlineHighlights={() => setShowInlineHighlights(!showInlineHighlights)}
       onToggleShowSyntaxHighlighting={() => setShowSyntaxHighlighting(!showSyntaxHighlighting)}

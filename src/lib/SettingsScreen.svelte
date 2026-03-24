@@ -1,11 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import type {
-    ContextLinesSetting,
-    ThemeMode,
-    UpdateMetadata,
-    ViewMode,
-  } from './types'
+  import type { ContextLinesSetting, ThemeMode, UpdateMetadata, ViewMode } from './types'
+  import type { AppearanceSettings, ThemeDefinition, ThemeVariant } from './theme'
   import type { SettingsSection } from './ui-types'
 
   type UpdateIndicatorStatus =
@@ -33,16 +29,23 @@
   ]
 
   export let activeSection: SettingsSection
-  export let themeMode: ThemeMode
+  export let appearanceSettings: AppearanceSettings
+  export let lightTheme: ThemeDefinition
+  export let darkTheme: ThemeDefinition
+  export let visibleThemeVariants: ThemeVariant[]
+  export let availableLightThemes: ThemeDefinition[]
+  export let availableDarkThemes: ThemeDefinition[]
+  export let copiedThemeVariant: ThemeVariant | null
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let viewMode: ViewMode
   export let showFullFile: boolean
   export let contextLines: ContextLinesSetting
   export let contextLinePresets: ContextLinesSetting[]
-  export let viewerTextSize: number
-  export let minViewerTextSize: number
-  export let maxViewerTextSize: number
+  export let minUiFontSize: number
+  export let maxUiFontSize: number
+  export let minCodeFontSize: number
+  export let maxCodeFontSize: number
   export let wrapSideBySideLines: boolean
   export let showInlineHighlights: boolean
   export let showSyntaxHighlighting: boolean
@@ -59,12 +62,24 @@
   export let onBack: () => void
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (theme: ThemeMode) => void
+  export let onSetThemePreset: (variant: ThemeVariant, themeId: string) => void
+  export let onSetThemeColor: (
+    variant: ThemeVariant,
+    field: 'accent' | 'surface' | 'ink',
+    value: string
+  ) => void
+  export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
+  export let onSetThemeTranslucency: (variant: ThemeVariant, enabled: boolean) => void
+  export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
+  export let onSetUsePointerCursor: (value: boolean) => void
+  export let onStepUiFontSize: (direction: -1 | 1) => void
+  export let onStepCodeFontSize: (direction: -1 | 1) => void
+  export let onCopyTheme: (variant: ThemeVariant) => void
   export let onToggleIgnoreWhitespace: () => void
   export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onToggleShowFullFile: () => void
   export let onSetContextLines: (value: string) => void
-  export let onStepViewerTextSize: (direction: -1 | 1) => void
   export let onToggleWrapSideBySideLines: () => void
   export let onToggleShowInlineHighlights: () => void
   export let onToggleShowSyntaxHighlighting: () => void
@@ -80,6 +95,46 @@
   let showResetEverythingDialog = false
   let resetEverythingConfirmationValue = ''
   let resetEverythingInput: HTMLInputElement | null = null
+
+  function formatThemeLabel(value: string) {
+    return value
+      .split('-')
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ')
+  }
+
+  function getThemeForVariant(variant: ThemeVariant) {
+    return variant === 'light' ? lightTheme : darkTheme
+  }
+
+  function getThemesForVariant(variant: ThemeVariant) {
+    return variant === 'light' ? availableLightThemes : availableDarkThemes
+  }
+
+  function getThemeTitle(variant: ThemeVariant) {
+    return variant === 'light' ? 'Light theme' : 'Dark theme'
+  }
+
+  function getPreviewTitle(variant: ThemeVariant) {
+    return variant === 'light' ? 'Light preview' : 'Dark preview'
+  }
+
+  function getFontValue(theme: ThemeDefinition, field: 'ui' | 'code') {
+    const value = field === 'ui' ? theme.fonts.ui : theme.fonts.code
+    return value ?? ''
+  }
+
+  function getPreviewStyle(theme: ThemeDefinition) {
+    return [
+      `--preview-surface: ${theme.surface}`,
+      `--preview-ink: ${theme.ink}`,
+      `--preview-accent: ${theme.accent}`,
+      `--preview-added: ${theme.semanticColors.diffAdded}`,
+      `--preview-removed: ${theme.semanticColors.diffRemoved}`,
+      `--preview-ui-font: ${theme.fonts.ui ?? 'var(--ui-font)'}`,
+      `--preview-code-font: ${theme.fonts.code ?? 'var(--code)'}`,
+    ].join('; ')
+  }
 
   function getUpdateStatusTitle(status: UpdateIndicatorStatus) {
     if (status === 'available') {
@@ -247,76 +302,318 @@
             <p>Choose how Diffly should look across the app.</p>
           </div>
 
-          <section class="settings-group">
+          <section class="settings-group settings-appearance-group">
             <div class="settings-group-header">
               <h3>Color scheme</h3>
-              <p>Dark and light are fixed themes. System follows your OS setting.</p>
+              <p>Presets control the full theme. The fields below override only what the UI exposes.</p>
             </div>
 
-            <div class="settings-group-grid">
-              <div class="settings-row settings-row-span-full">
-                <div class="settings-row-copy">
-                  <strong>Theme</strong>
-                  <p>Pick the palette Diffly uses by default.</p>
+            <div class="settings-appearance-shell">
+              <div class="settings-appearance-mode-bar">
+                <span>Theme</span>
+                <div class="settings-theme-mode-control" role="group" aria-label="Theme mode">
+                  <button
+                    aria-pressed={appearanceSettings.mode === 'light'}
+                    class:active={appearanceSettings.mode === 'light'}
+                    type="button"
+                    on:click={() => onSetThemeMode('light')}
+                  >
+                    <span>Light</span>
+                  </button>
+                  <button
+                    aria-pressed={appearanceSettings.mode === 'dark'}
+                    class:active={appearanceSettings.mode === 'dark'}
+                    type="button"
+                    on:click={() => onSetThemeMode('dark')}
+                  >
+                    <span>Dark</span>
+                  </button>
+                  <button
+                    aria-pressed={appearanceSettings.mode === 'system'}
+                    class:active={appearanceSettings.mode === 'system'}
+                    type="button"
+                    on:click={() => onSetThemeMode('system')}
+                  >
+                    <span>System</span>
+                  </button>
                 </div>
+              </div>
 
-                <div class="settings-control settings-control-wide">
-                  <div class="settings-theme-grid settings-theme-grid-three">
-                    <button
-                      aria-pressed={themeMode === 'dark'}
-                      class:active={themeMode === 'dark'}
-                      class="settings-theme-tile"
-                      type="button"
-                      on:click={() => onSetThemeMode('dark')}
-                    >
-                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-dark">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-                      <span class="settings-theme-meta">
-                        <strong>Dark</strong>
-                        <small>Best for long diff sessions.</small>
-                      </span>
-                    </button>
+              <div class="settings-appearance-preview-grid" data-count={visibleThemeVariants.length}>
+                {#each visibleThemeVariants as variant}
+                  {@const theme = getThemeForVariant(variant)}
+                  <div class="settings-appearance-preview-card" style={getPreviewStyle(theme)}>
+                    <div class="settings-appearance-preview-header">
+                      <strong>{getPreviewTitle(variant)}</strong>
+                      <span>{formatThemeLabel(theme.id)}</span>
+                    </div>
 
-                    <button
-                      aria-pressed={themeMode === 'light'}
-                      class:active={themeMode === 'light'}
-                      class="settings-theme-tile"
-                      type="button"
-                      on:click={() => onSetThemeMode('light')}
-                    >
-                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-light">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-                      <span class="settings-theme-meta">
-                        <strong>Light</strong>
-                        <small>Higher contrast in bright rooms.</small>
-                      </span>
-                    </button>
+                    <div class="settings-appearance-preview-diff">
+                      <div class="settings-appearance-preview-pane settings-appearance-preview-pane-removed">
+                        <span>1</span>
+                        <code>const themePreview = {'{'}</code>
+                        <span>2</span>
+                        <code>surface: "sidebar",</code>
+                        <span>3</span>
+                        <code>accent: "{theme.accent}",</code>
+                        <span>4</span>
+                        <code>contrast: {theme.contrast},</code>
+                        <span>5</span>
+                        <code>{'}'};</code>
+                      </div>
 
-                    <button
-                      aria-pressed={themeMode === 'system'}
-                      class:active={themeMode === 'system'}
-                      class="settings-theme-tile"
-                      type="button"
-                      on:click={() => onSetThemeMode('system')}
-                    >
-                      <span aria-hidden="true" class="settings-theme-preview settings-theme-preview-system">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-                      <span class="settings-theme-meta">
-                        <strong>System</strong>
-                        <small>Follow the OS setting.</small>
-                      </span>
-                    </button>
+                      <div class="settings-appearance-preview-pane settings-appearance-preview-pane-added">
+                        <span>1</span>
+                        <code>const themePreview = {'{'}</code>
+                        <span>2</span>
+                        <code>surface: "sidebar-elevated",</code>
+                        <span>3</span>
+                        <code>accent: "{theme.semanticColors.skill}",</code>
+                        <span>4</span>
+                        <code>contrast: {theme.contrast + 8},</code>
+                        <span>5</span>
+                        <code>{'}'};</code>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                {/each}
+              </div>
+
+              <div class="settings-theme-editor-stack">
+                {#each visibleThemeVariants as variant}
+                  {@const theme = getThemeForVariant(variant)}
+                  <section class="settings-theme-editor">
+                    <header class="settings-theme-editor-header">
+                      <div class="settings-theme-editor-title">
+                        <strong>{getThemeTitle(variant)}</strong>
+                        <span>Hidden semantic colors stay preset-driven.</span>
+                      </div>
+
+                      <div class="settings-theme-editor-actions">
+                        <button class="secondary" type="button" on:click={() => onCopyTheme(variant)}>
+                          {copiedThemeVariant === variant ? 'Copied' : 'Copy theme'}
+                        </button>
+
+                        <label class="settings-theme-select">
+                          <select
+                            aria-label={`${getThemeTitle(variant)} preset`}
+                            value={variant === 'light' ? appearanceSettings.lightThemeId : appearanceSettings.darkThemeId}
+                            on:change={(event) =>
+                              onSetThemePreset(
+                                variant,
+                                (event.currentTarget as HTMLSelectElement).value,
+                              )}
+                          >
+                            {#each getThemesForVariant(variant) as preset}
+                              <option value={preset.id}>{formatThemeLabel(preset.id)}</option>
+                            {/each}
+                          </select>
+                        </label>
+                      </div>
+                    </header>
+
+                    <div class="settings-theme-editor-grid">
+                      <div class="settings-theme-editor-row">
+                        <span>Accent</span>
+                        <label class="settings-color-control">
+                          <input
+                            aria-label={`${getThemeTitle(variant)} accent`}
+                            type="color"
+                            value={theme.accent}
+                            on:input={(event) =>
+                              onSetThemeColor(
+                                variant,
+                                'accent',
+                                (event.currentTarget as HTMLInputElement).value,
+                              )}
+                          />
+                          <span>{theme.accent.toUpperCase()}</span>
+                        </label>
+                      </div>
+
+                      <div class="settings-theme-editor-row">
+                        <span>Background</span>
+                        <label class="settings-color-control">
+                          <input
+                            aria-label={`${getThemeTitle(variant)} background`}
+                            type="color"
+                            value={theme.surface}
+                            on:input={(event) =>
+                              onSetThemeColor(
+                                variant,
+                                'surface',
+                                (event.currentTarget as HTMLInputElement).value,
+                              )}
+                          />
+                          <span>{theme.surface.toUpperCase()}</span>
+                        </label>
+                      </div>
+
+                      <div class="settings-theme-editor-row">
+                        <span>Foreground</span>
+                        <label class="settings-color-control">
+                          <input
+                            aria-label={`${getThemeTitle(variant)} foreground`}
+                            type="color"
+                            value={theme.ink}
+                            on:input={(event) =>
+                              onSetThemeColor(
+                                variant,
+                                'ink',
+                                (event.currentTarget as HTMLInputElement).value,
+                              )}
+                          />
+                          <span>{theme.ink.toUpperCase()}</span>
+                        </label>
+                      </div>
+
+                      <div class="settings-theme-editor-row">
+                        <span>UI font</span>
+                        <input
+                          aria-label={`${getThemeTitle(variant)} UI font`}
+                          class="settings-theme-text-input"
+                          placeholder="Default app font"
+                          type="text"
+                          value={getFontValue(theme, 'ui')}
+                          on:change={(event) =>
+                            onSetThemeFont(
+                              variant,
+                              'ui',
+                              (event.currentTarget as HTMLInputElement).value,
+                            )}
+                        />
+                      </div>
+
+                      <div class="settings-theme-editor-row">
+                        <span>Code font</span>
+                        <input
+                          aria-label={`${getThemeTitle(variant)} code font`}
+                          class="settings-theme-text-input"
+                          placeholder="Default monospace stack"
+                          type="text"
+                          value={getFontValue(theme, 'code')}
+                          on:change={(event) =>
+                            onSetThemeFont(
+                              variant,
+                              'code',
+                              (event.currentTarget as HTMLInputElement).value,
+                            )}
+                        />
+                      </div>
+
+                      <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
+                        <span>Translucent sidebar</span>
+                        <span class="settings-switch">
+                          <input
+                            checked={!theme.opaqueWindows}
+                            role="switch"
+                            type="checkbox"
+                            on:change={(event) =>
+                              onSetThemeTranslucency(
+                                variant,
+                                (event.currentTarget as HTMLInputElement).checked,
+                              )}
+                          />
+                          <span aria-hidden="true" class="settings-switch-ui"></span>
+                        </span>
+                      </label>
+
+                      <div class="settings-theme-editor-row settings-theme-editor-row-slider">
+                        <span>Contrast</span>
+                        <div class="settings-theme-slider">
+                          <input
+                            aria-label={`${getThemeTitle(variant)} contrast`}
+                            max="100"
+                            min="0"
+                            type="range"
+                            value={theme.contrast}
+                            on:input={(event) =>
+                              onSetThemeContrast(
+                                variant,
+                                Number((event.currentTarget as HTMLInputElement).value),
+                              )}
+                          />
+                          <span>{theme.contrast}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                {/each}
+
+                <section class="settings-theme-editor settings-theme-editor-global">
+                  <header class="settings-theme-editor-header">
+                    <div class="settings-theme-editor-title">
+                      <strong>Global appearance</strong>
+                      <span>These settings apply across both light and dark variants.</span>
+                    </div>
+                  </header>
+
+                  <div class="settings-theme-editor-grid">
+                    <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
+                      <span>Use pointer cursors</span>
+                      <span class="settings-switch">
+                        <input
+                          checked={appearanceSettings.usePointerCursor}
+                          role="switch"
+                          type="checkbox"
+                          on:change={(event) =>
+                            onSetUsePointerCursor(
+                              (event.currentTarget as HTMLInputElement).checked,
+                            )}
+                        />
+                        <span aria-hidden="true" class="settings-switch-ui"></span>
+                      </span>
+                    </label>
+
+                    <div class="settings-theme-editor-row">
+                      <span>UI font size</span>
+                      <div class="settings-stepper">
+                        <button
+                          class="secondary settings-stepper-button"
+                          disabled={appearanceSettings.uiFontSize <= minUiFontSize}
+                          type="button"
+                          on:click={() => onStepUiFontSize(-1)}
+                        >
+                          -
+                        </button>
+                        <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
+                        <button
+                          class="secondary settings-stepper-button"
+                          disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
+                          type="button"
+                          on:click={() => onStepUiFontSize(1)}
+                        >
+                          +
+                        </button>
+                        <small class="settings-stepper-unit">px</small>
+                      </div>
+                    </div>
+
+                    <div class="settings-theme-editor-row">
+                      <span>Code font size</span>
+                      <div class="settings-stepper">
+                        <button
+                          class="secondary settings-stepper-button"
+                          disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
+                          type="button"
+                          on:click={() => onStepCodeFontSize(-1)}
+                        >
+                          -
+                        </button>
+                        <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
+                        <button
+                          class="secondary settings-stepper-button"
+                          disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
+                          type="button"
+                          on:click={() => onStepCodeFontSize(1)}
+                        >
+                          +
+                        </button>
+                        <small class="settings-stepper-unit">px</small>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           </section>
@@ -401,35 +698,6 @@
                   </span>
                 </span>
               </label>
-
-              <div class="settings-row">
-                <div class="settings-row-copy">
-                  <strong>Text size</strong>
-                  <p>Adjust the base size of diff text.</p>
-                </div>
-
-                <div class="settings-control">
-                  <div class="settings-stepper">
-                    <button
-                      class="secondary settings-stepper-button"
-                      disabled={viewerTextSize <= minViewerTextSize}
-                      type="button"
-                      on:click={() => onStepViewerTextSize(-1)}
-                    >
-                      -
-                    </button>
-                    <span class="settings-stepper-value">{viewerTextSize}</span>
-                    <button
-                      class="secondary settings-stepper-button"
-                      disabled={viewerTextSize >= maxViewerTextSize}
-                      type="button"
-                      on:click={() => onStepViewerTextSize(1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               <label class="settings-row settings-row-interactive">
                 <div class="settings-row-copy">
