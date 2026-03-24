@@ -42,6 +42,6 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: Diffly ${{ github.event.inputs.tag || github.ref_name }}
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-') }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true

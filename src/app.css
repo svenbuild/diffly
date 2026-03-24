@@ -354,7 +354,7 @@ h2 {
   grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 100%;
-  background: var(--canvas);
+  background: var(--pane-bg);
   overflow: hidden;
 }
 
@@ -675,9 +675,12 @@ h2 {
 }
 
 .setup-body,
-.compare-context,
+.compare-context {
+  padding: 6px 8px 0;
+}
+
 .compare-layout {
-  padding: 6px 8px 8px;
+  padding: 0;
 }
 
 .setup-body {
@@ -698,7 +701,7 @@ h2 {
   min-height: 0;
   height: 100%;
   align-self: stretch;
-  padding: 20px 24px 24px;
+  padding: 20px 24px 0;
   overflow: hidden;
   background: var(--pane-bg);
 }
