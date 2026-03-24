@@ -2520,67 +2520,81 @@
 
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
-          <button
-            class="secondary nav-button"
-            aria-label="Jump to the previous difference"
-            disabled={!canGoToPreviousDiff}
-            title="Jump to the previous difference"
-            type="button"
-            on:click={goToPreviousDifference}
-          >
-            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
-              <path
-                d="M9.8 3.2 5.4 8l4.4 4.8"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.7"
-              />
-            </svg>
-            <span>Prev</span>
-          </button>
-          <button
-            class="secondary nav-button"
-            aria-label="Jump to the next difference"
-            disabled={!canGoToNextDiff}
-            title="Jump to the next difference"
-            type="button"
-            on:click={goToNextDifference}
-          >
-            <span>Next</span>
-            <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
-              <path
-                d="M6.2 3.2 10.6 8l-4.4 4.8"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.7"
-              />
-            </svg>
-          </button>
+          <div class="segmented-control toolbar-segmented-control" aria-label="Diff navigation">
+            <button
+              class="secondary nav-button"
+              aria-label="Jump to the previous difference"
+              disabled={!canGoToPreviousDiff}
+              title="Jump to the previous difference"
+              type="button"
+              on:click={goToPreviousDifference}
+            >
+              <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+                <path
+                  d="M9.8 3.2 5.4 8l4.4 4.8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                />
+              </svg>
+              <span>Prev</span>
+            </button>
+            <button
+              class="secondary nav-button"
+              aria-label="Jump to the next difference"
+              disabled={!canGoToNextDiff}
+              title="Jump to the next difference"
+              type="button"
+              on:click={goToNextDifference}
+            >
+              <span>Next</span>
+              <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
+                <path
+                  d="M6.2 3.2 10.6 8l-4.4 4.8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="compare-action-group display-actions">
-          <button
-            class="secondary view-mode-button"
-            type="button"
-            on:click={toggleViewMode}
-          >
-            <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
-              {#if viewMode === 'sideBySide'}
-                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
-              {:else}
+          <div class="segmented-control toolbar-segmented-control" aria-label="Diff view mode">
+            <button
+              class:active={viewMode === 'sideBySide'}
+              class="secondary view-mode-button"
+              aria-pressed={viewMode === 'sideBySide'}
+              title="Split view"
+              type="button"
+              on:click={() => setViewMode('sideBySide')}
+            >
+              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
                 <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-              {/if}
-            </svg>
-            <span class="view-mode-button-label">
-              {viewMode === 'sideBySide' ? 'Unified view' : 'Split view'}
-            </span>
-          </button>
+              </svg>
+              <span class="view-mode-button-label">Split</span>
+            </button>
+            <button
+              class:active={viewMode === 'unified'}
+              class="secondary view-mode-button"
+              aria-pressed={viewMode === 'unified'}
+              title="Unified view"
+              type="button"
+              on:click={() => setViewMode('unified')}
+            >
+              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
+                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+              </svg>
+              <span class="view-mode-button-label">Unified</span>
+            </button>
+          </div>
           <button class="secondary" type="button" on:click={() => openSettings('viewer')}>
             Settings
           </button>
@@ -2653,7 +2667,9 @@
               {/if}
             </span>
           </button>
-          <button class="primary" type="button" on:click={goToSetup}>Setup</button>
+          <button class="secondary toolbar-setup-button" type="button" on:click={goToSetup}>
+            Setup
+          </button>
         </div>
       </div>
     </header>

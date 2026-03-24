@@ -174,20 +174,6 @@
 <section class="settings-screen-body">
   <nav aria-label="Settings sections" class="settings-section-rail">
     <div class="settings-rail-inner">
-      <button class="secondary settings-back-link" type="button" on:click={onBack}>
-        <svg aria-hidden="true" class="settings-back-icon" viewBox="0 0 16 16">
-          <path
-            d="M9.8 3.2 5.4 8l4.4 4.8"
-            fill="none"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.6"
-          />
-        </svg>
-        <span>Back</span>
-      </button>
-
       <div class="settings-section-list">
         {#each sections as section}
           <button
@@ -234,6 +220,24 @@
           <h1>Settings</h1>
           <p>Changes apply instantly.</p>
         </div>
+
+        <button
+          aria-label="Close settings"
+          class="secondary settings-close-button"
+          title="Close settings"
+          type="button"
+          on:click={onBack}
+        >
+          <svg aria-hidden="true" class="settings-close-icon" viewBox="0 0 16 16">
+            <path
+              d="M4 4l8 8M12 4 4 12"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-width="1.6"
+            />
+          </svg>
+        </button>
       </header>
 
       {#if activeSection === 'appearance'}
@@ -620,6 +624,7 @@
               <div class="settings-summary-item">
                 <span>Version</span>
                 <strong>{currentVersion || 'Unavailable'}</strong>
+                <small>{getUpdateStatusTitle(updateIndicatorState)}</small>
               </div>
 
               <div class="settings-summary-item">
@@ -635,12 +640,24 @@
               </div>
 
               <div class="settings-summary-item">
-                <span>Status</span>
-                <strong>{getUpdateStatusTitle(updateIndicatorState)}</strong>
-                {#if availableUpdate}
-                  <small>Latest version {availableUpdate.version}</small>
-                {/if}
+                <span>Auto-check</span>
+                <strong>{checkForUpdatesOnLaunch ? 'Enabled' : 'Disabled'}</strong>
+                <small>{checkForUpdatesOnLaunch ? 'Checks after launch.' : 'Manual checks only.'}</small>
               </div>
+
+              {#if availableUpdate}
+                <div class="settings-summary-item">
+                  <span>Latest version</span>
+                  <strong>{availableUpdate.version}</strong>
+                  <small>Ready to download from this screen.</small>
+                </div>
+              {:else}
+                <div class="settings-summary-item">
+                  <span>Release notes</span>
+                  <strong>Not published</strong>
+                  <small>Release notes link will appear with a published update.</small>
+                </div>
+              {/if}
             </div>
 
             <div class="settings-update-actions">

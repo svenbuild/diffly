@@ -23,6 +23,25 @@
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
   export let getFileName: (path: string) => string
   export let formatSize: (size: number | null) => string
+
+  let fileFilter = ''
+  let hideCollapsedFoldersWithoutMatches = true
+
+  $: normalizedFileFilter = fileFilter.trim().toLowerCase()
+  $: filteredFolderSections = visibleFolderSections
+    .map((group) => {
+      const entries = normalizedFileFilter
+        ? group.entries.filter((entry) =>
+            entry.relativePath.toLowerCase().includes(normalizedFileFilter),
+          )
+        : group.entries
+
+      return {
+        ...group,
+        entries,
+      }
+    })
+    .filter((group) => !hideCollapsedFoldersWithoutMatches || group.entries.length > 0)
 </script>
 
 <aside class:refreshing={loading} class="file-browser">
@@ -53,17 +72,35 @@
         {/each}
       </div>
     {/if}
+
+    <div class="browser-tools">
+      <label class="browser-filter-field">
+        <span class="sr-only">Filter files</span>
+        <input
+          bind:value={fileFilter}
+          autocomplete="off"
+          placeholder="Filter files"
+          spellcheck="false"
+          type="text"
+        />
+      </label>
+
+      <label class="browser-toggle">
+        <input bind:checked={hideCollapsedFoldersWithoutMatches} type="checkbox" />
+        <span>Hide empty folders</span>
+      </label>
+    </div>
   </header>
 
-  {#if visibleFolderSections.length === 0}
+  {#if filteredFolderSections.length === 0}
     <div class="empty-state">
-      {activeStatusFilters.length > 0
+      {(activeStatusFilters.length > 0 || normalizedFileFilter)
         ? 'No files match the selected filters.'
         : 'No differing files found.'}
     </div>
   {:else}
     <div class="browser-list">
-      {#each visibleFolderSections as group}
+      {#each filteredFolderSections as group}
         <section class="file-group">
           <button
             class="group-toggle"
@@ -90,11 +127,12 @@
                   on:click={() => selectEntry(entry)}
                 >
                   <span class="file-row-top">
+                    <span class={`file-status-marker ${entry.status}`}></span>
                     <EntryIcon kind="file" />
                     <span class="entry-text">{getFileName(entry.relativePath)}</span>
                   </span>
                   <span class="file-row-bottom">
-                    <span class={`status-chip ${entry.status}`}>{statusLabel[entry.status]}</span>
+                    <span class="file-status-label">{statusLabel[entry.status]}</span>
                     <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
                   </span>
                 </button>
