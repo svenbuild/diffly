@@ -692,7 +692,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     codeThemeId: 'solarized',
     accent: '#d30102',
     surface: '#002b36',
-    ink: '#839496',
+    ink: '#93a1a1',
     contrast: 60,
     opaqueWindows: true,
     fonts: {
@@ -711,7 +711,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     codeThemeId: 'solarized',
     accent: '#b58900',
     surface: '#fdf6e3',
-    ink: '#657b83',
+    ink: '#53676d',
     contrast: 45,
     opaqueWindows: false,
     fonts: {

@@ -115,25 +115,127 @@ export function createThemeCssVariables(
   const accentAlt = mixHex(theme.semanticColors.skill, theme.accent, 0.26)
   const accentAltSoft = mixHex(theme.surface, theme.semanticColors.skill, isDark ? 0.16 : 0.1)
   const accentOlive = mixHex(theme.accent, theme.semanticColors.diffAdded, 0.42)
-  const primaryText = pickReadableText(theme.accent)
   const warning = mixHex(theme.accent, theme.semanticColors.diffRemoved, 0.42)
+  const panelAlpha = isDark ? 0.78 : 0.88
+  const elevatedAlpha = isDark ? 0.84 : 0.92
+  const paneHeaderAlpha = isDark ? 0.76 : 0.88
   const panelBg = theme.opaqueWindows
     ? tokens.panelSurface
-    : rgbaFromHex(tokens.panelSurface, isDark ? 0.78 : 0.88)
+    : rgbaFromHex(tokens.panelSurface, panelAlpha)
   const elevatedBg = theme.opaqueWindows
     ? tokens.elevatedSurface
-    : rgbaFromHex(tokens.elevatedSurface, isDark ? 0.84 : 0.92)
+    : rgbaFromHex(tokens.elevatedSurface, elevatedAlpha)
   const listBg = theme.opaqueWindows
     ? theme.surface
     : rgbaFromHex(theme.surface, isDark ? 0.72 : 0.9)
   const paneHeaderBg = theme.opaqueWindows
     ? surfaceStrong
-    : rgbaFromHex(surfaceStrong, isDark ? 0.76 : 0.88)
+    : rgbaFromHex(surfaceStrong, paneHeaderAlpha)
+  const panelBgResolved = theme.opaqueWindows
+    ? tokens.panelSurface
+    : compositeHex(tokens.panelSurface, canvas, panelAlpha)
+  const diffContextBgResolved = theme.opaqueWindows
+    ? tokens.panelSurface
+    : compositeHex(tokens.panelSurface, canvasAlt, panelAlpha)
+  const cardBgResolved = theme.opaqueWindows
+    ? tokens.elevatedSurface
+    : compositeHex(tokens.elevatedSurface, theme.surface, elevatedAlpha)
+  const listHeaderBgResolved = theme.opaqueWindows
+    ? surfaceStrong
+    : compositeHex(surfaceStrong, panelBgResolved, paneHeaderAlpha)
   const diffInsertBg = mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.24 : 0.18)
   const diffDeleteBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.24 : 0.18)
+  const successBg = mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.14 : 0.11)
+  const dangerBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.14 : 0.11)
+  const warningBg = mixHex(theme.surface, warning, isDark ? 0.15 : 0.1)
+  const dangerStrongBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.2 : 0.14)
+  const statusModifiedBg = mixHex(theme.surface, theme.accent, isDark ? 0.18 : 0.11)
   const collapsedBg = mixHex(canvasAlt, theme.ink, isDark ? 0.1 : 0.04)
+  const collapsedChipBgResolved = theme.opaqueWindows
+    ? tokens.elevatedSurface
+    : compositeHex(tokens.elevatedSurface, collapsedBg, elevatedAlpha)
   const scrollbarThumb = mixHex(theme.surface, theme.ink, isDark ? 0.28 : 0.18)
   const scrollbarThumbHover = mixHex(theme.surface, theme.ink, isDark ? 0.38 : 0.28)
+  const readableText = ensureReadableForeground(
+    theme.ink,
+    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
+    isDark ? '#FFFFFF' : '#111111',
+    4.5
+  )
+  const baseMutedText = tokens.mutedText
+  const mutedText = ensureReadableForeground(
+    baseMutedText,
+    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
+    readableText,
+    4.55
+  )
+  const secondaryText = ensureReadableForeground(
+    mixHex(theme.ink, theme.surface, isDark ? 0.08 : 0.14),
+    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
+    readableText,
+    4.55
+  )
+  const activeText = pickReadableText(accentSoft, readableText, 4.5)
+  const primaryText = pickReadableText(theme.accent, readableText, 4.5)
+  const primaryHoverText = pickReadableText(accentStrong, readableText, 4.5)
+  const dangerText = pickReadableText(dangerBg, readableText, 4.5)
+  const dangerStrongText = pickReadableText(dangerStrongBg, readableText, 4.5)
+  const statusModifiedText = pickReadableText(statusModifiedBg, readableText, 4.5)
+  const statusSuccessText = pickReadableText(successBg, readableText, 4.5)
+  const statusDangerText = pickReadableText(dangerBg, readableText, 4.5)
+  const diffInsertText = pickReadableText(diffInsertBg, readableText, 4.5)
+  const diffDeleteText = pickReadableText(diffDeleteBg, readableText, 4.5)
+  const collapsedChipText = ensureReadableForeground(
+    mutedText,
+    collapsedChipBgResolved,
+    secondaryText,
+    4.5
+  )
+  const syntaxBackgrounds = [diffContextBgResolved, diffInsertBg, diffDeleteBg]
+  const syntaxKeyword = ensureReadableForeground(
+    theme.semanticColors.skill,
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxType = ensureReadableForeground(accentStrong, syntaxBackgrounds, theme.ink, 3)
+  const syntaxString = ensureReadableForeground(
+    theme.semanticColors.diffAdded,
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxNumber = ensureReadableForeground(warning, syntaxBackgrounds, theme.ink, 3)
+  const syntaxFunction = ensureReadableForeground(
+    mixHex(theme.accent, theme.semanticColors.skill, 0.38),
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxProperty = ensureReadableForeground(
+    mixHex(theme.accent, theme.ink, isDark ? 0.16 : 0.24),
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxConstant = ensureReadableForeground(
+    theme.semanticColors.diffRemoved,
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxSelector = ensureReadableForeground(
+    mixHex(theme.accent, theme.semanticColors.diffAdded, 0.26),
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
+  const syntaxRegex = ensureReadableForeground(
+    mixHex(theme.semanticColors.diffAdded, theme.accent, 0.22),
+    syntaxBackgrounds,
+    theme.ink,
+    3
+  )
 
   return {
     '--ui-font': tokens.uiFont,
@@ -153,8 +255,8 @@ export function createThemeCssVariables(
     '--border': border,
     '--border-strong': borderStrong,
     '--toolbar-divider': border,
-    '--text': theme.ink,
-    '--muted': tokens.mutedText,
+    '--text': readableText,
+    '--muted': mutedText,
     '--accent': theme.accent,
     '--accent-strong': accentStrong,
     '--accent-soft': accentSoft,
@@ -162,29 +264,30 @@ export function createThemeCssVariables(
     '--accent-alt-soft': accentAltSoft,
     '--accent-olive': accentOlive,
     '--success': theme.semanticColors.diffAdded,
-    '--success-bg': mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.14 : 0.11),
+    '--success-bg': successBg,
     '--danger': theme.semanticColors.diffRemoved,
-    '--danger-bg': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.14 : 0.11),
+    '--danger-bg': dangerBg,
     '--warning': warning,
-    '--warning-bg': mixHex(theme.surface, warning, isDark ? 0.15 : 0.1),
+    '--warning-bg': warningBg,
     '--neutral-bg': surfaceAlt,
     '--canvas-glow-primary': rgbaFromHex(theme.accent, isDark ? 0.07 : 0.045),
     '--canvas-glow-secondary': rgbaFromHex(theme.semanticColors.skill, isDark ? 0.05 : 0.035),
     '--app-bar-bg': panelBg,
     '--app-bar-shadow-strong': rgbaFromHex(isDark ? '#000000' : '#111111', isDark ? 0.22 : 0.08),
     '--app-bar-shadow-soft': rgbaFromHex('#ffffff', isDark ? 0.02 : 0.55),
-    '--title': theme.ink,
-    '--subtitle': tokens.mutedText,
-    '--strong-text': theme.ink,
-    '--secondary-text': mixHex(theme.ink, theme.surface, isDark ? 0.08 : 0.14),
-    '--active-text': theme.ink,
+    '--title': readableText,
+    '--subtitle': mutedText,
+    '--strong-text': readableText,
+    '--secondary-text': secondaryText,
+    '--active-text': activeText,
     '--primary-text': primaryText,
-    '--danger-text': pickReadableText(theme.semanticColors.diffRemoved),
+    '--primary-hover-text': primaryHoverText,
+    '--danger-text': dangerText,
     '--danger-border': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.34 : 0.24),
-    '--danger-strong-bg': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.2 : 0.14),
-    '--danger-strong-text': pickReadableText(mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.2 : 0.14), theme.ink),
-    '--panel-title': theme.ink,
-    '--panel-meta': tokens.mutedText,
+    '--danger-strong-bg': dangerStrongBg,
+    '--danger-strong-text': dangerStrongText,
+    '--panel-title': readableText,
+    '--panel-meta': mutedText,
     '--sidebar-panel-bg': panelBg,
     '--pane-bg': panelBg,
     '--card-bg': elevatedBg,
@@ -193,13 +296,13 @@ export function createThemeCssVariables(
     '--list-header-bg': paneHeaderBg,
     '--selection-bg': rgbaFromHex(theme.accent, isDark ? 0.14 : 0.1),
     '--icon-color': mixHex(theme.ink, theme.accent, 0.32),
-    '--status-modified-bg': mixHex(theme.surface, theme.accent, isDark ? 0.18 : 0.11),
+    '--status-modified-bg': statusModifiedBg,
     '--status-modified-border': mixHex(theme.surface, theme.accent, isDark ? 0.3 : 0.2),
-    '--status-modified-text': pickReadableText(mixHex(theme.surface, theme.accent, isDark ? 0.18 : 0.11), theme.ink),
+    '--status-modified-text': statusModifiedText,
     '--status-success-border': mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.32 : 0.2),
-    '--status-success-text': pickReadableText(mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.18 : 0.11), theme.ink),
+    '--status-success-text': statusSuccessText,
     '--status-danger-border': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.32 : 0.2),
-    '--status-danger-text': pickReadableText(mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.18 : 0.11), theme.ink),
+    '--status-danger-text': statusDangerText,
     '--pane-header-bg': paneHeaderBg,
     '--pane-header-shadow': rgbaFromHex(theme.ink, isDark ? 0.03 : 0.05),
     '--pane-inner-shadow': rgbaFromHex(theme.ink, isDark ? 0.02 : 0.04),
@@ -207,33 +310,33 @@ export function createThemeCssVariables(
     '--diff-divider': rgbaFromHex(theme.ink, isDark ? 0.12 : 0.12),
     '--diff-context-bg': panelBg,
     '--diff-insert-bg': diffInsertBg,
-    '--diff-insert-text': pickReadableText(diffInsertBg, theme.ink),
+    '--diff-insert-text': diffInsertText,
     '--diff-delete-bg': diffDeleteBg,
-    '--diff-delete-text': pickReadableText(diffDeleteBg, theme.ink),
+    '--diff-delete-text': diffDeleteText,
     '--diff-gap-bg': canvasAlt,
     '--diff-gap-stripe': rgbaFromHex(theme.ink, isDark ? 0.04 : 0.03),
     '--collapsed-row-bg': collapsedBg,
     '--collapsed-row-line': rgbaFromHex(theme.ink, isDark ? 0.26 : 0.22),
     '--collapsed-chip-bg': elevatedBg,
     '--collapsed-chip-border': border,
-    '--collapsed-chip-text': tokens.mutedText,
+    '--collapsed-chip-text': collapsedChipText,
     '--scroll-marker-insert': theme.semanticColors.diffAdded,
     '--scroll-marker-delete': theme.semanticColors.diffRemoved,
     '--scroll-marker-mixed': theme.accent,
-    '--syntax-comment': tokens.mutedText,
-    '--syntax-keyword': theme.semanticColors.skill,
-    '--syntax-type': accentStrong,
-    '--syntax-string': theme.semanticColors.diffAdded,
-    '--syntax-number': warning,
-    '--syntax-function': mixHex(theme.accent, theme.semanticColors.skill, 0.38),
-    '--syntax-property': mixHex(theme.accent, theme.ink, isDark ? 0.16 : 0.24),
-    '--syntax-constant': theme.semanticColors.diffRemoved,
-    '--syntax-selector': mixHex(theme.accent, theme.semanticColors.diffAdded, 0.26),
-    '--syntax-macro': theme.semanticColors.diffRemoved,
-    '--syntax-tag': theme.semanticColors.diffAdded,
-    '--syntax-regex': mixHex(theme.semanticColors.diffAdded, theme.accent, 0.22),
-    '--syntax-operator': theme.ink,
-    '--syntax-punctuation': tokens.mutedText,
+    '--syntax-comment': ensureReadableForeground(mutedText, syntaxBackgrounds, theme.ink, 3),
+    '--syntax-keyword': syntaxKeyword,
+    '--syntax-type': syntaxType,
+    '--syntax-string': syntaxString,
+    '--syntax-number': syntaxNumber,
+    '--syntax-function': syntaxFunction,
+    '--syntax-property': syntaxProperty,
+    '--syntax-constant': syntaxConstant,
+    '--syntax-selector': syntaxSelector,
+    '--syntax-macro': syntaxConstant,
+    '--syntax-tag': syntaxString,
+    '--syntax-regex': syntaxRegex,
+    '--syntax-operator': readableText,
+    '--syntax-punctuation': ensureReadableForeground(mutedText, syntaxBackgrounds, theme.ink, 3),
     '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.45 : 0.28),
     '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.4 : 0.24),
     '--line-divider': rgbaFromHex(theme.ink, isDark ? 0.1 : 0.12),
@@ -372,15 +475,92 @@ function rgbaFromHex(value: string, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamp(alpha, 0, 1).toFixed(3)})`
 }
 
-function pickReadableText(background: string, preferredInk?: string): string {
-  if (preferredInk) {
-    const contrastWithInk = Math.abs(relativeLuminance(parseHexColor(background)) - relativeLuminance(parseHexColor(preferredInk)))
-    if (contrastWithInk >= 0.45) {
-      return preferredInk
+function compositeHex(foreground: string, background: string, alpha: number): string {
+  const foregroundRgb = parseHexColor(foreground)
+  const backgroundRgb = parseHexColor(background)
+  const clampedAlpha = clamp(alpha, 0, 1)
+
+  return rgbToHex({
+    r: Math.round(foregroundRgb.r * clampedAlpha + backgroundRgb.r * (1 - clampedAlpha)),
+    g: Math.round(foregroundRgb.g * clampedAlpha + backgroundRgb.g * (1 - clampedAlpha)),
+    b: Math.round(foregroundRgb.b * clampedAlpha + backgroundRgb.b * (1 - clampedAlpha)),
+  })
+}
+
+function pickReadableText(
+  background: string | string[],
+  preferredInk?: string,
+  minRatio = 4.5
+): string {
+  const backgrounds = Array.isArray(background) ? background : [background]
+  const normalizedPreferred = preferredInk ? normalizeHexColor(preferredInk) : undefined
+
+  if (normalizedPreferred && minContrastRatio(normalizedPreferred, backgrounds) >= minRatio) {
+    return normalizedPreferred
+  }
+
+  const fallbackCandidates = ['#000000', '#111111', '#FFFFFF']
+  let bestCandidate = fallbackCandidates[0]
+  let bestRatio = 0
+
+  for (const candidate of fallbackCandidates) {
+    const contrast = minContrastRatio(candidate, backgrounds)
+    if (contrast > bestRatio) {
+      bestCandidate = candidate
+      bestRatio = contrast
     }
   }
 
-  return relativeLuminance(parseHexColor(background)) > 0.5 ? '#111111' : '#FFFFFF'
+  return bestCandidate
+}
+
+function ensureReadableForeground(
+  color: string,
+  background: string | string[],
+  fallbackColor: string,
+  minRatio = 4.5
+): string {
+  const normalizedColor = normalizeHexColor(color)
+  const normalizedFallback = normalizeHexColor(fallbackColor)
+  const backgrounds = Array.isArray(background) ? background : [background]
+
+  if (minContrastRatio(normalizedColor, backgrounds) >= minRatio) {
+    return normalizedColor
+  }
+
+  let bestCandidate = normalizedColor
+  let bestRatio = minContrastRatio(normalizedColor, backgrounds)
+
+  for (let amount = 0.08; amount <= 1; amount += 0.04) {
+    const candidate = mixHex(normalizedColor, normalizedFallback, amount)
+    const contrast = minContrastRatio(candidate, backgrounds)
+    if (contrast > bestRatio) {
+      bestCandidate = candidate
+      bestRatio = contrast
+    }
+
+    if (contrast >= minRatio) {
+      return candidate
+    }
+  }
+
+  const fallbackCandidate = pickReadableText(backgrounds, normalizedFallback, minRatio)
+  return minContrastRatio(fallbackCandidate, backgrounds) > bestRatio
+    ? fallbackCandidate
+    : bestCandidate
+}
+
+function minContrastRatio(foreground: string, backgrounds: string[]): number {
+  return Math.min(...backgrounds.map((background) => contrastRatio(foreground, background)))
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(parseHexColor(foreground))
+  const backgroundLuminance = relativeLuminance(parseHexColor(background))
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
+  const darker = Math.min(foregroundLuminance, backgroundLuminance)
+
+  return (lighter + 0.05) / (darker + 0.05)
 }
 
 function relativeLuminance(value: { r: number; g: number; b: number }): number {
