@@ -26,7 +26,30 @@
     fragments: RenderedDiffFragment[]
   }
 
+  interface PreviewStyleOptions {
+    codeFontSize: number
+    uiFontSize: number
+    usePointerCursor: boolean
+  }
+
+  interface ResolvedThemeState {
+    availableThemes: ThemeDefinition[]
+    basePreviewLines: PreviewLine[]
+    presetId: string
+    previewStyle: string
+    theme: ThemeDefinition
+    viewerPreviewLines: PreviewLine[]
+  }
+
   const RESET_CONFIRMATION_PHRASE = 'RESET'
+  const themeTitles: Record<ThemeVariant, string> = {
+    light: 'Light theme',
+    dark: 'Dark theme',
+  }
+  const previewTitles: Record<ThemeVariant, string> = {
+    light: 'Light preview',
+    dark: 'Dark preview',
+  }
 
   const sections: SectionItem[] = [
     { id: 'appearance', label: 'Appearance' },
@@ -102,6 +125,8 @@
   let showResetEverythingDialog = false
   let resetEverythingConfirmationValue = ''
   let resetEverythingInput: HTMLInputElement | null = null
+  let previewStyleOptions: PreviewStyleOptions
+  let resolvedThemeState: Record<ThemeVariant, ResolvedThemeState>
 
   function formatThemeLabel(value: string) {
     return value
@@ -110,20 +135,12 @@
       .join(' ')
   }
 
-  function getThemeForVariant(variant: ThemeVariant) {
-    return variant === 'light' ? lightTheme : darkTheme
-  }
-
-  function getThemesForVariant(variant: ThemeVariant) {
-    return variant === 'light' ? availableLightThemes : availableDarkThemes
-  }
-
   function getThemeTitle(variant: ThemeVariant) {
-    return variant === 'light' ? 'Light theme' : 'Dark theme'
+    return themeTitles[variant]
   }
 
   function getPreviewTitle(variant: ThemeVariant) {
-    return variant === 'light' ? 'Light preview' : 'Dark preview'
+    return previewTitles[variant]
   }
 
   function getFontValue(theme: ThemeDefinition, field: 'ui' | 'code') {
@@ -131,11 +148,11 @@
     return value ?? ''
   }
 
-  function getPreviewStyle(theme: ThemeDefinition) {
+  function getPreviewStyle(theme: ThemeDefinition, previewOptions: PreviewStyleOptions) {
     const previewVariables = createThemeCssVariables(theme, {
-      codeFontSize: appearanceSettings.codeFontSize,
-      uiFontSize: appearanceSettings.uiFontSize,
-      usePointerCursor: appearanceSettings.usePointerCursor,
+      codeFontSize: previewOptions.codeFontSize,
+      uiFontSize: previewOptions.uiFontSize,
+      usePointerCursor: previewOptions.usePointerCursor,
     })
 
     return buildInlineStyle({
@@ -172,14 +189,6 @@
       lineNumber: index + 1,
       fragments: renderDiffFragments(line, [], 'typescript'),
     }))
-  }
-
-  function getThemePresetId(variant: ThemeVariant) {
-    return variant === 'light' ? appearanceSettings.lightThemeId : appearanceSettings.darkThemeId
-  }
-
-  function getThemeEditorKey(variant: ThemeVariant) {
-    return `${variant}:${getThemePresetId(variant)}`
   }
 
   function getColorValueStyle(color: string) {
@@ -221,6 +230,31 @@
     }
 
     return 0.2126 * toLinear(value.r) + 0.7152 * toLinear(value.g) + 0.0722 * toLinear(value.b)
+  }
+
+  $: previewStyleOptions = {
+    codeFontSize: appearanceSettings.codeFontSize,
+    uiFontSize: appearanceSettings.uiFontSize,
+    usePointerCursor: appearanceSettings.usePointerCursor,
+  }
+
+  $: resolvedThemeState = {
+    light: {
+      availableThemes: availableLightThemes,
+      basePreviewLines: getPreviewLines(lightTheme, 'base'),
+      presetId: appearanceSettings.lightThemeId,
+      previewStyle: getPreviewStyle(lightTheme, previewStyleOptions),
+      theme: lightTheme,
+      viewerPreviewLines: getPreviewLines(lightTheme, 'viewer'),
+    },
+    dark: {
+      availableThemes: availableDarkThemes,
+      basePreviewLines: getPreviewLines(darkTheme, 'base'),
+      presetId: appearanceSettings.darkThemeId,
+      previewStyle: getPreviewStyle(darkTheme, previewStyleOptions),
+      theme: darkTheme,
+      viewerPreviewLines: getPreviewLines(darkTheme, 'viewer'),
+    },
   }
 
   function getUpdateStatusTitle(status: UpdateIndicatorStatus) {
@@ -428,18 +462,16 @@
 
               <div class="settings-appearance-preview-grid" data-count={visibleThemeVariants.length}>
                 {#each visibleThemeVariants as variant}
-                  {@const theme = getThemeForVariant(variant)}
-                  {@const basePreviewLines = getPreviewLines(theme, 'base')}
-                  {@const viewerPreviewLines = getPreviewLines(theme, 'viewer')}
-                  <div class="settings-appearance-preview-card" style={getPreviewStyle(theme)}>
+                  {@const themeState = resolvedThemeState[variant]}
+                  <div class="settings-appearance-preview-card" style={themeState.previewStyle}>
                     <div class="settings-appearance-preview-header">
                       <strong>{getPreviewTitle(variant)}</strong>
-                      <span>{formatThemeLabel(theme.id)}</span>
+                      <span>{formatThemeLabel(themeState.theme.id)}</span>
                     </div>
 
                     <div class="settings-appearance-preview-diff">
                       <div class="settings-appearance-preview-pane settings-appearance-preview-pane-removed">
-                        {#each basePreviewLines as line}
+                        {#each themeState.basePreviewLines as line}
                           <span class="settings-appearance-preview-line-number">{line.lineNumber}</span>
                           <code class="settings-appearance-preview-code">
                             {#each line.fragments as fragment}
@@ -455,7 +487,7 @@
                       </div>
 
                       <div class="settings-appearance-preview-pane settings-appearance-preview-pane-added">
-                        {#each viewerPreviewLines as line}
+                        {#each themeState.viewerPreviewLines as line}
                           <span class="settings-appearance-preview-line-number">{line.lineNumber}</span>
                           <code class="settings-appearance-preview-code">
                             {#each line.fragments as fragment}
@@ -476,8 +508,8 @@
 
               <div class="settings-theme-editor-stack">
                 {#each visibleThemeVariants as variant}
-                  {@const theme = getThemeForVariant(variant)}
-                  {#key getThemeEditorKey(variant)}
+                  {@const themeState = resolvedThemeState[variant]}
+                  {#key `${variant}:${themeState.presetId}`}
                     <section class="settings-theme-editor">
                       <header class="settings-theme-editor-header">
                         <div class="settings-theme-editor-title">
@@ -493,14 +525,14 @@
                           <label class="settings-theme-select">
                             <select
                               aria-label={`${getThemeTitle(variant)} preset`}
-                              value={getThemePresetId(variant)}
+                              value={themeState.presetId}
                               on:change={(event) =>
                                 onSetThemePreset(
                                   variant,
                                   (event.currentTarget as HTMLSelectElement).value,
                                 )}
                             >
-                              {#each getThemesForVariant(variant) as preset}
+                              {#each themeState.availableThemes as preset}
                                 <option value={preset.id}>{formatThemeLabel(preset.id)}</option>
                               {/each}
                             </select>
@@ -515,7 +547,7 @@
                             <input
                               aria-label={`${getThemeTitle(variant)} accent`}
                               type="color"
-                              value={theme.accent}
+                              value={themeState.theme.accent}
                               on:input={(event) =>
                                 onSetThemeColor(
                                   variant,
@@ -523,8 +555,8 @@
                                   (event.currentTarget as HTMLInputElement).value,
                                 )}
                             />
-                            <span class="settings-color-value" style={getColorValueStyle(theme.accent)}>
-                              {theme.accent.toUpperCase()}
+                            <span class="settings-color-value" style={getColorValueStyle(themeState.theme.accent)}>
+                              {themeState.theme.accent.toUpperCase()}
                             </span>
                           </label>
                         </div>
@@ -535,7 +567,7 @@
                             <input
                               aria-label={`${getThemeTitle(variant)} background`}
                               type="color"
-                              value={theme.surface}
+                              value={themeState.theme.surface}
                               on:input={(event) =>
                                 onSetThemeColor(
                                   variant,
@@ -543,8 +575,8 @@
                                   (event.currentTarget as HTMLInputElement).value,
                                 )}
                             />
-                            <span class="settings-color-value" style={getColorValueStyle(theme.surface)}>
-                              {theme.surface.toUpperCase()}
+                            <span class="settings-color-value" style={getColorValueStyle(themeState.theme.surface)}>
+                              {themeState.theme.surface.toUpperCase()}
                             </span>
                           </label>
                         </div>
@@ -555,7 +587,7 @@
                             <input
                               aria-label={`${getThemeTitle(variant)} foreground`}
                               type="color"
-                              value={theme.ink}
+                              value={themeState.theme.ink}
                               on:input={(event) =>
                                 onSetThemeColor(
                                   variant,
@@ -563,8 +595,8 @@
                                   (event.currentTarget as HTMLInputElement).value,
                                 )}
                             />
-                            <span class="settings-color-value" style={getColorValueStyle(theme.ink)}>
-                              {theme.ink.toUpperCase()}
+                            <span class="settings-color-value" style={getColorValueStyle(themeState.theme.ink)}>
+                              {themeState.theme.ink.toUpperCase()}
                             </span>
                           </label>
                         </div>
@@ -576,7 +608,7 @@
                             class="settings-theme-text-input"
                             placeholder="Default app font"
                             type="text"
-                            value={getFontValue(theme, 'ui')}
+                            value={getFontValue(themeState.theme, 'ui')}
                             on:change={(event) =>
                               onSetThemeFont(
                                 variant,
@@ -593,7 +625,7 @@
                             class="settings-theme-text-input"
                             placeholder="Default monospace stack"
                             type="text"
-                            value={getFontValue(theme, 'code')}
+                            value={getFontValue(themeState.theme, 'code')}
                             on:change={(event) =>
                               onSetThemeFont(
                                 variant,
@@ -607,7 +639,7 @@
                           <span>Translucent sidebar</span>
                           <span class="settings-switch">
                             <input
-                              checked={!theme.opaqueWindows}
+                              checked={!themeState.theme.opaqueWindows}
                               role="switch"
                               type="checkbox"
                               on:change={(event) =>
@@ -628,14 +660,14 @@
                               max="100"
                               min="0"
                               type="range"
-                              value={theme.contrast}
+                              value={themeState.theme.contrast}
                               on:input={(event) =>
                                 onSetThemeContrast(
                                   variant,
                                   Number((event.currentTarget as HTMLInputElement).value),
                                 )}
                             />
-                            <span>{theme.contrast}</span>
+                            <span>{themeState.theme.contrast}</span>
                           </div>
                         </div>
                       </div>
