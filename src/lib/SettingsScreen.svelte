@@ -609,7 +609,7 @@
                             placeholder="Default app font"
                             type="text"
                             value={getFontValue(themeState.theme, 'ui')}
-                            on:change={(event) =>
+                            on:input={(event) =>
                               onSetThemeFont(
                                 variant,
                                 'ui',
@@ -626,7 +626,7 @@
                             placeholder="Default monospace stack"
                             type="text"
                             value={getFontValue(themeState.theme, 'code')}
-                            on:change={(event) =>
+                            on:input={(event) =>
                               onSetThemeFont(
                                 variant,
                                 'code',

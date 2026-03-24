@@ -541,13 +541,57 @@
     })
   }
 
+  async function writeTextToClipboard(value: string) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value)
+        return true
+      } catch {
+        // Fall through to the legacy copy path for Tauri/WebView clipboard edge cases.
+      }
+    }
+
+    if (typeof document === 'undefined') {
+      return false
+    }
+
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.top = '0'
+    textarea.style.left = '-9999px'
+    textarea.style.opacity = '0'
+
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    textarea.setSelectionRange(0, textarea.value.length)
+
+    let copied = false
+
+    try {
+      copied = document.execCommand('copy')
+    } finally {
+      document.body.removeChild(textarea)
+    }
+
+    return copied
+  }
+
   async function copyTheme(variant: ThemeVariant) {
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    if (typeof window === 'undefined') {
       return
     }
 
     const theme = resolveThemeForVariant(appearanceSettings, variant)
-    await navigator.clipboard.writeText(createThemeExport(theme))
+    const copied = await writeTextToClipboard(createThemeExport(theme))
+
+    if (!copied) {
+      copiedThemeVariant = null
+      return
+    }
+
     copiedThemeVariant = variant
 
     if (copyThemeTimer !== null) {
