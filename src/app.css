@@ -238,7 +238,8 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   background: var(--canvas);
   font-family: var(--ui-font);
   font-size: var(--ui-font-size);
@@ -327,8 +328,8 @@ select:focus-visible {
 }
 
 #app {
-  height: 100vh;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   overflow: hidden;
 }
 
@@ -351,8 +352,8 @@ h2 {
 .screen {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  height: 100vh;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
   background: var(--canvas);
   overflow: hidden;
 }
@@ -681,6 +682,8 @@ h2 {
 .setup-body {
   gap: 0;
   min-height: 0;
+  height: 100%;
+  align-self: stretch;
   overflow: hidden;
   padding: 0;
   background: var(--pane-bg);
@@ -693,6 +696,7 @@ h2 {
   gap: 24px;
   min-height: 0;
   height: 100%;
+  align-self: stretch;
   padding: 20px 24px 24px;
   overflow: hidden;
   background: var(--pane-bg);
@@ -1678,6 +1682,7 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
   background: var(--pane-bg);
 }
@@ -1936,6 +1941,7 @@ h2 {
   gap: 0;
   min-height: 0;
   height: 100%;
+  align-self: stretch;
   overflow: hidden;
   padding-top: 0;
   background: var(--pane-bg);
