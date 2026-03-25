@@ -27,6 +27,13 @@ npm run tauri:dev
 
 ## Development
 
+Branch and pull request hygiene:
+
+- Branch from `main` for each focused change.
+- Keep `main` aligned with `origin/main`.
+- Push each logical commit so the remote branch stays current.
+- Open pull requests against `main`.
+
 Run the frontend checks:
 
 ```bash
@@ -80,6 +87,19 @@ The current validation path is:
 - `npm run check`
 - `npm test`
 - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+
+GitHub Actions now runs the same validation path on pushes and pull requests through [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the expected branch, validation, and PR flow.
+
+- Use the issue templates for bug reports and feature requests.
+- Follow the pull request template so validation and scope are explicit.
+
+## Security
+
+Report vulnerabilities through the private process described in [SECURITY.md](SECURITY.md).
 
 ## Notes
 
