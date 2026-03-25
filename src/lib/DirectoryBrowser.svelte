@@ -135,7 +135,7 @@
                 <button
                   class:selected={selectedRelativePath === entry.relativePath}
                   class="file-row"
-                  style={`--file-row-indent: ${group.depth * 14}px`}
+                  style={`padding-left: ${group.depth * 14 + 12}px`}
                   type="button"
                   on:click={() => selectEntry(entry)}
                 >
