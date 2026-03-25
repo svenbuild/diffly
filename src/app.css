@@ -547,6 +547,37 @@ h2 {
   opacity: 0.5;
 }
 
+.nav-button-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.nav-button-group-item {
+  border: 0;
+  border-radius: 0;
+  min-height: 30px;
+  background: transparent;
+}
+
+.nav-button-group-item + .nav-button-group-item {
+  border-left: 1px solid var(--border);
+}
+
+.nav-button-group-item:hover:not(:disabled),
+.nav-button-group-item:focus-visible {
+  background: var(--surface-strong);
+}
+
+.nav-button-group-item:disabled {
+  background: transparent;
+}
+
 .nav-button-icon,
 .view-mode-icon {
   flex: 0 0 auto;
@@ -558,12 +589,30 @@ h2 {
 }
 
 .view-mode-button {
+  position: relative;
+  z-index: 1;
   min-height: 30px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--secondary-text);
   align-items: center;
   justify-content: center;
   gap: 7px;
+}
+
+.view-mode-button:hover:not(:disabled),
+.view-mode-button:focus-visible {
+  color: var(--text);
+}
+
+.view-mode-button.active,
+.view-mode-button[aria-pressed='true'] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--active-text);
 }
 
 .view-mode-icon {
@@ -578,6 +627,42 @@ h2 {
   flex: 0 0 auto;
   line-height: 1;
   text-align: center;
+}
+
+.view-mode-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  min-height: 30px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.view-mode-switch.disabled {
+  opacity: 0.5;
+}
+
+.view-mode-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.view-mode-switch-thumb-right {
+  transform: translateX(100%);
 }
 
 .segmented-control {

@@ -2795,9 +2795,9 @@
 
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
-          <div class="segmented-control toolbar-segmented-control" aria-label="Diff navigation">
+          <div class="nav-button-group" aria-label="Diff navigation" role="group">
             <button
-              class="secondary toolbar-button nav-button"
+              class="secondary toolbar-button nav-button nav-button-group-item"
               aria-label="Jump to the previous difference"
               disabled={!canGoToPreviousDiff}
               title="Jump to the previous difference"
@@ -2817,7 +2817,7 @@
               <span>Prev</span>
             </button>
             <button
-              class="secondary toolbar-button nav-button"
+              class="secondary toolbar-button nav-button nav-button-group-item"
               aria-label="Jump to the next difference"
               disabled={!canGoToNextDiff}
               title="Jump to the next difference"
@@ -2840,10 +2840,21 @@
         </div>
 
         <div class="compare-action-group display-actions">
-          <div class="segmented-control toolbar-segmented-control" aria-label="Diff view mode">
+          <div
+            aria-disabled={!textDiffActive}
+            aria-label="Diff view mode"
+            class:disabled={!textDiffActive}
+            class="view-mode-switch"
+            role="group"
+          >
+            <span
+              aria-hidden="true"
+              class:view-mode-switch-thumb-right={viewMode === 'unified'}
+              class="view-mode-switch-thumb"
+            ></span>
               <button
                 class:active={viewMode === 'sideBySide'}
-                class="secondary toolbar-button view-mode-button"
+                class="view-mode-button"
                 aria-pressed={viewMode === 'sideBySide'}
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Split view' : 'Split view is only available for text diffs'}
@@ -2858,7 +2869,7 @@
             </button>
               <button
                 class:active={viewMode === 'unified'}
-                class="secondary toolbar-button view-mode-button"
+                class="view-mode-button"
                 aria-pressed={viewMode === 'unified'}
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Unified view' : 'Unified view is only available for text diffs'}
