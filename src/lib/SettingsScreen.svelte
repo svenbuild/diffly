@@ -9,7 +9,12 @@
     UpdateMetadata,
     ViewMode,
   } from './types'
-  import type { AppearanceSettings, ThemeDefinition, ThemeVariant } from './theme'
+  import type {
+    AppearanceSettings,
+    ThemeDefinition,
+    ThemeSemanticColorKey,
+    ThemeVariant,
+  } from './theme'
   import { createThemeCssVariables } from './theme/runtime'
   import type { SettingsSection } from './ui-types'
 
@@ -107,6 +112,11 @@
   export let onSetThemeColor: (
     variant: ThemeVariant,
     field: 'accent' | 'surface' | 'ink',
+    value: string
+  ) => void
+  export let onSetThemeSemanticColor: (
+    variant: ThemeVariant,
+    field: ThemeSemanticColorKey,
     value: string
   ) => void
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
@@ -639,10 +649,10 @@
                         </div>
 
                         <div class="settings-theme-editor-row">
-                          <span>Background</span>
+                          <span>Surface</span>
                           <label class="settings-color-control">
                             <input
-                              aria-label={`${getThemeTitle(variant)} background`}
+                              aria-label={`${getThemeTitle(variant)} surface`}
                               type="color"
                               value={themeState.theme.surface}
                               on:input={(event) =>
@@ -659,10 +669,10 @@
                         </div>
 
                         <div class="settings-theme-editor-row">
-                          <span>Foreground</span>
+                          <span>Text</span>
                           <label class="settings-color-control">
                             <input
-                              aria-label={`${getThemeTitle(variant)} foreground`}
+                              aria-label={`${getThemeTitle(variant)} text`}
                               type="color"
                               value={themeState.theme.ink}
                               on:input={(event) =>
@@ -674,6 +684,75 @@
                             />
                             <span class="settings-color-value" style={getColorValueStyle(themeState.theme.ink)}>
                               {themeState.theme.ink.toUpperCase()}
+                            </span>
+                          </label>
+                        </div>
+
+                        <div class="settings-theme-editor-row">
+                          <span>Added changes</span>
+                          <label class="settings-color-control">
+                            <input
+                              aria-label={`${getThemeTitle(variant)} added changes`}
+                              type="color"
+                              value={themeState.theme.semanticColors.diffAdded}
+                              on:input={(event) =>
+                                onSetThemeSemanticColor(
+                                  variant,
+                                  'diffAdded',
+                                  (event.currentTarget as HTMLInputElement).value,
+                                )}
+                            />
+                            <span
+                              class="settings-color-value"
+                              style={getColorValueStyle(themeState.theme.semanticColors.diffAdded)}
+                            >
+                              {themeState.theme.semanticColors.diffAdded.toUpperCase()}
+                            </span>
+                          </label>
+                        </div>
+
+                        <div class="settings-theme-editor-row">
+                          <span>Removed changes</span>
+                          <label class="settings-color-control">
+                            <input
+                              aria-label={`${getThemeTitle(variant)} removed changes`}
+                              type="color"
+                              value={themeState.theme.semanticColors.diffRemoved}
+                              on:input={(event) =>
+                                onSetThemeSemanticColor(
+                                  variant,
+                                  'diffRemoved',
+                                  (event.currentTarget as HTMLInputElement).value,
+                                )}
+                            />
+                            <span
+                              class="settings-color-value"
+                              style={getColorValueStyle(themeState.theme.semanticColors.diffRemoved)}
+                            >
+                              {themeState.theme.semanticColors.diffRemoved.toUpperCase()}
+                            </span>
+                          </label>
+                        </div>
+
+                        <div class="settings-theme-editor-row">
+                          <span>Syntax accent</span>
+                          <label class="settings-color-control">
+                            <input
+                              aria-label={`${getThemeTitle(variant)} syntax accent`}
+                              type="color"
+                              value={themeState.theme.semanticColors.skill}
+                              on:input={(event) =>
+                                onSetThemeSemanticColor(
+                                  variant,
+                                  'skill',
+                                  (event.currentTarget as HTMLInputElement).value,
+                                )}
+                            />
+                            <span
+                              class="settings-color-value"
+                              style={getColorValueStyle(themeState.theme.semanticColors.skill)}
+                            >
+                              {themeState.theme.semanticColors.skill.toUpperCase()}
                             </span>
                           </label>
                         </div>
@@ -713,7 +792,7 @@
                         </div>
 
                         <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
-                          <span>Translucent sidebar</span>
+                          <span>Panel translucency</span>
                           <span class="settings-switch">
                             <input
                               checked={!themeState.theme.opaqueWindows}
@@ -842,7 +921,7 @@
           <section class="settings-group">
             <div class="settings-group-header">
               <h3>Layout</h3>
-              <p>Choose the default diff arrangement.</p>
+              <p>Choose how each diff opens and moves as you read it.</p>
             </div>
 
             <div class="settings-group-grid">
@@ -882,16 +961,7 @@
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
 
-          <section class="settings-group">
-            <div class="settings-group-header">
-              <h3>Readability</h3>
-              <p>Control text density and line rendering.</p>
-            </div>
-
-            <div class="settings-group-grid">
               <label class="settings-row settings-row-interactive">
                 <div class="settings-row-copy">
                   <strong>Wrap long lines</strong>
@@ -910,6 +980,73 @@
                   </span>
                 </span>
               </label>
+
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Sync scrolling</strong>
+                  <p>Keep both panes aligned while you scroll.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={syncSideBySideScroll}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleSyncSideBySideScroll}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Content detail</h3>
+              <p>Choose how much context and rendering detail the viewer shows.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <label class="settings-row settings-row-interactive">
+                <div class="settings-row-copy">
+                  <strong>Full file</strong>
+                  <p>Show the entire file instead of context-only hunks.</p>
+                </div>
+
+                <span class="settings-control">
+                  <span class="settings-switch">
+                    <input
+                      checked={showFullFile}
+                      role="switch"
+                      type="checkbox"
+                      on:change={onToggleShowFullFile}
+                    />
+                    <span aria-hidden="true" class="settings-switch-ui"></span>
+                  </span>
+                </span>
+              </label>
+
+              <div class:settings-row-disabled={showFullFile} class="settings-row">
+                <div class="settings-row-copy">
+                  <strong>Context lines</strong>
+                  <p>Visible lines around each change. Only used when Full file is off.</p>
+                </div>
+
+                <div class="settings-control">
+                  <select
+                    disabled={showFullFile}
+                    value={contextLines}
+                    on:change={(event) =>
+                      onSetContextLines((event.currentTarget as HTMLSelectElement).value)}
+                  >
+                    {#each contextLinePresets as preset}
+                      <option value={preset}>{preset}</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
 
               <label class="settings-row settings-row-interactive">
                 <div class="settings-row-copy">
@@ -1018,72 +1155,6 @@
             </div>
           </section>
 
-          <section class="settings-group">
-            <div class="settings-group-header">
-              <h3>Navigation</h3>
-              <p>Keep long files and split panes easier to follow.</p>
-            </div>
-
-            <div class="settings-group-grid">
-              <label class="settings-row settings-row-interactive">
-                <div class="settings-row-copy">
-                  <strong>Full file</strong>
-                  <p>Show the entire file instead of context-only hunks.</p>
-                </div>
-
-                <span class="settings-control">
-                  <span class="settings-switch">
-                    <input
-                      checked={showFullFile}
-                      role="switch"
-                      type="checkbox"
-                      on:change={onToggleShowFullFile}
-                    />
-                    <span aria-hidden="true" class="settings-switch-ui"></span>
-                  </span>
-                </span>
-              </label>
-
-              <div class:settings-row-disabled={showFullFile} class="settings-row">
-                <div class="settings-row-copy">
-                  <strong>Context lines</strong>
-                  <p>Visible lines around each change. Only used when Full file is off.</p>
-                </div>
-
-                <div class="settings-control">
-                  <select
-                    disabled={showFullFile}
-                    value={contextLines}
-                    on:change={(event) =>
-                      onSetContextLines((event.currentTarget as HTMLSelectElement).value)}
-                  >
-                    {#each contextLinePresets as preset}
-                      <option value={preset}>{preset}</option>
-                    {/each}
-                  </select>
-                </div>
-              </div>
-
-              <label class="settings-row settings-row-interactive">
-                <div class="settings-row-copy">
-                  <strong>Sync scrolling</strong>
-                  <p>Keep both panes aligned while you scroll.</p>
-                </div>
-
-                <span class="settings-control">
-                  <span class="settings-switch">
-                    <input
-                      checked={syncSideBySideScroll}
-                      role="switch"
-                      type="checkbox"
-                      on:change={onToggleSyncSideBySideScroll}
-                    />
-                    <span aria-hidden="true" class="settings-switch-ui"></span>
-                  </span>
-                </span>
-              </label>
-            </div>
-          </section>
         </section>
       {/if}
 
@@ -1095,9 +1166,34 @@
           </div>
 
           <section class="settings-group">
-            <div class="settings-group-header">
-              <h3>Status</h3>
-              <p>Version, channel, and the latest update check.</p>
+            <div class="settings-group-header settings-group-header-with-actions">
+              <div class="settings-group-header-copy">
+                <h3>Overview</h3>
+                <p>Version, channel, and the latest update check.</p>
+              </div>
+
+              <div class="settings-group-header-actions">
+                <button
+                  class="secondary"
+                  disabled={updateBusy}
+                  type="button"
+                  on:click={onCheckForUpdates}
+                >
+                  Check now
+                </button>
+
+                {#if updateIndicatorState === 'available'}
+                  <button class="primary" type="button" on:click={onDownloadUpdate}>
+                    Download update
+                  </button>
+                {/if}
+
+                {#if updateIndicatorState === 'downloaded'}
+                  <button class="primary" type="button" on:click={onInstallUpdate}>
+                    Install and restart
+                  </button>
+                {/if}
+              </div>
             </div>
 
             <div class="settings-update-summary">
@@ -1140,29 +1236,6 @@
               {/if}
             </div>
 
-            <div class="settings-update-actions">
-              <button
-                class="secondary"
-                disabled={updateBusy}
-                type="button"
-                on:click={onCheckForUpdates}
-              >
-                Check now
-              </button>
-
-              {#if updateIndicatorState === 'available'}
-                <button class="primary" type="button" on:click={onDownloadUpdate}>
-                  Download update
-                </button>
-              {/if}
-
-              {#if updateIndicatorState === 'downloaded'}
-                <button class="primary" type="button" on:click={onInstallUpdate}>
-                  Install and restart
-                </button>
-              {/if}
-            </div>
-
             {#if shouldShowUpdateDetail(updateIndicatorState)}
               <div class="settings-update-status" data-tone={getUpdateStatusTone(updateIndicatorState)}>
                 <div class="settings-update-copy">
@@ -1175,8 +1248,8 @@
 
           <section class="settings-group">
             <div class="settings-group-header">
-              <h3>Release channel</h3>
-              <p>Choose whether updater checks should include prerelease builds.</p>
+              <h3>Preferences</h3>
+              <p>Choose the update feed and startup behavior.</p>
             </div>
 
             <div class="settings-group-grid">
@@ -1208,16 +1281,7 @@
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
 
-          <section class="settings-group">
-            <div class="settings-group-header">
-              <h3>Automatic checks</h3>
-              <p>Control whether Diffly checks for updates after launch.</p>
-            </div>
-
-            <div class="settings-group-grid">
               <label class="settings-row settings-row-interactive settings-row-span-full">
                 <div class="settings-row-copy">
                   <strong>Check for updates on startup</strong>

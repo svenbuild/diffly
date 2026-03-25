@@ -58,6 +58,7 @@
     type AppearanceSettings,
     type ThemeDefinition,
     type ThemeId,
+    type ThemeSemanticColorKey,
     type ThemeVariant,
   } from './lib/theme'
   import {
@@ -497,6 +498,24 @@
 
     appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
       if (nextColor === base[field].toUpperCase()) {
+        delete next[field]
+      } else {
+        next[field] = nextColor
+      }
+
+      return next
+    })
+  }
+
+  function setThemeSemanticColorOverride(
+    variant: ThemeVariant,
+    field: ThemeSemanticColorKey,
+    value: string
+  ) {
+    const nextColor = normalizeHexColor(value)
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      if (nextColor === base.semanticColors[field].toUpperCase()) {
         delete next[field]
       } else {
         next[field] = nextColor
@@ -3032,6 +3051,7 @@
       onSetThemeMode={setThemeMode}
       onSetThemePreset={setThemePreset}
       onSetThemeColor={setThemeColorOverride}
+      onSetThemeSemanticColor={setThemeSemanticColorOverride}
       onSetThemeFont={setThemeFontOverride}
       onSetThemeTranslucency={setThemeTranslucency}
       onSetThemeContrast={setThemeContrast}

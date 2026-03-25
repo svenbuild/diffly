@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  font-size: var(--ui-font-size);
   font-family: var(--ui-font, 'IBM Plex Sans', 'Aptos', 'Noto Sans', sans-serif);
   color: var(--text);
   background: var(--canvas);
@@ -242,12 +243,11 @@ body {
   min-height: 100%;
   background: var(--canvas);
   font-family: var(--ui-font);
-  font-size: var(--ui-font-size);
+  font-size: 1rem;
   background-image:
     radial-gradient(circle at top left, var(--canvas-glow-primary), transparent 26%),
     radial-gradient(circle at top right, var(--canvas-glow-secondary), transparent 24%);
   color: var(--text);
-  font-size: 13px;
   transition: background-color 180ms ease, color 180ms ease;
 }
 
@@ -752,16 +752,16 @@ h2 {
 .settings-section-link:hover:not(:disabled),
 .settings-section-link:focus-visible {
   border-color: var(--border);
-  background: var(--surface);
-  color: var(--secondary-text);
+  background: var(--surface-alt);
+  color: var(--text);
 }
 
 .settings-nav-button.active,
 .settings-section-link.active {
   border-color: var(--border);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  box-shadow: inset 2px 0 0 var(--accent);
-  color: var(--secondary-text);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--text);
 }
 
 .settings-section-link span:last-child {
@@ -903,6 +903,25 @@ h2 {
   padding: 18px 18px 12px;
 }
 
+.settings-group-header-with-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+}
+
+.settings-group-header-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.settings-group-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-group-header h3,
 .settings-row-copy strong,
 .settings-theme-meta strong,
@@ -940,7 +959,7 @@ h2 {
 }
 
 .settings-row-interactive:hover {
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--accent-soft) 32%, var(--surface-alt));
 }
 
 .settings-row-copy {
@@ -1414,7 +1433,7 @@ h2 {
 }
 
 .settings-theme-editor-row-interactive:hover {
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-alt));
 }
 
 .settings-color-control {
@@ -1425,7 +1444,7 @@ h2 {
   min-width: 178px;
   padding: 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--surface-alt);
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -1436,7 +1455,7 @@ h2 {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 7px;
   background: transparent;
   cursor: var(--interactive-cursor);
   overflow: hidden;
@@ -1448,7 +1467,7 @@ h2 {
 
 .settings-color-control input[type='color']::-webkit-color-swatch {
   border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: 999px;
+  border-radius: 7px;
 }
 
 .settings-color-control span:last-child {
@@ -1462,7 +1481,7 @@ h2 {
   justify-content: center;
   min-width: 74px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: 7px;
   background: var(--settings-color-value-bg);
   color: var(--settings-color-value-text);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-color-value-text) 16%, transparent);
@@ -1526,14 +1545,15 @@ h2 {
 }
 
 .settings-update-summary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  padding: 0 16px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+  gap: 10px;
+  padding: 0 16px 14px;
 }
 
 .settings-summary-item {
-  gap: 6px;
-  padding: 11px 12px;
+  gap: 5px;
+  min-height: 0;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-alt);
@@ -1549,7 +1569,7 @@ h2 {
 
 .settings-update-status {
   gap: 6px;
-  padding: 14px 16px 16px;
+  padding: 12px 16px 14px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
@@ -3246,6 +3266,14 @@ button.filter-chip.tooLarge:focus-visible {
     grid-template-columns: minmax(0, 1fr);
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .settings-group-header-with-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-group-header-actions {
+    justify-content: flex-start;
   }
 
   .settings-theme-mode-control {
