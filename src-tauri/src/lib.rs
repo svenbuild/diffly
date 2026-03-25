@@ -1790,11 +1790,21 @@ fn find_next_resync_match(
     let right_limit = (right_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(right_descriptors.len());
     let mut best_candidate = None;
 
-    for current_left in left_index..left_limit {
-        for current_right in right_index..right_limit {
+    for (current_left, left_descriptor) in left_descriptors
+        .iter()
+        .enumerate()
+        .take(left_limit)
+        .skip(left_index)
+    {
+        for (current_right, right_descriptor) in right_descriptors
+            .iter()
+            .enumerate()
+            .take(right_limit)
+            .skip(right_index)
+        {
             let Some(band) = pair_band(
-                &left_descriptors[current_left],
-                &right_descriptors[current_right],
+                left_descriptor,
+                right_descriptor,
             ) else {
                 continue;
             };
@@ -1809,10 +1819,12 @@ fn find_next_resync_match(
                 band,
             };
 
-            if best_candidate
-                .as_ref()
-                .is_none_or(|best| resync_candidate_cmp(candidate, *best).is_lt())
-            {
+            let is_better_candidate = match best_candidate {
+                Some(best) => resync_candidate_cmp(candidate, best).is_lt(),
+                None => true,
+            };
+
+            if is_better_candidate {
                 best_candidate = Some(candidate);
             }
         }
@@ -1905,13 +1917,23 @@ fn best_future_match_for_left(
     let limit = (right_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(right_limit);
     let mut best = None;
 
-    for current_right in right_index..limit {
-        let Some(band) = pair_band(left_descriptor, &right_descriptors[current_right]) else {
+    for (current_right, right_descriptor) in right_descriptors
+        .iter()
+        .enumerate()
+        .take(limit)
+        .skip(right_index)
+    {
+        let Some(band) = pair_band(left_descriptor, right_descriptor) else {
             continue;
         };
         let offset = current_right - right_index;
 
-        if best.is_none_or(|current| future_match_cmp((band, offset), current).is_gt()) {
+        let is_better_match = match best {
+            Some(current) => future_match_cmp((band, offset), current).is_gt(),
+            None => true,
+        };
+
+        if is_better_match {
             best = Some((band, offset));
         }
     }
@@ -1928,13 +1950,23 @@ fn best_future_match_for_right(
     let limit = (left_index + LINE_PAIR_LOOKAHEAD_WINDOW).min(left_limit);
     let mut best = None;
 
-    for current_left in left_index..limit {
-        let Some(band) = pair_band(&left_descriptors[current_left], right_descriptor) else {
+    for (current_left, left_descriptor) in left_descriptors
+        .iter()
+        .enumerate()
+        .take(limit)
+        .skip(left_index)
+    {
+        let Some(band) = pair_band(left_descriptor, right_descriptor) else {
             continue;
         };
         let offset = current_left - left_index;
 
-        if best.is_none_or(|current| future_match_cmp((band, offset), current).is_gt()) {
+        let is_better_match = match best {
+            Some(current) => future_match_cmp((band, offset), current).is_gt(),
+            None => true,
+        };
+
+        if is_better_match {
             best = Some((band, offset));
         }
     }
