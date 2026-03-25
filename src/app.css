@@ -83,7 +83,7 @@
   --diff-row-line-height: 14px;
   --diff-row-height: 19px;
   --diff-gap-bg: #232323;
-  --diff-gap-stripe: rgba(255, 255, 255, 0.08);
+  --diff-gap-stripe: rgba(255, 255, 255, 0.06);
   --collapsed-row-bg: #1e2124;
   --collapsed-row-line: rgba(132, 146, 166, 0.3);
   --collapsed-chip-bg: #20262b;
@@ -191,7 +191,7 @@
   --diff-line-number-width: calc(1ch + 18px);
   --diff-prefix-width: calc(1ch + 6px);
   --diff-gap-bg: #f6f8fa;
-  --diff-gap-stripe: rgba(31, 35, 40, 0.06);
+  --diff-gap-stripe: rgba(31, 35, 40, 0.045);
   --collapsed-row-bg: #f3f6f8;
   --collapsed-row-line: rgba(87, 96, 112, 0.24);
   --collapsed-chip-bg: #f8fafc;
@@ -2428,8 +2428,8 @@ button.filter-chip.tooLarge:focus-visible {
   background-image: repeating-linear-gradient(
     -45deg,
     var(--diff-gap-stripe) 0,
-    var(--diff-gap-stripe) 2px,
-    transparent 2px,
+    var(--diff-gap-stripe) 1px,
+    transparent 1px,
     transparent 9px
   );
   scrollbar-gutter: stable;
@@ -2577,8 +2577,8 @@ button.filter-chip.tooLarge:focus-visible {
   background-image: repeating-linear-gradient(
     -45deg,
     var(--diff-gap-stripe) 0,
-    var(--diff-gap-stripe) 2px,
-    transparent 2px,
+    var(--diff-gap-stripe) 1px,
+    transparent 1px,
     transparent 9px
   );
 }

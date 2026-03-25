@@ -330,7 +330,7 @@ export function createThemeCssVariables(
     '--diff-delete-bg': diffDeleteBg,
     '--diff-delete-text': diffDeleteText,
     '--diff-gap-bg': canvasAlt,
-    '--diff-gap-stripe': rgbaFromHex(theme.ink, isDark ? 0.09 : 0.065),
+    '--diff-gap-stripe': rgbaFromHex(theme.ink, isDark ? 0.07 : 0.05),
     '--collapsed-row-bg': collapsedBg,
     '--collapsed-row-line': rgbaFromHex(theme.ink, isDark ? 0.26 : 0.22),
     '--collapsed-chip-bg': elevatedBg,
