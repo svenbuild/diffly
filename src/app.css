@@ -2424,14 +2424,7 @@ button.filter-chip.tooLarge:focus-visible {
   position: relative;
   min-height: 0;
   height: 100%;
-  background-color: var(--diff-gap-bg);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--diff-gap-stripe) 0,
-    var(--diff-gap-stripe) 1px,
-    transparent 1px,
-    transparent 9px
-  );
+  background-color: var(--diff-context-bg);
   scrollbar-gutter: stable;
 }
 
