@@ -521,6 +521,32 @@ h2 {
   min-width: 72px;
 }
 
+.toolbar-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-color: var(--border);
+  background: var(--surface-alt);
+  color: var(--secondary-text);
+}
+
+.toolbar-button:hover:not(:disabled),
+.toolbar-button:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.toolbar-button.active,
+.toolbar-button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--active-text);
+}
+
+.toolbar-button:disabled {
+  opacity: 0.5;
+}
+
 .nav-button-icon,
 .view-mode-icon {
   flex: 0 0 auto;
@@ -532,25 +558,12 @@ h2 {
 }
 
 .view-mode-button {
-  min-height: 28px;
-  padding: 0 9px;
+  min-height: 30px;
+  padding: 4px 10px;
   min-width: 0;
   align-items: center;
   justify-content: center;
   gap: 7px;
-}
-
-.view-mode-button:hover:not(:disabled),
-.view-mode-button:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface-strong);
-  color: var(--secondary-text);
-}
-
-.view-mode-button:active:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--active-text);
 }
 
 .view-mode-icon {
@@ -583,11 +596,14 @@ h2 {
 }
 
 .toolbar-segmented-control {
-  gap: 2px;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .toolbar-segmented-control button {
-  border-color: transparent;
+  border-color: var(--border);
 }
 
 .toolbar-setup-button {
@@ -1984,7 +2000,7 @@ h2 {
 
 .compare-layout {
   display: grid;
-  grid-template-columns: clamp(248px, 17vw, 292px) minmax(0, 1fr);
+  grid-template-columns: clamp(216px, 14vw, 252px) minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
   min-height: 0;
@@ -3188,8 +3204,8 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
 }
 
@@ -3330,8 +3346,8 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .swap-button {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
 }
 
 @keyframes spin {

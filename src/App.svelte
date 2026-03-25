@@ -2797,7 +2797,7 @@
         <div class="compare-action-group diff-nav-actions">
           <div class="segmented-control toolbar-segmented-control" aria-label="Diff navigation">
             <button
-              class="secondary nav-button"
+              class="secondary toolbar-button nav-button"
               aria-label="Jump to the previous difference"
               disabled={!canGoToPreviousDiff}
               title="Jump to the previous difference"
@@ -2817,7 +2817,7 @@
               <span>Prev</span>
             </button>
             <button
-              class="secondary nav-button"
+              class="secondary toolbar-button nav-button"
               aria-label="Jump to the next difference"
               disabled={!canGoToNextDiff}
               title="Jump to the next difference"
@@ -2843,7 +2843,7 @@
           <div class="segmented-control toolbar-segmented-control" aria-label="Diff view mode">
               <button
                 class:active={viewMode === 'sideBySide'}
-                class="secondary view-mode-button"
+                class="secondary toolbar-button view-mode-button"
                 aria-pressed={viewMode === 'sideBySide'}
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Split view' : 'Split view is only available for text diffs'}
@@ -2858,7 +2858,7 @@
             </button>
               <button
                 class:active={viewMode === 'unified'}
-                class="secondary view-mode-button"
+                class="secondary toolbar-button view-mode-button"
                 aria-pressed={viewMode === 'unified'}
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Unified view' : 'Unified view is only available for text diffs'}
@@ -2872,14 +2872,14 @@
               <span class="view-mode-button-label">Unified</span>
             </button>
           </div>
-          <button class="secondary" type="button" on:click={() => openSettings('viewer')}>
+          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
             Settings
           </button>
         </div>
 
         <div class="compare-action-group utility-actions">
           <button
-            class="secondary icon-button swap-button"
+            class="secondary toolbar-button icon-button swap-button"
             aria-label="Switch left and right sides"
             disabled={loading || detailLoading || pickerLoading}
             title="Switch left and right sides"
@@ -2897,7 +2897,7 @@
           <button
             aria-label="Refresh compare"
             aria-busy={loading}
-            class="secondary icon-button refresh-button"
+            class="secondary toolbar-button icon-button refresh-button"
             title="Refresh compare"
             type="button"
             disabled={loading}
@@ -2944,7 +2944,7 @@
               {/if}
             </span>
           </button>
-          <button class="secondary toolbar-setup-button" type="button" on:click={goToSetup}>
+          <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
             Setup
           </button>
         </div>
