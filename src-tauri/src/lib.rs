@@ -505,6 +505,11 @@ enum DiffBlock {
     },
 }
 
+struct TextDiffViews {
+    side_by_side: Vec<SideBySideRow>,
+    unified: Vec<UnifiedLine>,
+}
+
 #[tauri::command]
 fn choose_path(kind: String) -> Option<String> {
     match kind.as_str() {
@@ -1305,38 +1310,54 @@ fn build_file_diff(
     let normalized_left = normalize_text(&left_text, options);
     let normalized_right = normalize_text(&right_text, options);
     let diff = TextDiff::from_lines(&normalized_left, &normalized_right);
+    let blocks = diff_blocks(&diff);
     let left_lines = display_lines(&left_text);
     let right_lines = display_lines(&right_text);
+    let text_views = build_text_diff_views(&blocks, &left_lines, &right_lines);
 
     Ok(FileDiffResult {
         content_kind: ContentKind::Text,
         summary,
         left_label,
         right_label,
-        side_by_side: build_side_by_side(&diff, &left_lines, &right_lines),
-        unified: build_unified(&diff, &left_lines, &right_lines),
+        side_by_side: text_views.side_by_side,
+        unified: text_views.unified,
         image: None,
         binary: None,
     })
 }
 
-fn build_side_by_side<'a>(
-    diff: &TextDiff<'a, 'a, 'a, str>,
+fn build_text_diff_views(
+    blocks: &[DiffBlock],
     left_lines: &[String],
     right_lines: &[String],
-) -> Vec<SideBySideRow> {
-    let mut rows = Vec::new();
-    for block in diff_blocks(diff) {
-        match block {
+) -> TextDiffViews {
+    let capacity = estimated_text_view_capacity(blocks);
+    let mut side_by_side = Vec::with_capacity(capacity);
+    let mut unified = Vec::with_capacity(capacity);
+
+    for block in blocks {
+        match *block {
             DiffBlock::Equal {
                 old_index,
                 new_index,
                 len,
             } => {
                 for offset in 0..len {
-                    rows.push(SideBySideRow {
-                        left: Some(build_context_cell(left_lines, old_index + offset)),
-                        right: Some(build_context_cell(right_lines, new_index + offset)),
+                    let left_cell = build_context_cell(left_lines, old_index + offset);
+                    let right_cell = build_context_cell(right_lines, new_index + offset);
+
+                    unified.push(UnifiedLine {
+                        left_line_number: left_cell.line_number,
+                        right_line_number: right_cell.line_number,
+                        prefix: " ".to_string(),
+                        text: left_cell.text.clone(),
+                        segments: left_cell.segments.clone(),
+                        change: DiffChange::Context,
+                    });
+                    side_by_side.push(SideBySideRow {
+                        left: Some(left_cell),
+                        right: Some(right_cell),
                     });
                 }
             }
@@ -1345,10 +1366,13 @@ fn build_side_by_side<'a>(
                     build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
 
                 for left_cell in left_cells {
-                    rows.push(SideBySideRow {
-                        left: Some(fill_cell_segments(left_cell, false)),
+                    let segments = plain_segments(&left_cell.text, false);
+
+                    side_by_side.push(SideBySideRow {
+                        left: Some(clone_cell_with_segments(&left_cell, segments.clone())),
                         right: None,
                     });
+                    unified.push(unified_from_left_cell_with_segments(&left_cell, segments));
                 }
             }
             DiffBlock::Insert { new_index, new_len } => {
@@ -1356,10 +1380,13 @@ fn build_side_by_side<'a>(
                     build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
 
                 for right_cell in right_cells {
-                    rows.push(SideBySideRow {
+                    let segments = plain_segments(&right_cell.text, false);
+
+                    side_by_side.push(SideBySideRow {
                         left: None,
-                        right: Some(fill_cell_segments(right_cell, false)),
+                        right: Some(clone_cell_with_segments(&right_cell, segments.clone())),
                     });
+                    unified.push(unified_from_right_cell_with_segments(&right_cell, segments));
                 }
             }
             DiffBlock::Replace {
@@ -1373,103 +1400,81 @@ fn build_side_by_side<'a>(
                 let right_cells =
                     build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
                 let alignment = align_replace_block_rows(&left_cells, &right_cells);
+                let (left_highlights, right_highlights) =
+                    build_replace_highlight_cache(&left_cells, &right_cells, &alignment);
 
-                for (left_match, right_match) in alignment.row_pairs {
+                for (left_match, right_match) in alignment.row_pairs.iter().copied() {
                     let left_cell = left_match.and_then(|index| left_cells.get(index).cloned());
                     let right_cell = right_match.and_then(|index| right_cells.get(index).cloned());
 
                     match (left_cell, right_cell) {
                         (Some(left_cell), Some(right_cell)) => {
-                            let (left, right) = highlight_side_by_side_pair(left_cell, right_cell);
-                            rows.push(SideBySideRow { left, right });
+                            let left_index = left_match.expect("paired left index should exist");
+                            let right_index = right_match.expect("paired right index should exist");
+                            side_by_side.push(SideBySideRow {
+                                left: Some(clone_cell_with_segments(
+                                    &left_cell,
+                                    highlighted_segments_for_cell(
+                                        &left_cell,
+                                        &left_highlights[left_index],
+                                    ),
+                                )),
+                                right: Some(clone_cell_with_segments(
+                                    &right_cell,
+                                    highlighted_segments_for_cell(
+                                        &right_cell,
+                                        &right_highlights[right_index],
+                                    ),
+                                )),
+                            });
                         }
-                        (Some(left_cell), None) => rows.push(SideBySideRow {
+                        (Some(left_cell), None) => side_by_side.push(SideBySideRow {
                             left: Some(fill_cell_segments(left_cell, false)),
                             right: None,
                         }),
-                        (None, Some(right_cell)) => rows.push(SideBySideRow {
+                        (None, Some(right_cell)) => side_by_side.push(SideBySideRow {
                             left: None,
                             right: Some(fill_cell_segments(right_cell, false)),
                         }),
                         (None, None) => {}
                     }
                 }
-            }
-        }
-    }
-
-    rows
-}
-
-fn build_unified<'a>(
-    diff: &TextDiff<'a, 'a, 'a, str>,
-    left_lines: &[String],
-    right_lines: &[String],
-) -> Vec<UnifiedLine> {
-    let mut lines = Vec::new();
-    for block in diff_blocks(diff) {
-        match block {
-            DiffBlock::Equal {
-                old_index,
-                new_index,
-                len,
-            } => {
-                for offset in 0..len {
-                    let text = display_line(left_lines, old_index + offset + 1, "");
-                    lines.push(UnifiedLine {
-                        left_line_number: Some(old_index + offset + 1),
-                        right_line_number: Some(new_index + offset + 1),
-                        prefix: " ".to_string(),
-                        text: text.clone(),
-                        segments: plain_segments(&text, false),
-                        change: DiffChange::Context,
-                    });
-                }
-            }
-            DiffBlock::Delete { old_index, old_len } => {
-                let left_cells =
-                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
-
-                for left_cell in left_cells {
-                    lines.push(unified_from_left_cell(&left_cell, None));
-                }
-            }
-            DiffBlock::Insert { new_index, new_len } => {
-                let right_cells =
-                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
-
-                for right_cell in right_cells {
-                    lines.push(unified_from_right_cell(&right_cell, None));
-                }
-            }
-            DiffBlock::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => {
-                let left_cells =
-                    build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
-                let right_cells =
-                    build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
-                let alignment = align_replace_block_rows(&left_cells, &right_cells);
 
                 for (index, left_cell) in left_cells.iter().enumerate() {
-                    let counterpart = alignment.left_matches[index]
-                        .and_then(|right_index| right_cells.get(right_index));
-                    lines.push(unified_from_left_cell(left_cell, counterpart));
+                    unified.push(unified_from_left_cell_with_segments(
+                        left_cell,
+                        highlighted_segments_for_cell(left_cell, &left_highlights[index]),
+                    ));
                 }
 
                 for (index, right_cell) in right_cells.iter().enumerate() {
-                    let counterpart = alignment.right_matches[index]
-                        .and_then(|left_index| left_cells.get(left_index));
-                    lines.push(unified_from_right_cell(right_cell, counterpart));
+                    unified.push(unified_from_right_cell_with_segments(
+                        right_cell,
+                        highlighted_segments_for_cell(right_cell, &right_highlights[index]),
+                    ));
                 }
             }
         }
     }
 
-    lines
+    TextDiffViews {
+        side_by_side,
+        unified,
+    }
+}
+
+fn estimated_text_view_capacity(blocks: &[DiffBlock]) -> usize {
+    blocks
+        .iter()
+        .map(|block| match block {
+            DiffBlock::Equal { len, .. } => *len,
+            DiffBlock::Delete { old_len, .. } => *old_len,
+            DiffBlock::Insert { new_len, .. } => *new_len,
+            DiffBlock::Replace {
+                old_len, new_len, ..
+            } => old_len + new_len,
+        })
+        .sum()
 }
 
 fn diff_blocks<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<DiffBlock> {
@@ -1563,22 +1568,43 @@ fn fill_cell_segments(mut cell: DiffCell, highlighted: bool) -> DiffCell {
     cell
 }
 
-fn highlight_side_by_side_pair(
-    left: DiffCell,
-    right: DiffCell,
-) -> (Option<DiffCell>, Option<DiffCell>) {
-    let (left_segments, right_segments) = highlight_segments(&left.text, &right.text);
+fn clone_cell_with_segments(cell: &DiffCell, segments: Vec<DiffSegment>) -> DiffCell {
+    DiffCell {
+        segments,
+        ..cell.clone()
+    }
+}
 
-    (
-        Some(DiffCell {
-            segments: left_segments,
-            ..left
-        }),
-        Some(DiffCell {
-            segments: right_segments,
-            ..right
-        }),
-    )
+fn build_replace_highlight_cache(
+    left_cells: &[DiffCell],
+    right_cells: &[DiffCell],
+    alignment: &ReplaceBlockAlignment,
+) -> (Vec<Option<Vec<DiffSegment>>>, Vec<Option<Vec<DiffSegment>>>) {
+    let mut left_segments = vec![None; left_cells.len()];
+    let mut right_segments = vec![None; right_cells.len()];
+
+    for (left_index, right_match) in alignment.left_matches.iter().enumerate() {
+        let Some(right_index) = right_match else {
+            continue;
+        };
+        let (left_highlight, right_highlight) = highlight_segments(
+            &left_cells[left_index].text,
+            &right_cells[*right_index].text,
+        );
+        left_segments[left_index] = Some(left_highlight);
+        right_segments[*right_index] = Some(right_highlight);
+    }
+
+    (left_segments, right_segments)
+}
+
+fn highlighted_segments_for_cell(
+    cell: &DiffCell,
+    highlighted: &Option<Vec<DiffSegment>>,
+) -> Vec<DiffSegment> {
+    highlighted
+        .clone()
+        .unwrap_or_else(|| plain_segments(&cell.text, false))
 }
 
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
@@ -1628,11 +1654,10 @@ fn build_changed_cells(
         .collect()
 }
 
-fn unified_from_left_cell(left_cell: &DiffCell, counterpart: Option<&DiffCell>) -> UnifiedLine {
-    let segments = counterpart
-        .map(|right_cell| highlight_segments(&left_cell.text, &right_cell.text).0)
-        .unwrap_or_else(|| plain_segments(&left_cell.text, false));
-
+fn unified_from_left_cell_with_segments(
+    left_cell: &DiffCell,
+    segments: Vec<DiffSegment>,
+) -> UnifiedLine {
     UnifiedLine {
         left_line_number: left_cell.line_number,
         right_line_number: None,
@@ -1643,11 +1668,10 @@ fn unified_from_left_cell(left_cell: &DiffCell, counterpart: Option<&DiffCell>) 
     }
 }
 
-fn unified_from_right_cell(right_cell: &DiffCell, counterpart: Option<&DiffCell>) -> UnifiedLine {
-    let segments = counterpart
-        .map(|left_cell| highlight_segments(&left_cell.text, &right_cell.text).1)
-        .unwrap_or_else(|| plain_segments(&right_cell.text, false));
-
+fn unified_from_right_cell_with_segments(
+    right_cell: &DiffCell,
+    segments: Vec<DiffSegment>,
+) -> UnifiedLine {
     UnifiedLine {
         left_line_number: None,
         right_line_number: right_cell.line_number,
@@ -3385,13 +3409,6 @@ fn display_lines(content: &str) -> Vec<String> {
         .collect()
 }
 
-fn display_line(lines: &[String], line_number: usize, fallback: &str) -> String {
-    lines
-        .get(line_number.saturating_sub(1))
-        .cloned()
-        .unwrap_or_else(|| clean_line(fallback))
-}
-
 fn collapse_whitespace(input: &str) -> String {
     let mut result = String::new();
     let mut previous_was_space = false;
@@ -3409,10 +3426,6 @@ fn collapse_whitespace(input: &str) -> String {
     }
 
     result.trim().to_string()
-}
-
-fn clean_line(line: &str) -> String {
-    line.trim_end_matches(&['\r', '\n'][..]).to_string()
 }
 
 fn load_file(path: &Path) -> Result<LoadedFile, String> {
@@ -4371,6 +4384,18 @@ mod tests {
             result.side_by_side[1].right.as_ref().map(|cell| &cell.text),
             Some(text) if text == "config.timeout_ms = 12;"
         ));
+        assert!(matches!(result.unified[1].change, DiffChange::Delete));
+        assert_eq!(result.unified[1].text, "config.timeout_ms = 10;");
+        assert!(result.unified[1]
+            .segments
+            .iter()
+            .any(|segment| segment.highlighted));
+        assert!(matches!(result.unified[2].change, DiffChange::Insert));
+        assert_eq!(result.unified[2].text, "config.timeout_ms = 12;");
+        assert!(result.unified[2]
+            .segments
+            .iter()
+            .any(|segment| segment.highlighted));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
