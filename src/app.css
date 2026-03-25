@@ -588,6 +588,7 @@ h2 {
 .secondary,
 .primary,
 .inline-actions button {
+  min-height: 28px;
   padding: 3px 7px;
 }
 
@@ -596,7 +597,6 @@ h2 {
 }
 
 .toolbar-segmented-control button {
-  min-height: 26px;
   border-color: transparent;
 }
 
@@ -1250,28 +1250,25 @@ h2 {
 }
 
 .settings-theme-mode-control {
-  display: inline-grid;
+  width: min(360px, 100%);
+  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-alt);
+  gap: 6px;
 }
 
 .settings-theme-mode-control button {
   min-height: 34px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
+  padding: 0 10px;
+  border-color: var(--border);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--secondary-text);
 }
 
 .settings-theme-mode-control button.active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--active-text);
 }
 
 .settings-appearance-preview-grid {
@@ -1285,10 +1282,10 @@ h2 {
 
 .settings-appearance-preview-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--card-bg);
   overflow: hidden;
-  cursor: var(--interactive-cursor);
+  cursor: default;
 }
 
 .settings-appearance-preview-header {
@@ -1368,7 +1365,7 @@ h2 {
 
 .settings-theme-editor {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
 }
@@ -1445,7 +1442,7 @@ h2 {
   min-width: 178px;
   padding: 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface-alt);
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -1858,8 +1855,8 @@ h2 {
 }
 
 .icon-button {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--secondary-text);
 }
@@ -3089,8 +3086,8 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .swap-button {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
 }
 
 @keyframes spin {
@@ -3149,6 +3146,10 @@ button.filter-chip.tooLarge:focus-visible {
     max-width: none;
   }
 
+  .settings-section-link.active {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 46%, transparent);
+  }
+
   .settings-panel {
     width: 100%;
     padding-right: 0;
@@ -3162,6 +3163,11 @@ button.filter-chip.tooLarge:focus-visible {
   .left-picker-pane {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .viewer-root + .viewer-root {
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
 }
 
@@ -3179,6 +3185,26 @@ button.filter-chip.tooLarge:focus-visible {
   .setup-app-bar {
     display: flex;
     gap: 8px;
+  }
+
+  .app-bar-main,
+  .app-bar-actions,
+  .setup-bar-center,
+  .setup-bar-actions,
+  .compare-actions,
+  .compare-action-group {
+    width: 100%;
+  }
+
+  .app-bar-actions,
+  .compare-actions,
+  .setup-bar-actions {
+    justify-content: flex-start;
+  }
+
+  .compare-action-group {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .settings-bar-main {
