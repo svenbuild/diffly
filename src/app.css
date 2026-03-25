@@ -588,65 +588,38 @@ h2 {
   height: 13px;
 }
 
-.view-mode-button {
-  position: relative;
-  z-index: 1;
-  min-height: 30px;
-  padding: 4px 12px;
-  min-width: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--secondary-text);
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.view-mode-button:hover:not(:disabled),
-.view-mode-button:focus-visible {
-  color: var(--text);
-}
-
-.view-mode-button.active,
-.view-mode-button[aria-pressed='true'] {
-  background: transparent;
-  border-color: transparent;
-  color: var(--active-text);
-}
-
 .view-mode-icon {
   display: block;
   width: 14px;
   height: 14px;
 }
 
-.view-mode-button-label {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  line-height: 1;
-  text-align: center;
-}
-
-.view-mode-switch {
+.view-mode-toggle {
   position: relative;
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
-  min-height: 30px;
+  height: 30px;
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface-alt);
   overflow: hidden;
+  color: var(--secondary-text);
 }
 
-.view-mode-switch.disabled {
+.view-mode-toggle:hover:not(:disabled),
+.view-mode-toggle:focus-visible {
+  border-color: var(--border);
+  background: var(--surface-alt);
+  color: var(--secondary-text);
+}
+
+.view-mode-toggle:disabled {
   opacity: 0.5;
 }
 
-.view-mode-switch-thumb {
+.view-mode-toggle-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
@@ -661,8 +634,32 @@ h2 {
     box-shadow 140ms ease;
 }
 
-.view-mode-switch-thumb-right {
+.view-mode-toggle.unified-active .view-mode-toggle-thumb {
   transform: translateX(100%);
+}
+
+.view-mode-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.view-mode-option.active {
+  color: var(--active-text);
+}
+
+.view-mode-label {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  text-align: center;
 }
 
 .segmented-control {

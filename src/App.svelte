@@ -2840,49 +2840,42 @@
         </div>
 
         <div class="compare-action-group display-actions">
-          <div
-            aria-disabled={!textDiffActive}
-            aria-label="Diff view mode"
-            class:disabled={!textDiffActive}
-            class="view-mode-switch"
-            role="group"
+          <button
+            aria-label={viewMode === 'sideBySide' ? 'Switch to unified view' : 'Switch to split view'}
+            aria-pressed={viewMode === 'unified'}
+            class:unified-active={viewMode === 'unified'}
+            class="view-mode-toggle"
+            disabled={!textDiffActive}
+            type="button"
+            on:click={toggleViewMode}
           >
             <span
               aria-hidden="true"
-              class:view-mode-switch-thumb-right={viewMode === 'unified'}
-              class="view-mode-switch-thumb"
+              class="view-mode-toggle-thumb"
             ></span>
-              <button
-                class:active={viewMode === 'sideBySide'}
-                class="view-mode-button"
-                aria-pressed={viewMode === 'sideBySide'}
-                disabled={!textDiffActive}
-                title={textDiffActive ? 'Split view' : 'Split view is only available for text diffs'}
-                type="button"
-                on:click={() => setViewMode('sideBySide')}
-              >
+            <span
+              aria-hidden="true"
+              class:active={viewMode === 'sideBySide'}
+              class="view-mode-option"
+            >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
                 <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
               </svg>
-              <span class="view-mode-button-label">Split</span>
-            </button>
-              <button
-                class:active={viewMode === 'unified'}
-                class="view-mode-button"
-                aria-pressed={viewMode === 'unified'}
-                disabled={!textDiffActive}
-                title={textDiffActive ? 'Unified view' : 'Unified view is only available for text diffs'}
-                type="button"
-                on:click={() => setViewMode('unified')}
-              >
+              <span class="view-mode-label">Split</span>
+            </span>
+            <span
+              aria-hidden="true"
+              class:active={viewMode === 'unified'}
+              class="view-mode-option"
+            >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
                 <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
               </svg>
-              <span class="view-mode-button-label">Unified</span>
-            </button>
-          </div>
+              <span class="view-mode-label">Unified</span>
+            </span>
+          </button>
           <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
             Settings
           </button>
