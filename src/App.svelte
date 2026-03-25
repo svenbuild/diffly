@@ -2093,16 +2093,8 @@
       return
     }
 
-    const nextTargetTop = mapScrollOffset(
-      sourcePane.scrollTop,
-      getMaxScrollTop(sourcePane),
-      getMaxScrollTop(targetPane),
-    )
-    const nextTargetLeft = mapScrollOffset(
-      sourcePane.scrollLeft,
-      getMaxScrollLeft(sourcePane),
-      getMaxScrollLeft(targetPane),
-    )
+    const nextTargetTop = clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
 
     scrollEchoTarget = targetSide
     scrollEchoTop = nextTargetTop
