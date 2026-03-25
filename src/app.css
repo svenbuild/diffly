@@ -1994,7 +1994,7 @@ h2 {
 
 .compare-layout {
   display: grid;
-  grid-template-columns: clamp(300px, 22vw, 360px) minmax(0, 1fr);
+  grid-template-columns: clamp(248px, 17vw, 292px) minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
   min-height: 0;
@@ -2218,6 +2218,7 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  padding-left: 31px;
   color: var(--muted);
 }
 
