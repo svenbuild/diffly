@@ -2083,7 +2083,7 @@ h2 {
 .compare-layout {
   grid-row: 3;
   display: grid;
-  grid-template-columns: clamp(216px, 14vw, 252px) minmax(0, 1fr);
+  grid-template-columns: var(--compare-sidebar-width, 252px) 8px minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
   min-height: 0;
@@ -2096,6 +2096,11 @@ h2 {
 
 .compare-layout.single-pane {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.compare-layout.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .file-browser,
@@ -2114,6 +2119,28 @@ h2 {
   border: 0;
   border-radius: 0;
   border-right: 1px solid var(--border);
+}
+
+.compare-sidebar-resizer {
+  width: 8px;
+  min-width: 8px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--pane-bg);
+  cursor: col-resize;
+}
+
+.compare-sidebar-resizer:hover,
+.compare-layout.resizing-sidebar .compare-sidebar-resizer {
+  background: color-mix(in srgb, var(--surface-strong) 72%, var(--pane-bg));
+}
+
+.compare-sidebar-resizer:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--pane-bg));
 }
 
 .browser-header {
@@ -2303,10 +2330,17 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .group-heading {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 7px 16px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.group-status-spacer {
+  display: block;
+  width: 7px;
+  height: 7px;
 }
 
 .group-heading .entry-icon {
@@ -3573,6 +3607,10 @@ button.filter-chip.tooLarge:focus-visible {
 
   .compare-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compare-sidebar-resizer {
+    display: none;
   }
 
   .settings-shell,

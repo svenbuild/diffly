@@ -127,6 +127,7 @@
               </svg>
             </span>
             <span class="group-heading">
+              <span aria-hidden="true" class="group-status-spacer"></span>
               <EntryIcon kind="directory" open={!collapsedGroups[group.key]} />
               <span class="group-label">{group.label}</span>
             </span>

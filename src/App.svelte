@@ -192,6 +192,8 @@
   let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
+  let compareSidebarWidth = 252
+  let compareSidebarResizeActive = false
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
   let sideBySideHunkRanges: DiffHunkRange[] = []
@@ -258,6 +260,46 @@
 
   const toggleViewMode = () => {
     viewMode = viewMode === 'sideBySide' ? 'unified' : 'sideBySide'
+  }
+
+  function clampCompareSidebarWidth(value: number) {
+    return Math.min(420, Math.max(216, Math.round(value)))
+  }
+
+  function stopCompareSidebarResize() {
+    compareSidebarResizeActive = false
+  }
+
+  function updateCompareSidebarWidth(clientX: number) {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    compareSidebarWidth = clampCompareSidebarWidth(clientX)
+  }
+
+  function startCompareSidebarResize(event: PointerEvent) {
+    if (mode !== 'directory') {
+      return
+    }
+
+    compareSidebarResizeActive = true
+    updateCompareSidebarWidth(event.clientX)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updateCompareSidebarWidth(moveEvent.clientX)
+    }
+
+    const handlePointerUp = () => {
+      stopCompareSidebarResize()
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
   }
 
   const toggleIgnoreWhitespace = () => {
@@ -2959,7 +3001,12 @@
       <p class="error-banner">{errorMessage}</p>
     {/if}
 
-    <section class:single-pane={mode === 'file'} class="compare-layout">
+    <section
+      class:resizing-sidebar={compareSidebarResizeActive}
+      class:single-pane={mode === 'file'}
+      class="compare-layout"
+      style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
+    >
       {#if mode === 'directory'}
         <DirectoryBrowser
           {loading}
@@ -2977,6 +3024,12 @@
           {getFileName}
           {formatSize}
         />
+        <button
+          aria-label="Resize file list panel"
+          class="compare-sidebar-resizer"
+          type="button"
+          on:pointerdown={startCompareSidebarResize}
+        ></button>
       {/if}
 
       <DiffViewer
