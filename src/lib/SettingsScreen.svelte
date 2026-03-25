@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { renderDiffFragments, type RenderedDiffFragment } from './syntax'
-  import type { ContextLinesSetting, ThemeMode, UpdateMetadata, ViewMode } from './types'
+  import { detectSyntaxLanguage, renderDiffFragments, type RenderedDiffFragment } from './syntax'
+  import type { ContextLinesSetting, DiffSegment, ThemeMode, UpdateMetadata, ViewMode } from './types'
   import type { AppearanceSettings, ThemeDefinition, ThemeVariant } from './theme'
   import { createThemeCssVariables } from './theme/runtime'
   import type { SettingsSection } from './ui-types'
@@ -29,6 +29,8 @@
   interface PreviewStyleOptions {
     codeFontSize: number
     uiFontSize: number
+    showInlineHighlights: boolean
+    showSyntaxHighlighting: boolean
     usePointerCursor: boolean
   }
 
@@ -50,6 +52,7 @@
     light: 'Light preview',
     dark: 'Dark preview',
   }
+  const previewLanguage = detectSyntaxLanguage('theme-preview.ts')
 
   const sections: SectionItem[] = [
     { id: 'appearance', label: 'Appearance' },
@@ -157,38 +160,97 @@
 
     return buildInlineStyle({
       ...previewVariables,
-      '--preview-surface': previewVariables['--surface'],
+      '--preview-surface': previewVariables['--diff-context-bg'],
       '--preview-ink': previewVariables['--text'],
-      '--preview-added': theme.semanticColors.diffAdded,
-      '--preview-removed': theme.semanticColors.diffRemoved,
+      '--preview-added': previewVariables['--diff-insert-bg'],
+      '--preview-added-text': previewVariables['--diff-insert-text'],
+      '--preview-removed': previewVariables['--diff-delete-bg'],
+      '--preview-removed-text': previewVariables['--diff-delete-text'],
+      '--preview-diff-divider': previewVariables['--diff-divider'],
       '--preview-line-number': previewVariables['--muted'],
       '--preview-ui-font': theme.fonts.ui ?? previewVariables['--ui-font'],
       '--preview-code-font': theme.fonts.code ?? previewVariables['--code'],
     })
   }
 
-  function getPreviewLines(theme: ThemeDefinition, pane: 'base' | 'viewer'): PreviewLine[] {
-    const lines =
-      pane === 'base'
-        ? [
-            'const appearance = {',
-            `  accent: "${theme.accent}",`,
-            `  background: "${theme.surface}",`,
-            `  foreground: "${theme.ink}",`,
-            '};',
-          ]
-        : [
-            'const viewer = {',
-            `  syntaxTheme: "${formatThemeLabel(theme.codeThemeId)}",`,
-            `  contrast: ${theme.contrast},`,
-            `  translucent: ${!theme.opaqueWindows},`,
-            '};',
-          ]
+  function buildPreviewFragments(
+    text: string,
+    segments: DiffSegment[],
+    previewOptions: PreviewStyleOptions,
+  ) {
+    return renderDiffFragments(
+      text,
+      previewOptions.showInlineHighlights ? segments : [],
+      previewOptions.showSyntaxHighlighting ? previewLanguage : null,
+    )
+  }
 
-    return lines.map((line, index) => ({
-      lineNumber: index + 1,
-      fragments: renderDiffFragments(line, [], 'typescript'),
-    }))
+  function createPreviewLine(
+    lineNumber: number,
+    text: string,
+    previewOptions: PreviewStyleOptions,
+    segments: DiffSegment[] = [],
+  ): PreviewLine {
+    return {
+      lineNumber,
+      fragments: buildPreviewFragments(text, segments, previewOptions),
+    }
+  }
+
+  function getPreviewLines(
+    theme: ThemeDefinition,
+    pane: 'base' | 'viewer',
+    previewOptions: PreviewStyleOptions,
+  ): PreviewLine[] {
+    if (pane === 'base') {
+      const surfaceText = '  surface: "sidebar",'
+      const accentText = `  accent: "${theme.accent}",`
+      const contrastText = `  contrast: ${Math.max(theme.contrast - 8, 0)},`
+
+      return [
+        createPreviewLine(1, 'const themePreview = {', previewOptions),
+        createPreviewLine(2, surfaceText, previewOptions, [
+          { text: '  surface: "', highlighted: false },
+          { text: 'sidebar', highlighted: true },
+          { text: '",', highlighted: false },
+        ]),
+        createPreviewLine(3, accentText, previewOptions, [
+          { text: '  accent: "', highlighted: false },
+          { text: theme.accent, highlighted: true },
+          { text: '",', highlighted: false },
+        ]),
+        createPreviewLine(4, contrastText, previewOptions, [
+          { text: '  contrast: ', highlighted: false },
+          { text: String(Math.max(theme.contrast - 8, 0)), highlighted: true },
+          { text: ',', highlighted: false },
+        ]),
+        createPreviewLine(5, '};', previewOptions),
+      ]
+    }
+
+    const surfaceText = '  surface: "sidebar-elevated",'
+    const accentText = `  accent: "${theme.accent}",`
+    const contrastText = `  contrast: ${theme.contrast},`
+
+    return [
+      createPreviewLine(1, 'const themePreview = {', previewOptions),
+      createPreviewLine(2, surfaceText, previewOptions, [
+        { text: '  surface: "', highlighted: false },
+        { text: 'sidebar-elevated', highlighted: true },
+        { text: '",', highlighted: false },
+      ]),
+      createPreviewLine(3, accentText, previewOptions, [
+        { text: '  accent: "', highlighted: false },
+        { text: theme.accent, highlighted: true },
+        { text: '",', highlighted: false },
+      ]),
+      createPreviewLine(4, contrastText, previewOptions, [
+        { text: '  contrast: ', highlighted: false },
+        { text: String(theme.contrast), highlighted: true },
+        { text: ',', highlighted: false },
+      ]),
+      createPreviewLine(5, '};', previewOptions),
+    ]
   }
 
   function getColorValueStyle(color: string) {
@@ -235,25 +297,27 @@
   $: previewStyleOptions = {
     codeFontSize: appearanceSettings.codeFontSize,
     uiFontSize: appearanceSettings.uiFontSize,
+    showInlineHighlights,
+    showSyntaxHighlighting,
     usePointerCursor: appearanceSettings.usePointerCursor,
   }
 
   $: resolvedThemeState = {
     light: {
       availableThemes: availableLightThemes,
-      basePreviewLines: getPreviewLines(lightTheme, 'base'),
+      basePreviewLines: getPreviewLines(lightTheme, 'base', previewStyleOptions),
       presetId: appearanceSettings.lightThemeId,
       previewStyle: getPreviewStyle(lightTheme, previewStyleOptions),
       theme: lightTheme,
-      viewerPreviewLines: getPreviewLines(lightTheme, 'viewer'),
+      viewerPreviewLines: getPreviewLines(lightTheme, 'viewer', previewStyleOptions),
     },
     dark: {
       availableThemes: availableDarkThemes,
-      basePreviewLines: getPreviewLines(darkTheme, 'base'),
+      basePreviewLines: getPreviewLines(darkTheme, 'base', previewStyleOptions),
       presetId: appearanceSettings.darkThemeId,
       previewStyle: getPreviewStyle(darkTheme, previewStyleOptions),
       theme: darkTheme,
-      viewerPreviewLines: getPreviewLines(darkTheme, 'viewer'),
+      viewerPreviewLines: getPreviewLines(darkTheme, 'viewer', previewStyleOptions),
     },
   }
 

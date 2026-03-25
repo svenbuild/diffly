@@ -1269,6 +1269,7 @@ h2 {
   border-radius: 10px;
   background: var(--card-bg);
   overflow: hidden;
+  cursor: var(--interactive-cursor);
 }
 
 .settings-appearance-preview-header {
@@ -1279,6 +1280,7 @@ h2 {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   color: var(--muted);
+  font-family: var(--preview-ui-font);
 }
 
 .settings-appearance-preview-header strong {
@@ -1290,6 +1292,7 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   background: var(--preview-surface);
   color: var(--preview-ink);
+  border-top: 1px solid var(--preview-diff-divider);
 }
 
 .settings-appearance-preview-pane {
@@ -1320,12 +1323,22 @@ h2 {
 }
 
 .settings-appearance-preview-pane-removed {
-  border-right: 1px solid color-mix(in srgb, var(--preview-removed) 30%, var(--preview-surface));
-  background: color-mix(in srgb, var(--preview-removed) 12%, var(--preview-surface));
+  border-right: 1px solid var(--preview-diff-divider);
+  background: var(--preview-removed);
+  color: var(--preview-removed-text);
 }
 
 .settings-appearance-preview-pane-added {
-  background: color-mix(in srgb, var(--preview-added) 12%, var(--preview-surface));
+  background: var(--preview-added);
+  color: var(--preview-added-text);
+}
+
+.settings-appearance-preview-pane-removed .line-fragment.highlighted {
+  background: var(--delete-highlight-bg);
+}
+
+.settings-appearance-preview-pane-added .line-fragment.highlighted {
+  background: var(--insert-highlight-bg);
 }
 
 .settings-theme-editor-stack {
