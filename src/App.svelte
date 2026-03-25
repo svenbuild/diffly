@@ -2072,6 +2072,92 @@
     return clampScrollOffset((sourceOffset / sourceMaxOffset) * targetMaxOffset, targetMaxOffset)
   }
 
+  function getPaneContentRoot(pane: HTMLDivElement) {
+    const contentRoot = pane.firstElementChild
+    return contentRoot instanceof HTMLDivElement ? contentRoot : null
+  }
+
+  function findPaneItemAtOffset(contentRoot: HTMLDivElement, offset: number) {
+    const items = contentRoot.children as HTMLCollectionOf<HTMLElement>
+
+    if (items.length === 0) {
+      return null
+    }
+
+    let low = 0
+    let high = items.length - 1
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      const item = items.item(mid)
+
+      if (!item) {
+        break
+      }
+
+      const top = item.offsetTop
+      const bottom = top + item.offsetHeight
+
+      if (offset < top) {
+        high = mid - 1
+      } else if (offset >= bottom) {
+        low = mid + 1
+      } else {
+        return { index: mid, item }
+      }
+    }
+
+    const fallbackIndex = Math.max(
+      0,
+      Math.min(items.length - 1, low >= items.length ? items.length - 1 : Math.max(0, low - 1)),
+    )
+    const fallbackItem = items.item(fallbackIndex)
+
+    if (!fallbackItem) {
+      return null
+    }
+
+    return { index: fallbackIndex, item: fallbackItem }
+  }
+
+  function mapPaneScrollTop(sourcePane: HTMLDivElement, targetPane: HTMLDivElement) {
+    const sourceContentRoot = getPaneContentRoot(sourcePane)
+    const targetContentRoot = getPaneContentRoot(targetPane)
+
+    if (!sourceContentRoot || !targetContentRoot) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    if (sourceContentRoot.children.length !== targetContentRoot.children.length) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
+
+    if (!sourceMatch) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const targetItem = targetContentRoot.children.item(sourceMatch.index)
+
+    if (!(targetItem instanceof HTMLElement)) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const sourceItemHeight = Math.max(sourceMatch.item.offsetHeight, 1)
+    const targetItemHeight = Math.max(targetItem.offsetHeight, 1)
+    const offsetWithinItem = clampScrollOffset(
+      sourcePane.scrollTop - sourceMatch.item.offsetTop,
+      sourceItemHeight,
+    )
+    const itemProgress = offsetWithinItem / sourceItemHeight
+
+    return clampScrollOffset(
+      targetItem.offsetTop + itemProgress * targetItemHeight,
+      getMaxScrollTop(targetPane),
+    )
+  }
+
   function normalizeWheelDelta(delta: number, deltaMode: number) {
     if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
       return delta * 16
@@ -2093,7 +2179,7 @@
       return
     }
 
-    const nextTargetTop = clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    const nextTargetTop = mapPaneScrollTop(sourcePane, targetPane)
     const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
 
     scrollEchoTarget = targetSide
