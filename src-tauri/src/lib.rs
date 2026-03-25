@@ -405,6 +405,7 @@ struct LoadedBinaryFile {
     format: Option<String>,
 }
 
+#[derive(Clone)]
 enum DetectedFileKind {
     Missing,
     TooLarge,
@@ -942,39 +943,28 @@ fn compare_directories(
 
                 let entry = match (left_file, right_file) {
                     (Some(left_file), Some(right_file)) => {
-                        if files_match(left_file, right_file, options)? {
-                            return Ok(None);
-                        }
-
-                        DirectoryEntryResult {
-                            relative_path: relative_path.clone(),
-                            status: classify_entry_status(left_file, right_file)?,
-                            left_path: Some(left_file.to_string_lossy().to_string()),
-                            right_path: Some(right_file.to_string_lossy().to_string()),
-                            left_size: file_size(left_file),
-                            right_size: file_size(right_file),
-                        }
+                        compare_directory_pair(relative_path, left_file, right_file, options)?
                     }
-                    (Some(left_file), None) => DirectoryEntryResult {
+                    (Some(left_file), None) => Some(DirectoryEntryResult {
                         relative_path: relative_path.clone(),
                         status: EntryStatus::LeftOnly,
                         left_path: Some(left_file.to_string_lossy().to_string()),
                         right_path: None,
                         left_size: file_size(left_file),
                         right_size: None,
-                    },
-                    (None, Some(right_file)) => DirectoryEntryResult {
+                    }),
+                    (None, Some(right_file)) => Some(DirectoryEntryResult {
                         relative_path: relative_path.clone(),
                         status: EntryStatus::RightOnly,
                         left_path: None,
                         right_path: Some(right_file.to_string_lossy().to_string()),
                         left_size: None,
                         right_size: file_size(right_file),
-                    },
+                    }),
                     (None, None) => return Ok(None),
                 };
 
-                Ok(Some(entry))
+                Ok(entry)
             },
         )
         .collect::<Vec<_>>();
@@ -988,6 +978,48 @@ fn compare_directories(
     }
 
     Ok(entries)
+}
+
+fn compare_directory_pair(
+    relative_path: &str,
+    left_file: &Path,
+    right_file: &Path,
+    options: &CompareOptions,
+) -> Result<Option<DirectoryEntryResult>, String> {
+    let left_meta = fs::metadata(left_file).map_err(|error| error.to_string())?;
+    let right_meta = fs::metadata(right_file).map_err(|error| error.to_string())?;
+
+    if left_meta.len() == right_meta.len() && files_are_identical(left_file, right_file)? {
+        return Ok(None);
+    }
+
+    let left_sample = sample_file_bytes(left_file)?;
+    let right_sample = sample_file_bytes(right_file)?;
+    let left_kind = detect_file_kind_from_metadata_sample(left_file, &left_meta, &left_sample);
+    let right_kind = detect_file_kind_from_metadata_sample(right_file, &right_meta, &right_sample);
+
+    if (options.ignore_whitespace || options.ignore_case)
+        && matches!(left_kind, DetectedFileKind::Text)
+        && matches!(right_kind, DetectedFileKind::Text)
+    {
+        let left_text = fs::read(left_file).map_err(|error| error.to_string())?;
+        let right_text = fs::read(right_file).map_err(|error| error.to_string())?;
+
+        if normalize_text(&String::from_utf8_lossy(&left_text), options)
+            == normalize_text(&String::from_utf8_lossy(&right_text), options)
+        {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(DirectoryEntryResult {
+        relative_path: relative_path.to_string(),
+        status: classify_entry_status_from_kinds(&left_kind, &right_kind),
+        left_path: Some(left_file.to_string_lossy().to_string()),
+        right_path: Some(right_file.to_string_lossy().to_string()),
+        left_size: Some(left_meta.len()),
+        right_size: Some(right_meta.len()),
+    }))
 }
 
 fn read_directory_entries(base: &Path) -> Result<(Vec<ExplorerEntry>, Vec<ExplorerEntry>), String> {
@@ -1227,16 +1259,21 @@ fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, Stri
     Ok(files)
 }
 
-fn classify_entry_status(left: &Path, right: &Path) -> Result<EntryStatus, String> {
-    if is_binary_file(left)? || is_binary_file(right)? {
-        return Ok(EntryStatus::Binary);
+fn classify_entry_status_from_kinds(
+    left: &DetectedFileKind,
+    right: &DetectedFileKind,
+) -> EntryStatus {
+    if matches!(left, DetectedFileKind::Binary | DetectedFileKind::Image(_))
+        || matches!(right, DetectedFileKind::Binary | DetectedFileKind::Image(_))
+    {
+        return EntryStatus::Binary;
     }
 
-    if is_too_large(left)? || is_too_large(right)? {
-        return Ok(EntryStatus::TooLarge);
+    if matches!(left, DetectedFileKind::TooLarge) || matches!(right, DetectedFileKind::TooLarge) {
+        return EntryStatus::TooLarge;
     }
 
-    Ok(EntryStatus::Modified)
+    EntryStatus::Modified
 }
 
 fn build_file_diff(
@@ -1246,8 +1283,9 @@ fn build_file_diff(
     right_label: String,
     options: &CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let left_loaded = load_file(left)?;
-    let right_loaded = load_file(right)?;
+    let (left_loaded, right_loaded) = rayon::join(|| load_file(left), || load_file(right));
+    let left_loaded = left_loaded?;
+    let right_loaded = right_loaded?;
 
     if matches!(left_loaded, LoadedFile::TooLarge) || matches!(right_loaded, LoadedFile::TooLarge) {
         return Ok(FileDiffResult {
@@ -3473,21 +3511,31 @@ fn detect_file_kind(path: &Path) -> Result<DetectedFileKind, String> {
         return Ok(DetectedFileKind::Missing);
     }
 
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
     let sample = sample_file_bytes(path)?;
+    Ok(detect_file_kind_from_metadata_sample(
+        path, &metadata, &sample,
+    ))
+}
 
-    if looks_binary(&sample) {
-        if let Some(format) = detect_image_format(&sample, path) {
-            return Ok(DetectedFileKind::Image(format));
+fn detect_file_kind_from_metadata_sample(
+    path: &Path,
+    metadata: &fs::Metadata,
+    sample: &[u8],
+) -> DetectedFileKind {
+    if looks_binary(sample) {
+        if let Some(format) = detect_image_format(sample, path) {
+            return DetectedFileKind::Image(format);
         }
 
-        return Ok(DetectedFileKind::Binary);
+        return DetectedFileKind::Binary;
     }
 
-    if is_too_large(path)? {
-        return Ok(DetectedFileKind::TooLarge);
+    if metadata.len() > MAX_TEXT_BYTES {
+        return DetectedFileKind::TooLarge;
     }
 
-    Ok(DetectedFileKind::Text)
+    DetectedFileKind::Text
 }
 
 fn load_binary_details(
@@ -3601,22 +3649,20 @@ fn build_binary_payload(
         .is_some_and(|(left, right)| left.sha256 == right.sha256);
     let truncated = matches!(left_loaded, LoadedFile::Binary(_, _, true))
         || matches!(right_loaded, LoadedFile::Binary(_, _, true));
-    let (changed_byte_count, first_difference_offset) = if truncated {
-        (None, None)
-    } else {
-        binary_diff_stats(
+    let (rows, changed_byte_count, first_difference_offset) = if identical {
+        (Vec::new(), None, None)
+    } else if truncated {
+        let rows = build_hex_rows(
             loaded_file_bytes(left_loaded),
             loaded_file_bytes(right_loaded),
-        )
-    };
-
-    let rows = if identical {
-        Vec::new()
+        );
+        (rows, None, None)
     } else {
-        build_hex_rows(
+        let (rows, changed_byte_count, first_difference_offset) = build_binary_preview(
             loaded_file_bytes(left_loaded),
             loaded_file_bytes(right_loaded),
-        )
+        );
+        (rows, Some(changed_byte_count), first_difference_offset)
     };
 
     Ok(BinaryDiffPayload {
@@ -3630,26 +3676,51 @@ fn build_binary_payload(
     })
 }
 
-fn binary_diff_stats(
+fn build_binary_preview(
     left_bytes: Option<&[u8]>,
     right_bytes: Option<&[u8]>,
-) -> (Option<usize>, Option<usize>) {
+) -> (Vec<HexRow>, usize, Option<usize>) {
     let left_bytes = left_bytes.unwrap_or(&[]);
     let right_bytes = right_bytes.unwrap_or(&[]);
     let total = left_bytes.len().max(right_bytes.len());
+    let mut rows = Vec::new();
     let mut changed_byte_count = 0usize;
     let mut first_difference_offset = None;
 
-    for offset in 0..total {
-        if left_bytes.get(offset) != right_bytes.get(offset) {
-            changed_byte_count += 1;
-            if first_difference_offset.is_none() {
-                first_difference_offset = Some(offset);
+    for offset in (0..total).step_by(HEX_BYTES_PER_ROW) {
+        let mut left_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+        let mut right_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+
+        for index in 0..HEX_BYTES_PER_ROW {
+            let byte_offset = offset + index;
+            let left_byte = left_bytes.get(byte_offset).copied();
+            let right_byte = right_bytes.get(byte_offset).copied();
+            let changed = left_byte != right_byte;
+
+            if changed {
+                changed_byte_count += 1;
+
+                if first_difference_offset.is_none() {
+                    first_difference_offset = Some(byte_offset);
+                }
             }
+
+            left_row.push(build_hex_cell(left_byte, changed));
+            right_row.push(build_hex_cell(right_byte, changed));
         }
+
+        rows.push(HexRow {
+            offset,
+            left: left_row,
+            right: right_row,
+        });
     }
 
-    (Some(changed_byte_count), first_difference_offset)
+    (rows, changed_byte_count, first_difference_offset)
+}
+
+fn build_hex_rows(left_bytes: Option<&[u8]>, right_bytes: Option<&[u8]>) -> Vec<HexRow> {
+    build_binary_preview(left_bytes, right_bytes).0
 }
 
 fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
@@ -3698,34 +3769,6 @@ fn image_asset_url(path: &Path) -> Option<String> {
     Url::from_file_path(path)
         .ok()
         .map(|url| format!("asset://localhost{}", url.path()))
-}
-
-fn build_hex_rows(left_bytes: Option<&[u8]>, right_bytes: Option<&[u8]>) -> Vec<HexRow> {
-    let left_bytes = left_bytes.unwrap_or(&[]);
-    let right_bytes = right_bytes.unwrap_or(&[]);
-    let total = left_bytes.len().max(right_bytes.len());
-    let mut rows = Vec::new();
-
-    for offset in (0..total).step_by(HEX_BYTES_PER_ROW) {
-        let mut left_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
-        let mut right_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
-
-        for index in 0..HEX_BYTES_PER_ROW {
-            let left_byte = left_bytes.get(offset + index).copied();
-            let right_byte = right_bytes.get(offset + index).copied();
-            let changed = left_byte != right_byte;
-            left_row.push(build_hex_cell(left_byte, changed));
-            right_row.push(build_hex_cell(right_byte, changed));
-        }
-
-        rows.push(HexRow {
-            offset,
-            left: left_row,
-            right: right_row,
-        });
-    }
-
-    rows
 }
 
 fn build_hex_cell(byte: Option<u8>, changed: bool) -> HexCell {
@@ -3808,33 +3851,6 @@ fn is_webp(bytes: &[u8]) -> bool {
     bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP"
 }
 
-fn files_match(left: &Path, right: &Path, options: &CompareOptions) -> Result<bool, String> {
-    let left_meta = fs::metadata(left).map_err(|error| error.to_string())?;
-    let right_meta = fs::metadata(right).map_err(|error| error.to_string())?;
-
-    if left_meta.len() == right_meta.len() && files_are_identical(left, right)? {
-        return Ok(true);
-    }
-
-    if !options.ignore_whitespace && !options.ignore_case {
-        return Ok(false);
-    }
-
-    if is_too_large(left)? || is_too_large(right)? {
-        return Ok(false);
-    }
-
-    let left_loaded = load_file(left)?;
-    let right_loaded = load_file(right)?;
-
-    match (left_loaded, right_loaded) {
-        (LoadedFile::Text(left_text), LoadedFile::Text(right_text)) => {
-            Ok(normalize_text(&left_text, options) == normalize_text(&right_text, options))
-        }
-        _ => Ok(false),
-    }
-}
-
 fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
     let mut left_file = fs::File::open(left).map_err(|error| error.to_string())?;
     let mut right_file = fs::File::open(right).map_err(|error| error.to_string())?;
@@ -3861,16 +3877,6 @@ fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
             return Ok(false);
         }
     }
-}
-
-fn is_too_large(path: &Path) -> Result<bool, String> {
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-    Ok(metadata.len() > MAX_TEXT_BYTES)
-}
-
-fn is_binary_file(path: &Path) -> Result<bool, String> {
-    let bytes = sample_file_bytes(path)?;
-    Ok(looks_binary(&bytes))
 }
 
 fn sample_file_bytes(path: &Path) -> Result<Vec<u8>, String> {
