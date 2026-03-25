@@ -175,7 +175,6 @@
   let compareRevision = 0
   let scrollEchoTarget: 'left' | 'right' | null = null
   let scrollEchoTop = 0
-  let scrollEchoLeft = 0
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
   let paneNavigationSyncActive = false
@@ -2234,18 +2233,12 @@
     }
 
     const nextTargetTop = mapPaneScrollTop(sourcePane, targetPane)
-    const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
 
     scrollEchoTarget = targetSide
     scrollEchoTop = nextTargetTop
-    scrollEchoLeft = nextTargetLeft
 
     if (Math.abs(targetPane.scrollTop - nextTargetTop) >= 0.5) {
       targetPane.scrollTop = nextTargetTop
-    }
-
-    if (Math.abs(targetPane.scrollLeft - nextTargetLeft) >= 0.5) {
-      targetPane.scrollLeft = nextTargetLeft
     }
 
     if (scrollEchoResetFrame !== null) {
@@ -2347,8 +2340,7 @@
 
     if (
       source === scrollEchoTarget &&
-      Math.abs(sourcePane.scrollTop - scrollEchoTop) < 1 &&
-      Math.abs(sourcePane.scrollLeft - scrollEchoLeft) < 1
+      Math.abs(sourcePane.scrollTop - scrollEchoTop) < 1
     ) {
       scrollEchoTarget = null
       return

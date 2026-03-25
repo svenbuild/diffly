@@ -46,7 +46,8 @@
   let rightScrollMarkers: ScrollMarker[] = []
   let unifiedScrollMarkers: ScrollMarker[] = []
   let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
-  let sideBySideContentWidth = 0
+  let leftPaneContentWidth = 0
+  let rightPaneContentWidth = 0
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
@@ -300,21 +301,19 @@
     await tick()
 
     if (!leftPaneScroll || !rightPaneScroll || !leftPaneGrid || !rightPaneGrid) {
-      sideBySideContentWidth = 0
+      leftPaneContentWidth = 0
+      rightPaneContentWidth = 0
       leftPaneTrailingSpace = 0
       rightPaneTrailingSpace = 0
       return
     }
 
     if (wrapSideBySideLines) {
-      sideBySideContentWidth = 0
+      leftPaneContentWidth = 0
+      rightPaneContentWidth = 0
     } else {
-      sideBySideContentWidth = Math.max(
-        leftPaneGrid.scrollWidth,
-        rightPaneGrid.scrollWidth,
-        leftPaneScroll.clientWidth,
-        rightPaneScroll.clientWidth,
-      )
+      leftPaneContentWidth = Math.max(leftPaneGrid.scrollWidth, leftPaneScroll.clientWidth)
+      rightPaneContentWidth = Math.max(rightPaneGrid.scrollWidth, rightPaneScroll.clientWidth)
     }
 
     const leftContentHeight = Math.max(0, leftPaneGrid.scrollHeight - leftPaneTrailingSpace)
@@ -603,7 +602,7 @@
               <div
                 bind:this={leftPaneGrid}
                 class="pane-grid"
-                style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+                style:min-width={!wrapSideBySideLines && leftPaneContentWidth ? `${leftPaneContentWidth}px` : undefined}
               >
               {#if visibleSideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
@@ -664,7 +663,7 @@
               <div
                 bind:this={rightPaneGrid}
                 class="pane-grid"
-                style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+                style:min-width={!wrapSideBySideLines && rightPaneContentWidth ? `${rightPaneContentWidth}px` : undefined}
               >
               {#if visibleSideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
