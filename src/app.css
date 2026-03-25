@@ -2785,7 +2785,10 @@ button.filter-chip.tooLarge:focus-visible {
   top: 8px;
   right: 8px;
   z-index: 2;
-  padding: 4px 7px;
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
@@ -2793,6 +2796,25 @@ button.filter-chip.tooLarge:focus-visible {
   font-size: 0.72rem;
   pointer-events: none;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.viewer-loading-bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.viewer-loading-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -36%;
+  width: 36%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: viewer-loading-slide 1s ease-in-out infinite;
 }
 
 .split-view {
@@ -3574,6 +3596,16 @@ button.filter-chip.tooLarge:focus-visible {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes viewer-loading-slide {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(380%);
   }
 }
 

@@ -56,6 +56,10 @@
   let scrollMarkerObserver: ResizeObserver | null = null
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
+  let leftImageLoadFailed = false
+  let rightImageLoadFailed = false
+  let lastLeftImagePath = ''
+  let lastRightImagePath = ''
   const emptyBinaryMeta: BinaryFileMeta = {
     exists: false,
     path: '',
@@ -124,6 +128,21 @@
   $: imageDiff = activeDiff?.contentKind === 'image' ? activeDiff.image ?? null : null
 
   $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
+
+  $: {
+    const nextLeftImagePath = imageDiff?.leftMeta.exists ? imageDiff.leftMeta.path : ''
+    const nextRightImagePath = imageDiff?.rightMeta.exists ? imageDiff.rightMeta.path : ''
+
+    if (nextLeftImagePath !== lastLeftImagePath) {
+      lastLeftImagePath = nextLeftImagePath
+      leftImageLoadFailed = false
+    }
+
+    if (nextRightImagePath !== lastRightImagePath) {
+      lastRightImagePath = nextRightImagePath
+      rightImageLoadFailed = false
+    }
+  }
 
   $: {
     leftPaneScroll
@@ -211,11 +230,7 @@
     return `${count.toLocaleString()} differing ${count === 1 ? 'byte' : 'bytes'}`
   }
 
-  function resolveImageSource(assetUrl: string | null, meta: BinaryFileMeta) {
-    if (assetUrl) {
-      return assetUrl
-    }
-
+  function resolveImageSource(meta: BinaryFileMeta) {
     if (!meta.exists || !meta.path) {
       return null
     }
@@ -707,16 +722,21 @@
               <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
             </div>
             <div class="binary-pane-body">
-              {#if imageDiff?.leftMeta.exists && resolveImageSource(imageDiff.leftAssetUrl, imageDiff.leftMeta)}
+              {#if imageDiff?.leftMeta.exists && resolveImageSource(imageDiff.leftMeta) && !leftImageLoadFailed}
                 <div class="binary-preview-shell">
                   <img
                     alt={`${diffHeaderContext.leftPaneLabel} preview`}
                     class="binary-preview-image"
                     decoding="async"
                     draggable="false"
-                    src={resolveImageSource(imageDiff.leftAssetUrl, imageDiff.leftMeta) ?? undefined}
+                    src={resolveImageSource(imageDiff.leftMeta) ?? undefined}
+                    on:error={() => {
+                      leftImageLoadFailed = true
+                    }}
                   />
                 </div>
+              {:else if imageDiff?.leftMeta.exists}
+                <div class="empty-inline-state binary-empty-state">Unable to load image preview.</div>
               {:else}
                 <div class="empty-inline-state binary-empty-state">No image on this side.</div>
               {/if}
@@ -761,16 +781,21 @@
               <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
             </div>
             <div class="binary-pane-body">
-              {#if imageDiff?.rightMeta.exists && resolveImageSource(imageDiff.rightAssetUrl, imageDiff.rightMeta)}
+              {#if imageDiff?.rightMeta.exists && resolveImageSource(imageDiff.rightMeta) && !rightImageLoadFailed}
                 <div class="binary-preview-shell">
                   <img
                     alt={`${diffHeaderContext.rightPaneLabel} preview`}
                     class="binary-preview-image"
                     decoding="async"
                     draggable="false"
-                    src={resolveImageSource(imageDiff.rightAssetUrl, imageDiff.rightMeta) ?? undefined}
+                    src={resolveImageSource(imageDiff.rightMeta) ?? undefined}
+                    on:error={() => {
+                      rightImageLoadFailed = true
+                    }}
                   />
                 </div>
+              {:else if imageDiff?.rightMeta.exists}
+                <div class="empty-inline-state binary-empty-state">Unable to load image preview.</div>
               {:else}
                 <div class="empty-inline-state binary-empty-state">No image on this side.</div>
               {/if}
@@ -918,7 +943,10 @@
       <div class="message-card">{activeDiff.summary}</div>
     {/if}
     {#if detailLoading}
-      <div class="viewer-loading">Refreshing diff...</div>
+      <div class="viewer-loading">
+        <span>Refreshing diff...</span>
+        <span aria-hidden="true" class="viewer-loading-bar"></span>
+      </div>
     {/if}
   {:else if detailLoading}
     <div class="empty-state">Loading diff...</div>

@@ -18,7 +18,6 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
-const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
@@ -395,7 +394,7 @@ enum LoadedFile {
     TooLarge,
     Text(String),
     Image(LoadedBinaryFile),
-    Binary(LoadedBinaryFile, Option<Vec<u8>>),
+    Binary(LoadedBinaryFile, Vec<u8>, bool),
 }
 
 #[derive(Clone)]
@@ -798,7 +797,20 @@ fn path_info(path: String) -> Result<PathInfo, String> {
 }
 
 #[tauri::command]
-fn compare_paths(
+async fn compare_paths(
+    left_path: String,
+    right_path: String,
+    mode: String,
+    options: CompareOptions,
+) -> Result<CompareResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        compare_paths_sync(left_path, right_path, mode, options)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn compare_paths_sync(
     left_path: String,
     right_path: String,
     mode: String,
@@ -821,7 +833,20 @@ fn compare_paths(
 }
 
 #[tauri::command]
-fn open_compare_item(
+async fn open_compare_item(
+    left_base: String,
+    right_base: String,
+    relative_path: String,
+    options: CompareOptions,
+) -> Result<FileDiffResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        open_compare_item_sync(left_base, right_base, relative_path, options)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn open_compare_item_sync(
     left_base: String,
     right_base: String,
     relative_path: String,
@@ -1266,8 +1291,8 @@ fn build_file_diff(
         });
     }
 
-    if matches!(left_loaded, LoadedFile::Binary(_, _))
-        || matches!(right_loaded, LoadedFile::Binary(_, _))
+    if matches!(left_loaded, LoadedFile::Binary(_, _, _))
+        || matches!(right_loaded, LoadedFile::Binary(_, _, _))
         || matches!(left_loaded, LoadedFile::Image(_))
         || matches!(right_loaded, LoadedFile::Image(_))
     {
@@ -1301,13 +1326,13 @@ fn build_file_diff(
     let left_text = match left_loaded {
         LoadedFile::Text(text) => text,
         LoadedFile::Missing => String::new(),
-        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _) => String::new(),
+        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _, _) => String::new(),
     };
 
     let right_text = match right_loaded {
         LoadedFile::Text(text) => text,
         LoadedFile::Missing => String::new(),
-        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _) => String::new(),
+        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _, _) => String::new(),
     };
 
     let normalized_left = normalize_text(&left_text, options);
@@ -3428,15 +3453,17 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
             ))
         }
         DetectedFileKind::Image(format) => {
-            let (details, _) = load_binary_details(path, Some(format), false)?;
+            let (details, _, _) = load_binary_details(path, Some(format), None)?;
             Ok(LoadedFile::Image(details))
         }
         DetectedFileKind::Binary => {
-            let collect_limit = MAX_BINARY_BYTES.min(MAX_BINARY_RENDER_BYTES);
-            let collect_bytes =
-                fs::metadata(path).map_err(|error| error.to_string())?.len() <= collect_limit;
-            let (details, bytes) = load_binary_details(path, None, collect_bytes)?;
-            Ok(LoadedFile::Binary(details, bytes))
+            let (details, bytes, truncated) =
+                load_binary_details(path, None, Some(MAX_BINARY_RENDER_BYTES as usize))?;
+            Ok(LoadedFile::Binary(
+                details,
+                bytes.unwrap_or_default(),
+                truncated,
+            ))
         }
     }
 }
@@ -3466,14 +3493,14 @@ fn detect_file_kind(path: &Path) -> Result<DetectedFileKind, String> {
 fn load_binary_details(
     path: &Path,
     format: Option<String>,
-    collect_bytes: bool,
-) -> Result<(LoadedBinaryFile, Option<Vec<u8>>), String> {
+    preview_byte_limit: Option<usize>,
+) -> Result<(LoadedBinaryFile, Option<Vec<u8>>, bool), String> {
     let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
     let size = metadata.len();
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
-    let mut bytes = if collect_bytes {
-        Some(Vec::with_capacity(size as usize))
+    let mut bytes = if let Some(limit) = preview_byte_limit {
+        Some(Vec::with_capacity((size.min(limit as u64)) as usize))
     } else {
         None
     };
@@ -3489,11 +3516,18 @@ fn load_binary_details(
         hasher.update(&buffer[..read]);
 
         if let Some(collected_bytes) = bytes.as_mut() {
-            collected_bytes.extend_from_slice(&buffer[..read]);
+            let byte_limit = preview_byte_limit.expect("preview byte limit should be set");
+            let remaining = byte_limit.saturating_sub(collected_bytes.len());
+
+            if remaining > 0 {
+                let take = remaining.min(read);
+                collected_bytes.extend_from_slice(&buffer[..take]);
+            }
         }
     }
 
     let sha256 = format!("{:x}", hasher.finalize());
+    let truncated = preview_byte_limit.is_some_and(|limit| size > limit as u64);
 
     Ok((
         LoadedBinaryFile {
@@ -3503,6 +3537,7 @@ fn load_binary_details(
             format,
         },
         bytes,
+        truncated,
     ))
 }
 
@@ -3564,8 +3599,8 @@ fn build_binary_payload(
         .as_ref()
         .zip(right_details.as_ref())
         .is_some_and(|(left, right)| left.sha256 == right.sha256);
-    let truncated = matches!(left_loaded, LoadedFile::Binary(_, None))
-        || matches!(right_loaded, LoadedFile::Binary(_, None));
+    let truncated = matches!(left_loaded, LoadedFile::Binary(_, _, true))
+        || matches!(right_loaded, LoadedFile::Binary(_, _, true));
     let (changed_byte_count, first_difference_offset) = if truncated {
         (None, None)
     } else {
@@ -3575,7 +3610,7 @@ fn build_binary_payload(
         )
     };
 
-    let rows = if identical || truncated {
+    let rows = if identical {
         Vec::new()
     } else {
         build_hex_rows(
@@ -3620,14 +3655,14 @@ fn binary_diff_stats(
 fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
     match file {
         LoadedFile::Image(details) => Some(details),
-        LoadedFile::Binary(details, _) => Some(details),
+        LoadedFile::Binary(details, _, _) => Some(details),
         LoadedFile::Missing | LoadedFile::TooLarge | LoadedFile::Text(_) => None,
     }
 }
 
 fn loaded_file_bytes(file: &LoadedFile) -> Option<&[u8]> {
     match file {
-        LoadedFile::Binary(_, bytes) => bytes.as_deref(),
+        LoadedFile::Binary(_, bytes, _) => Some(bytes.as_slice()),
         LoadedFile::Missing | LoadedFile::TooLarge | LoadedFile::Text(_) | LoadedFile::Image(_) => {
             None
         }
@@ -3985,7 +4020,7 @@ mod tests {
         fs::create_dir_all(&right).expect("right directory should exist");
         write_temp_file(&temp_root.join("secret.txt"), "top secret\n");
 
-        let error = match open_compare_item(
+        let error = match open_compare_item_sync(
             left.to_string_lossy().to_string(),
             right.to_string_lossy().to_string(),
             "../secret.txt".to_string(),
@@ -4015,7 +4050,7 @@ mod tests {
         let absolute_path = temp_root.join("outside.txt");
         write_temp_file(&absolute_path, "outside\n");
 
-        let error = match open_compare_item(
+        let error = match open_compare_item_sync(
             left.to_string_lossy().to_string(),
             right.to_string_lossy().to_string(),
             absolute_path.to_string_lossy().to_string(),
@@ -4250,9 +4285,9 @@ mod tests {
         let left = temp_root.join("left.bin");
         let right = temp_root.join("right.bin");
 
-        let large = vec![0; MAX_BINARY_BYTES as usize + 1];
-        let mut shifted = vec![0; MAX_BINARY_BYTES as usize + 1];
-        shifted[MAX_BINARY_BYTES as usize] = 1;
+        let large = vec![0; MAX_BINARY_RENDER_BYTES as usize + 1];
+        let mut shifted = vec![0; MAX_BINARY_RENDER_BYTES as usize + 1];
+        shifted[MAX_BINARY_RENDER_BYTES as usize] = 1;
 
         write_temp_bytes_file(&left, &large);
         write_temp_bytes_file(&right, &shifted);
@@ -4271,7 +4306,17 @@ mod tests {
         assert!(payload.truncated);
         assert_eq!(payload.changed_byte_count, None);
         assert_eq!(payload.first_difference_offset, None);
-        assert!(payload.rows.is_empty());
+        assert_eq!(
+            payload.rows.len(),
+            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
+        );
+        assert_eq!(payload.rows[0].offset, 0);
+        assert!(payload.rows.iter().all(|row| {
+            row.left
+                .iter()
+                .zip(row.right.iter())
+                .all(|(left, right)| left.hex == right.hex)
+        }));
         assert_eq!(
             result.summary,
             "Binary files differ. The hex view is truncated at 256 KB per side."
@@ -4319,7 +4364,10 @@ mod tests {
         assert!(payload.truncated);
         assert_eq!(payload.first_difference_offset, None);
         assert_eq!(payload.changed_byte_count, None);
-        assert!(payload.rows.is_empty());
+        assert_eq!(
+            payload.rows.len(),
+            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
+        );
     }
 
     #[test]
