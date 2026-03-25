@@ -80,7 +80,6 @@
   export let visibleThemeVariants: ThemeVariant[]
   export let availableLightThemes: ThemeDefinition[]
   export let availableDarkThemes: ThemeDefinition[]
-  export let copiedThemeVariant: ThemeVariant | null
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let viewMode: ViewMode
@@ -120,12 +119,10 @@
     value: string
   ) => void
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
-  export let onSetThemeTranslucency: (variant: ThemeVariant, enabled: boolean) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
   export let onSetUsePointerCursor: (value: boolean) => void
   export let onStepUiFontSize: (direction: -1 | 1) => void
   export let onStepCodeFontSize: (direction: -1 | 1) => void
-  export let onCopyTheme: (variant: ThemeVariant) => void
   export let onToggleIgnoreWhitespace: () => void
   export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
@@ -606,10 +603,6 @@
                         </div>
 
                         <div class="settings-theme-editor-actions">
-                          <button class="secondary" type="button" on:click={() => onCopyTheme(variant)}>
-                            {copiedThemeVariant === variant ? 'Copied' : 'Copy theme'}
-                          </button>
-
                           <label class="settings-theme-select">
                             <select
                               aria-label={`${getThemeTitle(variant)} preset`}
@@ -791,23 +784,6 @@
                               )}
                           />
                         </div>
-
-                        <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
-                          <span>Panel translucency</span>
-                          <span class="settings-switch">
-                            <input
-                              checked={!themeState.theme.opaqueWindows}
-                              role="switch"
-                              type="checkbox"
-                              on:change={(event) =>
-                                onSetThemeTranslucency(
-                                  variant,
-                                  (event.currentTarget as HTMLInputElement).checked,
-                                )}
-                            />
-                            <span aria-hidden="true" class="settings-switch-ui"></span>
-                          </span>
-                        </label>
 
                         <div class="settings-theme-editor-row settings-theme-editor-row-slider">
                           <span>Contrast</span>

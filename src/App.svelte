@@ -62,7 +62,6 @@
     type ThemeVariant,
   } from './lib/theme'
   import {
-    createThemeExport,
     normalizeAppearanceSettings,
     resolveThemeCssVariables,
     resolveThemeForVariant,
@@ -93,7 +92,6 @@
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
-  const THEME_COPY_FEEDBACK_DURATION_MS = 1400
 
   type Screen = 'setup' | 'compare' | 'settings'
   type UpdateStatus =
@@ -193,7 +191,6 @@
   let compareRefreshTimer: number | null = null
   let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
-  let copyThemeTimer: number | null = null
   let activeDetailRequestId = 0
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
@@ -231,7 +228,6 @@
   let diffFontSize = `${appearanceSettings.codeFontSize}px`
   let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
-  let copiedThemeVariant: ThemeVariant | null = null
   let updateIndicatorState: UpdateIndicatorState = {
     status: 'idle',
     currentVersion: '',
@@ -327,10 +323,6 @@
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
-      }
-
-      if (copyThemeTimer !== null) {
-        window.clearTimeout(copyThemeTimer)
       }
 
       if (scrollEchoResetFrame !== null) {
@@ -572,69 +564,6 @@
 
       return next
     })
-  }
-
-  async function writeTextToClipboard(value: string) {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-        return true
-      } catch {
-        // Fall through to the legacy copy path for Tauri/WebView clipboard edge cases.
-      }
-    }
-
-    if (typeof document === 'undefined') {
-      return false
-    }
-
-    const textarea = document.createElement('textarea')
-    textarea.value = value
-    textarea.setAttribute('readonly', 'true')
-    textarea.style.position = 'fixed'
-    textarea.style.top = '0'
-    textarea.style.left = '-9999px'
-    textarea.style.opacity = '0'
-
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    textarea.setSelectionRange(0, textarea.value.length)
-
-    let copied = false
-
-    try {
-      copied = document.execCommand('copy')
-    } finally {
-      document.body.removeChild(textarea)
-    }
-
-    return copied
-  }
-
-  async function copyTheme(variant: ThemeVariant) {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const theme = resolveThemeForVariant(appearanceSettings, variant)
-    const copied = await writeTextToClipboard(createThemeExport(theme))
-
-    if (!copied) {
-      copiedThemeVariant = null
-      return
-    }
-
-    copiedThemeVariant = variant
-
-    if (copyThemeTimer !== null) {
-      window.clearTimeout(copyThemeTimer)
-    }
-
-    copyThemeTimer = window.setTimeout(() => {
-      copiedThemeVariant = null
-      copyThemeTimer = null
-    }, THEME_COPY_FEEDBACK_DURATION_MS)
   }
 
   function parseUpdateTimestamp(value: string) {
@@ -3021,7 +2950,6 @@
       visibleThemeVariants={visibleAppearanceVariants}
       availableLightThemes={availableLightThemes}
       availableDarkThemes={availableDarkThemes}
-      {copiedThemeVariant}
       {ignoreWhitespace}
       {ignoreCase}
       {viewMode}
@@ -3053,12 +2981,10 @@
       onSetThemeColor={setThemeColorOverride}
       onSetThemeSemanticColor={setThemeSemanticColorOverride}
       onSetThemeFont={setThemeFontOverride}
-      onSetThemeTranslucency={setThemeTranslucency}
       onSetThemeContrast={setThemeContrast}
       onSetUsePointerCursor={setUsePointerCursor}
       onStepUiFontSize={stepUiFontSize}
       onStepCodeFontSize={stepCodeFontSize}
-      onCopyTheme={copyTheme}
       onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
       onToggleIgnoreCase={toggleIgnoreCase}
       onSetViewMode={setViewMode}
