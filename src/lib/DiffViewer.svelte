@@ -128,7 +128,13 @@
     diffRowHeight
     visibleSideBySideRenderItems
     visibleUnifiedRenderItems
-    scheduleScrollMarkerRefresh()
+    if (viewerRenderPending) {
+      leftScrollMarkers = []
+      rightScrollMarkers = []
+      unifiedScrollMarkers = []
+    } else {
+      scheduleScrollMarkerRefresh()
+    }
   } else {
     leftScrollMarkers = []
     rightScrollMarkers = []
