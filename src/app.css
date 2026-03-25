@@ -426,11 +426,6 @@ h2 {
   min-width: 0;
 }
 
-.setup-screen .app-identity {
-  flex: 0 0 19ch;
-  min-width: 19ch;
-}
-
 .setup-app-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -516,11 +511,6 @@ h2 {
   align-items: center;
   gap: 10px;
   min-width: 0;
-}
-
-.compare-bar-brand .app-identity {
-  flex: 0 0 19ch;
-  min-width: 19ch;
 }
 
 .compare-bar-brand h1 {

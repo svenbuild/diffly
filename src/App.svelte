@@ -691,6 +691,15 @@
     )
   }
 
+  function startStartupUpdateCheck() {
+    if (startupUpdateCheckStarted || !checkForUpdatesOnLaunch) {
+      return
+    }
+
+    startupUpdateCheckStarted = true
+    void runUpdateCheck()
+  }
+
   async function initializeUpdateVersion() {
     try {
       const version = await getAppVersion()
@@ -1124,6 +1133,7 @@
       ])
 
       applyPersistedSession(savedSession)
+      startStartupUpdateCheck()
 
       leftExplorer = {
         ...createExplorerPane('Left'),
@@ -1154,6 +1164,7 @@
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
+      startStartupUpdateCheck()
     } finally {
       pickerLoading = false
       persistenceReady = true
@@ -2570,11 +2581,6 @@
     rightExplorer.history
     rightExplorer.historyIndex
     scheduleSessionSave()
-  }
-
-  $: if (persistenceReady && checkForUpdatesOnLaunch && !startupUpdateCheckStarted) {
-    startupUpdateCheckStarted = true
-    void runUpdateCheck()
   }
 
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
