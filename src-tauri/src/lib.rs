@@ -475,7 +475,6 @@ struct LineDescriptor {
 struct ReplaceBlockAlignment {
     row_pairs: Vec<(Option<usize>, Option<usize>)>,
     left_matches: Vec<Option<usize>>,
-    right_matches: Vec<Option<usize>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1793,19 +1792,15 @@ fn align_replace_block_rows(
     merge_adjacent_replace_gap_pairs(&mut row_pairs, &left_descriptors, &right_descriptors);
 
     let mut left_matches = vec![None; left_cells.len()];
-    let mut right_matches = vec![None; right_cells.len()];
-
     for (left_match, right_match) in &row_pairs {
         if let (Some(left_index), Some(right_index)) = (*left_match, *right_match) {
             left_matches[left_index] = Some(right_index);
-            right_matches[right_index] = Some(left_index);
         }
     }
 
     ReplaceBlockAlignment {
         row_pairs,
         left_matches,
-        right_matches,
     }
 }
 
@@ -5380,14 +5375,24 @@ mod tests {
         ];
 
         let alignment = align_replace_block_rows(&left_cells, &right_cells);
+        let paired_right_indexes = alignment
+            .row_pairs
+            .iter()
+            .filter_map(
+                |(left_index, right_index)| match (left_index, right_index) {
+                    (Some(_), Some(right_index)) => Some(*right_index),
+                    _ => None,
+                },
+            )
+            .collect::<Vec<_>>();
 
         assert_eq!(alignment.left_matches[0], Some(3));
         assert_eq!(alignment.left_matches[3], Some(8));
-        assert!(alignment.right_matches[0].is_none());
-        assert!(alignment.right_matches[1].is_none());
-        assert!(alignment.right_matches[2].is_none());
-        assert!(alignment.right_matches[6].is_none());
-        assert!(alignment.right_matches[7].is_none());
+        assert!(!paired_right_indexes.contains(&0));
+        assert!(!paired_right_indexes.contains(&1));
+        assert!(!paired_right_indexes.contains(&2));
+        assert!(!paired_right_indexes.contains(&6));
+        assert!(!paired_right_indexes.contains(&7));
     }
 
     #[test]
