@@ -1937,9 +1937,10 @@ h2 {
 
 .entry-name,
 .file-row-top {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--file-row-indent, 0px) 7px 16px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   min-width: 0;
 }
 
@@ -2218,6 +2219,7 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  padding-left: calc(var(--file-row-indent, 0px) + 39px);
   color: var(--muted);
 }
 
