@@ -2403,7 +2403,14 @@ button.filter-chip.tooLarge:focus-visible {
   position: relative;
   min-height: 0;
   height: 100%;
-  background: var(--canvas-alt);
+  background-color: var(--diff-context-bg);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--diff-gap-stripe) 0,
+    var(--diff-gap-stripe) 1px,
+    transparent 1px,
+    transparent 10px
+  );
   scrollbar-gutter: stable;
 }
 
@@ -2545,7 +2552,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .diff-row.gap-row {
-  background-color: var(--diff-gap-bg);
+  background-color: var(--diff-context-bg);
   background-image: repeating-linear-gradient(
     -45deg,
     var(--diff-gap-stripe) 0,
