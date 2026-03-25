@@ -89,6 +89,8 @@
   const DIFF_PREFETCH_RADIUS = 2
   const DIFF_PREFETCH_DELAY_MS = 70
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
+  const PANE_WHEEL_SMOOTHING = 0.18
+  const PANE_WHEEL_MIN_STEP = 1.25
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
@@ -2339,7 +2341,11 @@
         return
       }
 
-      activePane.scrollTop += remaining * 0.28
+      const step = Math.sign(remaining) * Math.max(PANE_WHEEL_MIN_STEP, Math.abs(remaining) * PANE_WHEEL_SMOOTHING)
+      activePane.scrollTop = clampScrollOffset(
+        activePane.scrollTop + step,
+        getMaxScrollTop(activePane),
+      )
       applyPaneScrollSync(source)
       paneWheelScrollFrame = window.requestAnimationFrame(animate)
     }
