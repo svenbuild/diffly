@@ -154,6 +154,7 @@
           {/if}
         </section>
       {/each}
+      <div aria-hidden="true" class="browser-list-filler"></div>
     </div>
   {/if}
 </aside>
