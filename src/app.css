@@ -2272,11 +2272,15 @@ button.filter-chip.tooLarge:focus-visible {
 
 .group-toggle {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns:
+    calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size))
+    16px
+    minmax(0, 1fr)
+    auto;
   align-items: center;
   gap: 8px;
   min-height: 31px;
-  padding: 6px 10px 6px calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size));
+  padding: 6px 10px 6px 0;
   background: color-mix(in srgb, var(--list-header-bg) 90%, transparent);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border) 68%, transparent);
   color: var(--strong-text);
@@ -2291,6 +2295,12 @@ button.filter-chip.tooLarge:focus-visible {
 .chevron {
   display: inline-grid;
   place-items: center;
+}
+
+.tree-indent {
+  display: block;
+  align-self: stretch;
+  width: 100%;
 }
 
 .group-heading {
@@ -2340,11 +2350,21 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-row {
   display: grid;
-  gap: 4px;
-  padding: 7px 10px 7px calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size));
+  grid-template-columns:
+    calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size))
+    minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  padding: 7px 10px 7px 0;
   background: transparent;
   border-bottom: 1px solid var(--border);
   position: relative;
+}
+
+.file-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .file-row:last-child {
@@ -2362,6 +2382,7 @@ button.filter-chip.tooLarge:focus-visible {
   justify-content: space-between;
   gap: 6px;
   padding-left: 31px;
+  min-width: 0;
   color: var(--muted);
 }
 

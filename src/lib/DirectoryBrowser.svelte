@@ -120,6 +120,7 @@
             type="button"
             on:click={() => toggleGroup(group.key)}
           >
+            <span aria-hidden="true" class="tree-indent"></span>
             <span class="chevron">
               <svg aria-hidden="true" class:collapsed={collapsedGroups[group.key]} class="chevron-icon" viewBox="0 0 16 16">
                 <path d="m5.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
@@ -142,14 +143,17 @@
                   type="button"
                   on:click={() => selectEntry(entry)}
                 >
-                  <span class="file-row-top">
-                    <span class={`file-status-marker ${entry.status}`}></span>
-                    <EntryIcon kind="file" />
-                    <span class="entry-text">{getFileName(entry.relativePath)}</span>
-                  </span>
-                  <span class="file-row-bottom">
-                    <span class="file-status-label">{statusLabel[entry.status]}</span>
-                    <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
+                  <span aria-hidden="true" class="tree-indent"></span>
+                  <span class="file-row-main">
+                    <span class="file-row-top">
+                      <span class={`file-status-marker ${entry.status}`}></span>
+                      <EntryIcon kind="file" />
+                      <span class="entry-text">{getFileName(entry.relativePath)}</span>
+                    </span>
+                    <span class="file-row-bottom">
+                      <span class="file-status-label">{statusLabel[entry.status]}</span>
+                      <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
+                    </span>
                   </span>
                 </button>
               {/each}
