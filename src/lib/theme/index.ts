@@ -925,11 +925,15 @@ export function createThemeTokens(
   const codeFont = theme.fonts.code ?? DEFAULT_CODE_FONT
   const isDark = theme.variant === 'dark'
   const contrastScale = clamp(theme.contrast, 0, 100) / 100
-  const borderAlpha = 0.2 + contrastScale * 0.18
-  const hoverAlpha = 0.08 + contrastScale * 0.06
-  const panelAlpha = theme.opaqueWindows ? 0.96 : isDark ? 0.88 : 0.94
-  const elevatedAlpha = theme.opaqueWindows ? 1 : isDark ? 0.94 : 0.97
-  const mutedMix = 0.56 - contrastScale * 0.08
+  const borderAlpha = scaleByContrast(contrastScale, 0.12, 0.38)
+  const hoverAlpha = scaleByContrast(contrastScale, 0.04, 0.15)
+  const panelAlpha = theme.opaqueWindows
+    ? 0.96
+    : scaleByContrast(contrastScale, isDark ? 0.78 : 0.88, isDark ? 0.94 : 0.98)
+  const elevatedAlpha = theme.opaqueWindows
+    ? 1
+    : scaleByContrast(contrastScale, isDark ? 0.84 : 0.94, isDark ? 0.98 : 0.995)
+  const mutedMix = scaleByContrast(contrastScale, 0.72, 0.42)
 
   return {
     accent: theme.accent,
@@ -970,6 +974,10 @@ export function getDefaultAppearanceSettings(): AppearanceSettings {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function scaleByContrast(contrastScale: number, low: number, high: number): number {
+  return low + (high - low) * clamp(contrastScale, 0, 1)
 }
 
 function mixHex(left: string, right: string, amount: number): string {
