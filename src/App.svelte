@@ -2939,6 +2939,7 @@
         {detailLoading}
         {viewMode}
         {currentDiffHunk}
+        {showFullFile}
         {showInlineHighlights}
         {wrapSideBySideLines}
         {showSyntaxHighlighting}

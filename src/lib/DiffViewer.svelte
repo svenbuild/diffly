@@ -10,6 +10,7 @@
   export let detailLoading: boolean
   export let viewMode: ViewMode
   export let currentDiffHunk: number
+  export let showFullFile: boolean
   export let showInlineHighlights: boolean
   export let wrapSideBySideLines: boolean
   export let showSyntaxHighlighting: boolean
@@ -408,7 +409,7 @@
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class:gap-row={!item.row.left}
+                    class:gap-row={!showFullFile && !item.row.left}
                     class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
                     data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
@@ -485,7 +486,7 @@
                 {:else if item.row}
                   <div
                     class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class:gap-row={!item.row.right}
+                    class:gap-row={!showFullFile && !item.row.right}
                     class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                     data-diff-anchor={item.isAnchor ? 'true' : undefined}
                     data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
