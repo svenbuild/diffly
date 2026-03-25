@@ -2666,10 +2666,16 @@
         <div class="setup-mode-switch">
           <span>Compare</span>
           <div class="segmented-control" aria-label="Compare mode">
-            <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
+            <button
+              aria-pressed={mode === 'file'}
+              class:active={mode === 'file'}
+              type="button"
+              on:click={() => setMode('file')}
+            >
               Files
             </button>
             <button
+              aria-pressed={mode === 'directory'}
               class:active={mode === 'directory'}
               type="button"
               on:click={() => setMode('directory')}
@@ -2943,7 +2949,6 @@
         <DirectoryBrowser
           {loading}
           {activeStatusFilters}
-          {filteredDirectoryEntries}
           {directoryEntries}
           {directoryStatusSummary}
           {visibleFolderSections}
