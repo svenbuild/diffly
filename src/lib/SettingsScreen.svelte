@@ -1,7 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { detectSyntaxLanguage, renderDiffFragments, type RenderedDiffFragment } from './syntax'
-  import type { ContextLinesSetting, DiffSegment, ThemeMode, UpdateMetadata, ViewMode } from './types'
+  import type {
+    ContextLinesSetting,
+    DiffSegment,
+    ThemeMode,
+    UpdateChannel,
+    UpdateMetadata,
+    ViewMode,
+  } from './types'
   import type { AppearanceSettings, ThemeDefinition, ThemeVariant } from './theme'
   import { createThemeCssVariables } from './theme/runtime'
   import type { SettingsSection } from './ui-types'
@@ -84,6 +91,7 @@
   export let showSyntaxHighlighting: boolean
   export let syncSideBySideScroll: boolean
   export let checkForUpdatesOnLaunch: boolean
+  export let updateChannel: UpdateChannel
   export let updateChannelLabel: string
   export let currentVersion: string
   export let updateIndicatorState: UpdateIndicatorStatus
@@ -118,6 +126,7 @@
   export let onToggleShowSyntaxHighlighting: () => void
   export let onToggleSyncSideBySideScroll: () => void
   export let onSetCheckForUpdatesOnLaunch: (value: boolean) => void
+  export let onSetUpdateChannel: (value: UpdateChannel) => void
   export let onCheckForUpdates: () => void
   export let onDownloadUpdate: () => void
   export let onInstallUpdate: () => void
@@ -1107,7 +1116,7 @@
               <div class="settings-summary-item">
                 <span>Channel</span>
                 <strong>{updateChannelLabel}</strong>
-                <small>Stable builds only in this release.</small>
+                <small>{updateChannel === 'prerelease' ? 'Includes beta and prerelease builds.' : 'Only stable releases are offered.'}</small>
               </div>
 
               <div class="settings-summary-item">
@@ -1162,6 +1171,44 @@
                 </div>
               </div>
             {/if}
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-header">
+              <h3>Release channel</h3>
+              <p>Choose whether updater checks should include prerelease builds.</p>
+            </div>
+
+            <div class="settings-group-grid">
+              <div class="settings-row settings-row-span-full">
+                <div class="settings-row-copy">
+                  <strong>Update feed</strong>
+                  <p>Stable is safest. Prerelease also includes beta builds when they are published.</p>
+                </div>
+
+                <div class="settings-control settings-control-wide">
+                  <div class="settings-segmented-control" role="group" aria-label="Update channel">
+                    <button
+                      aria-pressed={updateChannel === 'stable'}
+                      class:active={updateChannel === 'stable'}
+                      type="button"
+                      on:click={() => onSetUpdateChannel('stable')}
+                    >
+                      Stable
+                    </button>
+
+                    <button
+                      aria-pressed={updateChannel === 'prerelease'}
+                      class:active={updateChannel === 'prerelease'}
+                      type="button"
+                      on:click={() => onSetUpdateChannel('prerelease')}
+                    >
+                      Prerelease
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section class="settings-group">

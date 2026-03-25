@@ -416,6 +416,20 @@
     checkForUpdatesOnLaunch = nextValue
   }
 
+  function setUpdateChannel(nextChannel: UpdateChannel) {
+    if (updateChannel === nextChannel) {
+      return
+    }
+
+    updateChannel = nextChannel
+    updateIndicatorState = {
+      ...updateIndicatorState,
+      status: 'idle',
+      metadata: null,
+      message: `Switched to ${formatUpdateChannelLabel(nextChannel)} updates. Check again to refresh availability.`,
+    }
+  }
+
   function setUsePointerCursor(nextValue: boolean) {
     appearanceSettings = {
       ...appearanceSettings,
@@ -663,7 +677,7 @@
   }
 
   function formatUpdateChannelLabel(channel: UpdateChannel) {
-    return channel.charAt(0).toUpperCase() + channel.slice(1)
+    return channel === 'prerelease' ? 'Stable + prerelease' : 'Stable only'
   }
 
   function normalizeUnavailableUpdateMessage(message: string | null | undefined) {
@@ -756,7 +770,7 @@
     }
 
     try {
-      const result = await checkForUpdates()
+      const result = await checkForUpdates(updateChannel)
       lastUpdateCheckAt = new Date().toISOString()
 
       if (result.kind === 'available' && result.available && result.metadata) {
@@ -819,7 +833,7 @@
     }
 
     try {
-      const result = await downloadUpdate()
+      const result = await downloadUpdate(updateChannel)
 
       if (result.kind === 'unavailable') {
         updateIndicatorState = {
@@ -861,7 +875,7 @@
     }
 
     try {
-      const result = await installUpdate()
+      const result = await installUpdate(updateChannel)
 
       if (result.kind === 'unavailable') {
         updateIndicatorState = {
@@ -3003,6 +3017,7 @@
       {showSyntaxHighlighting}
       {syncSideBySideScroll}
       {checkForUpdatesOnLaunch}
+      {updateChannel}
       updateChannelLabel={formatUpdateChannelLabel(updateChannel)}
       currentVersion={updateIndicatorState.currentVersion}
       updateIndicatorState={updateIndicatorState.status}
@@ -3033,6 +3048,7 @@
       onToggleShowSyntaxHighlighting={() => setShowSyntaxHighlighting(!showSyntaxHighlighting)}
       onToggleSyncSideBySideScroll={toggleSyncSideBySideScroll}
       onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
+      onSetUpdateChannel={setUpdateChannel}
       onCheckForUpdates={runUpdateCheck}
       onDownloadUpdate={beginUpdateDownload}
       onInstallUpdate={applyDownloadedUpdate}

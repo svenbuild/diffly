@@ -9,7 +9,7 @@ export type ContentKind = 'text' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
-export type UpdateChannel = 'stable'
+export type UpdateChannel = 'stable' | 'prerelease'
 
 export interface PersistedExplorerPane {
   currentPath: string

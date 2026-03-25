@@ -9,6 +9,7 @@ import type {
   PathInfo,
   PathKind,
   PersistedSession,
+  UpdateChannel,
   UpdateActionResult,
   UpdateCheckResult,
 } from './types'
@@ -32,14 +33,14 @@ export const saveSessionState = (session: PersistedSession) =>
 export const getAppVersion = () =>
   invoke<string>('get_app_version')
 
-export const checkForUpdates = () =>
-  invoke<UpdateCheckResult>('check_for_updates')
+export const checkForUpdates = (channel: UpdateChannel) =>
+  invoke<UpdateCheckResult>('check_for_updates', { channel })
 
-export const downloadUpdate = () =>
-  invoke<UpdateActionResult>('download_update')
+export const downloadUpdate = (channel: UpdateChannel) =>
+  invoke<UpdateActionResult>('download_update', { channel })
 
-export const installUpdate = () =>
-  invoke<UpdateActionResult>('install_update')
+export const installUpdate = (channel: UpdateChannel) =>
+  invoke<UpdateActionResult>('install_update', { channel })
 
 export const comparePaths = (
   leftPath: string,

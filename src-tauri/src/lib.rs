@@ -8,6 +8,7 @@ use std::{
 };
 
 use rayon::prelude::*;
+use reqwest::Url;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use similar::{DiffOp, TextDiff};
@@ -31,6 +32,11 @@ const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 const LCS_MAX_MATRIX_CELLS: usize = 16_384;
+const STABLE_UPDATE_ENDPOINT: &str =
+    "https://github.com/svenbuild/diffly/releases/latest/download/latest.json";
+const GITHUB_RELEASES_API_ENDPOINT: &str =
+    "https://api.github.com/repos/svenbuild/diffly/releases?per_page=20";
+const PRERELEASE_UPDATE_MANIFEST_NAME: &str = "latest.json";
 
 fn default_true() -> bool {
     true
@@ -174,7 +180,21 @@ struct UpdateActionResponse {
     message: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct GitHubReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubRelease {
+    draft: bool,
+    prerelease: bool,
+    assets: Vec<GitHubReleaseAsset>,
+}
+
 struct PendingUpdate {
+    channel: String,
     update: Update,
     downloaded_bytes: Option<Vec<u8>>,
 }
@@ -445,9 +465,11 @@ fn get_app_version(app: AppHandle) -> Result<String, String> {
 async fn check_for_updates(
     app: AppHandle,
     state: tauri::State<'_, UpdateState>,
+    channel: Option<String>,
 ) -> Result<UpdateCheckResponse, String> {
     let current_version = app.package_info().version.to_string();
     let checked_at = current_unix_timestamp_string();
+    let channel = normalize_update_channel(channel.as_deref());
 
     if tauri_plugin_updater::target().is_none() {
         let response = UpdateCheckResponse {
@@ -461,7 +483,27 @@ async fn check_for_updates(
         return Ok(response);
     }
 
-    let updater = match app.updater_builder().build() {
+    let endpoints = match resolve_update_endpoints(&channel).await {
+        Ok(endpoints) => endpoints,
+        Err(error) => {
+            let response = UpdateCheckResponse {
+                kind: "unavailable".to_string(),
+                available: false,
+                metadata: None,
+                message: Some(error),
+            };
+            let _ = touch_last_update_check_at(&app, &checked_at);
+            clear_pending_update(&state)?;
+            return Ok(response);
+        }
+    };
+
+    let updater = match app
+        .updater_builder()
+        .endpoints(endpoints)
+        .map_err(|error| error.to_string())?
+        .build()
+    {
         Ok(updater) => updater,
         Err(error) => {
             let response = UpdateCheckResponse {
@@ -487,6 +529,7 @@ async fn check_for_updates(
             set_pending_update(
                 &state,
                 PendingUpdate {
+                    channel: channel.clone(),
                     update,
                     downloaded_bytes: None,
                 },
@@ -529,6 +572,7 @@ async fn check_for_updates(
 async fn download_update(
     _app: AppHandle,
     state: tauri::State<'_, UpdateState>,
+    channel: Option<String>,
 ) -> Result<UpdateActionResponse, String> {
     let Some(mut pending_update) = take_pending_update(&state)? else {
         return Ok(UpdateActionResponse {
@@ -536,6 +580,18 @@ async fn download_update(
             message: Some("Check for updates before downloading an update.".to_string()),
         });
     };
+
+    let channel = normalize_update_channel(channel.as_deref());
+    if pending_update.channel != channel {
+        clear_pending_update(&state)?;
+        return Ok(UpdateActionResponse {
+            kind: "unavailable".to_string(),
+            message: Some(
+                "The selected update channel changed. Check for updates again before downloading."
+                    .to_string(),
+            ),
+        });
+    }
 
     let downloaded_bytes = match pending_update.update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
@@ -561,6 +617,7 @@ async fn download_update(
 async fn install_update(
     app: AppHandle,
     state: tauri::State<'_, UpdateState>,
+    channel: Option<String>,
 ) -> Result<UpdateActionResponse, String> {
     let Some(mut pending_update) = take_pending_update(&state)? else {
         return Ok(UpdateActionResponse {
@@ -568,6 +625,18 @@ async fn install_update(
             message: Some("Check for updates before installing an update.".to_string()),
         });
     };
+
+    let channel = normalize_update_channel(channel.as_deref());
+    if pending_update.channel != channel {
+        clear_pending_update(&state)?;
+        return Ok(UpdateActionResponse {
+            kind: "unavailable".to_string(),
+            message: Some(
+                "The selected update channel changed. Check for updates again before installing."
+                    .to_string(),
+            ),
+        });
+    }
 
     let bytes = match pending_update.downloaded_bytes.take() {
         Some(bytes) => bytes,
@@ -960,6 +1029,55 @@ fn touch_last_update_check_at(app: &AppHandle, checked_at: &str) -> Result<(), S
 
     session.last_update_check_at = Some(checked_at.to_string());
     write_session_state(app, &session)
+}
+
+fn normalize_update_channel(value: Option<&str>) -> String {
+    match value.map(str::trim) {
+        Some("prerelease") => "prerelease".to_string(),
+        _ => "stable".to_string(),
+    }
+}
+
+async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
+    if channel == "prerelease" {
+        let endpoint = resolve_latest_prerelease_manifest_url().await?;
+        return Ok(vec![endpoint]);
+    }
+
+    Ok(vec![
+        Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?,
+    ])
+}
+
+async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .get(GITHUB_RELEASES_API_ENDPOINT)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let response = response.error_for_status().map_err(|error| error.to_string())?;
+    let releases = response
+        .json::<Vec<GitHubRelease>>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let asset_url = releases
+        .into_iter()
+        .find(|release| release.prerelease && !release.draft)
+        .and_then(|release| {
+            release
+                .assets
+                .into_iter()
+                .find(|asset| asset.name == PRERELEASE_UPDATE_MANIFEST_NAME)
+                .map(|asset| asset.browser_download_url)
+        })
+        .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
+
+    Url::parse(&asset_url).map_err(|error| error.to_string())
 }
 
 fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), String> {
