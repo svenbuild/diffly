@@ -60,6 +60,11 @@
   let rightImageLoadFailed = false
   let lastLeftImagePath = ''
   let lastRightImagePath = ''
+  let visibleSideBySideRenderItems: SideBySideRenderItem[] = []
+  let visibleUnifiedRenderItems: UnifiedRenderItem[] = []
+  let renderChunkFrame: number | null = null
+  let renderChunkToken = 0
+  let viewerRenderPending = false
   const emptyBinaryMeta: BinaryFileMeta = {
     exists: false,
     path: '',
@@ -83,6 +88,10 @@
     kind: 'insert' | 'delete' | 'mixed'
   }
 
+  const LARGE_RENDER_THRESHOLD = 1200
+  const INITIAL_RENDER_CHUNK_SIZE = 400
+  const RENDER_CHUNK_SIZE = 1200
+
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
   $: {
@@ -100,13 +109,13 @@
   }
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
-    sideBySideRenderItems
+    visibleSideBySideRenderItems
     wrapSideBySideLines
     void updateSideBySideContentMetrics()
   }
 
   $: if (activeDiff?.contentKind === 'text' && viewMode === 'unified') {
-    unifiedRenderItems
+    visibleUnifiedRenderItems
     void updateUnifiedContentWidth()
   }
 
@@ -116,8 +125,8 @@
     diffFontSize
     diffRowLineHeight
     diffRowHeight
-    sideBySideRenderItems
-    unifiedRenderItems
+    visibleSideBySideRenderItems
+    visibleUnifiedRenderItems
     scheduleScrollMarkerRefresh()
   } else {
     leftScrollMarkers = []
@@ -153,6 +162,8 @@
     unifiedContentGrid
     syncScrollMarkerObserver()
   }
+
+  $: syncVisibleRenderItems()
 
   function currentSyntaxKey() {
     return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
@@ -458,8 +469,72 @@
   }
 
   onDestroy(() => {
+    cancelRenderChunking()
     scrollMarkerObserver?.disconnect()
   })
+
+  function cancelRenderChunking() {
+    if (renderChunkFrame !== null) {
+      window.cancelAnimationFrame(renderChunkFrame)
+      renderChunkFrame = null
+    }
+  }
+
+  function shouldChunkRender(count: number) {
+    return activeDiff?.contentKind === 'text' && showFullFile && count > LARGE_RENDER_THRESHOLD
+  }
+
+  function syncVisibleRenderItems() {
+    cancelRenderChunking()
+    renderChunkToken += 1
+
+    const currentToken = renderChunkToken
+
+    if (!shouldChunkRender(sideBySideRenderItems.length) && !shouldChunkRender(unifiedRenderItems.length)) {
+      visibleSideBySideRenderItems = sideBySideRenderItems
+      visibleUnifiedRenderItems = unifiedRenderItems
+      viewerRenderPending = false
+      return
+    }
+
+    viewerRenderPending = true
+    visibleSideBySideRenderItems = sideBySideRenderItems.slice(0, INITIAL_RENDER_CHUNK_SIZE)
+    visibleUnifiedRenderItems = unifiedRenderItems.slice(0, INITIAL_RENDER_CHUNK_SIZE)
+
+    const pump = () => {
+      if (currentToken !== renderChunkToken) {
+        return
+      }
+
+      let completed = true
+
+      if (visibleSideBySideRenderItems.length < sideBySideRenderItems.length) {
+        visibleSideBySideRenderItems = sideBySideRenderItems.slice(
+          0,
+          visibleSideBySideRenderItems.length + RENDER_CHUNK_SIZE,
+        )
+        completed = false
+      }
+
+      if (visibleUnifiedRenderItems.length < unifiedRenderItems.length) {
+        visibleUnifiedRenderItems = unifiedRenderItems.slice(
+          0,
+          visibleUnifiedRenderItems.length + RENDER_CHUNK_SIZE,
+        )
+        completed = false
+      }
+
+      if (completed) {
+        renderChunkFrame = null
+        viewerRenderPending = false
+        return
+      }
+
+      renderChunkFrame = window.requestAnimationFrame(pump)
+    }
+
+    renderChunkFrame = window.requestAnimationFrame(pump)
+  }
 </script>
 
 <svelte:window
@@ -523,11 +598,11 @@
                 class="pane-grid"
                 style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
               >
-              {#if sideBySideRenderItems.length === 0}
+              {#if visibleSideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
 
-              {#each sideBySideRenderItems as item}
+              {#each visibleSideBySideRenderItems as item}
                 {#if item.type === 'hunk'}
                   <div class="collapsed-row">
                     <span class="collapsed-chip">{item.header}</span>
@@ -584,11 +659,11 @@
                 class="pane-grid"
                 style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
               >
-              {#if sideBySideRenderItems.length === 0}
+              {#if visibleSideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
               {/if}
 
-              {#each sideBySideRenderItems as item}
+              {#each visibleSideBySideRenderItems as item}
                 {#if item.type === 'hunk'}
                   <div class="collapsed-row">
                     <span class="collapsed-chip">{item.header}</span>
@@ -650,11 +725,11 @@
             class="unified-content-grid"
             style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
           >
-          {#if unifiedRenderItems.length === 0}
+          {#if visibleUnifiedRenderItems.length === 0}
             <div class="empty-inline-state">No changed lines.</div>
           {/if}
 
-          {#each unifiedRenderItems as item}
+          {#each visibleUnifiedRenderItems as item}
             {#if item.type === 'hunk'}
               <div class="collapsed-row unified-collapsed-row">
                 <span class="collapsed-chip">{item.header}</span>
@@ -942,9 +1017,9 @@
     {:else}
       <div class="message-card">{activeDiff.summary}</div>
     {/if}
-    {#if detailLoading}
+    {#if detailLoading || viewerRenderPending}
       <div class="viewer-loading">
-        <span>Refreshing diff...</span>
+        <span>{detailLoading ? 'Refreshing diff...' : 'Rendering large file...'}</span>
         <span aria-hidden="true" class="viewer-loading-bar"></span>
       </div>
     {/if}
