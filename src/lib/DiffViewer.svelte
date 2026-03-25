@@ -203,6 +203,14 @@
     return offset.toString(16).toUpperCase().padStart(8, '0')
   }
 
+  function formatBinaryByteCount(count: number | null | undefined) {
+    if (count === null || count === undefined) {
+      return null
+    }
+
+    return `${count.toLocaleString()} differing ${count === 1 ? 'byte' : 'bytes'}`
+  }
+
   function resolveImageSource(assetUrl: string | null, meta: BinaryFileMeta) {
     if (assetUrl) {
       return assetUrl
@@ -839,6 +847,16 @@
               ) as chip}
                 <span class="binary-summary-chip">{chip}</span>
               {/each}
+              {#if binaryDiff.changedByteCount !== null}
+                <span class="binary-summary-chip">
+                  {formatBinaryByteCount(binaryDiff.changedByteCount)}
+                </span>
+              {/if}
+              {#if binaryDiff.firstDifferenceOffset !== null}
+                <span class="binary-summary-chip">
+                  First diff 0x{formatBinaryOffset(binaryDiff.firstDifferenceOffset)}
+                </span>
+              {/if}
             </div>
           {/if}
         </div>

@@ -341,6 +341,8 @@ struct BinaryDiffPayload {
     right_meta: BinaryFileMeta,
     rows: Vec<HexRow>,
     bytes_per_row: usize,
+    changed_byte_count: Option<usize>,
+    first_difference_offset: Option<usize>,
     truncated: bool,
 }
 
@@ -809,7 +811,9 @@ fn compare_paths(
             entries: compare_directories(&left, &right, &options)?,
         }),
         "file" => Ok(CompareResponse::File {
-            result: Box::new(build_file_diff(&left, &right, left_path, right_path, &options)?),
+            result: Box::new(build_file_diff(
+                &left, &right, left_path, right_path, &options,
+            )?),
         }),
         _ => Err("Unsupported compare mode.".to_string()),
     }
@@ -1117,7 +1121,7 @@ async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
     }
 
     Ok(vec![
-        Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?,
+        Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?
     ])
 }
 
@@ -1131,7 +1135,9 @@ async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
         .send()
         .await
         .map_err(|error| error.to_string())?;
-    let response = response.error_for_status().map_err(|error| error.to_string())?;
+    let response = response
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
     let releases = response
         .json::<Vec<GitHubRelease>>()
         .await
@@ -1259,7 +1265,8 @@ fn build_file_diff(
         });
     }
 
-    if matches!(left_loaded, LoadedFile::Binary(_, _)) || matches!(right_loaded, LoadedFile::Binary(_, _))
+    if matches!(left_loaded, LoadedFile::Binary(_, _))
+        || matches!(right_loaded, LoadedFile::Binary(_, _))
         || matches!(left_loaded, LoadedFile::Image(_))
         || matches!(right_loaded, LoadedFile::Image(_))
     {
@@ -1723,12 +1730,9 @@ fn merge_adjacent_replace_gap_pairs(
     let mut index = 0;
 
     while index < row_pairs.len() {
-        if let Some(pair) = mergeable_adjacent_gap_pair(
-            row_pairs,
-            index,
-            left_descriptors,
-            right_descriptors,
-        ) {
+        if let Some(pair) =
+            mergeable_adjacent_gap_pair(row_pairs, index, left_descriptors, right_descriptors)
+        {
             merged.push(pair);
             index += 2;
             continue;
@@ -2098,10 +2102,7 @@ fn find_next_resync_match(
             .take(right_limit)
             .skip(right_index)
         {
-            let Some(band) = pair_band(
-                left_descriptor,
-                right_descriptor,
-            ) else {
+            let Some(band) = pair_band(left_descriptor, right_descriptor) else {
                 continue;
             };
 
@@ -3430,8 +3431,8 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
             Ok(LoadedFile::Image(details))
         }
         DetectedFileKind::Binary => {
-            let collect_bytes = fs::metadata(path).map_err(|error| error.to_string())?.len()
-                <= MAX_BINARY_BYTES;
+            let collect_bytes =
+                fs::metadata(path).map_err(|error| error.to_string())?.len() <= MAX_BINARY_BYTES;
             let (details, bytes) = load_binary_details(path, None, collect_bytes)?;
             Ok(LoadedFile::Binary(details, bytes))
         }
@@ -3563,11 +3564,22 @@ fn build_binary_payload(
         .is_some_and(|(left, right)| left.sha256 == right.sha256);
     let truncated = matches!(left_loaded, LoadedFile::Binary(_, None))
         || matches!(right_loaded, LoadedFile::Binary(_, None));
+    let (changed_byte_count, first_difference_offset) = if truncated {
+        (None, None)
+    } else {
+        binary_diff_stats(
+            loaded_file_bytes(left_loaded),
+            loaded_file_bytes(right_loaded),
+        )
+    };
 
     let rows = if identical || truncated {
         Vec::new()
     } else {
-        build_hex_rows(loaded_file_bytes(left_loaded), loaded_file_bytes(right_loaded))
+        build_hex_rows(
+            loaded_file_bytes(left_loaded),
+            loaded_file_bytes(right_loaded),
+        )
     };
 
     Ok(BinaryDiffPayload {
@@ -3575,8 +3587,32 @@ fn build_binary_payload(
         right_meta: build_binary_meta(right_path, right_details, identical),
         rows,
         bytes_per_row: HEX_BYTES_PER_ROW,
+        changed_byte_count,
+        first_difference_offset,
         truncated,
     })
+}
+
+fn binary_diff_stats(
+    left_bytes: Option<&[u8]>,
+    right_bytes: Option<&[u8]>,
+) -> (Option<usize>, Option<usize>) {
+    let left_bytes = left_bytes.unwrap_or(&[]);
+    let right_bytes = right_bytes.unwrap_or(&[]);
+    let total = left_bytes.len().max(right_bytes.len());
+    let mut changed_byte_count = 0usize;
+    let mut first_difference_offset = None;
+
+    for offset in 0..total {
+        if left_bytes.get(offset) != right_bytes.get(offset) {
+            changed_byte_count += 1;
+            if first_difference_offset.is_none() {
+                first_difference_offset = Some(offset);
+            }
+        }
+    }
+
+    (Some(changed_byte_count), first_difference_offset)
 }
 
 fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
@@ -4068,6 +4104,12 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.relative_path == "too-large.txt" && matches!(entry.status, EntryStatus::TooLarge)
         }));
+        assert!(entries.iter().any(|entry| {
+            entry.relative_path == "real-jq.exe" && matches!(entry.status, EntryStatus::Binary)
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.relative_path == "real-topic.png" && matches!(entry.status, EntryStatus::Binary)
+        }));
     }
 
     #[test]
@@ -4094,8 +4136,14 @@ mod tests {
         let right_asset_url = image_asset_url(&right).expect("right asset url should exist");
         assert!(payload.left_meta.exists);
         assert!(payload.right_meta.exists);
-        assert_eq!(payload.left_asset_url.as_deref(), Some(left_asset_url.as_str()));
-        assert_eq!(payload.right_asset_url.as_deref(), Some(right_asset_url.as_str()));
+        assert_eq!(
+            payload.left_asset_url.as_deref(),
+            Some(left_asset_url.as_str())
+        );
+        assert_eq!(
+            payload.right_asset_url.as_deref(),
+            Some(right_asset_url.as_str())
+        );
         assert!(!payload.left_meta.identical_to_other_side);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
@@ -4151,6 +4199,8 @@ mod tests {
         let payload = result.binary.expect("binary payload should exist");
         assert_eq!(payload.bytes_per_row, HEX_BYTES_PER_ROW);
         assert!(!payload.truncated);
+        assert_eq!(payload.changed_byte_count, Some(3));
+        assert_eq!(payload.first_difference_offset, Some(3));
         assert_eq!(payload.rows.len(), 1);
         assert_eq!(payload.rows[0].offset, 0);
         assert_eq!(payload.rows[0].left[3].hex, "03");
@@ -4182,7 +4232,12 @@ mod tests {
         assert!(matches!(result.content_kind, ContentKind::Binary));
         let payload = result.binary.expect("binary payload should exist");
         assert!(!payload.right_meta.exists);
-        assert!(payload.rows[0].right.iter().all(|cell| cell.hex.is_empty() && !cell.changed));
+        assert_eq!(payload.changed_byte_count, Some(8));
+        assert_eq!(payload.first_difference_offset, Some(0));
+        assert!(payload.rows[0]
+            .right
+            .iter()
+            .all(|cell| cell.hex.is_empty() && !cell.changed));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4212,10 +4267,57 @@ mod tests {
         assert!(matches!(result.content_kind, ContentKind::Binary));
         let payload = result.binary.expect("binary payload should exist");
         assert!(payload.truncated);
+        assert_eq!(payload.changed_byte_count, None);
+        assert_eq!(payload.first_difference_offset, None);
         assert!(payload.rows.is_empty());
-        assert_eq!(result.summary, "Binary files differ. The hex view is truncated at 8 MB per side.");
+        assert_eq!(
+            result.summary,
+            "Binary files differ. The hex view is truncated at 8 MB per side."
+        );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_detects_real_fixture_pngs_as_images() {
+        let result = build_file_diff(
+            &fixture_path("left", "real-topic.png"),
+            &fixture_path("right", "real-topic.png"),
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Image));
+        assert_eq!(result.summary, "Images differ.");
+        let payload = result.image.expect("image payload should exist");
+        assert_eq!(payload.left_meta.format.as_deref(), Some("png"));
+        assert_eq!(payload.right_meta.format.as_deref(), Some("png"));
+        assert_ne!(payload.left_meta.sha256, payload.right_meta.sha256);
+    }
+
+    #[test]
+    fn file_diff_reports_real_fixture_exe_stats() {
+        let result = build_file_diff(
+            &fixture_path("left", "real-jq.exe"),
+            &fixture_path("right", "real-jq.exe"),
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Binary));
+        assert_eq!(result.summary, "Binary files differ.");
+        let payload = result.binary.expect("binary payload should exist");
+        assert!(!payload.truncated);
+        assert_eq!(payload.first_difference_offset, Some(512));
+        assert_eq!(payload.changed_byte_count, Some(5));
+        assert!(!payload.rows.is_empty());
+        assert_eq!(payload.rows[32].offset, 512);
+        assert!(payload.rows[32].left.iter().any(|cell| cell.changed));
+        assert!(payload.rows[32].right.iter().any(|cell| cell.changed));
     }
 
     #[test]
@@ -5094,9 +5196,9 @@ mod tests {
             .side_by_side
             .iter()
             .position(|row| {
-                row.left.as_ref().is_some_and(|cell| {
-                    cell.text == "#define IBN_SEG_ENTRY(field, seg_id) \\"
-                })
+                row.left
+                    .as_ref()
+                    .is_some_and(|cell| cell.text == "#define IBN_SEG_ENTRY(field, seg_id) \\")
             })
             .expect("left macro row should exist");
 

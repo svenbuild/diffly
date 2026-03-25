@@ -111,6 +111,8 @@ export interface BinaryDiffPayload {
   rightMeta: BinaryFileMeta
   rows: HexRow[]
   bytesPerRow: 16
+  changedByteCount: number | null
+  firstDifferenceOffset: number | null
   truncated: boolean
 }
 

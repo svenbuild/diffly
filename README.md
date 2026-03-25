@@ -137,4 +137,5 @@ Report vulnerabilities through the private process described in [SECURITY.md](SE
 - Large text diffs are capped at 1 MB per file.
 - Binary files are detected automatically.
 - Common image formats open in a side-by-side preview.
-- Other binary files open in a side-by-side hex viewer up to 8 MB per side.
+- Other binary files open in a side-by-side hex viewer up to 8 MB per side, including
+  differing-byte counts and the first differing offset when full binary payloads are loaded.
