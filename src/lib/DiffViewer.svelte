@@ -163,7 +163,14 @@
     syncScrollMarkerObserver()
   }
 
-  $: syncVisibleRenderItems()
+  $: {
+    activeDiff?.contentKind
+    viewMode
+    showFullFile
+    sideBySideRenderItems
+    unifiedRenderItems
+    syncVisibleRenderItems()
+  }
 
   function currentSyntaxKey() {
     return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
