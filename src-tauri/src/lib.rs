@@ -1577,6 +1577,7 @@ fn align_replace_block_rows(
         left_cursor,
         right_cursor,
     );
+    merge_adjacent_replace_gap_pairs(&mut row_pairs, &left_descriptors, &right_descriptors);
 
     let mut left_matches = vec![None; left_cells.len()];
     let mut right_matches = vec![None; right_cells.len()];
@@ -1593,6 +1594,65 @@ fn align_replace_block_rows(
         left_matches,
         right_matches,
     }
+}
+
+fn merge_adjacent_replace_gap_pairs(
+    row_pairs: &mut Vec<(Option<usize>, Option<usize>)>,
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) {
+    let mut merged = Vec::with_capacity(row_pairs.len());
+    let mut index = 0;
+
+    while index < row_pairs.len() {
+        if let Some(pair) = mergeable_adjacent_gap_pair(
+            row_pairs,
+            index,
+            left_descriptors,
+            right_descriptors,
+        ) {
+            merged.push(pair);
+            index += 2;
+            continue;
+        }
+
+        merged.push(row_pairs[index]);
+        index += 1;
+    }
+
+    *row_pairs = merged;
+}
+
+fn mergeable_adjacent_gap_pair(
+    row_pairs: &[(Option<usize>, Option<usize>)],
+    index: usize,
+    left_descriptors: &[LineDescriptor],
+    right_descriptors: &[LineDescriptor],
+) -> Option<(Option<usize>, Option<usize>)> {
+    let current = *row_pairs.get(index)?;
+    let next = *row_pairs.get(index + 1)?;
+
+    match (current, next) {
+        ((Some(left_index), None), (None, Some(right_index)))
+        | ((None, Some(right_index)), (Some(left_index), None)) => {
+            let left = left_descriptors.get(left_index)?;
+            let right = right_descriptors.get(right_index)?;
+
+            can_merge_adjacent_gap_pair(left, right)
+                .then_some((Some(left_index), Some(right_index)))
+        }
+        _ => None,
+    }
+}
+
+fn can_merge_adjacent_gap_pair(left: &LineDescriptor, right: &LineDescriptor) -> bool {
+    if left.indentation_depth.abs_diff(right.indentation_depth) > 4 {
+        return false;
+    }
+
+    looks_like_typedef_alias_close(&left.code_signature)
+        && looks_like_typedef_alias_close(&right.code_signature)
+        || looks_like_multiline_define_header(left) && looks_like_multiline_define_header(right)
 }
 
 fn local_exact_anchor_pairs(
@@ -2386,10 +2446,23 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
     let same_seed = left.match_band_seed == right.match_band_seed;
 
     if left.is_preprocessor {
-        return (same_primary_identifier
-            && same_preprocessor_family(left, right)
-            && similarity >= LINE_PAIR_MIN_SIMILARITY - 15)
-            .then_some(MatchBand::StrongModified);
+        if looks_like_multiline_define_header(left)
+            && looks_like_multiline_define_header(right)
+            && shared_identifier_affix(&left.primary_identifier, &right.primary_identifier)
+        {
+            return Some(MatchBand::StrongModified);
+        }
+
+        if same_preprocessor_family(left, right)
+            && ((same_primary_identifier
+                || shared_identifier_affix(&left.primary_identifier, &right.primary_identifier))
+                && similarity >= LINE_PAIR_MIN_SIMILARITY - 15
+                || similarity >= LINE_PAIR_MIN_SIMILARITY + 10)
+        {
+            return Some(MatchBand::StrongModified);
+        }
+
+        return None;
     }
 
     if same_primary_identifier {
@@ -2397,6 +2470,13 @@ fn code_pair_band(left: &LineDescriptor, right: &LineDescriptor) -> Option<Match
             return None;
         }
 
+        return Some(MatchBand::StrongModified);
+    }
+
+    if looks_like_typedef_alias_close(&left.code_signature)
+        && looks_like_typedef_alias_close(&right.code_signature)
+        && shared_identifier_affix(&left.primary_identifier, &right.primary_identifier)
+    {
         return Some(MatchBand::StrongModified);
     }
 
@@ -2486,6 +2566,29 @@ fn same_preprocessor_family(left: &LineDescriptor, right: &LineDescriptor) -> bo
     preprocessor_family(&left.code_signature) == preprocessor_family(&right.code_signature)
 }
 
+fn looks_like_typedef_alias_close(signature: &str) -> bool {
+    let trimmed = signature.trim();
+
+    trimmed.starts_with('}')
+        && trimmed.ends_with(';')
+        && !trimmed.contains('(')
+        && extract_identifiers(trimmed).len() == 1
+}
+
+fn shared_identifier_affix(left: &str, right: &str) -> bool {
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+
+    common_prefix_len(left, right) >= 8 || common_suffix_len(left, right) >= 5
+}
+
+fn looks_like_multiline_define_header(descriptor: &LineDescriptor) -> bool {
+    descriptor.is_preprocessor
+        && preprocessor_family(&descriptor.code_signature) == "define"
+        && descriptor.code_signature.trim_end().ends_with('\\')
+}
+
 fn preprocessor_family(signature: &str) -> &str {
     signature
         .trim_start()
@@ -2499,17 +2602,17 @@ fn resync_candidate_cmp(
     left_candidate: ResyncCandidate,
     right_candidate: ResyncCandidate,
 ) -> std::cmp::Ordering {
+    match match_band_rank(right_candidate.band).cmp(&match_band_rank(left_candidate.band)) {
+        std::cmp::Ordering::Equal => {}
+        ordering => return ordering,
+    }
+
     match candidate_displacement(left_candidate).cmp(&candidate_displacement(right_candidate)) {
         std::cmp::Ordering::Equal => {}
         ordering => return ordering,
     }
 
     match candidate_drift(left_candidate).cmp(&candidate_drift(right_candidate)) {
-        std::cmp::Ordering::Equal => {}
-        ordering => return ordering,
-    }
-
-    match match_band_rank(right_candidate.band).cmp(&match_band_rank(left_candidate.band)) {
         std::cmp::Ordering::Equal => {}
         ordering => return ordering,
     }
@@ -2526,6 +2629,21 @@ fn candidate_displacement(candidate: ResyncCandidate) -> usize {
 
 fn candidate_drift(candidate: ResyncCandidate) -> usize {
     candidate.left_index.abs_diff(candidate.right_index)
+}
+
+fn common_prefix_len(left: &str, right: &str) -> usize {
+    left.chars()
+        .zip(right.chars())
+        .take_while(|(left_char, right_char)| left_char == right_char)
+        .count()
+}
+
+fn common_suffix_len(left: &str, right: &str) -> usize {
+    left.chars()
+        .rev()
+        .zip(right.chars().rev())
+        .take_while(|(left_char, right_char)| left_char == right_char)
+        .count()
 }
 
 fn match_band_rank(band: MatchBand) -> i32 {
@@ -4332,6 +4450,102 @@ mod tests {
     }
 
     #[test]
+    fn file_diff_resyncs_after_inserted_struct_field_block_without_stray_gap_band() {
+        let temp_root = unique_temp_dir("file-resyncs-after-inserted-struct-field-block");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(
+            &left,
+            concat!(
+                "typedef struct {\n",
+                "    size_t offset;\n",
+                "    uint16_t bit_offset;\n",
+                "} IBN_SegmentMapEntry;\n",
+                "\n",
+                "#define IBN_SEG_ENTRY(field, seg_id) \\\n",
+                "    { .offset = offsetof(IBN_SegmentPattern_t, field), .bit_offset = IBN_SEG_BIT_OFFSET_STATIC(seg_id) }\n",
+                "\n",
+                "static const IBN_SegmentMapEntry s_segment_map[] = {\n",
+                "    IBN_SEG_ENTRY(windshield_front, SEG_XXX7),\n",
+                "};\n",
+            ),
+        );
+        write_temp_file(
+            &right,
+            concat!(
+                "typedef struct {\n",
+                "    size_t offset;\n",
+                "} IBN_SegmentFieldEntry;\n",
+                "\n",
+                "#define IBN_SEG_FIELD_ENTRY(field) \\\n",
+                "    { .offset = offsetof(IBN_SegmentPattern_t, field) }\n",
+                "\n",
+                "static const IBN_SegmentFieldEntry s_segment_fields[] = {\n",
+                "    IBN_SEG_FIELD_ENTRY(windshield_front),\n",
+                "};\n",
+                "\n",
+                "static const uint16_t s_segment_map_profiles[2][20] = {\n",
+                "    { 1 },\n",
+                "};\n",
+            ),
+        );
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+
+        let struct_close_row = result
+            .side_by_side
+            .iter()
+            .position(|row| {
+                row.left
+                    .as_ref()
+                    .is_some_and(|cell| cell.text == "} IBN_SegmentMapEntry;")
+            })
+            .expect("left typedef close row should exist");
+        let macro_row = result
+            .side_by_side
+            .iter()
+            .position(|row| {
+                row.left.as_ref().is_some_and(|cell| {
+                    cell.text == "#define IBN_SEG_ENTRY(field, seg_id) \\"
+                })
+            })
+            .expect("left macro row should exist");
+
+        assert!(matches!(
+            result.side_by_side[struct_close_row]
+                .right
+                .as_ref()
+                .map(|cell| cell.text.as_str()),
+            Some("} IBN_SegmentFieldEntry;")
+        ));
+        assert!(matches!(
+            result.side_by_side[macro_row]
+                .right
+                .as_ref()
+                .map(|cell| cell.text.as_str()),
+            Some("#define IBN_SEG_FIELD_ENTRY(field) \\")
+        ));
+        assert!(
+            result.side_by_side[struct_close_row + 1..macro_row]
+                .iter()
+                .all(|row| row.left.is_some() || row.right.is_some()),
+            "resync should not leave a fully empty spacer band between paired changed rows"
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
     fn exact_code_anchor_pairs_match_defines_with_inline_comments() {
         let left = vec![
             build_line_descriptor(
@@ -4662,6 +4876,23 @@ mod tests {
         );
         assert_eq!(alignment.left_matches[0], Some(5));
         assert_eq!(alignment.left_matches[1], Some(6));
+    }
+
+    #[test]
+    fn resync_candidate_cmp_prefers_stronger_match_before_closer_gap() {
+        let closer_weaker = ResyncCandidate {
+            left_index: 1,
+            right_index: 1,
+            band: MatchBand::WeakStructural,
+        };
+        let farther_stronger = ResyncCandidate {
+            left_index: 2,
+            right_index: 3,
+            band: MatchBand::StrongExact,
+        };
+
+        assert!(resync_candidate_cmp(farther_stronger, closer_weaker).is_lt());
+        assert!(resync_candidate_cmp(closer_weaker, farther_stronger).is_gt());
     }
 
     #[test]
