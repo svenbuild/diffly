@@ -2256,7 +2256,28 @@
   function syncPaneWheel(event: WheelEvent, source: 'left' | 'right') {
     const sourcePane = getPaneScroll(source)
 
-    if (!sourcePane || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+    if (!sourcePane || event.ctrlKey) {
+      return
+    }
+
+    if (event.shiftKey) {
+      event.preventDefault()
+
+      const deltaLeft = normalizeWheelDelta(
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY,
+        event.deltaMode,
+      )
+      const maxScrollLeft = getMaxScrollLeft(sourcePane)
+      const nextScrollLeft = clampScrollOffset(sourcePane.scrollLeft + deltaLeft, maxScrollLeft)
+
+      if (Math.abs(nextScrollLeft - sourcePane.scrollLeft) >= 0.5) {
+        sourcePane.scrollLeft = nextScrollLeft
+      }
+
+      return
+    }
+
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
       return
     }
 
