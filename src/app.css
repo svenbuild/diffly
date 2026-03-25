@@ -2024,8 +2024,7 @@ h2 {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.entry-name,
-.file-row-top {
+.entry-name {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2363,7 +2362,10 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-row-main {
   display: grid;
-  gap: 4px;
+  grid-template-columns: 7px 16px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 4px;
+  align-items: center;
   min-width: 0;
 }
 
@@ -2381,7 +2383,7 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding-left: 31px;
+  grid-column: 3;
   min-width: 0;
   color: var(--muted);
 }

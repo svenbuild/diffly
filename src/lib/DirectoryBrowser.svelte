@@ -145,11 +145,9 @@
                 >
                   <span aria-hidden="true" class="tree-indent"></span>
                   <span class="file-row-main">
-                    <span class="file-row-top">
-                      <span class={`file-status-marker ${entry.status}`}></span>
-                      <EntryIcon kind="file" />
-                      <span class="entry-text">{getFileName(entry.relativePath)}</span>
-                    </span>
+                    <span class={`file-status-marker ${entry.status}`}></span>
+                    <EntryIcon kind="file" />
+                    <span class="entry-text">{getFileName(entry.relativePath)}</span>
                     <span class="file-row-bottom">
                       <span class="file-status-label">{statusLabel[entry.status]}</span>
                       <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
