@@ -2262,6 +2262,8 @@ button.filter-chip.tooLarge:focus-visible {
 
 .group-toggle,
 .file-row {
+  --tree-indent-size: 14px;
+  --tree-offset-base: 10px;
   width: 100%;
   border: 0;
   border-radius: 0;
@@ -2271,14 +2273,48 @@ button.filter-chip.tooLarge:focus-visible {
 .group-toggle {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  gap: 6px;
-  padding: 5px 8px;
-  background: transparent;
+  align-items: center;
+  gap: 8px;
+  min-height: 31px;
+  padding: 6px 10px 6px calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size));
+  background: color-mix(in srgb, var(--list-header-bg) 90%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border) 68%, transparent);
+  color: var(--strong-text);
+  font-weight: 600;
+}
+
+.group-toggle:hover:not(:disabled),
+.group-toggle:focus-visible {
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--list-header-bg));
 }
 
 .chevron {
   display: inline-grid;
   place-items: center;
+}
+
+.group-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.group-heading .entry-icon {
+  color: color-mix(in srgb, var(--accent-alt) 48%, var(--panel-meta));
+}
+
+.group-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  color: var(--panel-meta);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .chevron-icon {
@@ -2305,7 +2341,7 @@ button.filter-chip.tooLarge:focus-visible {
 .file-row {
   display: grid;
   gap: 4px;
-  padding: 7px 10px 7px 12px;
+  padding: 7px 10px 7px calc(var(--tree-offset-base) + var(--tree-depth, 0) * var(--tree-indent-size));
   background: transparent;
   border-bottom: 1px solid var(--border);
   position: relative;
@@ -2770,14 +2806,40 @@ button.filter-chip.tooLarge:focus-visible {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  align-content: start;
 }
 
 .pane-scroll,
 .unified-grid {
   position: relative;
   min-height: 0;
-  height: 100%;
   background-color: var(--diff-context-bg);
+}
+
+.pane-scroll {
+  align-self: start;
+  width: 100%;
+  max-height: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.left-pane-scroll {
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.left-pane-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.right-pane-scroll {
+  scrollbar-gutter: stable;
+}
+
+.unified-grid {
+  height: 100%;
   scrollbar-gutter: stable;
 }
 

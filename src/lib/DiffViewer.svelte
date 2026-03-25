@@ -499,7 +499,7 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={leftPaneScroll}
-              class="pane-scroll"
+              class="pane-scroll left-pane-scroll"
               on:wheel={(event) => syncPaneWheel(event, 'left')}
               on:scroll={() => syncPaneScroll('left')}
             >
@@ -507,7 +507,6 @@
                 bind:this={leftPaneGrid}
                 class="pane-grid"
                 style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
-                style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
               >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
@@ -549,21 +548,6 @@
               {/each}
               </div>
             </div>
-            <div class="scroll-marker-overlay">
-              <div class="scroll-marker-rail">
-                {#each leftScrollMarkers as marker}
-                  <button
-                    aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                    class:active={marker.hunkIndex === currentDiffHunk}
-                    class={`scroll-marker ${marker.kind}`}
-                    style:top={`${marker.top * 100}%`}
-                    style:height={`${marker.height * 100}%`}
-                    type="button"
-                    on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                  ></button>
-                {/each}
-              </div>
-            </div>
           </div>
         </section>
 
@@ -576,7 +560,7 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={rightPaneScroll}
-              class="pane-scroll"
+              class="pane-scroll right-pane-scroll"
               on:wheel={(event) => syncPaneWheel(event, 'right')}
               on:scroll={() => syncPaneScroll('right')}
             >
@@ -584,7 +568,6 @@
                 bind:this={rightPaneGrid}
                 class="pane-grid"
                 style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
-                style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
               >
               {#if sideBySideRenderItems.length === 0}
                 <div class="empty-inline-state">No changed lines.</div>
