@@ -2318,6 +2318,253 @@ button.filter-chip.tooLarge:focus-visible {
   border-left: 1px solid var(--border);
 }
 
+.binary-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 8px 10px;
+}
+
+.binary-summary-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 10px 12px;
+}
+
+.binary-summary-card strong {
+  color: var(--panel-title);
+  font-size: 0.78rem;
+}
+
+.binary-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.binary-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--pane-header-bg);
+  color: var(--panel-meta);
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.binary-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  min-height: 0;
+  background: var(--canvas-alt);
+}
+
+.binary-pane {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.binary-pane-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+  padding: 10px;
+  background: var(--diff-context-bg);
+}
+
+.binary-preview-shell {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border: 1px solid var(--diff-divider);
+  border-radius: 4px;
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 25%, transparent 25%) 0 0 / 18px 18px,
+    linear-gradient(-45deg, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 25%, transparent 25%) 0 0 / 18px 18px,
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 75%) 0 0 / 18px 18px,
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 75%) 0 0 / 18px 18px,
+    var(--diff-context-bg);
+  overflow: auto;
+}
+
+.binary-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.binary-empty-state {
+  min-height: 220px;
+  align-content: center;
+  text-align: center;
+}
+
+.binary-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.binary-meta-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--diff-divider);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pane-header-bg) 75%, transparent);
+}
+
+.binary-meta-label {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.binary-meta-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--panel-title);
+  font-family: var(--code);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.binary-meta-value.missing {
+  color: var(--muted);
+}
+
+.binary-hex-shell {
+  display: grid;
+  min-height: 0;
+  padding: 0 8px 10px;
+}
+
+.binary-hex-scroll {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: var(--diff-context-bg);
+}
+
+.binary-hex-table {
+  display: grid;
+  min-width: max-content;
+  font-family: var(--code);
+  font-size: var(--diff-font-size);
+  line-height: var(--diff-row-line-height);
+}
+
+.binary-hex-header,
+.binary-hex-row {
+  display: grid;
+  grid-template-columns: 8ch repeat(4, minmax(0, max-content));
+  align-items: stretch;
+}
+
+.binary-hex-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--pane-header-bg);
+  box-shadow: inset 0 1px 0 var(--pane-header-shadow);
+}
+
+.binary-hex-cell {
+  display: flex;
+  align-items: stretch;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--diff-divider);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.binary-offset-header,
+.binary-offset-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  justify-content: flex-end;
+  box-shadow: inset -1px 0 0 var(--line-divider);
+}
+
+.binary-offset-header {
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.binary-offset-cell {
+  background: inherit;
+  color: var(--panel-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.binary-group-header {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.binary-byte-group {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 2.25ch));
+  gap: 0;
+  align-items: center;
+}
+
+.binary-ascii-group {
+  grid-template-columns: repeat(16, minmax(0, 1ch));
+}
+
+.binary-byte {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  border-radius: 2px;
+  color: var(--panel-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.binary-hex-byte {
+  letter-spacing: 0.02em;
+}
+
+.binary-ascii-byte {
+  font-size: 0.7rem;
+}
+
+.binary-byte.changed {
+  background: var(--highlight-bg);
+}
+
+.binary-hex-row.changed .binary-offset-cell {
+  background: color-mix(in srgb, var(--highlight-bg) 46%, var(--diff-context-bg));
+}
+
+.binary-hex-row.changed .binary-byte {
+  color: var(--strong-text);
+}
+
 .viewer-root:hover .viewer-root-path-compact,
 .viewer-root:focus-within .viewer-root-path-compact {
   visibility: hidden;
@@ -2984,7 +3231,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser,
 .browser-list,
 .pane-scroll,
-.unified-grid {
+.unified-grid,
+.binary-hex-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
@@ -2993,7 +3241,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser::-webkit-scrollbar,
 .browser-list::-webkit-scrollbar,
 .pane-scroll::-webkit-scrollbar,
-.unified-grid::-webkit-scrollbar {
+.unified-grid::-webkit-scrollbar,
+.binary-hex-scroll::-webkit-scrollbar {
   width: 11px;
   height: 11px;
 }
@@ -3002,7 +3251,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser::-webkit-scrollbar-track,
 .browser-list::-webkit-scrollbar-track,
 .pane-scroll::-webkit-scrollbar-track,
-.unified-grid::-webkit-scrollbar-track {
+.unified-grid::-webkit-scrollbar-track,
+.binary-hex-scroll::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
 
@@ -3010,7 +3260,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser::-webkit-scrollbar-thumb,
 .browser-list::-webkit-scrollbar-thumb,
 .pane-scroll::-webkit-scrollbar-thumb,
-.unified-grid::-webkit-scrollbar-thumb {
+.unified-grid::-webkit-scrollbar-thumb,
+.binary-hex-scroll::-webkit-scrollbar-thumb {
   border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
   background: var(--scrollbar-thumb);
@@ -3020,7 +3271,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser::-webkit-scrollbar-thumb:hover,
 .browser-list::-webkit-scrollbar-thumb:hover,
 .pane-scroll::-webkit-scrollbar-thumb:hover,
-.unified-grid::-webkit-scrollbar-thumb:hover {
+.unified-grid::-webkit-scrollbar-thumb:hover,
+.binary-hex-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
 
@@ -3028,7 +3280,8 @@ button.filter-chip.tooLarge:focus-visible {
 .file-browser::-webkit-scrollbar-corner,
 .browser-list::-webkit-scrollbar-corner,
 .pane-scroll::-webkit-scrollbar-corner,
-.unified-grid::-webkit-scrollbar-corner {
+.unified-grid::-webkit-scrollbar-corner,
+.binary-hex-scroll::-webkit-scrollbar-corner {
   background: var(--scrollbar-track);
 }
 
@@ -3117,7 +3370,12 @@ button.filter-chip.tooLarge:focus-visible {
   .viewer-root-row,
   .compare-layout,
   .split-view,
+  .binary-panels,
   .viewer-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .binary-meta-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

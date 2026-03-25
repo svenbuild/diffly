@@ -11,14 +11,17 @@ use rayon::prelude::*;
 use reqwest::Url;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
+const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
 const LINE_PAIR_SIGNATURE_MATCH_SCORE: i32 = 220;
@@ -211,7 +214,7 @@ struct UpdateState {
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum CompareResponse {
     Directory { entries: Vec<DirectoryEntryResult> },
-    File { result: FileDiffResult },
+    File { result: Box<FileDiffResult> },
 }
 
 #[derive(Clone, Serialize)]
@@ -282,14 +285,63 @@ struct FileDiffResult {
     right_label: String,
     side_by_side: Vec<SideBySideRow>,
     unified: Vec<UnifiedLine>,
+    image: Option<ImageDiffPayload>,
+    binary: Option<BinaryDiffPayload>,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum ContentKind {
     Text,
+    Image,
     Binary,
     TooLarge,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BinaryFileMeta {
+    exists: bool,
+    path: String,
+    size: Option<u64>,
+    sha256: Option<String>,
+    format: Option<String>,
+    identical_to_other_side: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageDiffPayload {
+    left_asset_url: Option<String>,
+    right_asset_url: Option<String>,
+    left_meta: BinaryFileMeta,
+    right_meta: BinaryFileMeta,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HexCell {
+    hex: String,
+    ascii: String,
+    changed: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HexRow {
+    offset: usize,
+    left: Vec<HexCell>,
+    right: Vec<HexCell>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BinaryDiffPayload {
+    left_meta: BinaryFileMeta,
+    right_meta: BinaryFileMeta,
+    rows: Vec<HexRow>,
+    bytes_per_row: usize,
+    truncated: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -337,9 +389,26 @@ enum DiffChange {
 
 enum LoadedFile {
     Missing,
-    Binary,
     TooLarge,
     Text(String),
+    Image(LoadedBinaryFile),
+    Binary(LoadedBinaryFile, Option<Vec<u8>>),
+}
+
+#[derive(Clone)]
+struct LoadedBinaryFile {
+    path: String,
+    size: u64,
+    sha256: String,
+    format: Option<String>,
+}
+
+enum DetectedFileKind {
+    Missing,
+    TooLarge,
+    Text,
+    Image(String),
+    Binary,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -740,7 +809,7 @@ fn compare_paths(
             entries: compare_directories(&left, &right, &options)?,
         }),
         "file" => Ok(CompareResponse::File {
-            result: build_file_diff(&left, &right, left_path, right_path, &options)?,
+            result: Box::new(build_file_diff(&left, &right, left_path, right_path, &options)?),
         }),
         _ => Err("Unsupported compare mode.".to_string()),
     }
@@ -1127,12 +1196,12 @@ fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, Stri
 }
 
 fn classify_entry_status(left: &Path, right: &Path) -> Result<EntryStatus, String> {
-    if is_too_large(left)? || is_too_large(right)? {
-        return Ok(EntryStatus::TooLarge);
-    }
-
     if is_binary_file(left)? || is_binary_file(right)? {
         return Ok(EntryStatus::Binary);
+    }
+
+    if is_too_large(left)? || is_too_large(right)? {
+        return Ok(EntryStatus::TooLarge);
     }
 
     Ok(EntryStatus::Modified)
@@ -1148,13 +1217,6 @@ fn build_file_diff(
     let left_loaded = load_file(left)?;
     let right_loaded = load_file(right)?;
 
-    let summary = match (&left_loaded, &right_loaded) {
-        (LoadedFile::Missing, LoadedFile::Missing) => "Neither file exists.".to_string(),
-        (LoadedFile::Missing, _) => "Only the right file exists.".to_string(),
-        (_, LoadedFile::Missing) => "Only the left file exists.".to_string(),
-        _ => "Comparison ready.".to_string(),
-    };
-
     if matches!(left_loaded, LoadedFile::TooLarge) || matches!(right_loaded, LoadedFile::TooLarge) {
         return Ok(FileDiffResult {
             content_kind: ContentKind::TooLarge,
@@ -1163,30 +1225,81 @@ fn build_file_diff(
             right_label,
             side_by_side: Vec::new(),
             unified: Vec::new(),
+            image: None,
+            binary: None,
         });
     }
 
-    if matches!(left_loaded, LoadedFile::Binary) || matches!(right_loaded, LoadedFile::Binary) {
+    let summary = build_summary(&left_loaded, &right_loaded);
+
+    if should_render_as_image(&left_loaded, &right_loaded) {
+        let payload = build_image_payload(left, right, &left_loaded, &right_loaded)?;
+        let (left_sha, right_sha) = (
+            payload.left_meta.sha256.as_deref(),
+            payload.right_meta.sha256.as_deref(),
+        );
+        let identical = left_sha.is_some() && left_sha == right_sha;
+        let summary = if identical {
+            "Images are identical.".to_string()
+        } else if payload.left_meta.exists && payload.right_meta.exists {
+            "Images differ.".to_string()
+        } else {
+            summary
+        };
+
         return Ok(FileDiffResult {
-            content_kind: ContentKind::Binary,
-            summary: "At least one file looks binary, so Diffly shows status only.".to_string(),
+            content_kind: ContentKind::Image,
+            summary,
             left_label,
             right_label,
             side_by_side: Vec::new(),
             unified: Vec::new(),
+            image: Some(payload),
+            binary: None,
+        });
+    }
+
+    if matches!(left_loaded, LoadedFile::Binary(_, _)) || matches!(right_loaded, LoadedFile::Binary(_, _))
+        || matches!(left_loaded, LoadedFile::Image(_))
+        || matches!(right_loaded, LoadedFile::Image(_))
+    {
+        let payload = build_binary_payload(left, right, &left_loaded, &right_loaded)?;
+        let identical = payload.left_meta.sha256.is_some()
+            && payload.left_meta.sha256 == payload.right_meta.sha256;
+        let summary = if identical {
+            "Binary files are identical.".to_string()
+        } else if payload.truncated {
+            "Binary files differ. The hex view is truncated at 8 MB per side.".to_string()
+        } else if !matches!(left_loaded, LoadedFile::Missing)
+            && !matches!(right_loaded, LoadedFile::Missing)
+        {
+            "Binary files differ.".to_string()
+        } else {
+            summary
+        };
+
+        return Ok(FileDiffResult {
+            content_kind: ContentKind::Binary,
+            summary,
+            left_label,
+            right_label,
+            side_by_side: Vec::new(),
+            unified: Vec::new(),
+            image: None,
+            binary: Some(payload),
         });
     }
 
     let left_text = match left_loaded {
         LoadedFile::Text(text) => text,
         LoadedFile::Missing => String::new(),
-        LoadedFile::Binary | LoadedFile::TooLarge => String::new(),
+        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _) => String::new(),
     };
 
     let right_text = match right_loaded {
         LoadedFile::Text(text) => text,
         LoadedFile::Missing => String::new(),
-        LoadedFile::Binary | LoadedFile::TooLarge => String::new(),
+        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _) => String::new(),
     };
 
     let normalized_left = normalize_text(&left_text, options);
@@ -1202,6 +1315,8 @@ fn build_file_diff(
         right_label,
         side_by_side: build_side_by_side(&diff, &left_lines, &right_lines),
         unified: build_unified(&diff, &left_lines, &right_lines),
+        image: None,
+        binary: None,
     })
 }
 
@@ -3301,23 +3416,323 @@ fn clean_line(line: &str) -> String {
 }
 
 fn load_file(path: &Path) -> Result<LoadedFile, String> {
+    match detect_file_kind(path)? {
+        DetectedFileKind::Missing => Ok(LoadedFile::Missing),
+        DetectedFileKind::TooLarge => Ok(LoadedFile::TooLarge),
+        DetectedFileKind::Text => {
+            let bytes = fs::read(path).map_err(|error| error.to_string())?;
+            Ok(LoadedFile::Text(
+                String::from_utf8_lossy(&bytes).to_string(),
+            ))
+        }
+        DetectedFileKind::Image(format) => {
+            let (details, _) = load_binary_details(path, Some(format), false)?;
+            Ok(LoadedFile::Image(details))
+        }
+        DetectedFileKind::Binary => {
+            let collect_bytes = fs::metadata(path).map_err(|error| error.to_string())?.len()
+                <= MAX_BINARY_BYTES;
+            let (details, bytes) = load_binary_details(path, None, collect_bytes)?;
+            Ok(LoadedFile::Binary(details, bytes))
+        }
+    }
+}
+
+fn detect_file_kind(path: &Path) -> Result<DetectedFileKind, String> {
     if !path.exists() {
-        return Ok(LoadedFile::Missing);
+        return Ok(DetectedFileKind::Missing);
+    }
+
+    let sample = sample_file_bytes(path)?;
+
+    if looks_binary(&sample) {
+        if let Some(format) = detect_image_format(&sample, path) {
+            return Ok(DetectedFileKind::Image(format));
+        }
+
+        return Ok(DetectedFileKind::Binary);
     }
 
     if is_too_large(path)? {
-        return Ok(LoadedFile::TooLarge);
+        return Ok(DetectedFileKind::TooLarge);
     }
 
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    Ok(DetectedFileKind::Text)
+}
 
-    if looks_binary(&bytes) {
-        return Ok(LoadedFile::Binary);
+fn load_binary_details(
+    path: &Path,
+    format: Option<String>,
+    collect_bytes: bool,
+) -> Result<(LoadedBinaryFile, Option<Vec<u8>>), String> {
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let size = metadata.len();
+    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut bytes = if collect_bytes {
+        Some(Vec::with_capacity(size as usize))
+    } else {
+        None
+    };
+    let mut buffer = [0; BINARY_SAMPLE_BYTES];
+
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+
+        if read == 0 {
+            break;
+        }
+
+        hasher.update(&buffer[..read]);
+
+        if let Some(collected_bytes) = bytes.as_mut() {
+            collected_bytes.extend_from_slice(&buffer[..read]);
+        }
     }
 
-    Ok(LoadedFile::Text(
-        String::from_utf8_lossy(&bytes).to_string(),
+    let sha256 = format!("{:x}", hasher.finalize());
+
+    Ok((
+        LoadedBinaryFile {
+            path: path.to_string_lossy().to_string(),
+            size,
+            sha256,
+            format,
+        },
+        bytes,
     ))
+}
+
+fn build_summary(left: &LoadedFile, right: &LoadedFile) -> String {
+    match (left, right) {
+        (LoadedFile::Missing, LoadedFile::Missing) => "Neither file exists.".to_string(),
+        (LoadedFile::Missing, _) => "Only the right file exists.".to_string(),
+        (_, LoadedFile::Missing) => "Only the left file exists.".to_string(),
+        _ => "Comparison ready.".to_string(),
+    }
+}
+
+fn should_render_as_image(left: &LoadedFile, right: &LoadedFile) -> bool {
+    matches!(left, LoadedFile::Image(_))
+        && matches!(right, LoadedFile::Image(_) | LoadedFile::Missing)
+        || matches!(right, LoadedFile::Image(_))
+            && matches!(left, LoadedFile::Image(_) | LoadedFile::Missing)
+}
+
+fn build_image_payload(
+    left_path: &Path,
+    right_path: &Path,
+    left_loaded: &LoadedFile,
+    right_loaded: &LoadedFile,
+) -> Result<ImageDiffPayload, String> {
+    let left_details = loaded_file_details(left_loaded);
+    let right_details = loaded_file_details(right_loaded);
+    let left_identical = left_details
+        .as_ref()
+        .zip(right_details.as_ref())
+        .is_some_and(|(left, right)| left.sha256 == right.sha256);
+    let right_identical = left_identical;
+
+    Ok(ImageDiffPayload {
+        left_asset_url: if matches!(left_loaded, LoadedFile::Image(_)) {
+            image_asset_url(left_path)
+        } else {
+            None
+        },
+        right_asset_url: if matches!(right_loaded, LoadedFile::Image(_)) {
+            image_asset_url(right_path)
+        } else {
+            None
+        },
+        left_meta: build_binary_meta(left_path, left_details, left_identical),
+        right_meta: build_binary_meta(right_path, right_details, right_identical),
+    })
+}
+
+fn build_binary_payload(
+    left_path: &Path,
+    right_path: &Path,
+    left_loaded: &LoadedFile,
+    right_loaded: &LoadedFile,
+) -> Result<BinaryDiffPayload, String> {
+    let left_details = loaded_file_details(left_loaded);
+    let right_details = loaded_file_details(right_loaded);
+    let identical = left_details
+        .as_ref()
+        .zip(right_details.as_ref())
+        .is_some_and(|(left, right)| left.sha256 == right.sha256);
+    let truncated = matches!(left_loaded, LoadedFile::Binary(_, None))
+        || matches!(right_loaded, LoadedFile::Binary(_, None));
+
+    let rows = if identical || truncated {
+        Vec::new()
+    } else {
+        build_hex_rows(loaded_file_bytes(left_loaded), loaded_file_bytes(right_loaded))
+    };
+
+    Ok(BinaryDiffPayload {
+        left_meta: build_binary_meta(left_path, left_details, identical),
+        right_meta: build_binary_meta(right_path, right_details, identical),
+        rows,
+        bytes_per_row: HEX_BYTES_PER_ROW,
+        truncated,
+    })
+}
+
+fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
+    match file {
+        LoadedFile::Image(details) => Some(details),
+        LoadedFile::Binary(details, _) => Some(details),
+        LoadedFile::Missing | LoadedFile::TooLarge | LoadedFile::Text(_) => None,
+    }
+}
+
+fn loaded_file_bytes(file: &LoadedFile) -> Option<&[u8]> {
+    match file {
+        LoadedFile::Binary(_, bytes) => bytes.as_deref(),
+        LoadedFile::Missing | LoadedFile::TooLarge | LoadedFile::Text(_) | LoadedFile::Image(_) => {
+            None
+        }
+    }
+}
+
+fn build_binary_meta(
+    path: &Path,
+    details: Option<&LoadedBinaryFile>,
+    identical_to_other_side: bool,
+) -> BinaryFileMeta {
+    match details {
+        Some(details) => BinaryFileMeta {
+            exists: true,
+            path: details.path.clone(),
+            size: Some(details.size),
+            sha256: Some(details.sha256.clone()),
+            format: details.format.clone(),
+            identical_to_other_side,
+        },
+        None => BinaryFileMeta {
+            exists: false,
+            path: path.to_string_lossy().to_string(),
+            size: None,
+            sha256: None,
+            format: None,
+            identical_to_other_side: false,
+        },
+    }
+}
+
+fn image_asset_url(path: &Path) -> Option<String> {
+    Url::from_file_path(path)
+        .ok()
+        .map(|url| format!("asset://localhost{}", url.path()))
+}
+
+fn build_hex_rows(left_bytes: Option<&[u8]>, right_bytes: Option<&[u8]>) -> Vec<HexRow> {
+    let left_bytes = left_bytes.unwrap_or(&[]);
+    let right_bytes = right_bytes.unwrap_or(&[]);
+    let total = left_bytes.len().max(right_bytes.len());
+    let mut rows = Vec::new();
+
+    for offset in (0..total).step_by(HEX_BYTES_PER_ROW) {
+        let mut left_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+        let mut right_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+
+        for index in 0..HEX_BYTES_PER_ROW {
+            let left_byte = left_bytes.get(offset + index).copied();
+            let right_byte = right_bytes.get(offset + index).copied();
+            let changed = left_byte != right_byte;
+            left_row.push(build_hex_cell(left_byte, changed));
+            right_row.push(build_hex_cell(right_byte, changed));
+        }
+
+        rows.push(HexRow {
+            offset,
+            left: left_row,
+            right: right_row,
+        });
+    }
+
+    rows
+}
+
+fn build_hex_cell(byte: Option<u8>, changed: bool) -> HexCell {
+    match byte {
+        Some(value) => HexCell {
+            hex: format!("{:02X}", value),
+            ascii: ascii_for_byte(value),
+            changed,
+        },
+        None => HexCell {
+            hex: String::new(),
+            ascii: String::new(),
+            changed: false,
+        },
+    }
+}
+
+fn ascii_for_byte(value: u8) -> String {
+    if (32..=126).contains(&value) {
+        char::from(value).to_string()
+    } else {
+        ".".to_string()
+    }
+}
+
+fn detect_image_format(bytes: &[u8], path: &Path) -> Option<String> {
+    if is_png(bytes) {
+        return Some("png".to_string());
+    }
+
+    if is_jpeg(bytes) {
+        return Some("jpeg".to_string());
+    }
+
+    if is_gif(bytes) {
+        return Some("gif".to_string());
+    }
+
+    if is_bmp(bytes) {
+        return Some("bmp".to_string());
+    }
+
+    if is_webp(bytes) {
+        return Some("webp".to_string());
+    }
+
+    image_format_from_extension(path)
+}
+
+fn image_format_from_extension(path: &Path) -> Option<String> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+
+    match extension.as_str() {
+        "png" => Some("png".to_string()),
+        "jpg" | "jpeg" => Some("jpeg".to_string()),
+        "gif" => Some("gif".to_string()),
+        "bmp" => Some("bmp".to_string()),
+        "webp" => Some("webp".to_string()),
+        _ => None,
+    }
+}
+
+fn is_png(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
+}
+
+fn is_jpeg(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+}
+
+fn is_gif(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
+}
+
+fn is_bmp(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"BM")
+}
+
+fn is_webp(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP"
 }
 
 fn files_match(left: &Path, right: &Path, options: &CompareOptions) -> Result<bool, String> {
@@ -3495,6 +3910,19 @@ mod tests {
         fs::write(path, contents).expect("temporary file should be written");
     }
 
+    fn write_temp_bytes_file(path: &Path, contents: &[u8]) {
+        fs::write(path, contents).expect("temporary binary file should be written");
+    }
+
+    fn test_png_bytes(seed: u8) -> Vec<u8> {
+        let mut bytes = vec![
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 2, 0, 0, 0, seed,
+        ];
+        bytes.extend_from_slice(&[0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]);
+        bytes
+    }
+
     fn test_changed_cell(text: &str, change: DiffChange) -> DiffCell {
         DiffCell {
             line_number: None,
@@ -3640,6 +4068,154 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.relative_path == "too-large.txt" && matches!(entry.status, EntryStatus::TooLarge)
         }));
+    }
+
+    #[test]
+    fn file_diff_detects_png_images_by_signature_even_with_misleading_extension() {
+        let temp_root = unique_temp_dir("file-detects-png-by-signature");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_bytes_file(&left, &test_png_bytes(7));
+        write_temp_bytes_file(&right, &test_png_bytes(9));
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Image));
+        let payload = result.image.expect("image payload should exist");
+        let left_asset_url = image_asset_url(&left).expect("left asset url should exist");
+        let right_asset_url = image_asset_url(&right).expect("right asset url should exist");
+        assert!(payload.left_meta.exists);
+        assert!(payload.right_meta.exists);
+        assert_eq!(payload.left_asset_url.as_deref(), Some(left_asset_url.as_str()));
+        assert_eq!(payload.right_asset_url.as_deref(), Some(right_asset_url.as_str()));
+        assert!(!payload.left_meta.identical_to_other_side);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_reports_identical_png_images() {
+        let temp_root = unique_temp_dir("file-identical-png-images");
+        let left = temp_root.join("left.png");
+        let right = temp_root.join("right.png");
+        let bytes = test_png_bytes(5);
+
+        write_temp_bytes_file(&left, &bytes);
+        write_temp_bytes_file(&right, &bytes);
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Image));
+        assert_eq!(result.summary, "Images are identical.");
+        let payload = result.image.expect("image payload should exist");
+        assert!(payload.left_meta.identical_to_other_side);
+        assert!(payload.right_meta.identical_to_other_side);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_builds_binary_hex_rows_for_small_binary_files() {
+        let temp_root = unique_temp_dir("file-binary-hex-rows");
+        let left = temp_root.join("left.bin");
+        let right = temp_root.join("right.bin");
+
+        write_temp_bytes_file(&left, &[0, 1, 2, 3, 16, 32, 48, 64, 80, 96, 112, 128]);
+        write_temp_bytes_file(&right, &[0, 1, 2, 4, 16, 33, 48, 64, 80, 96, 113, 128]);
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Binary));
+        let payload = result.binary.expect("binary payload should exist");
+        assert_eq!(payload.bytes_per_row, HEX_BYTES_PER_ROW);
+        assert!(!payload.truncated);
+        assert_eq!(payload.rows.len(), 1);
+        assert_eq!(payload.rows[0].offset, 0);
+        assert_eq!(payload.rows[0].left[3].hex, "03");
+        assert_eq!(payload.rows[0].right[3].hex, "04");
+        assert!(payload.rows[0].left[3].changed);
+        assert!(payload.rows[0].right[3].changed);
+        assert_eq!(payload.rows[0].left[1].ascii, ".");
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_leaves_missing_binary_side_empty() {
+        let temp_root = unique_temp_dir("file-missing-binary-side");
+        let left = temp_root.join("left.bin");
+        let right = temp_root.join("right.bin");
+
+        write_temp_bytes_file(&left, &[1, 2, 3, 4, 5, 6, 7, 8]);
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Binary));
+        let payload = result.binary.expect("binary payload should exist");
+        assert!(!payload.right_meta.exists);
+        assert!(payload.rows[0].right.iter().all(|cell| cell.hex.is_empty() && !cell.changed));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_truncates_large_binary_files() {
+        let temp_root = unique_temp_dir("file-truncates-large-binary");
+        let left = temp_root.join("left.bin");
+        let right = temp_root.join("right.bin");
+
+        let large = vec![0; MAX_BINARY_BYTES as usize + 1];
+        let mut shifted = vec![0; MAX_BINARY_BYTES as usize + 1];
+        shifted[MAX_BINARY_BYTES as usize] = 1;
+
+        write_temp_bytes_file(&left, &large);
+        write_temp_bytes_file(&right, &shifted);
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Binary));
+        let payload = result.binary.expect("binary payload should exist");
+        assert!(payload.truncated);
+        assert!(payload.rows.is_empty());
+        assert_eq!(result.summary, "Binary files differ. The hex view is truncated at 8 MB per side.");
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
 
     #[test]

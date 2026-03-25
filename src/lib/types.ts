@@ -5,7 +5,7 @@ export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
 export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'tooLarge'
-export type ContentKind = 'text' | 'binary' | 'tooLarge'
+export type ContentKind = 'text' | 'image' | 'binary' | 'tooLarge'
 export type DiffChange = 'context' | 'delete' | 'insert'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
@@ -78,6 +78,42 @@ export interface DirectoryEntryResult {
   rightSize: number | null
 }
 
+export interface BinaryFileMeta {
+  exists: boolean
+  path: string
+  size: number | null
+  sha256: string | null
+  format: string | null
+  identicalToOtherSide: boolean
+}
+
+export interface ImageDiffPayload {
+  leftAssetUrl: string | null
+  rightAssetUrl: string | null
+  leftMeta: BinaryFileMeta
+  rightMeta: BinaryFileMeta
+}
+
+export interface HexCell {
+  hex: string
+  ascii: string
+  changed: boolean
+}
+
+export interface HexRow {
+  offset: number
+  left: HexCell[]
+  right: HexCell[]
+}
+
+export interface BinaryDiffPayload {
+  leftMeta: BinaryFileMeta
+  rightMeta: BinaryFileMeta
+  rows: HexRow[]
+  bytesPerRow: 16
+  truncated: boolean
+}
+
 export interface DiffCell {
   lineNumber: number | null
   prefix: string
@@ -112,6 +148,8 @@ export interface FileDiffResult {
   rightLabel: string
   sideBySide: SideBySideRow[]
   unified: UnifiedLine[]
+  image?: ImageDiffPayload | null
+  binary?: BinaryDiffPayload | null
 }
 
 export interface UpdateMetadata {
