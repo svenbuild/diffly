@@ -1322,11 +1322,12 @@ h2 {
   min-height: 152px;
   padding: 12px 14px;
   font-family: var(--preview-code-font);
+  font-size: var(--preview-code-font-size);
 }
 
 .settings-appearance-preview-line-number {
   color: var(--preview-line-number);
-  font-size: 0.74rem;
+  font-size: calc(var(--preview-code-font-size) - 1px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1336,7 +1337,7 @@ h2 {
   display: block;
   color: var(--preview-ink);
   font-family: var(--preview-code-font);
-  font-size: 0.8rem;
+  font-size: var(--preview-code-font-size);
   white-space: nowrap;
   text-overflow: ellipsis;
 }

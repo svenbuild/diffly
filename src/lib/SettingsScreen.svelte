@@ -193,6 +193,7 @@
       '--preview-line-number': previewVariables['--muted'],
       '--preview-ui-font': theme.fonts.ui ?? previewVariables['--ui-font'],
       '--preview-code-font': theme.fonts.code ?? previewVariables['--code'],
+      '--preview-code-font-size': previewVariables['--code-font-size'],
     })
   }
 
