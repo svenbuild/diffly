@@ -11,6 +11,7 @@ export type ThemeId =
   | 'everforest'
   | 'github'
   | 'gruvbox'
+  | 'legacy-tuerkis'
   | 'linear'
   | 'lobster'
   | 'material'
@@ -361,6 +362,44 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
       diffAdded: '#3c3836',
       diffRemoved: '#cc241d',
       skill: '#b16286',
+    },
+  },
+  {
+    id: 'legacy-tuerkis',
+    variant: 'dark',
+    codeThemeId: 'material',
+    accent: '#2DCFD0',
+    surface: '#1A1C1D',
+    ink: '#F2F7F7',
+    contrast: 68,
+    opaqueWindows: true,
+    fonts: {
+      ui: null,
+      code: null,
+    },
+    semanticColors: {
+      diffAdded: '#5BD6A2',
+      diffRemoved: '#FF7B72',
+      skill: '#57E4E5',
+    },
+  },
+  {
+    id: 'legacy-tuerkis',
+    variant: 'light',
+    codeThemeId: 'material',
+    accent: '#159A9C',
+    surface: '#F4FBFB',
+    ink: '#173536',
+    contrast: 52,
+    opaqueWindows: true,
+    fonts: {
+      ui: null,
+      code: null,
+    },
+    semanticColors: {
+      diffAdded: '#1B8F63',
+      diffRemoved: '#C84C45',
+      skill: '#18AEB0',
     },
   },
   {
