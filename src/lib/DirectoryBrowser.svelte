@@ -116,7 +116,7 @@
           <button
             aria-expanded={!collapsedGroups[group.key]}
             class="group-toggle"
-            style={`padding-left: ${group.depth * 14 + 10}px`}
+            style={`--tree-depth: ${group.depth}`}
             type="button"
             on:click={() => toggleGroup(group.key)}
           >
@@ -125,7 +125,10 @@
                 <path d="m5.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
               </svg>
             </span>
-            <span class="group-label">{group.label}</span>
+            <span class="group-heading">
+              <EntryIcon kind="directory" open={!collapsedGroups[group.key]} />
+              <span class="group-label">{group.label}</span>
+            </span>
             <span class="group-count">{formatGroupCount(group)}</span>
           </button>
 
@@ -135,7 +138,7 @@
                 <button
                   class:selected={selectedRelativePath === entry.relativePath}
                   class="file-row"
-                  style={`padding-left: ${group.depth * 14 + 12}px`}
+                  style={`--tree-depth: ${group.depth + 1}`}
                   type="button"
                   on:click={() => selectEntry(entry)}
                 >
