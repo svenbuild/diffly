@@ -809,7 +809,9 @@ fn compare_paths(
             entries: compare_directories(&left, &right, &options)?,
         }),
         "file" => Ok(CompareResponse::File {
-            result: Box::new(build_file_diff(&left, &right, left_path, right_path, &options)?),
+            result: Box::new(build_file_diff(
+                &left, &right, left_path, right_path, &options,
+            )?),
         }),
         _ => Err("Unsupported compare mode.".to_string()),
     }
@@ -1112,12 +1114,19 @@ fn normalize_update_channel(value: Option<&str>) -> String {
 
 async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
     if channel == "prerelease" {
-        let endpoint = resolve_latest_prerelease_manifest_url().await?;
-        return Ok(vec![endpoint]);
+        let mut endpoints = Vec::new();
+
+        if let Ok(endpoint) = resolve_latest_prerelease_manifest_url().await {
+            endpoints.push(endpoint);
+        }
+
+        endpoints.push(Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?);
+
+        return Ok(endpoints);
     }
 
     Ok(vec![
-        Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?,
+        Url::parse(STABLE_UPDATE_ENDPOINT).map_err(|error| error.to_string())?
     ])
 }
 
@@ -1131,7 +1140,9 @@ async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
         .send()
         .await
         .map_err(|error| error.to_string())?;
-    let response = response.error_for_status().map_err(|error| error.to_string())?;
+    let response = response
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
     let releases = response
         .json::<Vec<GitHubRelease>>()
         .await
@@ -1259,7 +1270,8 @@ fn build_file_diff(
         });
     }
 
-    if matches!(left_loaded, LoadedFile::Binary(_, _)) || matches!(right_loaded, LoadedFile::Binary(_, _))
+    if matches!(left_loaded, LoadedFile::Binary(_, _))
+        || matches!(right_loaded, LoadedFile::Binary(_, _))
         || matches!(left_loaded, LoadedFile::Image(_))
         || matches!(right_loaded, LoadedFile::Image(_))
     {
@@ -1723,12 +1735,9 @@ fn merge_adjacent_replace_gap_pairs(
     let mut index = 0;
 
     while index < row_pairs.len() {
-        if let Some(pair) = mergeable_adjacent_gap_pair(
-            row_pairs,
-            index,
-            left_descriptors,
-            right_descriptors,
-        ) {
+        if let Some(pair) =
+            mergeable_adjacent_gap_pair(row_pairs, index, left_descriptors, right_descriptors)
+        {
             merged.push(pair);
             index += 2;
             continue;
@@ -2098,10 +2107,7 @@ fn find_next_resync_match(
             .take(right_limit)
             .skip(right_index)
         {
-            let Some(band) = pair_band(
-                left_descriptor,
-                right_descriptor,
-            ) else {
+            let Some(band) = pair_band(left_descriptor, right_descriptor) else {
                 continue;
             };
 
@@ -3430,8 +3436,8 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
             Ok(LoadedFile::Image(details))
         }
         DetectedFileKind::Binary => {
-            let collect_bytes = fs::metadata(path).map_err(|error| error.to_string())?.len()
-                <= MAX_BINARY_BYTES;
+            let collect_bytes =
+                fs::metadata(path).map_err(|error| error.to_string())?.len() <= MAX_BINARY_BYTES;
             let (details, bytes) = load_binary_details(path, None, collect_bytes)?;
             Ok(LoadedFile::Binary(details, bytes))
         }
@@ -3567,7 +3573,10 @@ fn build_binary_payload(
     let rows = if identical || truncated {
         Vec::new()
     } else {
-        build_hex_rows(loaded_file_bytes(left_loaded), loaded_file_bytes(right_loaded))
+        build_hex_rows(
+            loaded_file_bytes(left_loaded),
+            loaded_file_bytes(right_loaded),
+        )
     };
 
     Ok(BinaryDiffPayload {
@@ -4094,8 +4103,14 @@ mod tests {
         let right_asset_url = image_asset_url(&right).expect("right asset url should exist");
         assert!(payload.left_meta.exists);
         assert!(payload.right_meta.exists);
-        assert_eq!(payload.left_asset_url.as_deref(), Some(left_asset_url.as_str()));
-        assert_eq!(payload.right_asset_url.as_deref(), Some(right_asset_url.as_str()));
+        assert_eq!(
+            payload.left_asset_url.as_deref(),
+            Some(left_asset_url.as_str())
+        );
+        assert_eq!(
+            payload.right_asset_url.as_deref(),
+            Some(right_asset_url.as_str())
+        );
         assert!(!payload.left_meta.identical_to_other_side);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
@@ -4182,7 +4197,10 @@ mod tests {
         assert!(matches!(result.content_kind, ContentKind::Binary));
         let payload = result.binary.expect("binary payload should exist");
         assert!(!payload.right_meta.exists);
-        assert!(payload.rows[0].right.iter().all(|cell| cell.hex.is_empty() && !cell.changed));
+        assert!(payload.rows[0]
+            .right
+            .iter()
+            .all(|cell| cell.hex.is_empty() && !cell.changed));
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4213,7 +4231,10 @@ mod tests {
         let payload = result.binary.expect("binary payload should exist");
         assert!(payload.truncated);
         assert!(payload.rows.is_empty());
-        assert_eq!(result.summary, "Binary files differ. The hex view is truncated at 8 MB per side.");
+        assert_eq!(
+            result.summary,
+            "Binary files differ. The hex view is truncated at 8 MB per side."
+        );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -5094,9 +5115,9 @@ mod tests {
             .side_by_side
             .iter()
             .position(|row| {
-                row.left.as_ref().is_some_and(|cell| {
-                    cell.text == "#define IBN_SEG_ENTRY(field, seg_id) \\"
-                })
+                row.left
+                    .as_ref()
+                    .is_some_and(|cell| cell.text == "#define IBN_SEG_ENTRY(field, seg_id) \\")
             })
             .expect("left macro row should exist");
 
