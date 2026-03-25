@@ -19,6 +19,7 @@ use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const HEX_BYTES_PER_ROW: usize = 16;
@@ -1276,7 +1277,7 @@ fn build_file_diff(
         let summary = if identical {
             "Binary files are identical.".to_string()
         } else if payload.truncated {
-            "Binary files differ. The hex view is truncated at 8 MB per side.".to_string()
+            "Binary files differ. The hex view is truncated at 256 KB per side.".to_string()
         } else if !matches!(left_loaded, LoadedFile::Missing)
             && !matches!(right_loaded, LoadedFile::Missing)
         {
@@ -3431,8 +3432,9 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
             Ok(LoadedFile::Image(details))
         }
         DetectedFileKind::Binary => {
+            let collect_limit = MAX_BINARY_BYTES.min(MAX_BINARY_RENDER_BYTES);
             let collect_bytes =
-                fs::metadata(path).map_err(|error| error.to_string())?.len() <= MAX_BINARY_BYTES;
+                fs::metadata(path).map_err(|error| error.to_string())?.len() <= collect_limit;
             let (details, bytes) = load_binary_details(path, None, collect_bytes)?;
             Ok(LoadedFile::Binary(details, bytes))
         }
@@ -4272,7 +4274,7 @@ mod tests {
         assert!(payload.rows.is_empty());
         assert_eq!(
             result.summary,
-            "Binary files differ. The hex view is truncated at 8 MB per side."
+            "Binary files differ. The hex view is truncated at 256 KB per side."
         );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
@@ -4309,15 +4311,15 @@ mod tests {
         .expect("file diff should succeed");
 
         assert!(matches!(result.content_kind, ContentKind::Binary));
-        assert_eq!(result.summary, "Binary files differ.");
+        assert_eq!(
+            result.summary,
+            "Binary files differ. The hex view is truncated at 256 KB per side."
+        );
         let payload = result.binary.expect("binary payload should exist");
-        assert!(!payload.truncated);
-        assert_eq!(payload.first_difference_offset, Some(512));
-        assert_eq!(payload.changed_byte_count, Some(5));
-        assert!(!payload.rows.is_empty());
-        assert_eq!(payload.rows[32].offset, 512);
-        assert!(payload.rows[32].left.iter().any(|cell| cell.changed));
-        assert!(payload.rows[32].right.iter().any(|cell| cell.changed));
+        assert!(payload.truncated);
+        assert_eq!(payload.first_difference_offset, None);
+        assert_eq!(payload.changed_byte_count, None);
+        assert!(payload.rows.is_empty());
     }
 
     #[test]
