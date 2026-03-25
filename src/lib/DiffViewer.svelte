@@ -1,8 +1,19 @@
 <script lang="ts">
+  import { convertFileSrc } from '@tauri-apps/api/core'
   import { onDestroy, tick } from 'svelte'
+  import { formatSize } from './format'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { RenderedDiffFragment } from './syntax'
-  import type { DiffCell, FileDiffResult, UnifiedLine, ViewMode } from './types'
+  import type {
+    BinaryDiffPayload,
+    BinaryFileMeta,
+    DiffCell,
+    FileDiffResult,
+    HexRow,
+    ImageDiffPayload,
+    UnifiedLine,
+    ViewMode,
+  } from './types'
   import type { DiffHeaderContext, SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
 
   export let activeDiff: FileDiffResult | null
@@ -43,6 +54,16 @@
   let prefixColumnWidth = 'calc(1ch + 8px)'
   let scrollMarkerRefreshQueued = false
   let scrollMarkerObserver: ResizeObserver | null = null
+  let imageDiff: ImageDiffPayload | null = null
+  let binaryDiff: BinaryDiffPayload | null = null
+  const emptyBinaryMeta: BinaryFileMeta = {
+    exists: false,
+    path: '',
+    size: null,
+    sha256: null,
+    format: null,
+    identicalToOtherSide: false,
+  }
   const diffCellFragmentCache = new WeakMap<DiffCell, CachedFragments>()
   const unifiedLineFragmentCache = new WeakMap<UnifiedLine, CachedFragments>()
 
@@ -100,6 +121,10 @@
     unifiedScrollMarkers = []
   }
 
+  $: imageDiff = activeDiff?.contentKind === 'image' ? activeDiff.image ?? null : null
+
+  $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
+
   $: {
     leftPaneScroll
     rightPaneScroll
@@ -148,6 +173,86 @@
 
     unifiedLineFragmentCache.set(line, { fragments, syntaxKey })
     return fragments
+  }
+
+  function formatBinarySizeValue(size: number | null) {
+    return formatSize(size)
+  }
+
+  function formatBinaryHashShort(hash: string | null) {
+    if (!hash) {
+      return '-'
+    }
+
+    if (hash.length <= 16) {
+      return hash
+    }
+
+    return `${hash.slice(0, 8)}...${hash.slice(-8)}`
+  }
+
+  function formatBinaryFormatLabel(format: string | null, exists: boolean) {
+    if (!exists) {
+      return 'Missing'
+    }
+
+    return format || 'Unknown'
+  }
+
+  function formatBinaryOffset(offset: number) {
+    return offset.toString(16).toUpperCase().padStart(8, '0')
+  }
+
+  function resolveImageSource(assetUrl: string | null, meta: BinaryFileMeta) {
+    if (assetUrl) {
+      return assetUrl
+    }
+
+    if (!meta.exists || !meta.path) {
+      return null
+    }
+
+    return convertFileSrc(meta.path)
+  }
+
+  function isBinaryRowChanged(row: HexRow) {
+    return row.left.some((cell) => cell.changed) || row.right.some((cell) => cell.changed)
+  }
+
+  function getBinarySummaryChips(
+    kind: 'image' | 'binary',
+    leftMeta: BinaryFileMeta | null | undefined,
+    rightMeta: BinaryFileMeta | null | undefined,
+    rows: HexRow[] = [],
+    truncated = false,
+  ) {
+    const resolvedLeftMeta = leftMeta ?? emptyBinaryMeta
+    const resolvedRightMeta = rightMeta ?? emptyBinaryMeta
+    const chips = [
+      `Left ${formatBinaryFormatLabel(resolvedLeftMeta.format, resolvedLeftMeta.exists)}`,
+      `Right ${formatBinaryFormatLabel(resolvedRightMeta.format, resolvedRightMeta.exists)}`,
+    ]
+
+    if (kind === 'binary') {
+      chips.push(`${rows.filter((row) => isBinaryRowChanged(row)).length} changed rows`)
+
+      if (truncated) {
+        chips.push('Truncated')
+      }
+    }
+
+    if (
+      resolvedLeftMeta.exists &&
+      resolvedRightMeta.exists &&
+      resolvedLeftMeta.identicalToOtherSide &&
+      resolvedRightMeta.identicalToOtherSide
+    ) {
+      chips.push(kind === 'image' ? 'Hashes match' : 'Byte-identical')
+    } else if (resolvedLeftMeta.exists && resolvedRightMeta.exists) {
+      chips.push(kind === 'image' ? 'Hashes differ' : 'Byte differences present')
+    }
+
+    return chips
   }
 
   async function updateSideBySideContentMetrics() {
@@ -370,9 +475,8 @@
       </div>
     </div>
 
-    {#if activeDiff.contentKind !== 'text'}
-      <div class="message-card">{activeDiff.summary}</div>
-    {:else if viewMode === 'sideBySide'}
+    {#if activeDiff.contentKind === 'text'}
+      {#if viewMode === 'sideBySide'}
       <div
         class:sync-disabled={!syncSideBySideScroll}
         class:wrapped-lines={wrapSideBySideLines}
@@ -532,7 +636,7 @@
           </div>
         </section>
       </div>
-    {:else}
+      {:else}
       <div class="unified-grid-shell">
         <div bind:this={unifiedScroll} class="unified-grid" on:scroll={scheduleScrollNavigationRefresh}>
           <div
@@ -590,6 +694,227 @@
           </div>
         </div>
       </div>
+      {/if}
+    {:else if activeDiff.contentKind === 'image'}
+      <div class="binary-view image-view">
+        <div class="context-card binary-summary-card">
+          <strong>{activeDiff.summary}</strong>
+          {#if imageDiff}
+            <div class="binary-summary-chips">
+              {#each getBinarySummaryChips('image', imageDiff.leftMeta, imageDiff.rightMeta) as chip}
+                <span class="binary-summary-chip">{chip}</span>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="binary-panels image-panels">
+          <section class="diff-pane binary-pane">
+            <div class="pane-header" title={diffHeaderContext.leftAbsolutePath}>
+              <span class="pane-header-side">Left</span>
+              <span aria-hidden="true" class="pane-header-separator">&middot;</span>
+              <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
+            </div>
+            <div class="binary-pane-body">
+              {#if imageDiff?.leftMeta.exists && resolveImageSource(imageDiff.leftAssetUrl, imageDiff.leftMeta)}
+                <div class="binary-preview-shell">
+                  <img
+                    alt={`${diffHeaderContext.leftPaneLabel} preview`}
+                    class="binary-preview-image"
+                    decoding="async"
+                    draggable="false"
+                    src={resolveImageSource(imageDiff.leftAssetUrl, imageDiff.leftMeta) ?? undefined}
+                  />
+                </div>
+              {:else}
+                <div class="empty-inline-state binary-empty-state">No image on this side.</div>
+              {/if}
+
+              {#if imageDiff}
+                <div class="binary-meta-grid">
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">Format</span>
+                    <strong class:missing={!imageDiff.leftMeta.exists} class="binary-meta-value">
+                      {formatBinaryFormatLabel(imageDiff.leftMeta.format, imageDiff.leftMeta.exists)}
+                    </strong>
+                  </div>
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">Size</span>
+                    <strong
+                      class:missing={!imageDiff.leftMeta.exists}
+                      class="binary-meta-value"
+                      title={imageDiff.leftMeta.size === null ? undefined : imageDiff.leftMeta.path}
+                    >
+                      {formatBinarySizeValue(imageDiff.leftMeta.size)}
+                    </strong>
+                  </div>
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">SHA-256</span>
+                    <strong
+                      class:missing={!imageDiff.leftMeta.exists}
+                      class="binary-meta-value"
+                      title={imageDiff.leftMeta.sha256 ?? undefined}
+                    >
+                      {formatBinaryHashShort(imageDiff.leftMeta.sha256)}
+                    </strong>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </section>
+
+          <section class="diff-pane binary-pane">
+            <div class="pane-header" title={diffHeaderContext.rightAbsolutePath}>
+              <span class="pane-header-side">Right</span>
+              <span aria-hidden="true" class="pane-header-separator">&middot;</span>
+              <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
+            </div>
+            <div class="binary-pane-body">
+              {#if imageDiff?.rightMeta.exists && resolveImageSource(imageDiff.rightAssetUrl, imageDiff.rightMeta)}
+                <div class="binary-preview-shell">
+                  <img
+                    alt={`${diffHeaderContext.rightPaneLabel} preview`}
+                    class="binary-preview-image"
+                    decoding="async"
+                    draggable="false"
+                    src={resolveImageSource(imageDiff.rightAssetUrl, imageDiff.rightMeta) ?? undefined}
+                  />
+                </div>
+              {:else}
+                <div class="empty-inline-state binary-empty-state">No image on this side.</div>
+              {/if}
+
+              {#if imageDiff}
+                <div class="binary-meta-grid">
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">Format</span>
+                    <strong
+                      class:missing={!imageDiff.rightMeta.exists}
+                      class="binary-meta-value"
+                    >
+                      {formatBinaryFormatLabel(
+                        imageDiff.rightMeta.format,
+                        imageDiff.rightMeta.exists,
+                      )}
+                    </strong>
+                  </div>
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">Size</span>
+                    <strong
+                      class:missing={!imageDiff.rightMeta.exists}
+                      class="binary-meta-value"
+                      title={imageDiff.rightMeta.size === null ? undefined : imageDiff.rightMeta.path}
+                    >
+                      {formatBinarySizeValue(imageDiff.rightMeta.size)}
+                    </strong>
+                  </div>
+                  <div class="binary-meta-item">
+                    <span class="binary-meta-label">SHA-256</span>
+                    <strong
+                      class:missing={!imageDiff.rightMeta.exists}
+                      class="binary-meta-value"
+                      title={imageDiff.rightMeta.sha256 ?? undefined}
+                    >
+                      {formatBinaryHashShort(imageDiff.rightMeta.sha256)}
+                    </strong>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </section>
+        </div>
+      </div>
+    {:else if activeDiff.contentKind === 'binary'}
+      <div class="binary-view hex-view">
+        <div class="context-card binary-summary-card">
+          <strong>{activeDiff.summary}</strong>
+          {#if binaryDiff}
+            <div class="binary-summary-chips">
+              {#each getBinarySummaryChips(
+                'binary',
+                binaryDiff.leftMeta,
+                binaryDiff.rightMeta,
+                binaryDiff.rows,
+                binaryDiff.truncated,
+              ) as chip}
+                <span class="binary-summary-chip">{chip}</span>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="binary-hex-shell">
+          <div class="binary-hex-scroll">
+            <div class="binary-hex-table">
+              <div class="binary-hex-header">
+                <span class="binary-hex-cell binary-offset-header">Offset</span>
+                <span class="binary-hex-cell binary-group-header">Left hex</span>
+                <span class="binary-hex-cell binary-group-header">Left ASCII</span>
+                <span class="binary-hex-cell binary-group-header">Right hex</span>
+                <span class="binary-hex-cell binary-group-header">Right ASCII</span>
+              </div>
+
+              {#if binaryDiff && binaryDiff.rows.length === 0}
+                <div class="empty-inline-state binary-empty-state">
+                  {binaryDiff.truncated
+                    ? 'Binary content is too large to render as hex.'
+                    : 'No byte differences.'}
+                </div>
+              {/if}
+
+              {#if binaryDiff}
+                {#each binaryDiff.rows as row}
+                  <div class:changed={isBinaryRowChanged(row)} class="binary-hex-row">
+                    <span class="binary-hex-cell binary-offset-cell">{formatBinaryOffset(row.offset)}</span>
+
+                    <span class="binary-hex-cell binary-byte-group">
+                      {#each row.left as cell}
+                        <span
+                          class:changed={cell.changed}
+                          class="binary-byte binary-hex-byte"
+                          title={cell.hex}
+                        >
+                          {cell.hex || '\u00a0\u00a0'}
+                        </span>
+                      {/each}
+                    </span>
+
+                    <span class="binary-hex-cell binary-byte-group binary-ascii-group">
+                      {#each row.left as cell}
+                        <span class:changed={cell.changed} class="binary-byte binary-ascii-byte">
+                          {cell.ascii || '\u00a0'}
+                        </span>
+                      {/each}
+                    </span>
+
+                    <span class="binary-hex-cell binary-byte-group">
+                      {#each row.right as cell}
+                        <span
+                          class:changed={cell.changed}
+                          class="binary-byte binary-hex-byte"
+                          title={cell.hex}
+                        >
+                          {cell.hex || '\u00a0\u00a0'}
+                        </span>
+                      {/each}
+                    </span>
+
+                    <span class="binary-hex-cell binary-byte-group binary-ascii-group">
+                      {#each row.right as cell}
+                        <span class:changed={cell.changed} class="binary-byte binary-ascii-byte">
+                          {cell.ascii || '\u00a0'}
+                        </span>
+                      {/each}
+                    </span>
+                  </div>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div class="message-card">{activeDiff.summary}</div>
     {/if}
     {#if detailLoading}
       <div class="viewer-loading">Refreshing diff...</div>

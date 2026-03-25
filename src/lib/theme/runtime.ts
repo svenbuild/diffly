@@ -103,22 +103,58 @@ export function createThemeCssVariables(
 ): Record<string, string> {
   const tokens = createThemeTokens(theme, settings.uiFontSize, settings.codeFontSize)
   const isDark = theme.variant === 'dark'
-  const contrastRatio = clamp(theme.contrast / 100, 0, 1)
-  const surfaceAlt = mixHex(theme.surface, theme.ink, isDark ? 0.08 + contrastRatio * 0.06 : 0.025 + contrastRatio * 0.045)
-  const surfaceStrong = mixHex(theme.surface, theme.ink, isDark ? 0.14 + contrastRatio * 0.08 : 0.06 + contrastRatio * 0.06)
-  const canvas = mixHex(theme.surface, isDark ? '#000000' : '#ffffff', isDark ? 0.2 : 0.035)
-  const canvasAlt = mixHex(theme.surface, isDark ? '#000000' : '#ffffff', isDark ? 0.12 : 0.015)
-  const border = mixHex(theme.surface, theme.ink, isDark ? 0.22 + contrastRatio * 0.12 : 0.11 + contrastRatio * 0.11)
-  const borderStrong = mixHex(theme.surface, theme.ink, isDark ? 0.32 + contrastRatio * 0.14 : 0.2 + contrastRatio * 0.12)
-  const accentStrong = mixHex(theme.accent, isDark ? '#ffffff' : '#000000', isDark ? 0.2 : 0.14)
-  const accentSoft = mixHex(theme.surface, theme.accent, isDark ? 0.17 : 0.11)
+  const contrastScale = clamp(theme.contrast / 100, 0, 1)
+  const surfaceAlt = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.04, 0.18) : scaleByContrast(contrastScale, 0.015, 0.11)
+  )
+  const surfaceStrong = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.08, 0.28) : scaleByContrast(contrastScale, 0.04, 0.18)
+  )
+  const canvas = mixHex(
+    theme.surface,
+    isDark ? '#000000' : '#ffffff',
+    isDark ? scaleByContrast(contrastScale, 0.12, 0.32) : scaleByContrast(contrastScale, 0.015, 0.075)
+  )
+  const canvasAlt = mixHex(
+    theme.surface,
+    isDark ? '#000000' : '#ffffff',
+    isDark ? scaleByContrast(contrastScale, 0.06, 0.22) : scaleByContrast(contrastScale, 0.008, 0.05)
+  )
+  const border = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.16, 0.46) : scaleByContrast(contrastScale, 0.08, 0.3)
+  )
+  const borderStrong = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.24, 0.58) : scaleByContrast(contrastScale, 0.16, 0.42)
+  )
+  const accentStrong = mixHex(
+    theme.accent,
+    isDark ? '#ffffff' : '#000000',
+    isDark ? scaleByContrast(contrastScale, 0.08, 0.26) : scaleByContrast(contrastScale, 0.06, 0.18)
+  )
+  const accentSoft = mixHex(
+    theme.surface,
+    theme.accent,
+    isDark ? scaleByContrast(contrastScale, 0.11, 0.28) : scaleByContrast(contrastScale, 0.08, 0.19)
+  )
   const accentAlt = mixHex(theme.semanticColors.skill, theme.accent, 0.26)
-  const accentAltSoft = mixHex(theme.surface, theme.semanticColors.skill, isDark ? 0.16 : 0.1)
+  const accentAltSoft = mixHex(
+    theme.surface,
+    theme.semanticColors.skill,
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.25) : scaleByContrast(contrastScale, 0.08, 0.17)
+  )
   const accentOlive = mixHex(theme.accent, theme.semanticColors.diffAdded, 0.42)
-  const warning = mixHex(theme.accent, theme.semanticColors.diffRemoved, 0.42)
-  const panelAlpha = isDark ? 0.78 : 0.88
-  const elevatedAlpha = isDark ? 0.84 : 0.92
-  const paneHeaderAlpha = isDark ? 0.76 : 0.88
+  const warning = mixHex(theme.accent, theme.semanticColors.diffRemoved, 0.48)
+  const panelAlpha = scaleByContrast(contrastScale, isDark ? 0.82 : 0.9, isDark ? 0.94 : 0.98)
+  const elevatedAlpha = scaleByContrast(contrastScale, isDark ? 0.88 : 0.95, isDark ? 0.98 : 0.995)
+  const paneHeaderAlpha = scaleByContrast(contrastScale, isDark ? 0.84 : 0.92, isDark ? 0.97 : 0.99)
   const panelBg = theme.opaqueWindows
     ? tokens.panelSurface
     : rgbaFromHex(tokens.panelSurface, panelAlpha)
@@ -127,7 +163,10 @@ export function createThemeCssVariables(
     : rgbaFromHex(tokens.elevatedSurface, elevatedAlpha)
   const listBg = theme.opaqueWindows
     ? theme.surface
-    : rgbaFromHex(theme.surface, isDark ? 0.72 : 0.9)
+    : rgbaFromHex(
+        theme.surface,
+        isDark ? scaleByContrast(contrastScale, 0.74, 0.9) : scaleByContrast(contrastScale, 0.88, 0.97)
+      )
   const paneHeaderBg = theme.opaqueWindows
     ? surfaceStrong
     : rgbaFromHex(surfaceStrong, paneHeaderAlpha)
@@ -143,37 +182,78 @@ export function createThemeCssVariables(
   const listHeaderBgResolved = theme.opaqueWindows
     ? surfaceStrong
     : compositeHex(surfaceStrong, panelBgResolved, paneHeaderAlpha)
-  const diffInsertBg = mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.24 : 0.18)
-  const diffDeleteBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.24 : 0.18)
-  const successBg = mixHex(theme.surface, theme.semanticColors.diffAdded, isDark ? 0.14 : 0.11)
-  const dangerBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.14 : 0.11)
-  const warningBg = mixHex(theme.surface, warning, isDark ? 0.15 : 0.1)
-  const dangerStrongBg = mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.2 : 0.14)
-  const statusModifiedBg = mixHex(theme.surface, theme.accent, isDark ? 0.18 : 0.11)
+  const diffInsertBg = mixHex(
+    theme.surface,
+    theme.semanticColors.diffAdded,
+    isDark ? scaleByContrast(contrastScale, 0.16, 0.34) : scaleByContrast(contrastScale, 0.12, 0.24)
+  )
+  const diffDeleteBg = mixHex(
+    theme.surface,
+    theme.semanticColors.diffRemoved,
+    isDark ? scaleByContrast(contrastScale, 0.15, 0.32) : scaleByContrast(contrastScale, 0.11, 0.22)
+  )
+  const successBg = mixHex(
+    theme.surface,
+    theme.semanticColors.diffAdded,
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
+  )
+  const dangerBg = mixHex(
+    theme.surface,
+    theme.semanticColors.diffRemoved,
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
+  )
+  const warningBg = mixHex(
+    theme.surface,
+    warning,
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
+  )
+  const dangerStrongBg = mixHex(
+    theme.surface,
+    theme.semanticColors.diffRemoved,
+    isDark ? scaleByContrast(contrastScale, 0.15, 0.3) : scaleByContrast(contrastScale, 0.12, 0.23)
+  )
+  const statusModifiedBg = mixHex(
+    theme.surface,
+    theme.accent,
+    isDark ? scaleByContrast(contrastScale, 0.12, 0.28) : scaleByContrast(contrastScale, 0.09, 0.2)
+  )
   const collapsedBg = mixHex(canvasAlt, theme.ink, isDark ? 0.1 : 0.04)
   const collapsedChipBgResolved = theme.opaqueWindows
     ? tokens.elevatedSurface
     : compositeHex(tokens.elevatedSurface, collapsedBg, elevatedAlpha)
-  const scrollbarThumb = mixHex(theme.surface, theme.ink, isDark ? 0.28 : 0.18)
-  const scrollbarThumbHover = mixHex(theme.surface, theme.ink, isDark ? 0.38 : 0.28)
+  const scrollbarThumb = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.22, 0.46) : scaleByContrast(contrastScale, 0.12, 0.34)
+  )
+  const scrollbarThumbHover = mixHex(
+    theme.surface,
+    theme.ink,
+    isDark ? scaleByContrast(contrastScale, 0.32, 0.56) : scaleByContrast(contrastScale, 0.22, 0.44)
+  )
+  const textContrastTarget = scaleByContrast(contrastScale, 4.5, 6.4)
+  const mutedContrastTarget = scaleByContrast(contrastScale, 4.45, 5.4)
+  const secondaryContrastTarget = scaleByContrast(contrastScale, 4.6, 5.9)
+  const syntaxContrastTarget = scaleByContrast(contrastScale, 3.7, 5)
+  const syntaxMutedContrastTarget = scaleByContrast(contrastScale, 4.05, 5.2)
   const readableText = ensureReadableForeground(
     theme.ink,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     isDark ? '#FFFFFF' : '#111111',
-    4.5
+    textContrastTarget
   )
   const baseMutedText = tokens.mutedText
   const mutedText = ensureReadableForeground(
     baseMutedText,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     readableText,
-    4.55
+    mutedContrastTarget
   )
   const secondaryText = ensureReadableForeground(
     mixHex(theme.ink, theme.surface, isDark ? 0.08 : 0.14),
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     readableText,
-    4.55
+    secondaryContrastTarget
   )
   const activeText = pickReadableText(accentSoft, readableText, 4.5)
   const primaryText = pickReadableText(theme.accent, readableText, 4.5)
@@ -196,45 +276,45 @@ export function createThemeCssVariables(
     theme.semanticColors.skill,
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
-  const syntaxType = ensureReadableForeground(accentStrong, syntaxBackgrounds, theme.ink, 3)
+  const syntaxType = ensureReadableForeground(accentStrong, syntaxBackgrounds, theme.ink, syntaxContrastTarget)
   const syntaxString = ensureReadableForeground(
     theme.semanticColors.diffAdded,
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
-  const syntaxNumber = ensureReadableForeground(warning, syntaxBackgrounds, theme.ink, 3)
+  const syntaxNumber = ensureReadableForeground(warning, syntaxBackgrounds, theme.ink, syntaxContrastTarget)
   const syntaxFunction = ensureReadableForeground(
     mixHex(theme.accent, theme.semanticColors.skill, 0.38),
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
   const syntaxProperty = ensureReadableForeground(
     mixHex(theme.accent, theme.ink, isDark ? 0.16 : 0.24),
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
   const syntaxConstant = ensureReadableForeground(
     theme.semanticColors.diffRemoved,
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
   const syntaxSelector = ensureReadableForeground(
     mixHex(theme.accent, theme.semanticColors.diffAdded, 0.26),
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
   const syntaxRegex = ensureReadableForeground(
     mixHex(theme.semanticColors.diffAdded, theme.accent, 0.22),
     syntaxBackgrounds,
     theme.ink,
-    3
+    syntaxContrastTarget
   )
 
   return {
@@ -246,7 +326,7 @@ export function createThemeCssVariables(
     '--diff-row-line-height': `${tokens.codeFontSize + 3}px`,
     '--diff-row-height': `${tokens.codeFontSize + 8}px`,
     '--interactive-cursor': settings.usePointerCursor ? 'pointer' : 'default',
-    '--pane-backdrop-blur': theme.opaqueWindows ? 'none' : 'blur(18px)',
+    '--pane-backdrop-blur': theme.opaqueWindows ? 'none' : 'blur(10px)',
     '--canvas': canvas,
     '--canvas-alt': canvasAlt,
     '--surface': theme.surface,
@@ -270,8 +350,8 @@ export function createThemeCssVariables(
     '--warning': warning,
     '--warning-bg': warningBg,
     '--neutral-bg': surfaceAlt,
-    '--canvas-glow-primary': rgbaFromHex(theme.accent, isDark ? 0.07 : 0.045),
-    '--canvas-glow-secondary': rgbaFromHex(theme.semanticColors.skill, isDark ? 0.05 : 0.035),
+    '--canvas-glow-primary': rgbaFromHex(theme.accent, isDark ? 0.045 : 0.028),
+    '--canvas-glow-secondary': rgbaFromHex(theme.semanticColors.skill, isDark ? 0.032 : 0.022),
     '--app-bar-bg': panelBg,
     '--app-bar-shadow-strong': rgbaFromHex(isDark ? '#000000' : '#111111', isDark ? 0.22 : 0.08),
     '--app-bar-shadow-soft': rgbaFromHex('#ffffff', isDark ? 0.02 : 0.55),
@@ -291,10 +371,16 @@ export function createThemeCssVariables(
     '--sidebar-panel-bg': panelBg,
     '--pane-bg': panelBg,
     '--card-bg': elevatedBg,
-    '--card-top-border': rgbaFromHex(theme.ink, isDark ? 0.08 : 0.06),
+    '--card-top-border': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.04, 0.1) : scaleByContrast(contrastScale, 0.04, 0.09)
+    ),
     '--list-bg': listBg,
     '--list-header-bg': paneHeaderBg,
-    '--selection-bg': rgbaFromHex(theme.accent, isDark ? 0.14 : 0.1),
+    '--selection-bg': rgbaFromHex(
+      theme.accent,
+      isDark ? scaleByContrast(contrastScale, 0.1, 0.24) : scaleByContrast(contrastScale, 0.07, 0.18)
+    ),
     '--icon-color': mixHex(theme.ink, theme.accent, 0.32),
     '--status-modified-bg': statusModifiedBg,
     '--status-modified-border': mixHex(theme.surface, theme.accent, isDark ? 0.3 : 0.2),
@@ -304,17 +390,29 @@ export function createThemeCssVariables(
     '--status-danger-border': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.32 : 0.2),
     '--status-danger-text': statusDangerText,
     '--pane-header-bg': paneHeaderBg,
-    '--pane-header-shadow': rgbaFromHex(theme.ink, isDark ? 0.03 : 0.05),
-    '--pane-inner-shadow': rgbaFromHex(theme.ink, isDark ? 0.02 : 0.04),
+    '--pane-header-shadow': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.02, 0.06) : scaleByContrast(contrastScale, 0.03, 0.08)
+    ),
+    '--pane-inner-shadow': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.01, 0.05) : scaleByContrast(contrastScale, 0.02, 0.06)
+    ),
     '--hunk-bg': surfaceAlt,
-    '--diff-divider': rgbaFromHex(theme.ink, isDark ? 0.12 : 0.12),
-    '--diff-context-bg': panelBg,
+    '--diff-divider': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.08, 0.2) : scaleByContrast(contrastScale, 0.08, 0.18)
+    ),
+    '--diff-context-bg': diffContextBgResolved,
     '--diff-insert-bg': diffInsertBg,
     '--diff-insert-text': diffInsertText,
     '--diff-delete-bg': diffDeleteBg,
     '--diff-delete-text': diffDeleteText,
     '--diff-gap-bg': canvasAlt,
-    '--diff-gap-stripe': rgbaFromHex(theme.ink, isDark ? 0.04 : 0.03),
+    '--diff-gap-stripe': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.04, 0.08) : scaleByContrast(contrastScale, 0.03, 0.065)
+    ),
     '--collapsed-row-bg': collapsedBg,
     '--collapsed-row-line': rgbaFromHex(theme.ink, isDark ? 0.26 : 0.22),
     '--collapsed-chip-bg': elevatedBg,
@@ -323,7 +421,12 @@ export function createThemeCssVariables(
     '--scroll-marker-insert': theme.semanticColors.diffAdded,
     '--scroll-marker-delete': theme.semanticColors.diffRemoved,
     '--scroll-marker-mixed': theme.accent,
-    '--syntax-comment': ensureReadableForeground(mutedText, syntaxBackgrounds, theme.ink, 3),
+    '--syntax-comment': ensureReadableForeground(
+      mutedText,
+      syntaxBackgrounds,
+      theme.ink,
+      syntaxMutedContrastTarget
+    ),
     '--syntax-keyword': syntaxKeyword,
     '--syntax-type': syntaxType,
     '--syntax-string': syntaxString,
@@ -336,10 +439,18 @@ export function createThemeCssVariables(
     '--syntax-tag': syntaxString,
     '--syntax-regex': syntaxRegex,
     '--syntax-operator': readableText,
-    '--syntax-punctuation': ensureReadableForeground(mutedText, syntaxBackgrounds, theme.ink, 3),
+    '--syntax-punctuation': ensureReadableForeground(
+      mutedText,
+      syntaxBackgrounds,
+      theme.ink,
+      syntaxMutedContrastTarget
+    ),
     '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.45 : 0.28),
     '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.4 : 0.24),
-    '--line-divider': rgbaFromHex(theme.ink, isDark ? 0.1 : 0.12),
+    '--line-divider': rgbaFromHex(
+      theme.ink,
+      isDark ? scaleByContrast(contrastScale, 0.06, 0.14) : scaleByContrast(contrastScale, 0.08, 0.16)
+    ),
     '--highlight-bg': rgbaFromHex(theme.accent, isDark ? 0.2 : 0.14),
     '--scrollbar-track': canvasAlt,
     '--scrollbar-thumb': scrollbarThumb,
@@ -410,6 +521,18 @@ function sanitizeOverrideEntries(input: ThemeOverrides): ThemeOverrides {
 
   if (isHexColor(input.ink)) {
     next.ink = normalizeHexColor(input.ink)
+  }
+
+  if (isHexColor(input.diffAdded)) {
+    next.diffAdded = normalizeHexColor(input.diffAdded)
+  }
+
+  if (isHexColor(input.diffRemoved)) {
+    next.diffRemoved = normalizeHexColor(input.diffRemoved)
+  }
+
+  if (isHexColor(input.skill)) {
+    next.skill = normalizeHexColor(input.skill)
   }
 
   if (typeof input.contrast === 'number' && Number.isFinite(input.contrast)) {
@@ -610,4 +733,8 @@ function toHex(value: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function scaleByContrast(contrastScale: number, low: number, high: number): number {
+  return low + (high - low) * clamp(contrastScale, 0, 1)
 }

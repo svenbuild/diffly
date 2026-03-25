@@ -58,10 +58,10 @@
     type AppearanceSettings,
     type ThemeDefinition,
     type ThemeId,
+    type ThemeSemanticColorKey,
     type ThemeVariant,
   } from './lib/theme'
   import {
-    createThemeExport,
     normalizeAppearanceSettings,
     resolveThemeCssVariables,
     resolveThemeForVariant,
@@ -92,7 +92,6 @@
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
   const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
-  const THEME_COPY_FEEDBACK_DURATION_MS = 1400
 
   type Screen = 'setup' | 'compare' | 'settings'
   type UpdateStatus =
@@ -192,7 +191,6 @@
   let compareRefreshTimer: number | null = null
   let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
-  let copyThemeTimer: number | null = null
   let activeDetailRequestId = 0
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
@@ -204,6 +202,7 @@
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
+  let textDiffActive = false
   let leftCompareRoot: CompareRootDisplay = {
     prefix: '',
     suffix: '',
@@ -230,7 +229,6 @@
   let diffFontSize = `${appearanceSettings.codeFontSize}px`
   let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
-  let copiedThemeVariant: ThemeVariant | null = null
   let updateIndicatorState: UpdateIndicatorState = {
     status: 'idle',
     currentVersion: '',
@@ -326,10 +324,6 @@
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
-      }
-
-      if (copyThemeTimer !== null) {
-        window.clearTimeout(copyThemeTimer)
       }
 
       if (scrollEchoResetFrame !== null) {
@@ -506,6 +500,24 @@
     })
   }
 
+  function setThemeSemanticColorOverride(
+    variant: ThemeVariant,
+    field: ThemeSemanticColorKey,
+    value: string
+  ) {
+    const nextColor = normalizeHexColor(value)
+
+    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
+      if (nextColor === base.semanticColors[field].toUpperCase()) {
+        delete next[field]
+      } else {
+        next[field] = nextColor
+      }
+
+      return next
+    })
+  }
+
   function setThemeFontOverride(
     variant: ThemeVariant,
     field: 'ui' | 'code',
@@ -553,69 +565,6 @@
 
       return next
     })
-  }
-
-  async function writeTextToClipboard(value: string) {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-        return true
-      } catch {
-        // Fall through to the legacy copy path for Tauri/WebView clipboard edge cases.
-      }
-    }
-
-    if (typeof document === 'undefined') {
-      return false
-    }
-
-    const textarea = document.createElement('textarea')
-    textarea.value = value
-    textarea.setAttribute('readonly', 'true')
-    textarea.style.position = 'fixed'
-    textarea.style.top = '0'
-    textarea.style.left = '-9999px'
-    textarea.style.opacity = '0'
-
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    textarea.setSelectionRange(0, textarea.value.length)
-
-    let copied = false
-
-    try {
-      copied = document.execCommand('copy')
-    } finally {
-      document.body.removeChild(textarea)
-    }
-
-    return copied
-  }
-
-  async function copyTheme(variant: ThemeVariant) {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const theme = resolveThemeForVariant(appearanceSettings, variant)
-    const copied = await writeTextToClipboard(createThemeExport(theme))
-
-    if (!copied) {
-      copiedThemeVariant = null
-      return
-    }
-
-    copiedThemeVariant = variant
-
-    if (copyThemeTimer !== null) {
-      window.clearTimeout(copyThemeTimer)
-    }
-
-    copyThemeTimer = window.setTimeout(() => {
-      copiedThemeVariant = null
-      copyThemeTimer = null
-    }, THEME_COPY_FEEDBACK_DURATION_MS)
   }
 
   function parseUpdateTimestamp(value: string) {
@@ -2124,6 +2073,92 @@
     return clampScrollOffset((sourceOffset / sourceMaxOffset) * targetMaxOffset, targetMaxOffset)
   }
 
+  function getPaneContentRoot(pane: HTMLDivElement) {
+    const contentRoot = pane.firstElementChild
+    return contentRoot instanceof HTMLDivElement ? contentRoot : null
+  }
+
+  function findPaneItemAtOffset(contentRoot: HTMLDivElement, offset: number) {
+    const items = contentRoot.children as HTMLCollectionOf<HTMLElement>
+
+    if (items.length === 0) {
+      return null
+    }
+
+    let low = 0
+    let high = items.length - 1
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      const item = items.item(mid)
+
+      if (!item) {
+        break
+      }
+
+      const top = item.offsetTop
+      const bottom = top + item.offsetHeight
+
+      if (offset < top) {
+        high = mid - 1
+      } else if (offset >= bottom) {
+        low = mid + 1
+      } else {
+        return { index: mid, item }
+      }
+    }
+
+    const fallbackIndex = Math.max(
+      0,
+      Math.min(items.length - 1, low >= items.length ? items.length - 1 : Math.max(0, low - 1)),
+    )
+    const fallbackItem = items.item(fallbackIndex)
+
+    if (!fallbackItem) {
+      return null
+    }
+
+    return { index: fallbackIndex, item: fallbackItem }
+  }
+
+  function mapPaneScrollTop(sourcePane: HTMLDivElement, targetPane: HTMLDivElement) {
+    const sourceContentRoot = getPaneContentRoot(sourcePane)
+    const targetContentRoot = getPaneContentRoot(targetPane)
+
+    if (!sourceContentRoot || !targetContentRoot) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    if (sourceContentRoot.children.length !== targetContentRoot.children.length) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
+
+    if (!sourceMatch) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const targetItem = targetContentRoot.children.item(sourceMatch.index)
+
+    if (!(targetItem instanceof HTMLElement)) {
+      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+    }
+
+    const sourceItemHeight = Math.max(sourceMatch.item.offsetHeight, 1)
+    const targetItemHeight = Math.max(targetItem.offsetHeight, 1)
+    const offsetWithinItem = clampScrollOffset(
+      sourcePane.scrollTop - sourceMatch.item.offsetTop,
+      sourceItemHeight,
+    )
+    const itemProgress = offsetWithinItem / sourceItemHeight
+
+    return clampScrollOffset(
+      targetItem.offsetTop + itemProgress * targetItemHeight,
+      getMaxScrollTop(targetPane),
+    )
+  }
+
   function normalizeWheelDelta(delta: number, deltaMode: number) {
     if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
       return delta * 16
@@ -2145,16 +2180,8 @@
       return
     }
 
-    const nextTargetTop = mapScrollOffset(
-      sourcePane.scrollTop,
-      getMaxScrollTop(sourcePane),
-      getMaxScrollTop(targetPane),
-    )
-    const nextTargetLeft = mapScrollOffset(
-      sourcePane.scrollLeft,
-      getMaxScrollLeft(sourcePane),
-      getMaxScrollLeft(targetPane),
-    )
+    const nextTargetTop = mapPaneScrollTop(sourcePane, targetPane)
+    const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
 
     scrollEchoTarget = targetSide
     scrollEchoTop = nextTargetTop
@@ -2477,6 +2504,8 @@
     activeDiff?.contentKind === 'text' &&
     visibleDiffHunkCount > 0
 
+  $: textDiffActive = activeDiff?.contentKind === 'text'
+
   $: canGoToPreviousDiff = canNavigateDiffs && Math.max(currentDiffHunk, 0) > 0
 
   $: canGoToNextDiff =
@@ -2640,10 +2669,16 @@
         <div class="setup-mode-switch">
           <span>Compare</span>
           <div class="segmented-control" aria-label="Compare mode">
-            <button class:active={mode === 'file'} type="button" on:click={() => setMode('file')}>
+            <button
+              aria-pressed={mode === 'file'}
+              class:active={mode === 'file'}
+              type="button"
+              on:click={() => setMode('file')}
+            >
               Files
             </button>
             <button
+              aria-pressed={mode === 'directory'}
               class:active={mode === 'directory'}
               type="button"
               on:click={() => setMode('directory')}
@@ -2800,28 +2835,30 @@
 
         <div class="compare-action-group display-actions">
           <div class="segmented-control toolbar-segmented-control" aria-label="Diff view mode">
-            <button
-              class:active={viewMode === 'sideBySide'}
-              class="secondary view-mode-button"
-              aria-pressed={viewMode === 'sideBySide'}
-              title="Split view"
-              type="button"
-              on:click={() => setViewMode('sideBySide')}
-            >
+              <button
+                class:active={viewMode === 'sideBySide'}
+                class="secondary view-mode-button"
+                aria-pressed={viewMode === 'sideBySide'}
+                disabled={!textDiffActive}
+                title={textDiffActive ? 'Split view' : 'Split view is only available for text diffs'}
+                type="button"
+                on:click={() => setViewMode('sideBySide')}
+              >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
                 <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
               </svg>
               <span class="view-mode-button-label">Split</span>
             </button>
-            <button
-              class:active={viewMode === 'unified'}
-              class="secondary view-mode-button"
-              aria-pressed={viewMode === 'unified'}
-              title="Unified view"
-              type="button"
-              on:click={() => setViewMode('unified')}
-            >
+              <button
+                class:active={viewMode === 'unified'}
+                class="secondary view-mode-button"
+                aria-pressed={viewMode === 'unified'}
+                disabled={!textDiffActive}
+                title={textDiffActive ? 'Unified view' : 'Unified view is only available for text diffs'}
+                type="button"
+                on:click={() => setViewMode('unified')}
+              >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
                 <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
@@ -2917,7 +2954,6 @@
         <DirectoryBrowser
           {loading}
           {activeStatusFilters}
-          {filteredDirectoryEntries}
           {directoryEntries}
           {directoryStatusSummary}
           {visibleFolderSections}
@@ -3002,7 +3038,6 @@
       visibleThemeVariants={visibleAppearanceVariants}
       availableLightThemes={availableLightThemes}
       availableDarkThemes={availableDarkThemes}
-      {copiedThemeVariant}
       {ignoreWhitespace}
       {ignoreCase}
       {viewMode}
@@ -3032,13 +3067,12 @@
       onSetThemeMode={setThemeMode}
       onSetThemePreset={setThemePreset}
       onSetThemeColor={setThemeColorOverride}
+      onSetThemeSemanticColor={setThemeSemanticColorOverride}
       onSetThemeFont={setThemeFontOverride}
-      onSetThemeTranslucency={setThemeTranslucency}
       onSetThemeContrast={setThemeContrast}
       onSetUsePointerCursor={setUsePointerCursor}
       onStepUiFontSize={stepUiFontSize}
       onStepCodeFontSize={stepCodeFontSize}
-      onCopyTheme={copyTheme}
       onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
       onToggleIgnoreCase={toggleIgnoreCase}
       onSetViewMode={setViewMode}

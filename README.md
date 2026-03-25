@@ -8,6 +8,7 @@ Diffly is a desktop file and directory diff tool built with Svelte, TypeScript, 
 - Browse drives and folders from inside the app before choosing compare targets.
 - Filter changed directory entries by status.
 - Switch between side-by-side and unified diff views.
+- Preview image diffs visually and inspect binary files in a hex viewer.
 - Ignore whitespace and case differences during compare.
 - Persist the current workspace, theme, and navigation state between launches.
 
@@ -134,4 +135,6 @@ Report vulnerabilities through the private process described in [SECURITY.md](SE
 - `npm run tauri:package` keeps installer generation separate so packaging does not slow down every build.
 - Release Rust builds keep incremental artifacts enabled and use `opt-level = 2` to cut compile time without falling all the way back to debug codegen.
 - Large text diffs are capped at 1 MB per file.
-- Binary files are detected automatically and shown as status-only entries.
+- Binary files are detected automatically.
+- Common image formats open in a side-by-side preview.
+- Other binary files open in a side-by-side hex viewer up to 8 MB per side.

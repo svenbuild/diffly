@@ -6,7 +6,6 @@
 
   export let loading: boolean
   export let activeStatusFilters: EntryStatus[]
-  export let filteredDirectoryEntries: DirectoryEntryResult[]
   export let directoryEntries: DirectoryEntryResult[]
   export let directoryStatusSummary: Array<{
     status: EntryStatus
@@ -42,6 +41,18 @@
       }
     })
     .filter((group) => !hideCollapsedFoldersWithoutMatches || group.entries.length > 0)
+  $: visibleEntryCount = filteredFolderSections.reduce(
+    (total, group) => total + group.entries.length,
+    0,
+  )
+  $: hasVisibleEntries = filteredFolderSections.some((group) => group.entries.length > 0)
+  $: hasActiveFilters = activeStatusFilters.length > 0 || normalizedFileFilter !== ''
+
+  function formatGroupCount(group: FolderSection) {
+    return group.entries.length === group.totalCount
+      ? String(group.totalCount)
+      : `${group.entries.length}/${group.totalCount}`
+  }
 </script>
 
 <aside class:refreshing={loading} class="file-browser">
@@ -49,8 +60,8 @@
     <div class="browser-title">
       <h2>Files</h2>
       <span>
-        {#if activeStatusFilters.length > 0}
-          {filteredDirectoryEntries.length} of {directoryEntries.length} changed files
+        {#if hasActiveFilters}
+          {visibleEntryCount} of {directoryEntries.length} changed files
         {:else}
           {directoryEntries.length} changed files
         {/if}
@@ -92,7 +103,7 @@
     </div>
   </header>
 
-  {#if filteredFolderSections.length === 0}
+  {#if filteredFolderSections.length === 0 || !hasVisibleEntries}
     <div class="empty-state">
       {(activeStatusFilters.length > 0 || normalizedFileFilter)
         ? 'No files match the selected filters.'
@@ -103,6 +114,7 @@
       {#each filteredFolderSections as group}
         <section class="file-group">
           <button
+            aria-expanded={!collapsedGroups[group.key]}
             class="group-toggle"
             style={`padding-left: ${group.depth * 14 + 10}px`}
             type="button"
@@ -114,7 +126,7 @@
               </svg>
             </span>
             <span class="group-label">{group.label}</span>
-            <span class="group-count">{group.totalCount}</span>
+            <span class="group-count">{formatGroupCount(group)}</span>
           </button>
 
           {#if !collapsedGroups[group.key] && group.entries.length > 0}
@@ -123,6 +135,7 @@
                 <button
                   class:selected={selectedRelativePath === entry.relativePath}
                   class="file-row"
+                  style={`padding-left: ${group.depth * 14 + 12}px`}
                   type="button"
                   on:click={() => selectEntry(entry)}
                 >

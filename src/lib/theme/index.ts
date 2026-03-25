@@ -2,6 +2,14 @@ export type AppearanceMode = 'light' | 'dark' | 'system'
 
 export type ThemeVariant = 'light' | 'dark'
 
+export interface ThemeSemanticColors {
+  diffAdded: string
+  diffRemoved: string
+  skill: string
+}
+
+export type ThemeSemanticColorKey = keyof ThemeSemanticColors
+
 export type ThemeId =
   | 'absolutely'
   | 'ayu'
@@ -43,17 +51,16 @@ export interface ThemeDefinition {
     ui: string | null
     code: string | null
   }
-  semanticColors: {
-    diffAdded: string
-    diffRemoved: string
-    skill: string
-  }
+  semanticColors: ThemeSemanticColors
 }
 
 export interface ThemeOverrides {
   accent?: string
   surface?: string
   ink?: string
+  diffAdded?: string
+  diffRemoved?: string
+  skill?: string
   contrast?: number
   uiFont?: string | null
   codeFont?: string | null
@@ -873,6 +880,11 @@ export function applyOverrides(base: ThemeDefinition, overrides: ThemeOverrides)
     accent: overrides.accent ?? base.accent,
     surface: overrides.surface ?? base.surface,
     ink: overrides.ink ?? base.ink,
+    semanticColors: {
+      diffAdded: overrides.diffAdded ?? base.semanticColors.diffAdded,
+      diffRemoved: overrides.diffRemoved ?? base.semanticColors.diffRemoved,
+      skill: overrides.skill ?? base.semanticColors.skill,
+    },
     contrast: overrides.contrast !== undefined ? overrides.contrast : base.contrast,
     opaqueWindows:
       overrides.opaqueWindows !== undefined ? overrides.opaqueWindows : base.opaqueWindows,
@@ -911,12 +923,17 @@ export function createThemeTokens(
 ): ThemeTokens {
   const uiFont = theme.fonts.ui ?? DEFAULT_UI_FONT
   const codeFont = theme.fonts.code ?? DEFAULT_CODE_FONT
+  const isDark = theme.variant === 'dark'
   const contrastScale = clamp(theme.contrast, 0, 100) / 100
-  const borderAlpha = 0.16 + contrastScale * 0.18
-  const hoverAlpha = 0.05 + contrastScale * 0.07
-  const panelAlpha = theme.opaqueWindows ? 0.95 : 0.78
-  const elevatedAlpha = theme.opaqueWindows ? 1 : 0.88
-  const mutedMix = 0.64 - contrastScale * 0.12
+  const borderAlpha = scaleByContrast(contrastScale, 0.12, 0.38)
+  const hoverAlpha = scaleByContrast(contrastScale, 0.04, 0.15)
+  const panelAlpha = theme.opaqueWindows
+    ? 0.96
+    : scaleByContrast(contrastScale, isDark ? 0.78 : 0.88, isDark ? 0.94 : 0.98)
+  const elevatedAlpha = theme.opaqueWindows
+    ? 1
+    : scaleByContrast(contrastScale, isDark ? 0.84 : 0.94, isDark ? 0.98 : 0.995)
+  const mutedMix = scaleByContrast(contrastScale, 0.72, 0.42)
 
   return {
     accent: theme.accent,
@@ -957,6 +974,10 @@ export function getDefaultAppearanceSettings(): AppearanceSettings {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function scaleByContrast(contrastScale: number, low: number, high: number): number {
+  return low + (high - low) * clamp(contrastScale, 0, 1)
 }
 
 function mixHex(left: string, right: string, amount: number): string {
