@@ -2204,10 +2204,6 @@ button.filter-chip.tooLarge:focus-visible {
   position: relative;
 }
 
-.file-row:last-child {
-  border-bottom: 0;
-}
-
 .file-row.selected {
   background: color-mix(in srgb, var(--selection-bg) 88%, var(--surface));
   box-shadow: inset 3px 0 0 var(--accent);
@@ -2600,6 +2596,7 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   min-height: 0;
+  height: 100%;
   background: var(--canvas-alt);
 }
 
@@ -2670,6 +2667,13 @@ button.filter-chip.tooLarge:focus-visible {
   min-height: 0;
   height: 100%;
   background-color: var(--diff-context-bg);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--diff-row-height) - 1px),
+    var(--diff-divider) calc(var(--diff-row-height) - 1px),
+    var(--diff-divider) var(--diff-row-height)
+  );
   scrollbar-gutter: stable;
 }
 
