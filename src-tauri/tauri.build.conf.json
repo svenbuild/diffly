@@ -1,5 +1,13 @@
 {
   "build": {
+    "frontendDist": "../dist-debug",
     "beforeBuildCommand": ""
+  },
+  "app": {
+    "security": {
+      "capabilities": [
+        "debug-fast"
+      ]
+    }
   }
 }

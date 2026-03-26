@@ -8,6 +8,13 @@ repository = ""
 edition = "2021"
 rust-version = "1.77.2"
 
+[features]
+default = ["window-state"]
+debug-log = ["dep:log", "dep:tauri-plugin-log"]
+prerelease-updater = ["updater", "dep:reqwest"]
+updater = ["dep:tauri-plugin-updater"]
+window-state = ["dep:tauri-plugin-window-state"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -15,22 +22,23 @@ name = "diffly_lib"
 crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.6", features = [] }
+tauri-build = { version = "2.5.6", default-features = false, features = ["config-json"] }
 
 [dependencies]
-log = "0.4"
+log = { version = "0.4", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 similar = "2.7"
-tauri = { version = "2.10.3", features = ["protocol-asset"] }
-tauri-plugin-log = "2"
-tauri-plugin-window-state = "2.4.1"
-tauri-plugin-updater = "2"
+tauri = { version = "2.10.3", default-features = false, features = ["protocol-asset", "wry"] }
+tauri-plugin-log = { version = "2", optional = true }
+tauri-plugin-window-state = { version = "2.4.1", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
+url = "2"
 walkdir = "2.5"
 rfd = "0.15"
 rayon = "1.10"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 [profile.dev]
 debug = 0

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "enables the default permissions",
+  "identifier": "debug-fast",
+  "description": "enables the fast debug permissions",
   "windows": [
     "main"
   ],

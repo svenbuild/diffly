@@ -1,0 +1,26 @@
+{
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MjI2OTRFNUEyMzc0RTQKUldUa2RDTmFUbWtpdGJsbEM4N1cySHd4Z2dBY0p2WFhtZnIzRkxuSUZKZDdRYWxFZE1UQ2dpNUUK",
+      "endpoints": [
+        "https://github.com/svenbuild/diffly/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "app": {
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "release-updater",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "core:default",
+            "updater:default"
+          ]
+        }
+      ]
+    }
+  }
+}
