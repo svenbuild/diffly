@@ -2656,7 +2656,7 @@ button.filter-chip.tooLarge:focus-visible {
   min-height: 0;
   height: auto;
   max-height: 100%;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
   background-color: var(--diff-context-bg);
