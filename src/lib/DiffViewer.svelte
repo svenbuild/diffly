@@ -691,20 +691,20 @@
                 {/each}
                 </div>
               </div>
-              <div class="scroll-marker-overlay">
-                <div class="scroll-marker-rail">
-                  {#each rightScrollMarkers as marker}
-                    <button
-                      aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                      class:active={marker.hunkIndex === currentDiffHunk}
-                      class={`scroll-marker ${marker.kind}`}
-                      style:top={`${marker.top * 100}%`}
-                      style:height={`${marker.height * 100}%`}
-                      type="button"
-                      on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                    ></button>
-                  {/each}
-                </div>
+            </div>
+            <div class="scroll-marker-overlay split-scroll-marker-overlay">
+              <div class="scroll-marker-rail">
+                {#each rightScrollMarkers as marker}
+                  <button
+                    aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+                    class:active={marker.hunkIndex === currentDiffHunk}
+                    class={`scroll-marker ${marker.kind}`}
+                    style:top={`${marker.top * 100}%`}
+                    style:height={`${marker.height * 100}%`}
+                    type="button"
+                    on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+                  ></button>
+                {/each}
               </div>
             </div>
             <div
