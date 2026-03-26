@@ -592,11 +592,12 @@ h2 {
 }
 
 .toolbar-segmented-control {
+  padding: 0;
   gap: 2px;
 }
 
 .toolbar-segmented-control button {
-  min-height: 30px;
+  min-height: 28px;
   border-color: transparent;
 }
 
