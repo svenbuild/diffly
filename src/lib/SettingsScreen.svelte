@@ -517,7 +517,11 @@
             <div class="settings-appearance-shell">
               <div class="settings-appearance-mode-bar">
                 <span>Theme</span>
-                <div class="settings-theme-mode-control" role="group" aria-label="Theme mode">
+                <div
+                  class="segmented-control toolbar-segmented-control settings-theme-mode-control"
+                  role="group"
+                  aria-label="Theme mode"
+                >
                   <button
                     aria-pressed={appearanceSettings.mode === 'light'}
                     class:active={appearanceSettings.mode === 'light'}
@@ -909,7 +913,11 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Default diff view">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Default diff view"
+                  >
                     <button
                       aria-pressed={viewMode === 'sideBySide'}
                       class:active={viewMode === 'sideBySide'}
@@ -1079,7 +1087,11 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Whitespace handling">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Whitespace handling"
+                  >
                     <button
                       aria-pressed={!ignoreWhitespace}
                       class:active={!ignoreWhitespace}
@@ -1108,7 +1120,11 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Case sensitivity">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Case sensitivity"
+                  >
                     <button
                       aria-pressed={!ignoreCase}
                       class:active={!ignoreCase}
@@ -1237,7 +1253,11 @@
                 </div>
 
                 <div class="settings-control settings-control-wide">
-                  <div class="settings-segmented-control" role="group" aria-label="Update channel">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Update channel"
+                  >
                     <button
                       aria-pressed={updateChannel === 'stable'}
                       class:active={updateChannel === 'stable'}

@@ -1140,21 +1140,7 @@ h2 {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.settings-segmented-control button {
-  min-height: 34px;
-  padding: 0 10px;
-  border-color: var(--border);
-  background: var(--surface-alt);
-  color: var(--secondary-text);
-}
-
-.settings-segmented-control button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--active-text);
+  gap: 2px;
 }
 
 .settings-segmented-control svg {
@@ -1254,22 +1240,7 @@ h2 {
   width: min(360px, 100%);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.settings-theme-mode-control button {
-  min-height: 34px;
-  padding: 0 10px;
-  border-color: var(--border);
-  border-radius: 4px;
-  background: var(--surface-alt);
-  color: var(--secondary-text);
-}
-
-.settings-theme-mode-control button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--active-text);
+  gap: 2px;
 }
 
 .settings-appearance-preview-grid {
