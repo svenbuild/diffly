@@ -542,7 +542,6 @@ h2 {
 }
 
 .view-mode-button {
-  min-height: 28px;
   padding: 0 9px;
   min-width: 0;
   align-items: center;
@@ -597,6 +596,7 @@ h2 {
 }
 
 .toolbar-segmented-control button {
+  min-height: 30px;
   border-color: transparent;
 }
 
@@ -2654,18 +2654,23 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-scroll-shell,
 .unified-grid-shell {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   position: relative;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.pane-scroll,
-.unified-grid {
+.pane-vertical-scroll,
+.unified-vertical-scroll {
   position: relative;
   min-height: 0;
-  height: 100%;
+  height: auto;
+  max-height: 100%;
+  flex: 0 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   background-color: var(--diff-context-bg);
   background-image: repeating-linear-gradient(
     to bottom,
@@ -2675,6 +2680,20 @@ button.filter-chip.tooLarge:focus-visible {
     var(--diff-divider) var(--diff-row-height)
   );
   scrollbar-gutter: stable;
+}
+
+.left-diff-pane .pane-vertical-scroll {
+  overflow-y: hidden;
+  scrollbar-gutter: auto;
+}
+
+.pane-scroll,
+.unified-grid {
+  position: relative;
+  min-height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .pane-grid,
@@ -2687,6 +2706,11 @@ button.filter-chip.tooLarge:focus-visible {
 
 .unified-grid {
   align-content: start;
+}
+
+.pane-scroll::-webkit-scrollbar,
+.unified-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .pane-grid,
@@ -2894,6 +2918,19 @@ button.filter-chip.tooLarge:focus-visible {
 .split-view.wrapped-lines .diff-row {
   min-height: var(--diff-row-height);
   height: auto;
+}
+
+.pane-bottom-scrollbar {
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--diff-divider);
+  background: var(--diff-context-bg);
+  scrollbar-gutter: stable;
+}
+
+.pane-bottom-scrollbar-track {
+  min-height: 1px;
 }
 
 .scroll-marker-overlay {
@@ -3233,8 +3270,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows,
 .file-browser,
 .browser-list,
-.pane-scroll,
-.unified-grid,
+.pane-vertical-scroll,
+.unified-vertical-scroll,
+.pane-bottom-scrollbar,
 .binary-hex-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -3243,8 +3281,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows::-webkit-scrollbar,
 .file-browser::-webkit-scrollbar,
 .browser-list::-webkit-scrollbar,
-.pane-scroll::-webkit-scrollbar,
-.unified-grid::-webkit-scrollbar,
+.pane-vertical-scroll::-webkit-scrollbar,
+.unified-vertical-scroll::-webkit-scrollbar,
+.pane-bottom-scrollbar::-webkit-scrollbar,
 .binary-hex-scroll::-webkit-scrollbar {
   width: 11px;
   height: 11px;
@@ -3253,8 +3292,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows::-webkit-scrollbar-track,
 .file-browser::-webkit-scrollbar-track,
 .browser-list::-webkit-scrollbar-track,
-.pane-scroll::-webkit-scrollbar-track,
-.unified-grid::-webkit-scrollbar-track,
+.pane-vertical-scroll::-webkit-scrollbar-track,
+.unified-vertical-scroll::-webkit-scrollbar-track,
+.pane-bottom-scrollbar::-webkit-scrollbar-track,
 .binary-hex-scroll::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
@@ -3262,8 +3302,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows::-webkit-scrollbar-thumb,
 .file-browser::-webkit-scrollbar-thumb,
 .browser-list::-webkit-scrollbar-thumb,
-.pane-scroll::-webkit-scrollbar-thumb,
-.unified-grid::-webkit-scrollbar-thumb,
+.pane-vertical-scroll::-webkit-scrollbar-thumb,
+.unified-vertical-scroll::-webkit-scrollbar-thumb,
+.pane-bottom-scrollbar::-webkit-scrollbar-thumb,
 .binary-hex-scroll::-webkit-scrollbar-thumb {
   border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
@@ -3273,8 +3314,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows::-webkit-scrollbar-thumb:hover,
 .file-browser::-webkit-scrollbar-thumb:hover,
 .browser-list::-webkit-scrollbar-thumb:hover,
-.pane-scroll::-webkit-scrollbar-thumb:hover,
-.unified-grid::-webkit-scrollbar-thumb:hover,
+.pane-vertical-scroll::-webkit-scrollbar-thumb:hover,
+.unified-vertical-scroll::-webkit-scrollbar-thumb:hover,
+.pane-bottom-scrollbar::-webkit-scrollbar-thumb:hover,
 .binary-hex-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
@@ -3282,8 +3324,9 @@ button.filter-chip.tooLarge:focus-visible {
 .list-rows::-webkit-scrollbar-corner,
 .file-browser::-webkit-scrollbar-corner,
 .browser-list::-webkit-scrollbar-corner,
-.pane-scroll::-webkit-scrollbar-corner,
-.unified-grid::-webkit-scrollbar-corner,
+.pane-vertical-scroll::-webkit-scrollbar-corner,
+.unified-vertical-scroll::-webkit-scrollbar-corner,
+.pane-bottom-scrollbar::-webkit-scrollbar-corner,
 .binary-hex-scroll::-webkit-scrollbar-corner {
   background: var(--scrollbar-track);
 }

@@ -1769,7 +1769,7 @@
       return null
     }
 
-    return viewMode === 'sideBySide' ? leftPaneScroll : unifiedScroll
+    return viewMode === 'sideBySide' ? rightPaneScroll : unifiedScroll
   }
 
   function getActiveDiffAnchors() {
@@ -2074,7 +2074,7 @@
   }
 
   function getPaneContentRoot(pane: HTMLDivElement) {
-    const contentRoot = pane.firstElementChild
+    const contentRoot = pane.querySelector('[data-pane-content-root="true"]')
     return contentRoot instanceof HTMLDivElement ? contentRoot : null
   }
 
@@ -2214,14 +2214,6 @@
       return
     }
 
-    if (!syncSideBySideScroll) {
-      if (source === 'left') {
-        scheduleScrollNavigationRefresh()
-      }
-
-      return
-    }
-
     cancelPaneNavigationScroll()
     event.preventDefault()
 
@@ -2276,14 +2268,6 @@
     const sourcePane = getPaneScroll(source)
 
     if (!sourcePane) {
-      return
-    }
-
-    if (!syncSideBySideScroll) {
-      if (source === 'left') {
-        scheduleScrollNavigationRefresh()
-      }
-
       return
     }
 

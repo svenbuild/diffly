@@ -39,6 +39,12 @@
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
+  let leftPaneHorizontalScroll: HTMLDivElement | null = null
+  let rightPaneHorizontalScroll: HTMLDivElement | null = null
+  let unifiedHorizontalScroll: HTMLDivElement | null = null
+  let leftPaneBottomScrollbar: HTMLDivElement | null = null
+  let rightPaneBottomScrollbar: HTMLDivElement | null = null
+  let unifiedBottomScrollbar: HTMLDivElement | null = null
   let leftPaneGrid: HTMLDivElement | null = null
   let rightPaneGrid: HTMLDivElement | null = null
   let unifiedContentGrid: HTMLDivElement | null = null
@@ -54,6 +60,8 @@
   let prefixColumnWidth = 'calc(1ch + 8px)'
   let scrollMarkerRefreshQueued = false
   let scrollMarkerObserver: ResizeObserver | null = null
+  let splitHorizontalScrollSyncLocked = false
+  let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
   const emptyBinaryMeta: BinaryFileMeta = {
@@ -311,9 +319,41 @@
   }
 
   function updateScrollMarkers() {
-    leftScrollMarkers = buildScrollMarkers(leftPaneScroll, leftPaneGrid, leftPaneTrailingSpace)
+    leftScrollMarkers = []
     rightScrollMarkers = buildScrollMarkers(rightPaneScroll, rightPaneGrid, rightPaneTrailingSpace)
     unifiedScrollMarkers = buildScrollMarkers(unifiedScroll, unifiedContentGrid)
+  }
+
+  function syncSplitHorizontalScroll(nextScrollLeft: number) {
+    if (splitHorizontalScrollSyncLocked) {
+      return
+    }
+
+    splitHorizontalScrollSyncLocked = true
+    setHorizontalScrollLeft(leftPaneHorizontalScroll, nextScrollLeft)
+    setHorizontalScrollLeft(rightPaneHorizontalScroll, nextScrollLeft)
+    setHorizontalScrollLeft(leftPaneBottomScrollbar, nextScrollLeft)
+    setHorizontalScrollLeft(rightPaneBottomScrollbar, nextScrollLeft)
+    splitHorizontalScrollSyncLocked = false
+  }
+
+  function syncUnifiedHorizontalScroll(nextScrollLeft: number) {
+    if (unifiedHorizontalScrollSyncLocked) {
+      return
+    }
+
+    unifiedHorizontalScrollSyncLocked = true
+    setHorizontalScrollLeft(unifiedHorizontalScroll, nextScrollLeft)
+    setHorizontalScrollLeft(unifiedBottomScrollbar, nextScrollLeft)
+    unifiedHorizontalScrollSyncLocked = false
+  }
+
+  function setHorizontalScrollLeft(element: HTMLDivElement | null, nextScrollLeft: number) {
+    if (!element || Math.abs(element.scrollLeft - nextScrollLeft) < 0.5) {
+      return
+    }
+
+    element.scrollLeft = nextScrollLeft
   }
 
   function buildScrollMarkers(
@@ -437,6 +477,30 @@
   onDestroy(() => {
     scrollMarkerObserver?.disconnect()
   })
+
+  $: if (activeDiff?.contentKind === 'text' && viewMode === 'sideBySide') {
+    sideBySideContentWidth
+    void tick().then(() => {
+      const nextScrollLeft =
+        rightPaneBottomScrollbar?.scrollLeft ??
+        rightPaneHorizontalScroll?.scrollLeft ??
+        leftPaneBottomScrollbar?.scrollLeft ??
+        leftPaneHorizontalScroll?.scrollLeft ??
+        0
+
+      syncSplitHorizontalScroll(nextScrollLeft)
+    })
+  }
+
+  $: if (activeDiff?.contentKind === 'text' && viewMode === 'unified') {
+    unifiedContentWidth
+    void tick().then(() => {
+      const nextScrollLeft =
+        unifiedBottomScrollbar?.scrollLeft ?? unifiedHorizontalScroll?.scrollLeft ?? 0
+
+      syncUnifiedHorizontalScroll(nextScrollLeft)
+    })
+  }
 </script>
 
 <svelte:window
@@ -482,7 +546,7 @@
         class:wrapped-lines={wrapSideBySideLines}
         class="split-view"
       >
-        <section class="diff-pane">
+        <section class="diff-pane left-diff-pane">
           <div class="pane-header" title={diffHeaderContext.leftAbsolutePath}>
             <span class="pane-header-side">Left</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
@@ -491,75 +555,78 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={leftPaneScroll}
-              class="pane-scroll"
+              class="pane-vertical-scroll pane-vertical-scroll-left"
               on:wheel={(event) => syncPaneWheel(event, 'left')}
               on:scroll={() => syncPaneScroll('left')}
             >
               <div
-                bind:this={leftPaneGrid}
-                class="pane-grid"
-                style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
-                style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
+                bind:this={leftPaneHorizontalScroll}
+                class="pane-scroll pane-scroll-left"
+                on:scroll={() => syncSplitHorizontalScroll(leftPaneHorizontalScroll?.scrollLeft ?? 0)}
               >
-              {#if sideBySideRenderItems.length === 0}
-                <div class="empty-inline-state">No changed lines.</div>
-              {/if}
-
-              {#each sideBySideRenderItems as item}
-                {#if item.type === 'hunk'}
-                  <div class="collapsed-row">
-                    <span class="collapsed-chip">{item.header}</span>
-                  </div>
-                {:else if item.row}
-                  <div
-                    class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class:gap-row={!showFullFile && !item.row.left}
-                    class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
-                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                    data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
-                  >
-                    {#if item.row.left}
-                      <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
-                      <span class="prefix">{item.row.left.prefix}</span>
-                      <span class="line-text">
-                        {#each getCachedDiffCellFragments(item.row.left) as fragment}
-                          <span
-                            class:highlighted={showInlineHighlights && fragment.highlighted}
-                            class={`line-fragment ${fragment.className ?? ''}`}
-                          >
-                            {fragment.text || ' '}
-                          </span>
-                        {/each}
-                      </span>
-                    {:else}
-                      <span class="line-number"></span>
-                      <span class="prefix"></span>
-                      <span class="line-text">{'\u00a0'}</span>
-                    {/if}
-                  </div>
+                <div
+                  bind:this={leftPaneGrid}
+                  class="pane-grid"
+                  data-pane-content-root="true"
+                  style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+                  style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
+                >
+                {#if sideBySideRenderItems.length === 0}
+                  <div class="empty-inline-state">No changed lines.</div>
                 {/if}
-              {/each}
+
+                {#each sideBySideRenderItems as item}
+                  {#if item.type === 'hunk'}
+                    <div class="collapsed-row">
+                      <span class="collapsed-chip">{item.header}</span>
+                    </div>
+                  {:else if item.row}
+                    <div
+                      class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:gap-row={!showFullFile && !item.row.left}
+                      class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
+                      data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                      data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                    >
+                      {#if item.row.left}
+                        <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
+                        <span class="prefix">{item.row.left.prefix}</span>
+                        <span class="line-text">
+                          {#each getCachedDiffCellFragments(item.row.left) as fragment}
+                            <span
+                              class:highlighted={showInlineHighlights && fragment.highlighted}
+                              class={`line-fragment ${fragment.className ?? ''}`}
+                            >
+                              {fragment.text || ' '}
+                            </span>
+                          {/each}
+                        </span>
+                      {:else}
+                        <span class="line-number"></span>
+                        <span class="prefix"></span>
+                        <span class="line-text">{'\u00a0'}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                {/each}
+                </div>
               </div>
             </div>
-            <div class="scroll-marker-overlay">
-              <div class="scroll-marker-rail">
-                {#each leftScrollMarkers as marker}
-                  <button
-                    aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                    class:active={marker.hunkIndex === currentDiffHunk}
-                    class={`scroll-marker ${marker.kind}`}
-                    style:top={`${marker.top * 100}%`}
-                    style:height={`${marker.height * 100}%`}
-                    type="button"
-                    on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                  ></button>
-                {/each}
-              </div>
+            <div
+              bind:this={leftPaneBottomScrollbar}
+              aria-hidden="true"
+              class="pane-bottom-scrollbar"
+              on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
+            >
+              <div
+                class="pane-bottom-scrollbar-track"
+                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+              ></div>
             </div>
           </div>
         </section>
 
-        <section class="diff-pane">
+        <section class="diff-pane right-diff-pane">
           <div class="pane-header" title={diffHeaderContext.rightAbsolutePath}>
             <span class="pane-header-side">Right</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
@@ -568,130 +635,170 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={rightPaneScroll}
-              class="pane-scroll"
+              class="pane-vertical-scroll pane-vertical-scroll-right"
               on:wheel={(event) => syncPaneWheel(event, 'right')}
               on:scroll={() => syncPaneScroll('right')}
             >
               <div
-                bind:this={rightPaneGrid}
-                class="pane-grid"
-                style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
-                style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
+                bind:this={rightPaneHorizontalScroll}
+                class="pane-scroll pane-scroll-right"
+                on:scroll={() => syncSplitHorizontalScroll(rightPaneHorizontalScroll?.scrollLeft ?? 0)}
               >
-              {#if sideBySideRenderItems.length === 0}
-                <div class="empty-inline-state">No changed lines.</div>
-              {/if}
-
-              {#each sideBySideRenderItems as item}
-                {#if item.type === 'hunk'}
-                  <div class="collapsed-row">
-                    <span class="collapsed-chip">{item.header}</span>
-                  </div>
-                {:else if item.row}
-                  <div
-                    class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                    class:gap-row={!showFullFile && !item.row.right}
-                    class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
-                    data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                    data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
-                  >
-                    {#if item.row.right}
-                      <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
-                      <span class="prefix">{item.row.right.prefix}</span>
-                      <span class="line-text">
-                        {#each getCachedDiffCellFragments(item.row.right) as fragment}
-                          <span
-                            class:highlighted={showInlineHighlights && fragment.highlighted}
-                            class={`line-fragment ${fragment.className ?? ''}`}
-                          >
-                            {fragment.text || ' '}
-                          </span>
-                        {/each}
-                      </span>
-                    {:else}
-                      <span class="line-number"></span>
-                      <span class="prefix"></span>
-                      <span class="line-text">{'\u00a0'}</span>
-                    {/if}
-                  </div>
+                <div
+                  bind:this={rightPaneGrid}
+                  class="pane-grid"
+                  data-pane-content-root="true"
+                  style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
+                  style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
+                >
+                {#if sideBySideRenderItems.length === 0}
+                  <div class="empty-inline-state">No changed lines.</div>
                 {/if}
-              {/each}
+
+                {#each sideBySideRenderItems as item}
+                  {#if item.type === 'hunk'}
+                    <div class="collapsed-row">
+                      <span class="collapsed-chip">{item.header}</span>
+                    </div>
+                  {:else if item.row}
+                    <div
+                      class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:gap-row={!showFullFile && !item.row.right}
+                      class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
+                      data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                      data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                    >
+                      {#if item.row.right}
+                        <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
+                        <span class="prefix">{item.row.right.prefix}</span>
+                        <span class="line-text">
+                          {#each getCachedDiffCellFragments(item.row.right) as fragment}
+                            <span
+                              class:highlighted={showInlineHighlights && fragment.highlighted}
+                              class={`line-fragment ${fragment.className ?? ''}`}
+                            >
+                              {fragment.text || ' '}
+                            </span>
+                          {/each}
+                        </span>
+                      {:else}
+                        <span class="line-number"></span>
+                        <span class="prefix"></span>
+                        <span class="line-text">{'\u00a0'}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                {/each}
+                </div>
+              </div>
+              <div class="scroll-marker-overlay">
+                <div class="scroll-marker-rail">
+                  {#each rightScrollMarkers as marker}
+                    <button
+                      aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+                      class:active={marker.hunkIndex === currentDiffHunk}
+                      class={`scroll-marker ${marker.kind}`}
+                      style:top={`${marker.top * 100}%`}
+                      style:height={`${marker.height * 100}%`}
+                      type="button"
+                      on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+                    ></button>
+                  {/each}
+                </div>
               </div>
             </div>
-            <div class="scroll-marker-overlay">
-              <div class="scroll-marker-rail">
-                {#each rightScrollMarkers as marker}
-                  <button
-                    aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                    class:active={marker.hunkIndex === currentDiffHunk}
-                    class={`scroll-marker ${marker.kind}`}
-                    style:top={`${marker.top * 100}%`}
-                    style:height={`${marker.height * 100}%`}
-                    type="button"
-                    on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                  ></button>
-                {/each}
-              </div>
+            <div
+              bind:this={rightPaneBottomScrollbar}
+              aria-hidden="true"
+              class="pane-bottom-scrollbar"
+              on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
+            >
+              <div
+                class="pane-bottom-scrollbar-track"
+                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+              ></div>
             </div>
           </div>
         </section>
       </div>
       {:else}
       <div class="unified-grid-shell">
-        <div bind:this={unifiedScroll} class="unified-grid" on:scroll={scheduleScrollNavigationRefresh}>
+        <div
+          bind:this={unifiedScroll}
+          class="pane-vertical-scroll unified-vertical-scroll"
+          on:scroll={scheduleScrollNavigationRefresh}
+        >
           <div
-            bind:this={unifiedContentGrid}
-            class="unified-content-grid"
-            style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
+            bind:this={unifiedHorizontalScroll}
+            class="unified-grid"
+            on:scroll={() => syncUnifiedHorizontalScroll(unifiedHorizontalScroll?.scrollLeft ?? 0)}
           >
-          {#if unifiedRenderItems.length === 0}
-            <div class="empty-inline-state">No changed lines.</div>
-          {/if}
-
-          {#each unifiedRenderItems as item}
-            {#if item.type === 'hunk'}
-              <div class="collapsed-row unified-collapsed-row">
-                <span class="collapsed-chip">{item.header}</span>
-              </div>
-            {:else if item.row}
-              <div
-                class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                class={`unified-row ${item.row.change}`}
-                data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                data-diff-index={isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
-              >
-                <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
-                <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
-                <span class="prefix">{item.row.prefix}</span>
-                <span class="line-text">
-                  {#each getCachedUnifiedLineFragments(item.row) as fragment}
-                    <span
-                      class:highlighted={showInlineHighlights && fragment.highlighted}
-                      class={`line-fragment ${fragment.className ?? ''}`}
-                    >
-                      {fragment.text || ' '}
-                    </span>
-                  {/each}
-                </span>
-              </div>
+            <div
+              bind:this={unifiedContentGrid}
+              class="unified-content-grid"
+              data-pane-content-root="true"
+              style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
+            >
+            {#if unifiedRenderItems.length === 0}
+              <div class="empty-inline-state">No changed lines.</div>
             {/if}
-          {/each}
+
+            {#each unifiedRenderItems as item}
+              {#if item.type === 'hunk'}
+                <div class="collapsed-row unified-collapsed-row">
+                  <span class="collapsed-chip">{item.header}</span>
+                </div>
+              {:else if item.row}
+                <div
+                  class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                  class={`unified-row ${item.row.change}`}
+                  data-diff-anchor={item.isAnchor ? 'true' : undefined}
+                  data-diff-index={isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
+                >
+                  <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
+                  <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
+                  <span class="prefix">{item.row.prefix}</span>
+                  <span class="line-text">
+                    {#each getCachedUnifiedLineFragments(item.row) as fragment}
+                      <span
+                        class:highlighted={showInlineHighlights && fragment.highlighted}
+                        class={`line-fragment ${fragment.className ?? ''}`}
+                      >
+                        {fragment.text || ' '}
+                      </span>
+                    {/each}
+                  </span>
+                </div>
+              {/if}
+            {/each}
+            </div>
+          </div>
+          <div class="scroll-marker-overlay">
+            <div class="scroll-marker-rail">
+              {#each unifiedScrollMarkers as marker}
+                <button
+                  aria-label={`Jump to change ${marker.hunkIndex + 1}`}
+                  class:active={marker.hunkIndex === currentDiffHunk}
+                  class={`scroll-marker ${marker.kind}`}
+                  style:top={`${marker.top * 100}%`}
+                  style:height={`${marker.height * 100}%`}
+                  type="button"
+                  on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
+                ></button>
+              {/each}
+            </div>
           </div>
         </div>
-        <div class="scroll-marker-overlay">
-          <div class="scroll-marker-rail">
-            {#each unifiedScrollMarkers as marker}
-              <button
-                aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                class:active={marker.hunkIndex === currentDiffHunk}
-                class={`scroll-marker ${marker.kind}`}
-                style:top={`${marker.top * 100}%`}
-                style:height={`${marker.height * 100}%`}
-                type="button"
-                on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-              ></button>
-            {/each}
-          </div>
+        <div
+          bind:this={unifiedBottomScrollbar}
+          aria-hidden="true"
+          class="pane-bottom-scrollbar"
+          on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
+        >
+          <div
+            class="pane-bottom-scrollbar-track"
+            style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
+          ></div>
         </div>
       </div>
       {/if}
