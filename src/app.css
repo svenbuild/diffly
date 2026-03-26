@@ -581,6 +581,7 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--list-header-bg);
+  overflow: hidden;
 }
 
 .segmented-control button,
@@ -593,12 +594,27 @@ h2 {
 
 .toolbar-segmented-control {
   padding: 0;
-  gap: 2px;
+  gap: 0;
 }
 
 .toolbar-segmented-control button {
   min-height: 28px;
   border-color: transparent;
+  border-radius: 0;
+}
+
+.toolbar-segmented-control button + button {
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
+.toolbar-segmented-control button:first-child {
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+}
+
+.toolbar-segmented-control button:last-child {
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
 }
 
 .toolbar-setup-button {
