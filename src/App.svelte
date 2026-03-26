@@ -390,6 +390,14 @@
     viewMode = nextViewMode
   }
 
+  function toggleCompareMode() {
+    setMode(mode === 'file' ? 'directory' : 'file')
+  }
+
+  function toggleDiffViewMode() {
+    setViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')
+  }
+
   function setShowFullFile(nextValue: boolean) {
     showFullFile = nextValue
   }
@@ -2656,7 +2664,7 @@
               aria-pressed={mode === 'file'}
               class:active={mode === 'file'}
               type="button"
-              on:click={() => setMode('file')}
+              on:click={toggleCompareMode}
             >
               Files
             </button>
@@ -2664,7 +2672,7 @@
               aria-pressed={mode === 'directory'}
               class:active={mode === 'directory'}
               type="button"
-              on:click={() => setMode('directory')}
+              on:click={toggleCompareMode}
             >
               Directories
             </button>
@@ -2825,7 +2833,7 @@
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Split view' : 'Split view is only available for text diffs'}
                 type="button"
-                on:click={() => setViewMode('sideBySide')}
+                on:click={toggleDiffViewMode}
               >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
@@ -2840,7 +2848,7 @@
                 disabled={!textDiffActive}
                 title={textDiffActive ? 'Unified view' : 'Unified view is only available for text diffs'}
                 type="button"
-                on:click={() => setViewMode('unified')}
+                on:click={toggleDiffViewMode}
               >
               <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
                 <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
