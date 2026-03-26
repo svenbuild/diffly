@@ -611,17 +611,17 @@
                 {/each}
                 </div>
               </div>
-            </div>
-            <div
-              bind:this={leftPaneBottomScrollbar}
-              aria-hidden="true"
-              class="pane-bottom-scrollbar"
-              on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
-            >
               <div
-                class="pane-bottom-scrollbar-track"
-                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
-              ></div>
+                bind:this={leftPaneBottomScrollbar}
+                aria-hidden="true"
+                class="pane-bottom-scrollbar"
+                on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
+              >
+                <div
+                  class="pane-bottom-scrollbar-track"
+                  style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+                ></div>
+              </div>
             </div>
           </div>
         </section>
@@ -691,6 +691,17 @@
                 {/each}
                 </div>
               </div>
+              <div
+                bind:this={rightPaneBottomScrollbar}
+                aria-hidden="true"
+                class="pane-bottom-scrollbar"
+                on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
+              >
+                <div
+                  class="pane-bottom-scrollbar-track"
+                  style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+                ></div>
+              </div>
             </div>
             <div class="scroll-marker-overlay split-scroll-marker-overlay">
               <div class="scroll-marker-rail">
@@ -706,17 +717,6 @@
                   ></button>
                 {/each}
               </div>
-            </div>
-            <div
-              bind:this={rightPaneBottomScrollbar}
-              aria-hidden="true"
-              class="pane-bottom-scrollbar"
-              on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
-            >
-              <div
-                class="pane-bottom-scrollbar-track"
-                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
-              ></div>
             </div>
           </div>
         </section>
@@ -773,6 +773,17 @@
             {/each}
             </div>
           </div>
+          <div
+            bind:this={unifiedBottomScrollbar}
+            aria-hidden="true"
+            class="pane-bottom-scrollbar"
+            on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
+          >
+            <div
+              class="pane-bottom-scrollbar-track"
+              style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
+            ></div>
+          </div>
           <div class="scroll-marker-overlay">
             <div class="scroll-marker-rail">
               {#each unifiedScrollMarkers as marker}
@@ -788,17 +799,6 @@
               {/each}
             </div>
           </div>
-        </div>
-        <div
-          bind:this={unifiedBottomScrollbar}
-          aria-hidden="true"
-          class="pane-bottom-scrollbar"
-          on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
-        >
-          <div
-            class="pane-bottom-scrollbar-track"
-            style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
-          ></div>
         </div>
       </div>
       {/if}

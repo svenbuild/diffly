@@ -1983,6 +1983,7 @@ h2 {
 .compare-layout {
   display: grid;
   grid-template-columns: clamp(248px, 17vw, 292px) minmax(0, 1fr);
+  grid-row: 3;
   align-items: stretch;
   gap: 0;
   min-height: 0;
@@ -2644,7 +2645,7 @@ button.filter-chip.tooLarge:focus-visible {
 .unified-grid-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   position: relative;
   min-height: 0;
   height: 100%;
@@ -2665,13 +2666,6 @@ button.filter-chip.tooLarge:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   background-color: var(--diff-context-bg);
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--diff-row-height) - 1px),
-    var(--diff-divider) calc(var(--diff-row-height) - 1px),
-    var(--diff-divider) var(--diff-row-height)
-  );
   scrollbar-gutter: stable;
 }
 
@@ -2914,9 +2908,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .pane-bottom-scrollbar {
-  grid-column: 1;
-  grid-row: 2;
-  flex: 0 0 auto;
+  margin-top: 0;
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--diff-divider);
