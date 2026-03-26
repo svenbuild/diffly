@@ -3,17 +3,19 @@ use std::{
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
-    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
+#[cfg(feature = "updater")]
+use std::sync::Mutex;
 
 use rayon::prelude::*;
-use reqwest::Url;
+use url::Url;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
+#[cfg(feature = "updater")]
 use tauri_plugin_updater::{Update, UpdaterExt};
 use walkdir::WalkDir;
 
@@ -35,10 +37,13 @@ const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 const LCS_MAX_MATRIX_CELLS: usize = 16_384;
+#[cfg(feature = "updater")]
 const STABLE_UPDATE_ENDPOINT: &str =
     "https://github.com/svenbuild/diffly/releases/latest/download/latest.json";
+#[cfg(feature = "prerelease-updater")]
 const GITHUB_RELEASES_API_ENDPOINT: &str =
     "https://api.github.com/repos/svenbuild/diffly/releases?per_page=20";
+#[cfg(feature = "prerelease-updater")]
 const PRERELEASE_UPDATE_MANIFEST_NAME: &str = "latest.json";
 
 fn default_true() -> bool {
@@ -186,12 +191,14 @@ struct UpdateActionResponse {
     message: Option<String>,
 }
 
+#[cfg(feature = "prerelease-updater")]
 #[derive(Debug, Deserialize)]
 struct GitHubReleaseAsset {
     name: String,
     browser_download_url: String,
 }
 
+#[cfg(feature = "prerelease-updater")]
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     draft: bool,
@@ -199,16 +206,22 @@ struct GitHubRelease {
     assets: Vec<GitHubReleaseAsset>,
 }
 
+#[cfg(feature = "updater")]
 struct PendingUpdate {
     channel: String,
     update: Update,
     downloaded_bytes: Option<Vec<u8>>,
 }
 
+#[cfg(feature = "updater")]
 #[derive(Default)]
 struct UpdateState {
     pending: Mutex<Option<PendingUpdate>>,
 }
+
+#[cfg(not(feature = "updater"))]
+#[derive(Default)]
+struct UpdateState;
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -541,6 +554,7 @@ fn get_app_version(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[cfg(feature = "updater")]
 async fn check_for_updates(
     app: AppHandle,
     state: tauri::State<'_, UpdateState>,
@@ -648,6 +662,25 @@ async fn check_for_updates(
 }
 
 #[tauri::command]
+#[cfg(not(feature = "updater"))]
+async fn check_for_updates(
+    app: AppHandle,
+    _state: tauri::State<'_, UpdateState>,
+    _channel: Option<String>,
+) -> Result<UpdateCheckResponse, String> {
+    let checked_at = current_unix_timestamp_string();
+    let _ = touch_last_update_check_at(&app, &checked_at);
+
+    Ok(UpdateCheckResponse {
+        kind: "unavailable".to_string(),
+        available: false,
+        metadata: None,
+        message: Some("Updates are disabled in fast debug builds.".to_string()),
+    })
+}
+
+#[tauri::command]
+#[cfg(feature = "updater")]
 async fn download_update(
     _app: AppHandle,
     state: tauri::State<'_, UpdateState>,
@@ -693,6 +726,20 @@ async fn download_update(
 }
 
 #[tauri::command]
+#[cfg(not(feature = "updater"))]
+async fn download_update(
+    _app: AppHandle,
+    _state: tauri::State<'_, UpdateState>,
+    _channel: Option<String>,
+) -> Result<UpdateActionResponse, String> {
+    Ok(UpdateActionResponse {
+        kind: "unavailable".to_string(),
+        message: Some("Updates are disabled in fast debug builds.".to_string()),
+    })
+}
+
+#[tauri::command]
+#[cfg(feature = "updater")]
 async fn install_update(
     app: AppHandle,
     state: tauri::State<'_, UpdateState>,
@@ -748,6 +795,19 @@ async fn install_update(
     Ok(UpdateActionResponse {
         kind: "installed".to_string(),
         message: Some("Update installed. Restarting Diffly.".to_string()),
+    })
+}
+
+#[tauri::command]
+#[cfg(not(feature = "updater"))]
+async fn install_update(
+    _app: AppHandle,
+    _state: tauri::State<'_, UpdateState>,
+    _channel: Option<String>,
+) -> Result<UpdateActionResponse, String> {
+    Ok(UpdateActionResponse {
+        kind: "unavailable".to_string(),
+        message: Some("Updates are disabled in fast debug builds.".to_string()),
     })
 }
 
@@ -1169,6 +1229,7 @@ fn touch_last_update_check_at(app: &AppHandle, checked_at: &str) -> Result<(), S
     write_session_state(app, &session)
 }
 
+#[cfg(feature = "updater")]
 fn normalize_update_channel(value: Option<&str>) -> String {
     match value.map(str::trim) {
         Some("prerelease") => "prerelease".to_string(),
@@ -1176,7 +1237,14 @@ fn normalize_update_channel(value: Option<&str>) -> String {
     }
 }
 
+#[cfg(feature = "updater")]
 async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
+    #[cfg(not(feature = "prerelease-updater"))]
+    if channel == "prerelease" {
+        return Err("Prerelease updates are disabled in fast debug builds.".to_string());
+    }
+
+    #[cfg(feature = "prerelease-updater")]
     if channel == "prerelease" {
         let endpoint = resolve_latest_prerelease_manifest_url().await?;
         return Ok(vec![endpoint]);
@@ -1187,6 +1255,7 @@ async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
     ])
 }
 
+#[cfg(feature = "prerelease-updater")]
 async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
     let client = reqwest::Client::builder()
         .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
@@ -1220,12 +1289,14 @@ async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
     Url::parse(&asset_url).map_err(|error| error.to_string())
 }
 
+#[cfg(feature = "updater")]
 fn clear_pending_update(state: &tauri::State<'_, UpdateState>) -> Result<(), String> {
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     pending.take();
     Ok(())
 }
 
+#[cfg(feature = "updater")]
 fn take_pending_update(
     state: &tauri::State<'_, UpdateState>,
 ) -> Result<Option<PendingUpdate>, String> {
@@ -1233,6 +1304,7 @@ fn take_pending_update(
     Ok(pending.take())
 }
 
+#[cfg(feature = "updater")]
 fn set_pending_update(
     state: &tauri::State<'_, UpdateState>,
     update: PendingUpdate,
@@ -3930,9 +4002,7 @@ fn parent_path(path: &Path) -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let mut builder = tauri::Builder::default()
         .manage(UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             choose_path,
@@ -3947,8 +4017,21 @@ pub fn run() {
             path_info,
             compare_paths,
             open_compare_item
-        ])
+        ]);
+
+    #[cfg(feature = "window-state")]
+    {
+        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    }
+
+    #[cfg(feature = "updater")]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .setup(|app| {
+            #[cfg(feature = "debug-log")]
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -3956,6 +4039,10 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            #[cfg(not(feature = "debug-log"))]
+            let _ = app;
+
             Ok(())
         })
         .run(tauri::generate_context!())

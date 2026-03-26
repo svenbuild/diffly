@@ -402,6 +402,30 @@
     }
   }
 
+  function cycleThemeMode() {
+    const themeModes: ThemeMode[] = ['light', 'dark', 'system']
+    const currentIndex = themeModes.indexOf(appearanceSettings.mode)
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % themeModes.length
+
+    onSetThemeMode(themeModes[nextIndex])
+  }
+
+  function toggleSettingsViewMode() {
+    onSetViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')
+  }
+
+  function toggleIgnoreWhitespace() {
+    setIgnoreWhitespace(!ignoreWhitespace)
+  }
+
+  function toggleIgnoreCase() {
+    setIgnoreCase(!ignoreCase)
+  }
+
+  function toggleUpdateChannel() {
+    onSetUpdateChannel(updateChannel === 'stable' ? 'prerelease' : 'stable')
+  }
+
   async function openResetEverythingDialog() {
     resetEverythingConfirmationValue = ''
     showResetEverythingDialog = true
@@ -517,12 +541,16 @@
             <div class="settings-appearance-shell">
               <div class="settings-appearance-mode-bar">
                 <span>Theme</span>
-                <div class="settings-theme-mode-control" role="group" aria-label="Theme mode">
+                <div
+                  class="segmented-control toolbar-segmented-control settings-theme-mode-control"
+                  role="group"
+                  aria-label="Theme mode"
+                >
                   <button
                     aria-pressed={appearanceSettings.mode === 'light'}
                     class:active={appearanceSettings.mode === 'light'}
                     type="button"
-                    on:click={() => onSetThemeMode('light')}
+                    on:click={cycleThemeMode}
                   >
                     <span>Light</span>
                   </button>
@@ -530,7 +558,7 @@
                     aria-pressed={appearanceSettings.mode === 'dark'}
                     class:active={appearanceSettings.mode === 'dark'}
                     type="button"
-                    on:click={() => onSetThemeMode('dark')}
+                    on:click={cycleThemeMode}
                   >
                     <span>Dark</span>
                   </button>
@@ -538,7 +566,7 @@
                     aria-pressed={appearanceSettings.mode === 'system'}
                     class:active={appearanceSettings.mode === 'system'}
                     type="button"
-                    on:click={() => onSetThemeMode('system')}
+                    on:click={cycleThemeMode}
                   >
                     <span>System</span>
                   </button>
@@ -909,12 +937,16 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Default diff view">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Default diff view"
+                  >
                     <button
                       aria-pressed={viewMode === 'sideBySide'}
                       class:active={viewMode === 'sideBySide'}
                       type="button"
-                      on:click={() => onSetViewMode('sideBySide')}
+                      on:click={toggleSettingsViewMode}
                     >
                       <svg aria-hidden="true" viewBox="0 0 16 16">
                         <rect x="2.6" y="3.2" width="11" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
@@ -927,7 +959,7 @@
                       aria-pressed={viewMode === 'unified'}
                       class:active={viewMode === 'unified'}
                       type="button"
-                      on:click={() => onSetViewMode('unified')}
+                      on:click={toggleSettingsViewMode}
                     >
                       <svg aria-hidden="true" viewBox="0 0 16 16">
                         <rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
@@ -1079,12 +1111,16 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Whitespace handling">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Whitespace handling"
+                  >
                     <button
                       aria-pressed={!ignoreWhitespace}
                       class:active={!ignoreWhitespace}
                       type="button"
-                      on:click={() => setIgnoreWhitespace(false)}
+                      on:click={toggleIgnoreWhitespace}
                     >
                       Exact
                     </button>
@@ -1093,7 +1129,7 @@
                       aria-pressed={ignoreWhitespace}
                       class:active={ignoreWhitespace}
                       type="button"
-                      on:click={() => setIgnoreWhitespace(true)}
+                      on:click={toggleIgnoreWhitespace}
                     >
                       Ignore
                     </button>
@@ -1108,12 +1144,16 @@
                 </div>
 
                 <div class="settings-control">
-                  <div class="settings-segmented-control" role="group" aria-label="Case sensitivity">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Case sensitivity"
+                  >
                     <button
                       aria-pressed={!ignoreCase}
                       class:active={!ignoreCase}
                       type="button"
-                      on:click={() => setIgnoreCase(false)}
+                      on:click={toggleIgnoreCase}
                     >
                       Sensitive
                     </button>
@@ -1122,7 +1162,7 @@
                       aria-pressed={ignoreCase}
                       class:active={ignoreCase}
                       type="button"
-                      on:click={() => setIgnoreCase(true)}
+                      on:click={toggleIgnoreCase}
                     >
                       Insensitive
                     </button>
@@ -1237,12 +1277,16 @@
                 </div>
 
                 <div class="settings-control settings-control-wide">
-                  <div class="settings-segmented-control" role="group" aria-label="Update channel">
+                  <div
+                    class="segmented-control toolbar-segmented-control settings-segmented-control"
+                    role="group"
+                    aria-label="Update channel"
+                  >
                     <button
                       aria-pressed={updateChannel === 'stable'}
                       class:active={updateChannel === 'stable'}
                       type="button"
-                      on:click={() => onSetUpdateChannel('stable')}
+                      on:click={toggleUpdateChannel}
                     >
                       Stable
                     </button>
@@ -1251,7 +1295,7 @@
                       aria-pressed={updateChannel === 'prerelease'}
                       class:active={updateChannel === 'prerelease'}
                       type="button"
-                      on:click={() => onSetUpdateChannel('prerelease')}
+                      on:click={toggleUpdateChannel}
                     >
                       Prerelease
                     </button>

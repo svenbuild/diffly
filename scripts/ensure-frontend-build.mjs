@@ -5,8 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, '..');
-const distDir = path.join(projectRoot, 'dist');
+const isDebugBuild = process.argv.includes('--debug');
+const distDirName = isDebugBuild ? 'dist-debug' : 'dist';
+const distDir = path.join(projectRoot, distDirName);
 const stampPath = path.join(distDir, '.build-stamp');
+const viteCliPath = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js');
 
 const watchedFiles = [
     'index.html',
@@ -42,10 +45,15 @@ function latestMtimeMs(value) {
 }
 
 function buildFrontend() {
-    const result = spawnSync('npm run build', {
+    const buildArgs = [viteCliPath, 'build'];
+
+    if (isDebugBuild) {
+        buildArgs.push('--minify', 'false', '--outDir', distDirName);
+    }
+
+    const result = spawnSync(process.execPath, buildArgs, {
         cwd: projectRoot,
-        stdio: 'inherit',
-        shell: true
+        stdio: 'inherit'
     });
 
     if (result.status !== 0) {
@@ -65,5 +73,5 @@ const stampMtimeMs = latestMtimeMs(stampPath);
 if (!existsSync(distDir) || stampMtimeMs < latestInputMtimeMs) {
     buildFrontend();
 } else {
-    console.log('Frontend build is up to date, skipping Vite build.');
+    console.log(`Frontend build for ${distDirName} is up to date, skipping Vite build.`);
 }

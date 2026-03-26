@@ -9,14 +9,6 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MjI2OTRFNUEyMzc0RTQKUldUa2RDTmFUbWtpdGJsbEM4N1cySHd4Z2dBY0p2WFhtZnIzRkxuSUZKZDdRYWxFZE1UQ2dpNUUK",
-      "endpoints": [
-        "https://github.com/svenbuild/diffly/releases/latest/download/latest.json"
-      ]
-    }
-  },
   "app": {
     "windows": [
       {
@@ -37,6 +29,9 @@
           "**"
         ]
       },
+      "capabilities": [
+        "debug-fast"
+      ],
       "csp": "default-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline' http://localhost:1420; font-src 'self' data:; script-src 'self' http://localhost:1420"
     }
   },

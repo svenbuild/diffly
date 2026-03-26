@@ -7,16 +7,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:debug": "vite build --minify false --outDir dist-debug",
     "build:ensure": "node scripts/ensure-frontend-build.mjs",
+    "build:ensure:debug": "node scripts/ensure-frontend-build.mjs --debug",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "npx tauri",
-    "tauri:dev": "npx tauri dev",
-    "tauri:build": "npm run build:ensure && npx tauri build --debug --no-bundle --config src-tauri/tauri.build.conf.json",
-    "tauri:build:release": "npm run build && npx tauri build --no-bundle --config src-tauri/tauri.build.conf.json",
-    "tauri:package": "npx tauri build --bundles nsis",
-    "tauri:package:all": "npx tauri build"
+    "tauri:dev": "npx tauri dev --config src-tauri/tauri.build.conf.json -- --no-default-features --features window-state,debug-log",
+    "tauri:build": "node scripts/run-tauri-debug-build.mjs",
+    "tauri:build:full": "npm run build:ensure && npx tauri build --debug --no-bundle --config src-tauri/tauri.release.conf.json --features prerelease-updater",
+    "tauri:build:release": "npm run build && npx tauri build --features prerelease-updater --no-bundle --config src-tauri/tauri.release.conf.json",
+    "tauri:package": "npx tauri build --features prerelease-updater --bundles nsis --config src-tauri/tauri.release.conf.json",
+    "tauri:package:all": "npx tauri build --features prerelease-updater --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
