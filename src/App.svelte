@@ -2196,6 +2196,34 @@
       return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
+    const sourceLastItem = sourceContentRoot.lastElementChild
+    const targetLastItem = targetContentRoot.lastElementChild
+
+    if (sourceLastItem instanceof HTMLElement && targetLastItem instanceof HTMLElement) {
+      const sourceTrailingStart = Math.max(
+        0,
+        sourceLastItem.offsetTop + sourceLastItem.offsetHeight - sourcePane.clientHeight,
+      )
+      const targetTrailingStart = Math.max(
+        0,
+        targetLastItem.offsetTop + targetLastItem.offsetHeight - targetPane.clientHeight,
+      )
+
+      if (sourcePane.scrollTop >= sourceTrailingStart) {
+        const sourceTrailingRange = Math.max(1, sourceMaxScrollTop - sourceTrailingStart)
+        const targetTrailingRange = Math.max(0, targetMaxScrollTop - targetTrailingStart)
+        const trailingProgress = clampScrollOffset(
+          (sourcePane.scrollTop - sourceTrailingStart) / sourceTrailingRange,
+          1,
+        )
+
+        return clampScrollOffset(
+          targetTrailingStart + trailingProgress * targetTrailingRange,
+          targetMaxScrollTop,
+        )
+      }
+    }
+
     const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
 
     if (!sourceMatch) {
