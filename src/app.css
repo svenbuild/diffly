@@ -580,15 +580,14 @@ h2 {
 
 .view-mode-toggle {
   position: relative;
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
+  display: inline-flex;
+  align-items: center;
   min-height: 28px;
   min-width: 138px;
-  padding: 0;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: transparent;
+  background: var(--list-header-bg);
   color: var(--secondary-text);
   overflow: hidden;
   flex: 0 0 auto;
@@ -603,7 +602,7 @@ h2 {
 .view-mode-toggle:hover:not(:disabled),
 .view-mode-toggle:focus-visible {
   border-color: var(--border-strong);
-  background: var(--surface-strong);
+  background: var(--list-header-bg);
 }
 
 .view-mode-toggle:disabled {
@@ -622,14 +621,15 @@ h2 {
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  min-height: 28px;
+  min-height: 24px;
   padding: 3px 10px;
+  border-radius: 2px;
   color: var(--secondary-text);
   line-height: 1;
 }
 
 .view-mode-option + .view-mode-option {
-  box-shadow: inset 1px 0 0 var(--border);
+  box-shadow: none;
 }
 
 .view-mode-option.active {
@@ -677,7 +677,7 @@ h2 {
 }
 
 .toolbar-segmented-control button + button {
-  box-shadow: inset 1px 0 0 var(--border);
+  box-shadow: none;
 }
 
 .toolbar-segmented-control button:first-child {
