@@ -1982,7 +1982,7 @@ h2 {
 
 .compare-layout {
   display: grid;
-  grid-template-columns: clamp(248px, 17vw, 292px) minmax(0, 1fr);
+  grid-template-columns: var(--compare-sidebar-width, clamp(248px, 17vw, 292px)) 8px minmax(0, 1fr);
   grid-row: 3;
   align-items: stretch;
   gap: 0;
@@ -1996,6 +1996,37 @@ h2 {
 
 .compare-layout.single-pane {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.compare-sidebar-resizer {
+  grid-column: 2;
+  grid-row: 1;
+  width: 8px;
+  min-width: 8px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--pane-bg);
+  box-shadow:
+    inset 1px 0 0 var(--border),
+    inset -1px 0 0 var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.compare-sidebar-resizer:hover,
+.compare-layout.resizing-sidebar .compare-sidebar-resizer {
+  background: color-mix(in srgb, var(--accent) 12%, var(--pane-bg));
+}
+
+.compare-layout > .viewer {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.compare-layout.single-pane > .viewer {
+  grid-column: 1;
 }
 
 .file-browser,
