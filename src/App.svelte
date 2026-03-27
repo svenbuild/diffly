@@ -26,6 +26,16 @@
     buildUnifiedRenderItems,
   } from './lib/diff-render'
   import { createDiffCacheController } from './lib/app/diff-cache'
+  import {
+    createUpdateController,
+    formatLastUpdateCheck,
+    formatLastUpdateCheckRelative,
+    formatUpdateChannelLabel,
+    getUpdateIndicatorTitle,
+    shouldShowUpdateIndicator as shouldShowUpdateIndicatorState,
+    type UpdateIndicatorState,
+    type UpdateStatus,
+  } from './lib/app/update-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
@@ -63,7 +73,6 @@
     PersistedSession,
     ThemeMode,
     UpdateChannel,
-    UpdateMetadata,
     ViewMode,
   } from './lib/types'
   import {
@@ -111,27 +120,10 @@
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
-  type UpdateStatus =
-    | 'idle'
-    | 'checking'
-    | 'available'
-    | 'upToDate'
-    | 'downloading'
-    | 'downloaded'
-    | 'failed'
-    | 'unavailable'
-
   interface CompareRootDisplay {
     prefix: string
     suffix: string
     fullPath: string
-  }
-
-  interface UpdateIndicatorState {
-    status: UpdateStatus
-    currentVersion: string
-    metadata: UpdateMetadata | null
-    message: string
   }
 
   export let initialSession: PersistedSession | null = null
@@ -239,6 +231,12 @@
     buildSideBySideRenderItems,
     buildUnifiedRenderItems,
     openCompareItem,
+  })
+  const updateController = createUpdateController({
+    getAppVersion,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
   })
   let diffFontSize = `${appearanceSettings.codeFontSize}px`
   let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
@@ -619,128 +617,12 @@
     })
   }
 
-  function parseUpdateTimestamp(value: string) {
-    if (!value) {
-      return null
-    }
-
-    const numericValue = Number(value)
-    const date = Number.isFinite(numericValue) && value.trim() !== ''
-      ? new Date(numericValue * 1000)
-      : new Date(value)
-
-    if (Number.isNaN(date.getTime())) {
-      return null
-    }
-
-    return date
-  }
-
-  function formatLastUpdateCheck(value: string) {
-    const date = parseUpdateTimestamp(value)
-
-    if (!date) {
-      return 'Never'
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    }).format(date)
-  }
-
-  function formatLastUpdateCheckRelative(value: string) {
-    const date = parseUpdateTimestamp(value)
-
-    if (!date) {
-      return 'No checks yet'
-    }
-
-    const diffMs = date.getTime() - Date.now()
-    const absDiffMs = Math.abs(diffMs)
-    const relativeTime = new Intl.RelativeTimeFormat(undefined, {
-      numeric: 'auto',
-    })
-
-    if (absDiffMs < 60_000) {
-      return 'Just now'
-    }
-
-    if (absDiffMs < 3_600_000) {
-      return relativeTime.format(Math.round(diffMs / 60_000), 'minute')
-    }
-
-    if (absDiffMs < 86_400_000) {
-      return relativeTime.format(Math.round(diffMs / 3_600_000), 'hour')
-    }
-
-    return relativeTime.format(Math.round(diffMs / 86_400_000), 'day')
-  }
-
-  function formatUpdateChannelLabel(channel: UpdateChannel) {
-    return channel === 'prerelease' ? 'Stable + prerelease' : 'Stable only'
-  }
-
-  function normalizeUnavailableUpdateMessage(message: string | null | undefined) {
-    if (!message) {
-      return 'Updates are not configured for this build yet.'
-    }
-
-    if (message.includes('does not have any endpoints set')) {
-      return 'Updates are not configured for this build yet.'
-    }
-
-    return message
-  }
-
-  function normalizeFailedUpdateMessage(message: string | null | undefined) {
-    if (!message) {
-      return 'Unable to contact the published update feed.'
-    }
-
-    if (message.includes('404')) {
-      return 'No published updater release is available yet.'
-    }
-
-    return message
-  }
-
   function updateIndicatorTitle() {
-    const versionSuffix = updateIndicatorState.currentVersion
-      ? `Current version ${updateIndicatorState.currentVersion}.`
-      : ''
-
-    if (updateIndicatorState.status === 'available' && updateIndicatorState.metadata) {
-      return `Update available: ${updateIndicatorState.metadata.version}. ${versionSuffix}`.trim()
-    }
-
-    if (updateIndicatorState.status === 'checking') {
-      return 'Checking for updates.'
-    }
-
-    if (updateIndicatorState.status === 'downloaded') {
-      return 'Update downloaded. Install and restart from Settings.'
-    }
-
-    if (
-      updateIndicatorState.status === 'failed' ||
-      updateIndicatorState.status === 'unavailable'
-    ) {
-      return updateIndicatorState.message
-    }
-
-    if (updateIndicatorState.status === 'upToDate') {
-      return `Diffly is up to date. ${versionSuffix}`.trim()
-    }
-
-    return `Open update settings. ${versionSuffix}`.trim()
+    return getUpdateIndicatorTitle(updateIndicatorState)
   }
 
   function shouldShowUpdateIndicator() {
-    return (
-      updateIndicatorState.status === 'available' ||
-      updateIndicatorState.status === 'downloaded'
-    )
+    return shouldShowUpdateIndicatorState(updateIndicatorState)
   }
 
   function startStartupUpdateCheck() {
@@ -753,165 +635,30 @@
   }
 
   async function initializeUpdateVersion() {
-    try {
-      const version = await getAppVersion()
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        currentVersion: version,
-      }
-    } catch {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'unavailable',
-        message: 'Updates are not configured for this build yet.',
-      }
-    }
+    updateIndicatorState = await updateController.initializeUpdateVersion(updateIndicatorState)
   }
 
   async function runUpdateCheck() {
-    if (updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading') {
-      return
-    }
+    const result = await updateController.runUpdateCheck(updateIndicatorState, updateChannel)
+    updateIndicatorState = result.updateIndicatorState
 
-    updateIndicatorState = {
-      ...updateIndicatorState,
-      status: 'checking',
-      message: 'Checking for updates...',
-    }
-
-    try {
-      const result = await checkForUpdates(updateChannel)
-      lastUpdateCheckAt = new Date().toISOString()
-
-      if (result.kind === 'available' && result.available && result.metadata) {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'available',
-          metadata: result.metadata,
-          message: result.message ?? `Version ${result.metadata.version} is available.`,
-        }
-        return
-      }
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          metadata: null,
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          metadata: null,
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-        return
-      }
-
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'upToDate',
-        metadata: null,
-        message: result.message ?? 'Diffly is up to date.',
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        metadata: null,
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to check for updates.',
-        ),
-      }
+    if (result.lastUpdateCheckAt) {
+      lastUpdateCheckAt = result.lastUpdateCheckAt
     }
   }
 
   async function beginUpdateDownload() {
-    if (updateIndicatorState.status !== 'available') {
-      return
-    }
-
-    updateIndicatorState = {
-      ...updateIndicatorState,
-      status: 'downloading',
-      message: 'Downloading update...',
-    }
-
-    try {
-      const result = await downloadUpdate(updateChannel)
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-        return
-      }
-
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'downloaded',
-        message: 'Update downloaded. Install and restart when ready.',
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to download the update.',
-        ),
-      }
-    }
+    updateIndicatorState = await updateController.beginUpdateDownload(
+      updateIndicatorState,
+      updateChannel,
+    )
   }
 
   async function applyDownloadedUpdate() {
-    if (updateIndicatorState.status !== 'downloaded') {
-      return
-    }
-
-    try {
-      const result = await installUpdate(updateChannel)
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to install the update.',
-        ),
-      }
-    }
+    updateIndicatorState = await updateController.applyDownloadedUpdate(
+      updateIndicatorState,
+      updateChannel,
+    )
   }
 
   function openUpdateSettings() {
