@@ -296,10 +296,12 @@
     const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneScroll.clientHeight)
     const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneScroll.clientHeight)
     const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
-    const leftNeedsPinnedScrollbar =
-      leftContentHeight + bottomScrollbarFootprint > leftPaneScroll.clientHeight
-    const rightNeedsPinnedScrollbar =
-      rightContentHeight + bottomScrollbarFootprint > rightPaneScroll.clientHeight
+    const leftNaturalScrollHeight =
+      leftPaneScroll.scrollHeight + (pinSplitBottomScrollbar ? bottomScrollbarFootprint : 0)
+    const rightNaturalScrollHeight =
+      rightPaneScroll.scrollHeight + (pinSplitBottomScrollbar ? bottomScrollbarFootprint : 0)
+    const leftNeedsPinnedScrollbar = leftNaturalScrollHeight - leftPaneScroll.clientHeight > 0.5
+    const rightNeedsPinnedScrollbar = rightNaturalScrollHeight - rightPaneScroll.clientHeight > 0.5
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
     rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
@@ -317,9 +319,10 @@
 
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
     const bottomScrollbarFootprint = getBottomScrollbarFootprint(unifiedBottomScrollbar)
+    const unifiedNaturalScrollHeight =
+      unifiedScroll.scrollHeight + (pinUnifiedBottomScrollbar ? bottomScrollbarFootprint : 0)
 
-    pinUnifiedBottomScrollbar =
-      unifiedContentGrid.scrollHeight + bottomScrollbarFootprint > unifiedScroll.clientHeight
+    pinUnifiedBottomScrollbar = unifiedNaturalScrollHeight - unifiedScroll.clientHeight > 0.5
   }
 
   function scheduleScrollMarkerRefresh() {
