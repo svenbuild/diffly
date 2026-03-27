@@ -1799,6 +1799,13 @@ h2 {
   flex: 0 0 auto;
 }
 
+.setup-segmented-control {
+  width: 168px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+
 .picker-workspace {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

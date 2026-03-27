@@ -2744,7 +2744,7 @@
       <div class="app-bar-actions setup-bar-actions">
         <div class="setup-mode-switch">
           <div
-            class="segmented-control toolbar-segmented-control"
+            class="segmented-control toolbar-segmented-control setup-segmented-control"
             aria-label="Compare mode"
             role="group"
           >
