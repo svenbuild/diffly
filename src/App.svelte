@@ -31,12 +31,26 @@
     formatCompactPath,
     formatRelativePathLabel,
     getFileName,
-    getParentPath,
     getVisibleFolderSections,
     normalizeSelectionPath,
-    ROOT_GROUP,
     splitCommonPathPrefix,
   } from './lib/path-utils'
+  import {
+    buildGroups,
+    defaultDirectoryEntry,
+    filterDirectoryEntries,
+    reconcileCollapsedState,
+  } from './lib/app/directory-state'
+  import {
+    buildNextHistoryState,
+    canGoBack,
+    canGoForward,
+    createExplorerPane,
+    currentDrive,
+    retitlePane,
+    sanitizePaneForMode,
+  } from './lib/app/explorer-state'
+  import { buildPersistedSession } from './lib/app/session'
   import type {
     CompareMode,
     ContextLinesSetting,
@@ -1128,23 +1142,6 @@
     }, DIFF_PREFETCH_DELAY_MS)
   }
 
-  function createExplorerPane(title: string): ExplorerPaneState {
-    return {
-      title,
-      roots: [],
-      currentPath: '',
-      pathInput: '',
-      currentListing: null,
-      listings: {},
-      history: [],
-      historyIndex: -1,
-      selectedTargetPath: '',
-      selectedTargetKind: null,
-      loading: false,
-      error: '',
-    }
-  }
-
   function paneFor(side: Side) {
     return side === 'left' ? leftExplorer : rightExplorer
   }
@@ -1320,26 +1317,6 @@
     errorMessage = ''
   }
 
-  function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMode) {
-    if (nextMode === 'file' && pane.selectedTargetKind !== 'file') {
-      return {
-        ...pane,
-        selectedTargetPath: '',
-        selectedTargetKind: null,
-      }
-    }
-
-    if (nextMode === 'directory' && pane.selectedTargetKind !== 'directory') {
-      return {
-        ...pane,
-        selectedTargetPath: '',
-        selectedTargetKind: null,
-      }
-    }
-
-    return pane
-  }
-
   function goToSetup() {
     activeDetailRequestId += 1
     detailLoading = false
@@ -1411,13 +1388,6 @@
     resetPreferenceState()
     clearRememberedSelections()
     goToSetup()
-  }
-
-  function retitlePane(pane: ExplorerPaneState, title: string): ExplorerPaneState {
-    return {
-      ...pane,
-      title,
-    }
   }
 
   async function swapComparedSides() {
@@ -1718,58 +1688,6 @@
         detailLoading = false
       }
     }
-  }
-
-  function buildGroups(entries: DirectoryEntryResult[]) {
-    const groups = new Map<string, DirectoryEntryResult[]>()
-
-    for (const entry of entries) {
-      const groupKey = getParentPath(entry.relativePath)
-
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, [])
-      }
-
-      groups.get(groupKey)?.push(entry)
-    }
-
-    return Array.from(groups.entries())
-      .map(([key, groupedEntries]) => ({
-        key,
-        label: key === ROOT_GROUP ? 'Root' : key,
-        entries: [...groupedEntries].sort((left, right) =>
-          left.relativePath.localeCompare(right.relativePath),
-        ),
-      }))
-      .sort((left, right) => left.label.localeCompare(right.label))
-  }
-
-  function filterDirectoryEntries(
-    entries: DirectoryEntryResult[],
-    statusFilters: EntryStatus[],
-  ) {
-    if (statusFilters.length === 0) {
-      return entries
-    }
-
-    return entries.filter((entry) => statusFilters.includes(entry.status))
-  }
-
-  function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {
-    return entries.find((entry) => getParentPath(entry.relativePath) === ROOT_GROUP) ?? entries[0]
-  }
-
-  function reconcileCollapsedState(
-    previousState: Record<string, boolean>,
-    sections: FolderSection[],
-  ) {
-    const nextState: Record<string, boolean> = {}
-
-    for (const section of sections) {
-      nextState[section.key] = previousState[section.key] ?? false
-    }
-
-    return nextState
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
@@ -2418,83 +2336,6 @@
     applyPaneScrollSync(source)
   }
 
-  function buildNextHistoryState(
-    pane: ExplorerPaneState,
-    path: string,
-    historyMode: 'push' | 'keep',
-  ) {
-    if (historyMode === 'keep') {
-      return {
-        history: pane.history,
-        historyIndex: pane.historyIndex,
-      }
-    }
-
-    const currentPath = pane.history[pane.historyIndex]
-
-    if (currentPath === path) {
-      return {
-        history: pane.history,
-        historyIndex: pane.historyIndex,
-      }
-    }
-
-    const nextHistory = pane.history.slice(0, pane.historyIndex + 1)
-    nextHistory.push(path)
-
-    return {
-      history: nextHistory,
-      historyIndex: nextHistory.length - 1,
-    }
-  }
-
-  function canGoBack(pane: ExplorerPaneState) {
-    return pane.historyIndex > 0
-  }
-
-  function canGoForward(pane: ExplorerPaneState) {
-    return pane.historyIndex !== -1 && pane.historyIndex < pane.history.length - 1
-  }
-
-  function currentDrive(pane: ExplorerPaneState) {
-    const normalized = pane.currentPath.toLowerCase()
-
-    return pane.roots.find((root) => normalized.startsWith(root.path.toLowerCase()))?.path ?? ''
-  }
-
-  function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPane {
-    return {
-      currentPath: pane.currentPath,
-      history: pane.history,
-      historyIndex: pane.historyIndex,
-      selectedTargetPath: pane.selectedTargetPath,
-      selectedTargetKind: pane.selectedTargetKind,
-    }
-  }
-
-  function buildPersistedSession(): PersistedSession {
-    return {
-      mode,
-      viewMode,
-      themeMode: appearanceSettings.mode,
-      appearance: appearanceSettings,
-      ignoreWhitespace,
-      ignoreCase,
-      showFullFile,
-      showInlineHighlights,
-      wrapSideBySideLines,
-      showSyntaxHighlighting,
-      syncSideBySideScroll,
-      viewerTextSize: appearanceSettings.codeFontSize,
-      contextLines,
-      checkForUpdatesOnLaunch,
-      updateChannel,
-      lastUpdateCheckAt,
-      leftPane: buildPersistedPane(leftExplorer),
-      rightPane: buildPersistedPane(rightExplorer),
-    }
-  }
-
   function scheduleSessionSave() {
     if (!persistenceReady) {
       return
@@ -2504,7 +2345,24 @@
       window.clearTimeout(saveSessionTimer)
     }
 
-    const session = buildPersistedSession()
+    const session = buildPersistedSession({
+      mode,
+      viewMode,
+      appearanceSettings,
+      ignoreWhitespace,
+      ignoreCase,
+      showFullFile,
+      showInlineHighlights,
+      wrapSideBySideLines,
+      showSyntaxHighlighting,
+      syncSideBySideScroll,
+      contextLines,
+      checkForUpdatesOnLaunch,
+      updateChannel,
+      lastUpdateCheckAt,
+      leftPane: leftExplorer,
+      rightPane: rightExplorer,
+    })
 
     saveSessionTimer = window.setTimeout(() => {
       void saveSessionState(session).catch(() => undefined)
