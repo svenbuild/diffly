@@ -1844,7 +1844,7 @@
     }
 
     const threshold = container.getBoundingClientRect().top + 16
-    let nextCurrentIndex = 0
+    let nextCurrentIndex = -1
 
     for (const [index, anchor] of anchors.entries()) {
       if (anchor.getBoundingClientRect().top <= threshold) {
@@ -2089,7 +2089,7 @@
 
     const targetIndex = Math.min(
       visibleDiffHunkCount - 1,
-      (currentDiffHunk === -1 ? 0 : currentDiffHunk) + 1,
+      currentDiffHunk === -1 ? 0 : currentDiffHunk + 1,
     )
     scrollDiffHunkIntoView(targetIndex)
   }
@@ -2620,10 +2620,10 @@
 
   $: textDiffActive = activeDiff?.contentKind === 'text'
 
-  $: canGoToPreviousDiff = canNavigateDiffs && Math.max(currentDiffHunk, 0) > 0
+  $: canGoToPreviousDiff = canNavigateDiffs && currentDiffHunk > 0
 
   $: canGoToNextDiff =
-    canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
+    canNavigateDiffs && currentDiffHunk < visibleDiffHunkCount - 1
 
   $: diffFontSize = `${appearanceSettings.codeFontSize}px`
   $: diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
