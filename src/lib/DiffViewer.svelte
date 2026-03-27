@@ -39,6 +39,9 @@
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
+  let leftPaneScrollShell: HTMLDivElement | null = null
+  let rightPaneScrollShell: HTMLDivElement | null = null
+  let unifiedScrollShell: HTMLDivElement | null = null
   let leftPaneHorizontalScroll: HTMLDivElement | null = null
   let rightPaneHorizontalScroll: HTMLDivElement | null = null
   let unifiedHorizontalScroll: HTMLDivElement | null = null
@@ -291,17 +294,21 @@
       leftPaneBottomScrollbar,
       rightPaneBottomScrollbar,
     )
-    const leftContentHeight = getRenderedContentHeight(leftPaneGrid, leftPaneTrailingSpace)
-    const rightContentHeight = getRenderedContentHeight(rightPaneGrid, rightPaneTrailingSpace)
+    const leftContentHeight = getRenderedContentHeight(leftPaneGrid)
+    const rightContentHeight = getRenderedContentHeight(rightPaneGrid)
     const leftViewportHeight = getViewportHeight(leftPaneScroll)
     const rightViewportHeight = getViewportHeight(rightPaneScroll)
     const leftMaxScrollTop = Math.max(0, leftContentHeight - leftViewportHeight)
     const rightMaxScrollTop = Math.max(0, rightContentHeight - rightViewportHeight)
     const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
-    const leftNeedsPinnedScrollbar =
-      leftContentHeight + bottomScrollbarFootprint - leftViewportHeight > 0.25
-    const rightNeedsPinnedScrollbar =
-      rightContentHeight + bottomScrollbarFootprint - rightViewportHeight > 0.25
+    const leftShellHeight = getViewportHeight(leftPaneScrollShell)
+    const rightShellHeight = getViewportHeight(rightPaneScrollShell)
+    const leftNeedsPinnedScrollbar = pinSplitBottomScrollbar
+      ? leftContentHeight + bottomScrollbarFootprint - leftShellHeight > 0.25
+      : leftPaneScroll.scrollHeight - leftPaneScroll.clientHeight > 0.25
+    const rightNeedsPinnedScrollbar = pinSplitBottomScrollbar
+      ? rightContentHeight + bottomScrollbarFootprint - rightShellHeight > 0.25
+      : rightPaneScroll.scrollHeight - rightPaneScroll.clientHeight > 0.25
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
     rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
@@ -320,10 +327,11 @@
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
     const bottomScrollbarFootprint = getBottomScrollbarFootprint(unifiedBottomScrollbar)
     const unifiedContentHeight = getRenderedContentHeight(unifiedContentGrid)
-    const unifiedViewportHeight = getViewportHeight(unifiedScroll)
+    const unifiedShellHeight = getViewportHeight(unifiedScrollShell)
 
-    pinUnifiedBottomScrollbar =
-      unifiedContentHeight + bottomScrollbarFootprint - unifiedViewportHeight > 0.25
+    pinUnifiedBottomScrollbar = pinUnifiedBottomScrollbar
+      ? unifiedContentHeight + bottomScrollbarFootprint - unifiedShellHeight > 0.25
+      : unifiedScroll.scrollHeight - unifiedScroll.clientHeight > 0.25
   }
 
   function scheduleScrollMarkerRefresh() {
@@ -601,7 +609,11 @@
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
           </div>
-          <div class:pinned-bottom-scrollbar={pinSplitBottomScrollbar} class="pane-scroll-shell">
+          <div
+            bind:this={leftPaneScrollShell}
+            class:pinned-bottom-scrollbar={pinSplitBottomScrollbar}
+            class="pane-scroll-shell"
+          >
             <div
               bind:this={leftPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-left"
@@ -696,7 +708,11 @@
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
           </div>
-          <div class:pinned-bottom-scrollbar={pinSplitBottomScrollbar} class="pane-scroll-shell">
+          <div
+            bind:this={rightPaneScrollShell}
+            class:pinned-bottom-scrollbar={pinSplitBottomScrollbar}
+            class="pane-scroll-shell"
+          >
             <div
               bind:this={rightPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-right"
@@ -801,7 +817,11 @@
         </section>
       </div>
       {:else}
-      <div class:pinned-bottom-scrollbar={pinUnifiedBottomScrollbar} class="unified-grid-shell">
+      <div
+        bind:this={unifiedScrollShell}
+        class:pinned-bottom-scrollbar={pinUnifiedBottomScrollbar}
+        class="unified-grid-shell"
+      >
         <div
           bind:this={unifiedScroll}
           class="pane-vertical-scroll unified-vertical-scroll"
