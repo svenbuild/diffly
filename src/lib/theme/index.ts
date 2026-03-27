@@ -419,7 +419,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'Inter',
+      ui: '"Aptos Display", "IBM Plex Sans", Aptos, "Noto Sans", sans-serif',
       code: null,
     },
     semanticColors: {
@@ -438,7 +438,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 45,
     opaqueWindows: true,
     fonts: {
-      ui: 'Inter',
+      ui: '"Aptos Display", "IBM Plex Sans", Aptos, "Noto Sans", sans-serif',
       code: null,
     },
     semanticColors: {
@@ -457,7 +457,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'Satoshi',
+      ui: 'Bahnschrift, "IBM Plex Sans", Aptos, "Noto Sans", sans-serif',
       code: null,
     },
     semanticColors: {

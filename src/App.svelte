@@ -2795,7 +2795,7 @@
               type="button"
               on:click={() => setMode('directory')}
             >
-              Directories
+              Folders
             </button>
           </div>
         </div>

@@ -25,6 +25,8 @@
   --accent: #22c7c7;
   --accent-strong: #4ce2e2;
   --accent-soft: #103232;
+  --active-surface: #184545;
+  --active-border: #78f0f0;
   --accent-alt: #63d5d5;
   --accent-alt-soft: #193535;
   --accent-olive: #6ea6a6;
@@ -136,6 +138,8 @@
   --accent: #0969da;
   --accent-strong: #218bff;
   --accent-soft: #ddf4ff;
+  --active-surface: #c9e6ff;
+  --active-border: #005fcc;
   --accent-alt: #8250df;
   --accent-alt-soft: #f3e8ff;
   --accent-olive: #218bff;
@@ -325,6 +329,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible {
   border-color: var(--accent-strong);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 32%, transparent);
 }
 
 #app {
@@ -476,8 +481,9 @@ h2 {
 }
 
 .update-indicator.has-update {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--active-border);
+  background: var(--active-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent);
   color: var(--active-text);
 }
 
@@ -559,8 +565,9 @@ h2 {
 }
 
 .view-mode-button:active:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--active-border);
+  background: var(--active-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent);
   color: var(--active-text);
 }
 
@@ -634,7 +641,8 @@ h2 {
 }
 
 .view-mode-option.active {
-  background: var(--accent-soft);
+  background: var(--active-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent);
   color: var(--active-text);
 }
 
@@ -716,8 +724,9 @@ h2 {
 
 .segmented-control button.active,
 .secondary.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--active-border);
+  background: var(--active-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent);
   color: var(--active-text);
 }
 
@@ -859,10 +868,12 @@ h2 {
 
 .settings-nav-button.active,
 .settings-section-link.active {
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  box-shadow: inset 3px 0 0 var(--accent);
-  color: var(--text);
+  border-color: var(--active-border);
+  background: var(--active-surface);
+  box-shadow:
+    inset 3px 0 0 var(--active-border),
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 28%, transparent);
+  color: var(--active-text);
 }
 
 .settings-section-link span:last-child {
@@ -1117,21 +1128,22 @@ h2 {
 }
 
 .settings-theme-tile.active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: var(--active-border);
+  background: var(--active-surface);
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 52%, transparent),
-    inset 0 32px 0 color-mix(in srgb, var(--accent) 5%, transparent);
-  color: var(--secondary-text);
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 52%, transparent),
+    inset 0 32px 0 color-mix(in srgb, var(--active-border) 8%, transparent);
+  color: var(--active-text);
 }
 
 .settings-theme-tile.active::after {
-  content: '✓';
+  content: 'ON';
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 18px;
+  min-width: 24px;
   height: 18px;
+  padding: 0 5px;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -1645,8 +1657,8 @@ h2 {
 }
 
 .settings-update-status[data-tone='accent'] {
-  border-top-color: var(--accent);
-  background: var(--accent-soft);
+  border-top-color: var(--active-border);
+  background: var(--active-surface);
 }
 
 .settings-update-status[data-tone='accent'] .settings-update-copy strong,
@@ -1800,10 +1812,16 @@ h2 {
 }
 
 .setup-segmented-control {
-  width: 168px;
+  width: 152px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
+}
+
+.setup-segmented-control button {
+  width: 100%;
+  padding-inline: 6px;
+  justify-self: stretch;
 }
 
 .picker-workspace {
@@ -2002,8 +2020,26 @@ h2 {
 
 .entry-row.selected,
 .file-row.selected {
+  color: var(--strong-text);
   background: var(--selection-bg);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow:
+    inset 3px 0 0 var(--active-border),
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent);
+}
+
+.entry-row.selected .entry-type,
+.entry-row.selected .entry-date,
+.entry-row.selected .entry-meta,
+.entry-row.selected .entry-icon,
+.file-row.selected .entry-icon,
+.file-row.selected .file-row-bottom,
+.file-row.selected .file-status-label {
+  color: var(--secondary-text);
+}
+
+.entry-row.selected .entry-badge {
+  border-color: var(--active-border);
+  background: color-mix(in srgb, var(--active-border) 16%, transparent);
 }
 
 .entry-name,
@@ -2215,8 +2251,11 @@ button.filter-chip:focus-visible {
 }
 
 .filter-chip.active-filter {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
+  border-color: var(--active-border);
+  font-weight: 600;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 48%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--active-border) 18%, transparent);
 }
 
 button.filter-chip.modified:hover:not(:disabled),
@@ -2355,8 +2394,10 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .file-row.selected {
-  background: color-mix(in srgb, var(--selection-bg) 88%, var(--surface));
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--selection-bg);
+  box-shadow:
+    inset 3px 0 0 var(--active-border),
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent);
 }
 
 .file-row-bottom {
@@ -2422,7 +2463,7 @@ button.filter-chip.tooLarge:focus-visible {
   gap: 6px;
   min-width: 0;
   overflow: visible;
-  font-size: 0.69rem;
+  font-size: 0.81rem;
   padding: 0 10px 6px;
 }
 
@@ -2782,7 +2823,7 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-header-side,
 .pane-header-separator {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.81rem;
   flex: 0 0 auto;
   white-space: nowrap;
 }
@@ -2793,7 +2834,7 @@ button.filter-chip.tooLarge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--panel-title);
-  font-size: 0.74rem;
+  font-size: 0.85rem;
   font-weight: 600;
 }
 
@@ -2950,7 +2991,7 @@ button.filter-chip.tooLarge:focus-visible {
   border-radius: 4px;
   background: var(--collapsed-chip-bg);
   color: var(--collapsed-chip-text);
-  font-size: 0.66rem;
+  font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
