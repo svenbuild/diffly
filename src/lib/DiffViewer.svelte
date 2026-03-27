@@ -266,7 +266,14 @@
   async function updateSideBySideContentMetrics() {
     await tick()
 
-    if (!leftPaneScroll || !rightPaneScroll || !leftPaneGrid || !rightPaneGrid) {
+    if (
+      !leftPaneScroll ||
+      !rightPaneScroll ||
+      !leftPaneHorizontalScroll ||
+      !rightPaneHorizontalScroll ||
+      !leftPaneGrid ||
+      !rightPaneGrid
+    ) {
       sideBySideContentWidth = 0
       leftPaneTrailingSpace = 0
       rightPaneTrailingSpace = 0
@@ -279,15 +286,15 @@
       sideBySideContentWidth = Math.max(
         leftPaneGrid.scrollWidth,
         rightPaneGrid.scrollWidth,
-        leftPaneScroll.clientWidth,
-        rightPaneScroll.clientWidth,
+        leftPaneHorizontalScroll.clientWidth,
+        rightPaneHorizontalScroll.clientWidth,
       )
     }
 
     const leftContentHeight = Math.max(0, leftPaneGrid.scrollHeight - leftPaneTrailingSpace)
     const rightContentHeight = Math.max(0, rightPaneGrid.scrollHeight - rightPaneTrailingSpace)
-    const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneScroll.clientHeight)
-    const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneScroll.clientHeight)
+    const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneHorizontalScroll.clientHeight)
+    const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneHorizontalScroll.clientHeight)
     const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)

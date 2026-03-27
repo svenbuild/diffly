@@ -2680,6 +2680,7 @@ button.filter-chip.tooLarge:focus-visible {
   min-height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+  -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
@@ -2697,6 +2698,8 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-scroll::-webkit-scrollbar,
 .unified-grid::-webkit-scrollbar {
+  width: 0;
+  height: 0;
   display: none;
 }
 
@@ -2909,6 +2912,10 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-bottom-scrollbar {
   margin-top: 0;
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--diff-divider);
