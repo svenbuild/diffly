@@ -405,6 +405,8 @@ h2 {
 
 .display-actions {
   overflow: visible;
+  align-items: center;
+  flex-wrap: nowrap;
 }
 
 .compare-action-group + .compare-action-group {
@@ -581,7 +583,7 @@ h2 {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
-  min-height: 32px;
+  min-height: 28px;
   min-width: 138px;
   padding: 2px;
   border: 1px solid var(--border);
@@ -589,6 +591,8 @@ h2 {
   background: var(--list-header-bg);
   color: var(--secondary-text);
   overflow: hidden;
+  flex: 0 0 auto;
+  align-self: center;
 }
 
 .view-mode-toggle:hover:not(:disabled),
@@ -637,6 +641,12 @@ h2 {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
+}
+
+.toolbar-button,
+.toolbar-button-icon,
+.toolbar-setup-button {
+  flex: 0 0 auto;
 }
 
 .segmented-control {
@@ -2251,10 +2261,45 @@ button.filter-chip.tooLarge:focus-visible {
 
 .group-toggle {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: auto 16px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 6px;
   padding: 5px 8px;
   background: transparent;
+}
+
+.tree-indent {
+  width: calc(var(--tree-depth, 0) * 16px);
+  min-width: calc(var(--tree-depth, 0) * 16px);
+  height: 1px;
+}
+
+.group-heading,
+.file-row-main {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  column-gap: 8px;
+}
+
+.group-heading {
+  grid-template-columns: 7px 16px minmax(0, 1fr);
+}
+
+.group-status-spacer {
+  width: 7px;
+  height: 7px;
+}
+
+.group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  justify-self: end;
+  color: var(--muted);
 }
 
 .chevron {
@@ -2285,11 +2330,18 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-row {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: 4px;
   padding: 7px 10px 7px 12px;
   background: transparent;
   border-bottom: 1px solid var(--border);
   position: relative;
+}
+
+.file-row-main {
+  grid-template-columns: 7px 16px minmax(0, 1fr);
+  row-gap: 4px;
 }
 
 .file-row.selected {
@@ -2302,7 +2354,9 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding-left: 31px;
+  grid-column: 3;
+  min-width: 0;
+  padding-left: 0;
   color: var(--muted);
 }
 
