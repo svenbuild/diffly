@@ -2383,12 +2383,12 @@ button.filter-chip.tooLarge:focus-visible {
   background: var(--scroll-marker-mixed);
 }
 
-.file-status-marker.leftOnly,
+.file-status-marker.rightOnly,
 .scroll-marker.insert {
   background: var(--scroll-marker-insert);
 }
 
-.file-status-marker.rightOnly,
+.file-status-marker.leftOnly,
 .file-status-marker.binary,
 .file-status-marker.tooLarge,
 .scroll-marker.delete {
