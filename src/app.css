@@ -582,7 +582,7 @@ h2 {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
+  height: 28px;
   min-width: 138px;
   box-sizing: border-box;
   padding: 1px;
@@ -622,7 +622,7 @@ h2 {
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  min-height: 26px;
+  height: 24px;
   padding: 3px 10px;
   border-radius: 2px;
   color: var(--secondary-text);
@@ -668,13 +668,13 @@ h2 {
 
 .toolbar-segmented-control {
   box-sizing: border-box;
-  min-height: 28px;
+  height: 28px;
   padding: 1px;
   gap: 0;
 }
 
 .toolbar-segmented-control button {
-  min-height: 26px;
+  height: 24px;
   border-color: transparent;
   border-radius: 0;
 }
