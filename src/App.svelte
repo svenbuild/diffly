@@ -2180,6 +2180,10 @@
     const sourceMaxScrollTop = getMaxScrollTop(sourcePane)
     const targetMaxScrollTop = getMaxScrollTop(targetPane)
 
+    if (!wrapSideBySideLines) {
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
+    }
+
     if (sourcePane.scrollTop <= 1) {
       return 0
     }
