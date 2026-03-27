@@ -402,14 +402,6 @@
     }
   }
 
-  function cycleThemeMode() {
-    const themeModes: ThemeMode[] = ['light', 'dark', 'system']
-    const currentIndex = themeModes.indexOf(appearanceSettings.mode)
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % themeModes.length
-
-    onSetThemeMode(themeModes[nextIndex])
-  }
-
   function toggleSettingsViewMode() {
     onSetViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')
   }
@@ -550,7 +542,7 @@
                     aria-pressed={appearanceSettings.mode === 'light'}
                     class:active={appearanceSettings.mode === 'light'}
                     type="button"
-                    on:click={cycleThemeMode}
+                    on:click={() => onSetThemeMode('light')}
                   >
                     <span>Light</span>
                   </button>
@@ -558,7 +550,7 @@
                     aria-pressed={appearanceSettings.mode === 'dark'}
                     class:active={appearanceSettings.mode === 'dark'}
                     type="button"
-                    on:click={cycleThemeMode}
+                    on:click={() => onSetThemeMode('dark')}
                   >
                     <span>Dark</span>
                   </button>
@@ -566,7 +558,7 @@
                     aria-pressed={appearanceSettings.mode === 'system'}
                     class:active={appearanceSettings.mode === 'system'}
                     type="button"
-                    on:click={cycleThemeMode}
+                    on:click={() => onSetThemeMode('system')}
                   >
                     <span>System</span>
                   </button>

@@ -1750,13 +1750,6 @@ h2 {
   min-width: 0;
 }
 
-.setup-mode-switch > span {
-  color: var(--muted);
-  flex: 0 0 auto;
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-
 .setup-selection-segment {
   display: flex;
   align-items: center;
@@ -1803,7 +1796,6 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
   flex: 0 0 auto;
 }
 

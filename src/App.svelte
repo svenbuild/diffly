@@ -2743,8 +2743,11 @@
 
       <div class="app-bar-actions setup-bar-actions">
         <div class="setup-mode-switch">
-          <span>Compare</span>
-          <div class="segmented-control" aria-label="Compare mode">
+          <div
+            class="segmented-control toolbar-segmented-control"
+            aria-label="Compare mode"
+            role="group"
+          >
             <button
               aria-pressed={mode === 'file'}
               class:active={mode === 'file'}
