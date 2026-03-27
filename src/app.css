@@ -680,6 +680,10 @@ h2 {
   box-shadow: none;
 }
 
+.nav-button-group button + button {
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
 .toolbar-segmented-control button:first-child {
   border-top-left-radius: 3px;
   border-bottom-left-radius: 3px;
