@@ -2463,7 +2463,7 @@ button.filter-chip.tooLarge:focus-visible {
   gap: 6px;
   min-width: 0;
   overflow: visible;
-  font-size: 0.81rem;
+  font-size: 0.86rem;
   padding: 0 10px 6px;
 }
 
@@ -2823,7 +2823,7 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-header-side,
 .pane-header-separator {
   color: var(--muted);
-  font-size: 0.81rem;
+  font-size: 0.84rem;
   flex: 0 0 auto;
   white-space: nowrap;
 }
@@ -2834,7 +2834,7 @@ button.filter-chip.tooLarge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--panel-title);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
@@ -2991,7 +2991,7 @@ button.filter-chip.tooLarge:focus-visible {
   border-radius: 4px;
   background: var(--collapsed-chip-bg);
   color: var(--collapsed-chip-text);
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 600;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
