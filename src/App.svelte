@@ -2865,7 +2865,11 @@
 
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
-          <div class="nav-button-group" aria-label="Diff navigation" role="group">
+          <div
+            class="nav-button-group segmented-control toolbar-segmented-control"
+            aria-label="Diff navigation"
+            role="group"
+          >
             <button
               class="secondary toolbar-button nav-button nav-button-group-item"
               aria-label="Jump to the previous difference"
