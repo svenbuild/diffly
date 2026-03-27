@@ -584,7 +584,8 @@ h2 {
   align-items: center;
   min-height: 28px;
   min-width: 138px;
-  padding: 2px;
+  box-sizing: border-box;
+  padding: 1px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--list-header-bg);
@@ -621,7 +622,7 @@ h2 {
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  min-height: 24px;
+  min-height: 26px;
   padding: 3px 10px;
   border-radius: 2px;
   color: var(--secondary-text);
@@ -666,12 +667,14 @@ h2 {
 }
 
 .toolbar-segmented-control {
-  padding: 0;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 1px;
   gap: 0;
 }
 
 .toolbar-segmented-control button {
-  min-height: 28px;
+  min-height: 26px;
   border-color: transparent;
   border-radius: 0;
 }
