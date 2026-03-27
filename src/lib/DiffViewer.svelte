@@ -353,16 +353,29 @@
     unifiedScrollMarkers = buildScrollMarkers(unifiedScroll, unifiedContentGrid)
   }
 
-  function syncSplitHorizontalScroll(nextScrollLeft: number) {
+  function syncSplitHorizontalScroll(
+    nextScrollLeft: number,
+    sourceElement: HTMLDivElement | null = null,
+  ) {
     if (splitHorizontalScrollSyncLocked) {
       return
     }
 
+    const resolvedSourceElement =
+      sourceElement ??
+      leftPaneBottomScrollbar ??
+      rightPaneBottomScrollbar ??
+      leftPaneHorizontalScroll ??
+      rightPaneHorizontalScroll
+    const sourceMaxScrollLeft = getMaxHorizontalScrollLeft(resolvedSourceElement)
+    const scrollProgress =
+      sourceMaxScrollLeft > 0 ? clampScrollRatio(nextScrollLeft / sourceMaxScrollLeft) : 0
+
     splitHorizontalScrollSyncLocked = true
-    setHorizontalScrollLeft(leftPaneHorizontalScroll, nextScrollLeft)
-    setHorizontalScrollLeft(rightPaneHorizontalScroll, nextScrollLeft)
-    setHorizontalScrollLeft(leftPaneBottomScrollbar, nextScrollLeft)
-    setHorizontalScrollLeft(rightPaneBottomScrollbar, nextScrollLeft)
+    setHorizontalScrollProgress(leftPaneHorizontalScroll, scrollProgress)
+    setHorizontalScrollProgress(rightPaneHorizontalScroll, scrollProgress)
+    setHorizontalScrollProgress(leftPaneBottomScrollbar, scrollProgress)
+    setHorizontalScrollProgress(rightPaneBottomScrollbar, scrollProgress)
     splitHorizontalScrollSyncLocked = false
   }
 
@@ -377,12 +390,30 @@
     unifiedHorizontalScrollSyncLocked = false
   }
 
-  function setHorizontalScrollLeft(element: HTMLDivElement | null, nextScrollLeft: number) {
-    if (!element || Math.abs(element.scrollLeft - nextScrollLeft) < 0.5) {
+  function setHorizontalScrollProgress(element: HTMLDivElement | null, scrollProgress: number) {
+    if (!element) {
+      return
+    }
+
+    const nextScrollLeft = getMaxHorizontalScrollLeft(element) * scrollProgress
+
+    if (Math.abs(element.scrollLeft - nextScrollLeft) < 0.5) {
       return
     }
 
     element.scrollLeft = nextScrollLeft
+  }
+
+  function getMaxHorizontalScrollLeft(element: HTMLDivElement | null) {
+    if (!element) {
+      return 0
+    }
+
+    return Math.max(0, element.scrollWidth - element.clientWidth)
+  }
+
+  function clampScrollRatio(value: number) {
+    return Math.max(0, Math.min(1, value))
   }
 
   function getBottomScrollbarFootprint(...elements: Array<HTMLDivElement | null>) {
@@ -545,7 +576,7 @@
         leftPaneHorizontalScroll?.scrollLeft ??
         0
 
-      syncSplitHorizontalScroll(nextScrollLeft)
+      syncSplitHorizontalScroll(nextScrollLeft, rightPaneBottomScrollbar ?? rightPaneHorizontalScroll)
     })
   }
 
@@ -619,7 +650,11 @@
               <div
                 bind:this={leftPaneHorizontalScroll}
                 class="pane-scroll pane-scroll-left"
-                on:scroll={() => syncSplitHorizontalScroll(leftPaneHorizontalScroll?.scrollLeft ?? 0)}
+                on:scroll={() =>
+                  syncSplitHorizontalScroll(
+                    leftPaneHorizontalScroll?.scrollLeft ?? 0,
+                    leftPaneHorizontalScroll,
+                  )}
               >
                 <div
                   bind:this={leftPaneGrid}
@@ -673,7 +708,8 @@
               bind:this={leftPaneBottomScrollbar}
               aria-hidden="true"
               class="pane-bottom-scrollbar pinned-bottom-scrollbar"
-              on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
+              on:scroll={() =>
+                syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0, leftPaneBottomScrollbar)}
             >
               <div
                 class="pane-bottom-scrollbar-track"
@@ -699,7 +735,11 @@
               <div
                 bind:this={rightPaneHorizontalScroll}
                 class="pane-scroll pane-scroll-right"
-                on:scroll={() => syncSplitHorizontalScroll(rightPaneHorizontalScroll?.scrollLeft ?? 0)}
+                on:scroll={() =>
+                  syncSplitHorizontalScroll(
+                    rightPaneHorizontalScroll?.scrollLeft ?? 0,
+                    rightPaneHorizontalScroll,
+                  )}
               >
                 <div
                   bind:this={rightPaneGrid}
@@ -753,7 +793,11 @@
               bind:this={rightPaneBottomScrollbar}
               aria-hidden="true"
               class="pane-bottom-scrollbar pinned-bottom-scrollbar"
-              on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
+              on:scroll={() =>
+                syncSplitHorizontalScroll(
+                  rightPaneBottomScrollbar?.scrollLeft ?? 0,
+                  rightPaneBottomScrollbar,
+                )}
             >
               <div
                 class="pane-bottom-scrollbar-track"
