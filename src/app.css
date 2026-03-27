@@ -585,39 +585,33 @@ h2 {
   align-items: stretch;
   min-height: 28px;
   min-width: 138px;
-  padding: 2px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--list-header-bg);
+  border-radius: 4px;
+  background: transparent;
   color: var(--secondary-text);
   overflow: hidden;
   flex: 0 0 auto;
   align-self: center;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .view-mode-toggle:hover:not(:disabled),
 .view-mode-toggle:focus-visible {
   border-color: var(--border-strong);
+  background: var(--surface-strong);
 }
 
 .view-mode-toggle:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .view-mode-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 2px;
-  width: calc(50% - 2px);
-  border-radius: 4px;
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
-  transition: transform 140ms ease;
-}
-
-.view-mode-toggle.unified-active .view-mode-toggle-thumb {
-  transform: translateX(100%);
+  display: none;
 }
 
 .view-mode-option {
@@ -628,12 +622,18 @@ h2 {
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  padding: 0 10px;
-  color: var(--muted);
+  min-height: 28px;
+  padding: 3px 10px;
+  color: var(--secondary-text);
   line-height: 1;
 }
 
+.view-mode-option + .view-mode-option {
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
 .view-mode-option.active {
+  background: var(--accent-soft);
   color: var(--active-text);
 }
 
