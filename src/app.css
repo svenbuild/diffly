@@ -576,6 +576,69 @@ h2 {
   text-align: center;
 }
 
+.view-mode-toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  min-height: 32px;
+  min-width: 138px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--list-header-bg);
+  color: var(--secondary-text);
+  overflow: hidden;
+}
+
+.view-mode-toggle:hover:not(:disabled),
+.view-mode-toggle:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.view-mode-toggle:disabled {
+  opacity: 0.6;
+}
+
+.view-mode-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  transition: transform 140ms ease;
+}
+
+.view-mode-toggle.unified-active .view-mode-toggle-thumb {
+  transform: translateX(100%);
+}
+
+.view-mode-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 10px;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.view-mode-option.active {
+  color: var(--active-text);
+}
+
+.view-mode-label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 .segmented-control {
   padding: 2px;
   border: 1px solid var(--border);
@@ -1996,6 +2059,11 @@ h2 {
 
 .compare-layout.single-pane {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.compare-layout > .file-browser {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .compare-sidebar-resizer {
