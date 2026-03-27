@@ -39,6 +39,9 @@
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
   export let unifiedScroll: HTMLDivElement | null = null
+  let leftPaneScrollShell: HTMLDivElement | null = null
+  let rightPaneScrollShell: HTMLDivElement | null = null
+  let unifiedScrollShell: HTMLDivElement | null = null
   let leftPaneHorizontalScroll: HTMLDivElement | null = null
   let rightPaneHorizontalScroll: HTMLDivElement | null = null
   let unifiedHorizontalScroll: HTMLDivElement | null = null
@@ -56,6 +59,8 @@
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
+  let pinSplitBottomScrollbar = false
+  let pinUnifiedBottomScrollbar = false
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
   let scrollMarkerRefreshQueued = false
@@ -270,6 +275,7 @@
       sideBySideContentWidth = 0
       leftPaneTrailingSpace = 0
       rightPaneTrailingSpace = 0
+      pinSplitBottomScrollbar = false
       return
     }
 
@@ -284,14 +290,29 @@
       )
     }
 
-    const leftContentHeight = Math.max(0, leftPaneGrid.scrollHeight - leftPaneTrailingSpace)
-    const rightContentHeight = Math.max(0, rightPaneGrid.scrollHeight - rightPaneTrailingSpace)
-    const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneScroll.clientHeight)
-    const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneScroll.clientHeight)
+    const bottomScrollbarFootprint = getBottomScrollbarFootprint(
+      leftPaneBottomScrollbar,
+      rightPaneBottomScrollbar,
+    )
+    const leftContentHeight = getRenderedContentHeight(leftPaneGrid)
+    const rightContentHeight = getRenderedContentHeight(rightPaneGrid)
+    const leftViewportHeight = getViewportHeight(leftPaneScroll)
+    const rightViewportHeight = getViewportHeight(rightPaneScroll)
+    const leftMaxScrollTop = Math.max(0, leftContentHeight - leftViewportHeight)
+    const rightMaxScrollTop = Math.max(0, rightContentHeight - rightViewportHeight)
     const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
+    const leftShellHeight = getViewportHeight(leftPaneScrollShell)
+    const rightShellHeight = getViewportHeight(rightPaneScrollShell)
+    const leftNeedsPinnedScrollbar = pinSplitBottomScrollbar
+      ? leftContentHeight + bottomScrollbarFootprint - leftShellHeight > 0.25
+      : leftPaneScroll.scrollHeight - leftPaneScroll.clientHeight > 0.25
+    const rightNeedsPinnedScrollbar = pinSplitBottomScrollbar
+      ? rightContentHeight + bottomScrollbarFootprint - rightShellHeight > 0.25
+      : rightPaneScroll.scrollHeight - rightPaneScroll.clientHeight > 0.25
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
     rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
+    pinSplitBottomScrollbar = leftNeedsPinnedScrollbar || rightNeedsPinnedScrollbar
   }
 
   async function updateUnifiedContentWidth() {
@@ -299,10 +320,18 @@
 
     if (!unifiedScroll || !unifiedContentGrid) {
       unifiedContentWidth = 0
+      pinUnifiedBottomScrollbar = false
       return
     }
 
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
+    const bottomScrollbarFootprint = getBottomScrollbarFootprint(unifiedBottomScrollbar)
+    const unifiedContentHeight = getRenderedContentHeight(unifiedContentGrid)
+    const unifiedShellHeight = getViewportHeight(unifiedScrollShell)
+
+    pinUnifiedBottomScrollbar = pinUnifiedBottomScrollbar
+      ? unifiedContentHeight + bottomScrollbarFootprint - unifiedShellHeight > 0.25
+      : unifiedScroll.scrollHeight - unifiedScroll.clientHeight > 0.25
   }
 
   function scheduleScrollMarkerRefresh() {
@@ -354,6 +383,34 @@
     }
 
     element.scrollLeft = nextScrollLeft
+  }
+
+  function getBottomScrollbarFootprint(...elements: Array<HTMLDivElement | null>) {
+    const measured = elements.reduce((maxValue, element) => {
+      if (!element) {
+        return maxValue
+      }
+
+      return Math.max(maxValue, element.offsetHeight)
+    }, 0)
+
+    return measured || 12
+  }
+
+  function getRenderedContentHeight(element: HTMLDivElement | null, trailingSpace = 0) {
+    if (!element) {
+      return 0
+    }
+
+    return element.getBoundingClientRect().height + trailingSpace
+  }
+
+  function getViewportHeight(element: HTMLDivElement | null) {
+    if (!element) {
+      return 0
+    }
+
+    return element.getBoundingClientRect().height
   }
 
   function buildScrollMarkers(
@@ -552,7 +609,7 @@
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
           </div>
-          <div class="pane-scroll-shell">
+          <div bind:this={leftPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
               bind:this={leftPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-left"
@@ -611,17 +668,17 @@
                 {/each}
                 </div>
               </div>
+            </div>
+            <div
+              bind:this={leftPaneBottomScrollbar}
+              aria-hidden="true"
+              class="pane-bottom-scrollbar pinned-bottom-scrollbar"
+              on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
+            >
               <div
-                bind:this={leftPaneBottomScrollbar}
-                aria-hidden="true"
-                class="pane-bottom-scrollbar"
-                on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
-              >
-                <div
-                  class="pane-bottom-scrollbar-track"
-                  style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
-                ></div>
-              </div>
+                class="pane-bottom-scrollbar-track"
+                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+              ></div>
             </div>
           </div>
         </section>
@@ -632,7 +689,7 @@
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
           </div>
-          <div class="pane-scroll-shell">
+          <div bind:this={rightPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
               bind:this={rightPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-right"
@@ -691,17 +748,17 @@
                 {/each}
                 </div>
               </div>
+            </div>
+            <div
+              bind:this={rightPaneBottomScrollbar}
+              aria-hidden="true"
+              class="pane-bottom-scrollbar pinned-bottom-scrollbar"
+              on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
+            >
               <div
-                bind:this={rightPaneBottomScrollbar}
-                aria-hidden="true"
-                class="pane-bottom-scrollbar"
-                on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
-              >
-                <div
-                  class="pane-bottom-scrollbar-track"
-                  style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
-                ></div>
-              </div>
+                class="pane-bottom-scrollbar-track"
+                style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+              ></div>
             </div>
             <div class="scroll-marker-overlay split-scroll-marker-overlay">
               <div class="scroll-marker-rail">
@@ -722,7 +779,7 @@
         </section>
       </div>
       {:else}
-      <div class="unified-grid-shell">
+      <div bind:this={unifiedScrollShell} class="unified-grid-shell pinned-bottom-scrollbar">
         <div
           bind:this={unifiedScroll}
           class="pane-vertical-scroll unified-vertical-scroll"
@@ -773,17 +830,6 @@
             {/each}
             </div>
           </div>
-          <div
-            bind:this={unifiedBottomScrollbar}
-            aria-hidden="true"
-            class="pane-bottom-scrollbar"
-            on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
-          >
-            <div
-              class="pane-bottom-scrollbar-track"
-              style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
-            ></div>
-          </div>
           <div class="scroll-marker-overlay">
             <div class="scroll-marker-rail">
               {#each unifiedScrollMarkers as marker}
@@ -799,6 +845,17 @@
               {/each}
             </div>
           </div>
+        </div>
+        <div
+          bind:this={unifiedBottomScrollbar}
+          aria-hidden="true"
+          class="pane-bottom-scrollbar pinned-bottom-scrollbar"
+          on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
+        >
+          <div
+            class="pane-bottom-scrollbar-track"
+            style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
+          ></div>
         </div>
       </div>
       {/if}

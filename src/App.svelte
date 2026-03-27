@@ -25,18 +25,63 @@
     buildUnifiedHunkRanges,
     buildUnifiedRenderItems,
   } from './lib/diff-render'
+  import { createDiffCacheController } from './lib/app/diff-cache'
+  import {
+    clampScrollOffset,
+    getMaxScrollLeft,
+    getMaxScrollTop,
+    getScrollTopForAnchor,
+    mapScrollOffset,
+    normalizeWheelDelta,
+  } from './lib/app/pane-scroll-sync'
+  import {
+    createUpdateController,
+    formatLastUpdateCheck,
+    formatLastUpdateCheckRelative,
+    formatUpdateChannelLabel,
+    getUpdateIndicatorTitle,
+    shouldShowUpdateIndicator as shouldShowUpdateIndicatorState,
+    type UpdateIndicatorState,
+    type UpdateStatus,
+  } from './lib/app/update-controller'
+  import {
+    applyAppearanceToRoot,
+    resolveAppearanceState,
+    scheduleThemeTransitionCleanup as scheduleThemeCleanup,
+    setThemeColorOverride as applyThemeColorOverride,
+    setThemeContrast as applyThemeContrast,
+    setThemeFontOverride as applyThemeFontOverride,
+    setThemeMode as applyThemeMode,
+    setThemePreset as applyThemePreset,
+    setThemeSemanticColorOverride as applyThemeSemanticColorOverride,
+    setThemeTranslucency as applyThemeTranslucency,
+  } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
     formatCompactPath,
     formatRelativePathLabel,
     getFileName,
-    getParentPath,
     getVisibleFolderSections,
     normalizeSelectionPath,
-    ROOT_GROUP,
     splitCommonPathPrefix,
   } from './lib/path-utils'
+  import {
+    buildGroups,
+    defaultDirectoryEntry,
+    filterDirectoryEntries,
+    reconcileCollapsedState,
+  } from './lib/app/directory-state'
+  import {
+    buildNextHistoryState,
+    canGoBack,
+    canGoForward,
+    createExplorerPane,
+    currentDrive,
+    retitlePane,
+    sanitizePaneForMode,
+  } from './lib/app/explorer-state'
+  import { buildPersistedSession } from './lib/app/session'
   import type {
     CompareMode,
     ContextLinesSetting,
@@ -48,25 +93,18 @@
     PersistedSession,
     ThemeMode,
     UpdateChannel,
-    UpdateMetadata,
     ViewMode,
   } from './lib/types'
   import {
     getAvailableThemes,
     getDefaultAppearanceSettings,
-    resolveVariant,
     type AppearanceSettings,
     type ThemeDefinition,
-    type ThemeId,
     type ThemeSemanticColorKey,
     type ThemeVariant,
   } from './lib/theme'
   import {
     normalizeAppearanceSettings,
-    resolveThemeCssVariables,
-    resolveThemeForVariant,
-    setVariantOverride,
-    setVariantThemeId,
     MAX_CODE_FONT_SIZE,
     MAX_UI_FONT_SIZE,
     MIN_CODE_FONT_SIZE,
@@ -96,34 +134,10 @@
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
-  type UpdateStatus =
-    | 'idle'
-    | 'checking'
-    | 'available'
-    | 'upToDate'
-    | 'downloading'
-    | 'downloaded'
-    | 'failed'
-    | 'unavailable'
-
-  interface CachedDiffRenderState {
-    sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-    unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-    sideBySideItems: Map<string, SideBySideRenderItem[]>
-    unifiedItems: Map<string, UnifiedRenderItem[]>
-  }
-
   interface CompareRootDisplay {
     prefix: string
     suffix: string
     fullPath: string
-  }
-
-  interface UpdateIndicatorState {
-    status: UpdateStatus
-    currentVersion: string
-    metadata: UpdateMetadata | null
-    message: string
   }
 
   export let initialSession: PersistedSession | null = null
@@ -142,10 +156,7 @@
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
-  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = resolveVariant(
-    appearanceSettings.mode,
-    systemPrefersDark
-  )
+  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
   let showFullFile = false
   let showInlineHighlights = true
   let wrapSideBySideLines = false
@@ -176,8 +187,6 @@
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let scrollEchoTarget: 'left' | 'right' | null = null
-  let scrollEchoTop = 0
-  let scrollEchoLeft = 0
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
   let paneNavigationSyncActive = false
@@ -191,7 +200,6 @@
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareRefreshTimer: number | null = null
-  let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let compareSidebarWidth = 252
@@ -228,8 +236,19 @@
     leftRootFullPath: '',
     rightRootFullPath: '',
   }
-  const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
-  const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
+  const diffCache = createDiffCacheController({
+    buildSideBySideHunkRanges,
+    buildUnifiedHunkRanges,
+    buildSideBySideRenderItems,
+    buildUnifiedRenderItems,
+    openCompareItem,
+  })
+  const updateController = createUpdateController({
+    getAppVersion,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+  })
   let diffFontSize = `${appearanceSettings.codeFontSize}px`
   let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
@@ -251,9 +270,9 @@
   const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'binary', 'tooLarge']
   const availableLightThemes = getAvailableThemes('light')
   const availableDarkThemes = getAvailableThemes('dark')
-  let lightAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'light')
-  let darkAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'dark')
-  let visibleAppearanceVariants: ThemeVariant[] = [appearanceSettings.mode === 'dark' ? 'dark' : 'light']
+  let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
+  let darkAppearanceTheme: ThemeDefinition = getAvailableThemes('dark')[0]
+  let visibleAppearanceVariants: ThemeVariant[] = ['light']
 
   const getOptions = () => ({
     ignoreWhitespace,
@@ -362,9 +381,7 @@
         window.clearTimeout(compareRefreshTimer)
       }
 
-      if (detailPrefetchTimer !== null) {
-        window.clearTimeout(detailPrefetchTimer)
-      }
+      diffCache.clearDetailPrefetch()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -475,55 +492,25 @@
     }
   }
 
-  function normalizeHexColor(value: string) {
-    return `#${value.trim().replace(/^#/, '').toUpperCase()}`
-  }
-
   function setThemeMode(nextThemeMode: ThemeMode) {
-    if (appearanceSettings.mode === nextThemeMode) {
-      return
-    }
-
-    if (typeof document === 'undefined') {
-      appearanceSettings = {
-        ...appearanceSettings,
-        mode: nextThemeMode,
-      }
-      return
-    }
-
-    const root = document.documentElement
-    root.classList.add('theme-switching')
-
-    if (typeof document.startViewTransition === 'function') {
-      void document
-        .startViewTransition(() => {
-          appearanceSettings = {
-            ...appearanceSettings,
-            mode: nextThemeMode,
-          }
-        })
-        .finished.finally(() => {
-          scheduleThemeTransitionCleanup(root)
-        })
-
-      return
-    }
-
-    appearanceSettings = {
-      ...appearanceSettings,
-      mode: nextThemeMode,
-    }
-    scheduleThemeTransitionCleanup(root)
+    applyThemeMode(
+      appearanceSettings,
+      nextThemeMode,
+      (nextAppearanceSettings) => {
+        appearanceSettings = nextAppearanceSettings
+      },
+      (root) => scheduleThemeTransitionCleanup(root),
+    )
   }
 
   function setThemePreset(variant: ThemeVariant, themeId: string) {
-    if (
-      (variant === 'light' && availableLightThemes.some((theme) => theme.id === themeId)) ||
-      (variant === 'dark' && availableDarkThemes.some((theme) => theme.id === themeId))
-    ) {
-      appearanceSettings = setVariantThemeId(appearanceSettings, variant, themeId as ThemeId)
-    }
+    appearanceSettings = applyThemePreset(
+      appearanceSettings,
+      variant,
+      themeId,
+      availableLightThemes,
+      availableDarkThemes,
+    )
   }
 
   function setThemeColorOverride(
@@ -531,17 +518,7 @@
     field: 'accent' | 'surface' | 'ink',
     value: string
   ) {
-    const nextColor = normalizeHexColor(value)
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextColor === base[field].toUpperCase()) {
-        delete next[field]
-      } else {
-        next[field] = nextColor
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeColorOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeSemanticColorOverride(
@@ -549,17 +526,7 @@
     field: ThemeSemanticColorKey,
     value: string
   ) {
-    const nextColor = normalizeHexColor(value)
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextColor === base.semanticColors[field].toUpperCase()) {
-        delete next[field]
-      } else {
-        next[field] = nextColor
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeSemanticColorOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeFontOverride(
@@ -567,172 +534,23 @@
     field: 'ui' | 'code',
     value: string
   ) {
-    const nextValue = value.trim() ? value.trim() : null
-    const overrideKey = field === 'ui' ? 'uiFont' : 'codeFont'
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      const baseValue = field === 'ui' ? base.fonts.ui : base.fonts.code
-
-      if (nextValue === baseValue) {
-        delete next[overrideKey]
-      } else {
-        next[overrideKey] = nextValue
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeFontOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeContrast(variant: ThemeVariant, value: number) {
-    const nextContrast = Math.min(100, Math.max(0, Math.round(value)))
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextContrast === base.contrast) {
-        delete next.contrast
-      } else {
-        next.contrast = nextContrast
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeContrast(appearanceSettings, variant, value)
   }
 
   function setThemeTranslucency(variant: ThemeVariant, enabled: boolean) {
-    const nextOpaqueWindows = !enabled
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextOpaqueWindows === base.opaqueWindows) {
-        delete next.opaqueWindows
-      } else {
-        next.opaqueWindows = nextOpaqueWindows
-      }
-
-      return next
-    })
-  }
-
-  function parseUpdateTimestamp(value: string) {
-    if (!value) {
-      return null
-    }
-
-    const numericValue = Number(value)
-    const date = Number.isFinite(numericValue) && value.trim() !== ''
-      ? new Date(numericValue * 1000)
-      : new Date(value)
-
-    if (Number.isNaN(date.getTime())) {
-      return null
-    }
-
-    return date
-  }
-
-  function formatLastUpdateCheck(value: string) {
-    const date = parseUpdateTimestamp(value)
-
-    if (!date) {
-      return 'Never'
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    }).format(date)
-  }
-
-  function formatLastUpdateCheckRelative(value: string) {
-    const date = parseUpdateTimestamp(value)
-
-    if (!date) {
-      return 'No checks yet'
-    }
-
-    const diffMs = date.getTime() - Date.now()
-    const absDiffMs = Math.abs(diffMs)
-    const relativeTime = new Intl.RelativeTimeFormat(undefined, {
-      numeric: 'auto',
-    })
-
-    if (absDiffMs < 60_000) {
-      return 'Just now'
-    }
-
-    if (absDiffMs < 3_600_000) {
-      return relativeTime.format(Math.round(diffMs / 60_000), 'minute')
-    }
-
-    if (absDiffMs < 86_400_000) {
-      return relativeTime.format(Math.round(diffMs / 3_600_000), 'hour')
-    }
-
-    return relativeTime.format(Math.round(diffMs / 86_400_000), 'day')
-  }
-
-  function formatUpdateChannelLabel(channel: UpdateChannel) {
-    return channel === 'prerelease' ? 'Stable + prerelease' : 'Stable only'
-  }
-
-  function normalizeUnavailableUpdateMessage(message: string | null | undefined) {
-    if (!message) {
-      return 'Updates are not configured for this build yet.'
-    }
-
-    if (message.includes('does not have any endpoints set')) {
-      return 'Updates are not configured for this build yet.'
-    }
-
-    return message
-  }
-
-  function normalizeFailedUpdateMessage(message: string | null | undefined) {
-    if (!message) {
-      return 'Unable to contact the published update feed.'
-    }
-
-    if (message.includes('404')) {
-      return 'No published updater release is available yet.'
-    }
-
-    return message
+    appearanceSettings = applyThemeTranslucency(appearanceSettings, variant, enabled)
   }
 
   function updateIndicatorTitle() {
-    const versionSuffix = updateIndicatorState.currentVersion
-      ? `Current version ${updateIndicatorState.currentVersion}.`
-      : ''
-
-    if (updateIndicatorState.status === 'available' && updateIndicatorState.metadata) {
-      return `Update available: ${updateIndicatorState.metadata.version}. ${versionSuffix}`.trim()
-    }
-
-    if (updateIndicatorState.status === 'checking') {
-      return 'Checking for updates.'
-    }
-
-    if (updateIndicatorState.status === 'downloaded') {
-      return 'Update downloaded. Install and restart from Settings.'
-    }
-
-    if (
-      updateIndicatorState.status === 'failed' ||
-      updateIndicatorState.status === 'unavailable'
-    ) {
-      return updateIndicatorState.message
-    }
-
-    if (updateIndicatorState.status === 'upToDate') {
-      return `Diffly is up to date. ${versionSuffix}`.trim()
-    }
-
-    return `Open update settings. ${versionSuffix}`.trim()
+    return getUpdateIndicatorTitle(updateIndicatorState)
   }
 
   function shouldShowUpdateIndicator() {
-    return (
-      updateIndicatorState.status === 'available' ||
-      updateIndicatorState.status === 'downloaded'
-    )
+    return shouldShowUpdateIndicatorState(updateIndicatorState)
   }
 
   function startStartupUpdateCheck() {
@@ -745,165 +563,30 @@
   }
 
   async function initializeUpdateVersion() {
-    try {
-      const version = await getAppVersion()
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        currentVersion: version,
-      }
-    } catch {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'unavailable',
-        message: 'Updates are not configured for this build yet.',
-      }
-    }
+    updateIndicatorState = await updateController.initializeUpdateVersion(updateIndicatorState)
   }
 
   async function runUpdateCheck() {
-    if (updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading') {
-      return
-    }
+    const result = await updateController.runUpdateCheck(updateIndicatorState, updateChannel)
+    updateIndicatorState = result.updateIndicatorState
 
-    updateIndicatorState = {
-      ...updateIndicatorState,
-      status: 'checking',
-      message: 'Checking for updates...',
-    }
-
-    try {
-      const result = await checkForUpdates(updateChannel)
-      lastUpdateCheckAt = new Date().toISOString()
-
-      if (result.kind === 'available' && result.available && result.metadata) {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'available',
-          metadata: result.metadata,
-          message: result.message ?? `Version ${result.metadata.version} is available.`,
-        }
-        return
-      }
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          metadata: null,
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          metadata: null,
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-        return
-      }
-
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'upToDate',
-        metadata: null,
-        message: result.message ?? 'Diffly is up to date.',
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        metadata: null,
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to check for updates.',
-        ),
-      }
+    if (result.lastUpdateCheckAt) {
+      lastUpdateCheckAt = result.lastUpdateCheckAt
     }
   }
 
   async function beginUpdateDownload() {
-    if (updateIndicatorState.status !== 'available') {
-      return
-    }
-
-    updateIndicatorState = {
-      ...updateIndicatorState,
-      status: 'downloading',
-      message: 'Downloading update...',
-    }
-
-    try {
-      const result = await downloadUpdate(updateChannel)
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-        return
-      }
-
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'downloaded',
-        message: 'Update downloaded. Install and restart when ready.',
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to download the update.',
-        ),
-      }
-    }
+    updateIndicatorState = await updateController.beginUpdateDownload(
+      updateIndicatorState,
+      updateChannel,
+    )
   }
 
   async function applyDownloadedUpdate() {
-    if (updateIndicatorState.status !== 'downloaded') {
-      return
-    }
-
-    try {
-      const result = await installUpdate(updateChannel)
-
-      if (result.kind === 'unavailable') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'unavailable',
-          message: normalizeUnavailableUpdateMessage(result.message),
-        }
-        return
-      }
-
-      if (result.kind === 'error') {
-        updateIndicatorState = {
-          ...updateIndicatorState,
-          status: 'failed',
-          message: normalizeFailedUpdateMessage(result.message),
-        }
-      }
-    } catch (error) {
-      updateIndicatorState = {
-        ...updateIndicatorState,
-        status: 'failed',
-        message: normalizeFailedUpdateMessage(
-          error instanceof Error ? error.message : 'Unable to install the update.',
-        ),
-      }
-    }
+    updateIndicatorState = await updateController.applyDownloadedUpdate(
+      updateIndicatorState,
+      updateChannel,
+    )
   }
 
   function openUpdateSettings() {
@@ -925,226 +608,42 @@
     errorMessage = ''
   }
 
-  function getCachedDiffRenderState(diff: FileDiffResult) {
-    const cached = diffRenderCache.get(diff)
-
-    if (cached) {
-      return cached
-    }
-
-    const state: CachedDiffRenderState = {
-      sideBySideHunks: new Map(),
-      unifiedHunks: new Map(),
-      sideBySideItems: new Map(),
-      unifiedItems: new Map(),
-    }
-
-    diffRenderCache.set(diff, state)
-    return state
-  }
-
-  function getRenderItemsCacheKey(
-    nextContextLines: ContextLinesSetting,
-    includeFullFile: boolean,
-  ) {
-    return `${nextContextLines}:${includeFullFile ? 'full' : 'hunks'}`
-  }
-
-  function getCachedSideBySideHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-    const state = getCachedDiffRenderState(diff)
-    const cached = state.sideBySideHunks.get(nextContextLines)
-
-    if (cached) {
-      return cached
-    }
-
-    const hunks = buildSideBySideHunkRanges(diff.sideBySide, nextContextLines)
-    state.sideBySideHunks.set(nextContextLines, hunks)
-    return hunks
-  }
-
-  function getCachedUnifiedHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-    const state = getCachedDiffRenderState(diff)
-    const cached = state.unifiedHunks.get(nextContextLines)
-
-    if (cached) {
-      return cached
-    }
-
-    const hunks = buildUnifiedHunkRanges(diff.unified, nextContextLines)
-    state.unifiedHunks.set(nextContextLines, hunks)
-    return hunks
-  }
-
-  function getCachedSideBySideRenderItems(
-    diff: FileDiffResult,
-    includeFullFile: boolean,
-    nextContextLines: ContextLinesSetting,
-  ) {
-    const state = getCachedDiffRenderState(diff)
-    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-    const cached = state.sideBySideItems.get(cacheKey)
-
-    if (cached) {
-      return cached
-    }
-
-    const items = buildSideBySideRenderItems(
-      diff.sideBySide,
-      getCachedSideBySideHunks(diff, nextContextLines),
-      includeFullFile,
-    )
-
-    state.sideBySideItems.set(cacheKey, items)
-    return items
-  }
-
-  function getCachedUnifiedRenderItems(
-    diff: FileDiffResult,
-    includeFullFile: boolean,
-    nextContextLines: ContextLinesSetting,
-  ) {
-    const state = getCachedDiffRenderState(diff)
-    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-    const cached = state.unifiedItems.get(cacheKey)
-
-    if (cached) {
-      return cached
-    }
-
-    const items = buildUnifiedRenderItems(
-      diff.unified,
-      getCachedUnifiedHunks(diff, nextContextLines),
-      includeFullFile,
-    )
-
-    state.unifiedItems.set(cacheKey, items)
-    return items
-  }
-
   function scheduleThemeTransitionCleanup(root: HTMLElement) {
-    if (themeTransitionTimer !== null) {
-      window.clearTimeout(themeTransitionTimer)
-    }
-
-    themeTransitionTimer = window.setTimeout(() => {
-      root.classList.remove('theme-switching')
-      themeTransitionTimer = null
-    }, THEME_SWITCH_DURATION_MS)
+    scheduleThemeCleanup(root, themeTransitionTimer, THEME_SWITCH_DURATION_MS, (timer) => {
+      themeTransitionTimer = timer
+    })
   }
 
-  function buildDetailCacheKey(relativePath: string, revision = compareRevision) {
-    return [
+  function clearDetailPrefetch() {
+    diffCache.clearDetailPrefetch()
+  }
+
+  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
+    return diffCache.getOrCreateDetailDiffPromise({
       revision,
       leftPath,
       rightPath,
       relativePath,
-      ignoreWhitespace ? '1' : '0',
-      ignoreCase ? '1' : '0',
-    ].join('\u0000')
-  }
-
-  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
-    if (!leftPath || !rightPath) {
-      throw new Error('No active compare is available.')
-    }
-
-    const cacheKey = buildDetailCacheKey(relativePath, revision)
-    let resultPromise = detailDiffCache.get(cacheKey)
-
-    if (resultPromise) {
-      return resultPromise
-    }
-
-    resultPromise = openCompareItem(
-      leftPath,
-      rightPath,
-      relativePath,
-      getOptions(),
-    ).catch((error) => {
-      detailDiffCache.delete(cacheKey)
-      throw error
+      ignoreWhitespace,
+      ignoreCase,
     })
-
-    detailDiffCache.set(cacheKey, resultPromise)
-    return resultPromise
-  }
-
-  function clearDetailPrefetch() {
-    if (detailPrefetchTimer !== null) {
-      window.clearTimeout(detailPrefetchTimer)
-      detailPrefetchTimer = null
-    }
   }
 
   function scheduleAdjacentDiffPrefetch(centerRelativePath: string, revision = compareRevision) {
-    clearDetailPrefetch()
-
-    if (
-      screen !== 'compare' ||
-      mode !== 'directory' ||
-      !leftPath ||
-      !rightPath ||
-      filteredDirectoryEntries.length < 2
-    ) {
-      return
-    }
-
-    const centerIndex = filteredDirectoryEntries.findIndex(
-      (entry) => entry.relativePath === centerRelativePath,
-    )
-
-    if (centerIndex === -1) {
-      return
-    }
-
-    const candidates: DirectoryEntryResult[] = []
-
-    for (let offset = 1; offset <= DIFF_PREFETCH_RADIUS; offset += 1) {
-      const nextEntry = filteredDirectoryEntries[centerIndex + offset]
-      const previousEntry = filteredDirectoryEntries[centerIndex - offset]
-
-      if (nextEntry) {
-        candidates.push(nextEntry)
-      }
-
-      if (previousEntry) {
-        candidates.push(previousEntry)
-      }
-    }
-
-    if (candidates.length === 0) {
-      return
-    }
-
-    detailPrefetchTimer = window.setTimeout(() => {
-      detailPrefetchTimer = null
-
-      if (revision !== compareRevision || !leftPath || !rightPath) {
-        return
-      }
-
-      for (const entry of candidates) {
-        void getOrCreateDetailDiffPromise(entry.relativePath, revision).catch(() => undefined)
-      }
-    }, DIFF_PREFETCH_DELAY_MS)
-  }
-
-  function createExplorerPane(title: string): ExplorerPaneState {
-    return {
-      title,
-      roots: [],
-      currentPath: '',
-      pathInput: '',
-      currentListing: null,
-      listings: {},
-      history: [],
-      historyIndex: -1,
-      selectedTargetPath: '',
-      selectedTargetKind: null,
-      loading: false,
-      error: '',
-    }
+    diffCache.scheduleAdjacentDiffPrefetch({
+      centerRelativePath,
+      revision,
+      activeRevision: compareRevision,
+      screen,
+      mode,
+      leftPath,
+      rightPath,
+      filteredDirectoryEntries,
+      ignoreWhitespace,
+      ignoreCase,
+      prefetchRadius: DIFF_PREFETCH_RADIUS,
+      prefetchDelayMs: DIFF_PREFETCH_DELAY_MS,
+    })
   }
 
   function paneFor(side: Side) {
@@ -1305,7 +804,7 @@
     }
 
     activeDetailRequestId += 1
-    detailDiffCache.clear()
+    diffCache.clearDetailDiffs()
     clearDetailPrefetch()
     detailLoading = false
     mode = nextMode
@@ -1320,26 +819,6 @@
     selectedRelativePath = ''
     activeDiff = null
     errorMessage = ''
-  }
-
-  function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMode) {
-    if (nextMode === 'file' && pane.selectedTargetKind !== 'file') {
-      return {
-        ...pane,
-        selectedTargetPath: '',
-        selectedTargetKind: null,
-      }
-    }
-
-    if (nextMode === 'directory' && pane.selectedTargetKind !== 'directory') {
-      return {
-        ...pane,
-        selectedTargetPath: '',
-        selectedTargetKind: null,
-      }
-    }
-
-    return pane
   }
 
   function goToSetup() {
@@ -1413,13 +892,6 @@
     resetPreferenceState()
     clearRememberedSelections()
     goToSetup()
-  }
-
-  function retitlePane(pane: ExplorerPaneState, title: string): ExplorerPaneState {
-    return {
-      ...pane,
-      title,
-    }
   }
 
   async function swapComparedSides() {
@@ -1643,7 +1115,7 @@
     try {
       const response = await comparePaths(nextLeftPath, nextRightPath, mode, getOptions())
       compareRevision += 1
-      detailDiffCache.clear()
+      diffCache.clearDetailDiffs()
       screen = 'compare'
 
       if (response.kind === 'directory') {
@@ -1722,58 +1194,6 @@
     }
   }
 
-  function buildGroups(entries: DirectoryEntryResult[]) {
-    const groups = new Map<string, DirectoryEntryResult[]>()
-
-    for (const entry of entries) {
-      const groupKey = getParentPath(entry.relativePath)
-
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, [])
-      }
-
-      groups.get(groupKey)?.push(entry)
-    }
-
-    return Array.from(groups.entries())
-      .map(([key, groupedEntries]) => ({
-        key,
-        label: key === ROOT_GROUP ? 'Root' : key,
-        entries: [...groupedEntries].sort((left, right) =>
-          left.relativePath.localeCompare(right.relativePath),
-        ),
-      }))
-      .sort((left, right) => left.label.localeCompare(right.label))
-  }
-
-  function filterDirectoryEntries(
-    entries: DirectoryEntryResult[],
-    statusFilters: EntryStatus[],
-  ) {
-    if (statusFilters.length === 0) {
-      return entries
-    }
-
-    return entries.filter((entry) => statusFilters.includes(entry.status))
-  }
-
-  function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {
-    return entries.find((entry) => getParentPath(entry.relativePath) === ROOT_GROUP) ?? entries[0]
-  }
-
-  function reconcileCollapsedState(
-    previousState: Record<string, boolean>,
-    sections: FolderSection[],
-  ) {
-    const nextState: Record<string, boolean> = {}
-
-    for (const section of sections) {
-      nextState[section.key] = previousState[section.key] ?? false
-    }
-
-    return nextState
-  }
-
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
     filteredDirectoryEntries = filterDirectoryEntries(entries, activeStatusFilters)
     filteredEntryGroups = buildGroups(filteredDirectoryEntries)
@@ -1846,7 +1266,7 @@
     }
 
     const threshold = container.getBoundingClientRect().top + 16
-    let nextCurrentIndex = 0
+    let nextCurrentIndex = -1
 
     for (const [index, anchor] of anchors.entries()) {
       if (anchor.getBoundingClientRect().top <= threshold) {
@@ -1934,13 +1354,6 @@
       window.cancelAnimationFrame(paneWheelScrollFrame)
       paneWheelScrollFrame = null
     }
-  }
-
-  function getScrollTopForAnchor(container: HTMLDivElement, anchor: HTMLElement) {
-    return clampScrollOffset(
-      container.scrollTop + anchor.getBoundingClientRect().top - container.getBoundingClientRect().top - 8,
-      getMaxScrollTop(container),
-    )
   }
 
   function getSideBySideDiffAnchorPair(targetIndex: number) {
@@ -2091,7 +1504,7 @@
 
     const targetIndex = Math.min(
       visibleDiffHunkCount - 1,
-      (currentDiffHunk === -1 ? 0 : currentDiffHunk) + 1,
+      currentDiffHunk === -1 ? 0 : currentDiffHunk + 1,
     )
     scrollDiffHunkIntoView(targetIndex)
   }
@@ -2100,36 +1513,8 @@
     return side === 'left' ? leftPaneScroll : rightPaneScroll
   }
 
-  function getMaxScrollTop(element: HTMLDivElement) {
-    return Math.max(0, element.scrollHeight - element.clientHeight)
-  }
-
-  function getMaxScrollLeft(element: HTMLDivElement) {
-    return Math.max(0, element.scrollWidth - element.clientWidth)
-  }
-
-  function clampScrollOffset(nextValue: number, maxValue: number) {
-    return Math.min(Math.max(nextValue, 0), maxValue)
-  }
-
-  function mapScrollOffset(
-    sourceOffset: number,
-    sourceMaxOffset: number,
-    targetMaxOffset: number,
-  ) {
-    if (targetMaxOffset <= 0) {
-      return 0
-    }
-
-    if (sourceMaxOffset <= 0) {
-      return clampScrollOffset(sourceOffset, targetMaxOffset)
-    }
-
-    return clampScrollOffset((sourceOffset / sourceMaxOffset) * targetMaxOffset, targetMaxOffset)
-  }
-
   function getPaneContentRoot(pane: HTMLDivElement) {
-    const contentRoot = pane.firstElementChild
+    const contentRoot = pane.querySelector('[data-pane-content-root="true"]')
     return contentRoot instanceof HTMLDivElement ? contentRoot : null
   }
 
@@ -2179,25 +1564,67 @@
   function mapPaneScrollTop(sourcePane: HTMLDivElement, targetPane: HTMLDivElement) {
     const sourceContentRoot = getPaneContentRoot(sourcePane)
     const targetContentRoot = getPaneContentRoot(targetPane)
+    const sourceMaxScrollTop = getMaxScrollTop(sourcePane)
+    const targetMaxScrollTop = getMaxScrollTop(targetPane)
+
+    if (!wrapSideBySideLines) {
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
+    }
+
+    if (sourcePane.scrollTop <= 1) {
+      return 0
+    }
+
+    if (sourceMaxScrollTop - sourcePane.scrollTop <= 1) {
+      return targetMaxScrollTop
+    }
 
     if (!sourceContentRoot || !targetContentRoot) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     if (sourceContentRoot.children.length !== targetContentRoot.children.length) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
+    }
+
+    const sourceLastItem = sourceContentRoot.lastElementChild
+    const targetLastItem = targetContentRoot.lastElementChild
+
+    if (sourceLastItem instanceof HTMLElement && targetLastItem instanceof HTMLElement) {
+      const sourceTrailingStart = Math.max(
+        0,
+        sourceLastItem.offsetTop + sourceLastItem.offsetHeight - sourcePane.clientHeight,
+      )
+      const targetTrailingStart = Math.max(
+        0,
+        targetLastItem.offsetTop + targetLastItem.offsetHeight - targetPane.clientHeight,
+      )
+
+      if (sourcePane.scrollTop >= sourceTrailingStart) {
+        const sourceTrailingRange = Math.max(1, sourceMaxScrollTop - sourceTrailingStart)
+        const targetTrailingRange = Math.max(0, targetMaxScrollTop - targetTrailingStart)
+        const trailingProgress = clampScrollOffset(
+          (sourcePane.scrollTop - sourceTrailingStart) / sourceTrailingRange,
+          1,
+        )
+
+        return clampScrollOffset(
+          targetTrailingStart + trailingProgress * targetTrailingRange,
+          targetMaxScrollTop,
+        )
+      }
     }
 
     const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
 
     if (!sourceMatch) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     const targetItem = targetContentRoot.children.item(sourceMatch.index)
 
     if (!(targetItem instanceof HTMLElement)) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     const sourceItemHeight = Math.max(sourceMatch.item.offsetHeight, 1)
@@ -2210,20 +1637,8 @@
 
     return clampScrollOffset(
       targetItem.offsetTop + itemProgress * targetItemHeight,
-      getMaxScrollTop(targetPane),
+      targetMaxScrollTop,
     )
-  }
-
-  function normalizeWheelDelta(delta: number, deltaMode: number) {
-    if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
-      return delta * 16
-    }
-
-    if (deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-      return delta * 100
-    }
-
-    return delta
   }
 
   function applyPaneScrollSync(source: 'left' | 'right') {
@@ -2239,9 +1654,6 @@
     const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
 
     scrollEchoTarget = targetSide
-    scrollEchoTop = nextTargetTop
-    scrollEchoLeft = nextTargetLeft
-
     if (Math.abs(targetPane.scrollTop - nextTargetTop) >= 0.5) {
       targetPane.scrollTop = nextTargetTop
     }
@@ -2373,93 +1785,12 @@
       return
     }
 
-    if (
-      source === scrollEchoTarget &&
-      Math.abs(sourcePane.scrollTop - scrollEchoTop) < 1 &&
-      Math.abs(sourcePane.scrollLeft - scrollEchoLeft) < 1
-    ) {
+    if (source === scrollEchoTarget) {
       scrollEchoTarget = null
       return
     }
 
     applyPaneScrollSync(source)
-  }
-
-  function buildNextHistoryState(
-    pane: ExplorerPaneState,
-    path: string,
-    historyMode: 'push' | 'keep',
-  ) {
-    if (historyMode === 'keep') {
-      return {
-        history: pane.history,
-        historyIndex: pane.historyIndex,
-      }
-    }
-
-    const currentPath = pane.history[pane.historyIndex]
-
-    if (currentPath === path) {
-      return {
-        history: pane.history,
-        historyIndex: pane.historyIndex,
-      }
-    }
-
-    const nextHistory = pane.history.slice(0, pane.historyIndex + 1)
-    nextHistory.push(path)
-
-    return {
-      history: nextHistory,
-      historyIndex: nextHistory.length - 1,
-    }
-  }
-
-  function canGoBack(pane: ExplorerPaneState) {
-    return pane.historyIndex > 0
-  }
-
-  function canGoForward(pane: ExplorerPaneState) {
-    return pane.historyIndex !== -1 && pane.historyIndex < pane.history.length - 1
-  }
-
-  function currentDrive(pane: ExplorerPaneState) {
-    const normalized = pane.currentPath.toLowerCase()
-
-    return pane.roots.find((root) => normalized.startsWith(root.path.toLowerCase()))?.path ?? ''
-  }
-
-  function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPane {
-    return {
-      currentPath: pane.currentPath,
-      history: pane.history,
-      historyIndex: pane.historyIndex,
-      selectedTargetPath: pane.selectedTargetPath,
-      selectedTargetKind: pane.selectedTargetKind,
-    }
-  }
-
-  function buildPersistedSession(): PersistedSession {
-    return {
-      mode,
-      viewMode,
-      themeMode: appearanceSettings.mode,
-      appearance: appearanceSettings,
-      ignoreWhitespace,
-      ignoreCase,
-      showFullFile,
-      showInlineHighlights,
-      wrapSideBySideLines,
-      showSyntaxHighlighting,
-      syncSideBySideScroll,
-      viewerTextSize: appearanceSettings.codeFontSize,
-      contextLines,
-      checkForUpdatesOnLaunch,
-      updateChannel,
-      lastUpdateCheckAt,
-      leftPane: buildPersistedPane(leftExplorer),
-      rightPane: buildPersistedPane(rightExplorer),
-    }
   }
 
   function scheduleSessionSave() {
@@ -2471,7 +1802,24 @@
       window.clearTimeout(saveSessionTimer)
     }
 
-    const session = buildPersistedSession()
+    const session = buildPersistedSession({
+      mode,
+      viewMode,
+      appearanceSettings,
+      ignoreWhitespace,
+      ignoreCase,
+      showFullFile,
+      showInlineHighlights,
+      wrapSideBySideLines,
+      showSyntaxHighlighting,
+      syncSideBySideScroll,
+      contextLines,
+      checkForUpdatesOnLaunch,
+      updateChannel,
+      lastUpdateCheckAt,
+      leftPane: leftExplorer,
+      rightPane: rightExplorer,
+    })
 
     saveSessionTimer = window.setTimeout(() => {
       void saveSessionState(session).catch(() => undefined)
@@ -2558,13 +1906,21 @@
 
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
-      sideBySideHunkRanges = getCachedSideBySideHunks(activeDiff, contextLines)
-      sideBySideRenderItems = getCachedSideBySideRenderItems(activeDiff, showFullFile, contextLines)
+      sideBySideHunkRanges = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
+      sideBySideRenderItems = diffCache.getCachedSideBySideRenderItems(
+        activeDiff,
+        showFullFile,
+        contextLines,
+      )
       unifiedHunkRanges = []
       unifiedRenderItems = []
     } else {
-      unifiedHunkRanges = getCachedUnifiedHunks(activeDiff, contextLines)
-      unifiedRenderItems = getCachedUnifiedRenderItems(activeDiff, showFullFile, contextLines)
+      unifiedHunkRanges = diffCache.getCachedUnifiedHunks(activeDiff, contextLines)
+      unifiedRenderItems = diffCache.getCachedUnifiedRenderItems(
+        activeDiff,
+        showFullFile,
+        contextLines,
+      )
       sideBySideHunkRanges = []
       sideBySideRenderItems = []
     }
@@ -2587,19 +1943,21 @@
 
   $: textDiffActive = activeDiff?.contentKind === 'text'
 
-  $: canGoToPreviousDiff = canNavigateDiffs && Math.max(currentDiffHunk, 0) > 0
+  $: canGoToPreviousDiff = canNavigateDiffs && currentDiffHunk > 0
 
   $: canGoToNextDiff =
-    canNavigateDiffs && Math.max(currentDiffHunk, 0) < visibleDiffHunkCount - 1
+    canNavigateDiffs && currentDiffHunk < visibleDiffHunkCount - 1
 
   $: diffFontSize = `${appearanceSettings.codeFontSize}px`
   $: diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   $: diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
-  $: resolvedThemeMode = resolveVariant(appearanceSettings.mode, systemPrefersDark)
-  $: lightAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'light')
-  $: darkAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'dark')
-  $: visibleAppearanceVariants =
-    appearanceSettings.mode === 'system' ? ['light', 'dark'] : [appearanceSettings.mode]
+  $: {
+    const appearanceState = resolveAppearanceState(appearanceSettings, systemPrefersDark)
+    resolvedThemeMode = appearanceState.resolvedThemeMode
+    lightAppearanceTheme = appearanceState.lightAppearanceTheme
+    darkAppearanceTheme = appearanceState.darkAppearanceTheme
+    visibleAppearanceVariants = appearanceState.visibleAppearanceVariants
+  }
 
   $: if (screen === 'compare') {
     activeDiff
@@ -2615,14 +1973,7 @@
 
   $: if (typeof document !== 'undefined') {
     const root = document.documentElement
-    root.dataset.theme = resolvedThemeMode
-    root.style.colorScheme = resolvedThemeMode
-
-    for (const [name, value] of Object.entries(
-      resolveThemeCssVariables(appearanceSettings, systemPrefersDark),
-    )) {
-      root.style.setProperty(name, value)
-    }
+    applyAppearanceToRoot(root, appearanceSettings, systemPrefersDark, resolvedThemeMode)
   }
 
   $: if (persistenceReady) {
@@ -2743,8 +2094,11 @@
 
       <div class="app-bar-actions setup-bar-actions">
         <div class="setup-mode-switch">
-          <span>Compare</span>
-          <div class="segmented-control" aria-label="Compare mode">
+          <div
+            class="segmented-control toolbar-segmented-control setup-segmented-control"
+            aria-label="Compare mode"
+            role="group"
+          >
             <button
               aria-pressed={mode === 'file'}
               class:active={mode === 'file'}
@@ -2759,7 +2113,7 @@
               type="button"
               on:click={() => setMode('directory')}
             >
-              Directories
+              Folders
             </button>
           </div>
         </div>
@@ -2865,7 +2219,11 @@
 
       <div class="app-bar-actions compare-actions">
         <div class="compare-action-group diff-nav-actions">
-          <div class="nav-button-group" aria-label="Diff navigation" role="group">
+          <div
+            class="nav-button-group segmented-control toolbar-segmented-control"
+            aria-label="Diff navigation"
+            role="group"
+          >
             <button
               class="secondary toolbar-button nav-button nav-button-group-item"
               aria-label="Jump to the previous difference"

@@ -167,6 +167,13 @@ export function createThemeCssVariables(
         theme.surface,
         isDark ? scaleByContrast(contrastScale, 0.74, 0.9) : scaleByContrast(contrastScale, 0.88, 0.97)
       )
+  const listBgResolved = theme.opaqueWindows
+    ? theme.surface
+    : compositeHex(
+        theme.surface,
+        canvas,
+        isDark ? scaleByContrast(contrastScale, 0.74, 0.9) : scaleByContrast(contrastScale, 0.88, 0.97)
+      )
   const paneHeaderBg = theme.opaqueWindows
     ? surfaceStrong
     : rgbaFromHex(surfaceStrong, paneHeaderAlpha)
@@ -234,8 +241,9 @@ export function createThemeCssVariables(
   const textContrastTarget = scaleByContrast(contrastScale, 4.5, 6.4)
   const mutedContrastTarget = scaleByContrast(contrastScale, 4.45, 5.4)
   const secondaryContrastTarget = scaleByContrast(contrastScale, 4.6, 5.9)
-  const syntaxContrastTarget = scaleByContrast(contrastScale, 3.7, 5)
-  const syntaxMutedContrastTarget = scaleByContrast(contrastScale, 4.05, 5.2)
+  const syntaxContrastTarget = scaleByContrast(contrastScale, 3.45, 4.55)
+  const syntaxMutedContrastTarget = scaleByContrast(contrastScale, 3.7, 4.7)
+  const syntaxTextSeparationTarget = scaleByContrast(contrastScale, isDark ? 1.26 : 1.2, isDark ? 1.42 : 1.3)
   const readableText = ensureReadableForeground(
     theme.ink,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
@@ -255,7 +263,23 @@ export function createThemeCssVariables(
     readableText,
     secondaryContrastTarget
   )
-  const activeText = pickReadableText(accentSoft, readableText, 4.5)
+  const activeSurface = ensureDistinguishableSurface(
+    mixHex(
+      theme.surface,
+      accentStrong,
+      isDark ? scaleByContrast(contrastScale, 0.22, 0.44) : scaleByContrast(contrastScale, 0.18, 0.34)
+    ),
+    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved, listBgResolved],
+    readableText,
+    isDark ? 1.18 : 1.16
+  )
+  const activeBorder = ensureReadableForeground(
+    accentStrong,
+    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved, listBgResolved],
+    readableText,
+    scaleByContrast(contrastScale, 2.7, 3.3)
+  )
+  const activeText = pickReadableText(activeSurface, readableText, 4.5)
   const primaryText = pickReadableText(theme.accent, readableText, 4.5)
   const primaryHoverText = pickReadableText(accentStrong, readableText, 4.5)
   const dangerText = pickReadableText(dangerBg, readableText, 4.5)
@@ -271,50 +295,88 @@ export function createThemeCssVariables(
     secondaryText,
     4.5
   )
+  const selectedRowBg = ensureDistinguishableSurface(
+    mixHex(
+      listBgResolved,
+      activeBorder,
+      isDark ? scaleByContrast(contrastScale, 0.18, 0.34) : scaleByContrast(contrastScale, 0.15, 0.28)
+    ),
+    [theme.surface, surfaceAlt, panelBgResolved, listBgResolved],
+    readableText,
+    isDark ? 1.16 : 1.14
+  )
   const syntaxBackgrounds = [diffContextBgResolved, diffInsertBg, diffDeleteBg]
-  const syntaxKeyword = ensureReadableForeground(
+  const syntaxKeyword = ensureReadableSyntaxForeground(
     theme.semanticColors.skill,
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxType = ensureReadableForeground(accentStrong, syntaxBackgrounds, theme.ink, syntaxContrastTarget)
-  const syntaxString = ensureReadableForeground(
+  const syntaxType = ensureReadableSyntaxForeground(
+    accentStrong,
+    syntaxBackgrounds,
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
+  )
+  const syntaxString = ensureReadableSyntaxForeground(
     theme.semanticColors.diffAdded,
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxNumber = ensureReadableForeground(warning, syntaxBackgrounds, theme.ink, syntaxContrastTarget)
-  const syntaxFunction = ensureReadableForeground(
+  const syntaxNumber = ensureReadableSyntaxForeground(
+    warning,
+    syntaxBackgrounds,
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
+  )
+  const syntaxFunction = ensureReadableSyntaxForeground(
     mixHex(theme.accent, theme.semanticColors.skill, 0.38),
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxProperty = ensureReadableForeground(
+  const syntaxProperty = ensureReadableSyntaxForeground(
     mixHex(theme.accent, theme.ink, isDark ? 0.16 : 0.24),
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxConstant = ensureReadableForeground(
+  const syntaxConstant = ensureReadableSyntaxForeground(
     theme.semanticColors.diffRemoved,
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxSelector = ensureReadableForeground(
+  const syntaxSelector = ensureReadableSyntaxForeground(
     mixHex(theme.accent, theme.semanticColors.diffAdded, 0.26),
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
-  const syntaxRegex = ensureReadableForeground(
+  const syntaxRegex = ensureReadableSyntaxForeground(
     mixHex(theme.semanticColors.diffAdded, theme.accent, 0.22),
     syntaxBackgrounds,
-    theme.ink,
-    syntaxContrastTarget
+    readableText,
+    isDark ? '#FFFFFF' : '#111111',
+    syntaxContrastTarget,
+    syntaxTextSeparationTarget
   )
 
   return {
@@ -340,6 +402,8 @@ export function createThemeCssVariables(
     '--accent': theme.accent,
     '--accent-strong': accentStrong,
     '--accent-soft': accentSoft,
+    '--active-surface': activeSurface,
+    '--active-border': activeBorder,
     '--accent-alt': accentAlt,
     '--accent-alt-soft': accentAltSoft,
     '--accent-olive': accentOlive,
@@ -377,10 +441,7 @@ export function createThemeCssVariables(
     ),
     '--list-bg': listBg,
     '--list-header-bg': paneHeaderBg,
-    '--selection-bg': rgbaFromHex(
-      theme.accent,
-      isDark ? scaleByContrast(contrastScale, 0.1, 0.24) : scaleByContrast(contrastScale, 0.07, 0.18)
-    ),
+    '--selection-bg': selectedRowBg,
     '--icon-color': mixHex(theme.ink, theme.accent, 0.32),
     '--status-modified-bg': statusModifiedBg,
     '--status-modified-border': mixHex(theme.surface, theme.accent, isDark ? 0.3 : 0.2),
@@ -671,6 +732,92 @@ function ensureReadableForeground(
   return minContrastRatio(fallbackCandidate, backgrounds) > bestRatio
     ? fallbackCandidate
     : bestCandidate
+}
+
+function ensureReadableSyntaxForeground(
+  color: string,
+  background: string | string[],
+  baseTextColor: string,
+  readabilityFallbackColor: string,
+  minRatio = 4.5,
+  minTextDelta = 1.2
+): string {
+  const normalizedColor = normalizeHexColor(color)
+  const normalizedBaseText = normalizeHexColor(baseTextColor)
+  const normalizedFallback = normalizeHexColor(readabilityFallbackColor)
+  const backgrounds = Array.isArray(background) ? background : [background]
+
+  const readableCandidate = ensureReadableForeground(
+    normalizedColor,
+    backgrounds,
+    normalizedFallback,
+    minRatio
+  )
+
+  if (contrastRatio(readableCandidate, normalizedBaseText) >= minTextDelta) {
+    return readableCandidate
+  }
+
+  const oppositeOfBaseText =
+    contrastRatio('#111111', normalizedBaseText) > contrastRatio('#FFFFFF', normalizedBaseText)
+      ? '#111111'
+      : '#FFFFFF'
+
+  let bestCandidate = readableCandidate
+  let bestTextDelta = contrastRatio(readableCandidate, normalizedBaseText)
+
+  for (let amount = 0.04; amount <= 1; amount += 0.04) {
+    const candidate = mixHex(normalizedColor, oppositeOfBaseText, amount)
+    const contrast = minContrastRatio(candidate, backgrounds)
+    if (contrast < minRatio) {
+      continue
+    }
+
+    const textDelta = contrastRatio(candidate, normalizedBaseText)
+    if (textDelta > bestTextDelta) {
+      bestCandidate = candidate
+      bestTextDelta = textDelta
+    }
+
+    if (textDelta >= minTextDelta) {
+      return candidate
+    }
+  }
+
+  return bestCandidate
+}
+
+function ensureDistinguishableSurface(
+  color: string,
+  background: string | string[],
+  fallbackColor: string,
+  minRatio = 1.14
+): string {
+  const normalizedColor = normalizeHexColor(color)
+  const normalizedFallback = normalizeHexColor(fallbackColor)
+  const backgrounds = Array.isArray(background) ? background : [background]
+
+  if (minContrastRatio(normalizedColor, backgrounds) >= minRatio) {
+    return normalizedColor
+  }
+
+  let bestCandidate = normalizedColor
+  let bestRatio = minContrastRatio(normalizedColor, backgrounds)
+
+  for (let amount = 0.04; amount <= 1; amount += 0.04) {
+    const candidate = mixHex(normalizedColor, normalizedFallback, amount)
+    const contrast = minContrastRatio(candidate, backgrounds)
+    if (contrast > bestRatio) {
+      bestCandidate = candidate
+      bestRatio = contrast
+    }
+
+    if (contrast >= minRatio) {
+      return candidate
+    }
+  }
+
+  return bestCandidate
 }
 
 function minContrastRatio(foreground: string, backgrounds: string[]): number {
