@@ -2645,7 +2645,7 @@ button.filter-chip.tooLarge:focus-visible {
 .unified-grid-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   position: relative;
   min-height: 0;
   height: 100%;
@@ -2659,6 +2659,8 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-vertical-scroll,
 .unified-vertical-scroll {
   position: relative;
+  grid-column: 1;
+  grid-row: 1 / span 2;
   min-height: 0;
   height: auto;
   max-height: 100%;
@@ -2672,6 +2674,11 @@ button.filter-chip.tooLarge:focus-visible {
 .left-diff-pane .pane-vertical-scroll {
   overflow-y: hidden;
   scrollbar-gutter: auto;
+}
+
+.pane-vertical-scroll.pinned-bottom-scrollbar,
+.unified-vertical-scroll.pinned-bottom-scrollbar {
+  grid-row: 1;
 }
 
 .pane-scroll,
@@ -2698,8 +2705,6 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-scroll::-webkit-scrollbar,
 .unified-grid::-webkit-scrollbar {
-  width: 0;
-  height: 0;
   display: none;
 }
 
@@ -2912,15 +2917,16 @@ button.filter-chip.tooLarge:focus-visible {
 
 .pane-bottom-scrollbar {
   margin-top: 0;
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--diff-divider);
   background: var(--diff-context-bg);
   scrollbar-gutter: stable;
+}
+
+.pane-bottom-scrollbar.pinned-bottom-scrollbar {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .pane-bottom-scrollbar-track {
@@ -2930,7 +2936,7 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker-overlay {
   position: relative;
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 1 / span 2;
   z-index: 4;
   pointer-events: none;
 }

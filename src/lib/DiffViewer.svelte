@@ -56,6 +56,8 @@
   let unifiedContentWidth = 0
   let leftPaneTrailingSpace = 0
   let rightPaneTrailingSpace = 0
+  let sideBySideBottomScrollbarPinned = false
+  let unifiedBottomScrollbarPinned = false
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
   let scrollMarkerRefreshQueued = false
@@ -277,6 +279,7 @@
       sideBySideContentWidth = 0
       leftPaneTrailingSpace = 0
       rightPaneTrailingSpace = 0
+      sideBySideBottomScrollbarPinned = false
       return
     }
 
@@ -299,6 +302,7 @@
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
     rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
+    sideBySideBottomScrollbarPinned = sharedMaxScrollTop > 0
   }
 
   async function updateUnifiedContentWidth() {
@@ -306,10 +310,12 @@
 
     if (!unifiedScroll || !unifiedContentGrid) {
       unifiedContentWidth = 0
+      unifiedBottomScrollbarPinned = false
       return
     }
 
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
+    unifiedBottomScrollbarPinned = unifiedContentGrid.scrollHeight > unifiedScroll.clientHeight
   }
 
   function scheduleScrollMarkerRefresh() {
@@ -562,6 +568,7 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={leftPaneScroll}
+              class:pinned-bottom-scrollbar={sideBySideBottomScrollbarPinned}
               class="pane-vertical-scroll pane-vertical-scroll-left"
               on:wheel={(event) => syncPaneWheel(event, 'left')}
               on:scroll={() => syncPaneScroll('left')}
@@ -618,10 +625,25 @@
                 {/each}
                 </div>
               </div>
+              {#if !sideBySideBottomScrollbarPinned}
+                <div
+                  bind:this={leftPaneBottomScrollbar}
+                  aria-hidden="true"
+                  class="pane-bottom-scrollbar"
+                  on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
+                >
+                  <div
+                    class="pane-bottom-scrollbar-track"
+                    style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+                  ></div>
+                </div>
+              {/if}
+            </div>
+            {#if sideBySideBottomScrollbarPinned}
               <div
                 bind:this={leftPaneBottomScrollbar}
                 aria-hidden="true"
-                class="pane-bottom-scrollbar"
+                class="pane-bottom-scrollbar pinned-bottom-scrollbar"
                 on:scroll={() => syncSplitHorizontalScroll(leftPaneBottomScrollbar?.scrollLeft ?? 0)}
               >
                 <div
@@ -629,7 +651,7 @@
                   style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
                 ></div>
               </div>
-            </div>
+            {/if}
           </div>
         </section>
 
@@ -642,6 +664,7 @@
           <div class="pane-scroll-shell">
             <div
               bind:this={rightPaneScroll}
+              class:pinned-bottom-scrollbar={sideBySideBottomScrollbarPinned}
               class="pane-vertical-scroll pane-vertical-scroll-right"
               on:wheel={(event) => syncPaneWheel(event, 'right')}
               on:scroll={() => syncPaneScroll('right')}
@@ -698,10 +721,25 @@
                 {/each}
                 </div>
               </div>
+              {#if !sideBySideBottomScrollbarPinned}
+                <div
+                  bind:this={rightPaneBottomScrollbar}
+                  aria-hidden="true"
+                  class="pane-bottom-scrollbar"
+                  on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
+                >
+                  <div
+                    class="pane-bottom-scrollbar-track"
+                    style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
+                  ></div>
+                </div>
+              {/if}
+            </div>
+            {#if sideBySideBottomScrollbarPinned}
               <div
                 bind:this={rightPaneBottomScrollbar}
                 aria-hidden="true"
-                class="pane-bottom-scrollbar"
+                class="pane-bottom-scrollbar pinned-bottom-scrollbar"
                 on:scroll={() => syncSplitHorizontalScroll(rightPaneBottomScrollbar?.scrollLeft ?? 0)}
               >
                 <div
@@ -709,7 +747,7 @@
                   style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
                 ></div>
               </div>
-            </div>
+            {/if}
             <div class="scroll-marker-overlay split-scroll-marker-overlay">
               <div class="scroll-marker-rail">
                 {#each rightScrollMarkers as marker}
@@ -732,6 +770,7 @@
       <div class="unified-grid-shell">
         <div
           bind:this={unifiedScroll}
+          class:pinned-bottom-scrollbar={unifiedBottomScrollbarPinned}
           class="pane-vertical-scroll unified-vertical-scroll"
           on:scroll={scheduleScrollNavigationRefresh}
         >
@@ -780,17 +819,19 @@
             {/each}
             </div>
           </div>
-          <div
-            bind:this={unifiedBottomScrollbar}
-            aria-hidden="true"
-            class="pane-bottom-scrollbar"
-            on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
-          >
+          {#if !unifiedBottomScrollbarPinned}
             <div
-              class="pane-bottom-scrollbar-track"
-              style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
-            ></div>
-          </div>
+              bind:this={unifiedBottomScrollbar}
+              aria-hidden="true"
+              class="pane-bottom-scrollbar"
+              on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
+            >
+              <div
+                class="pane-bottom-scrollbar-track"
+                style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
+              ></div>
+            </div>
+          {/if}
           <div class="scroll-marker-overlay">
             <div class="scroll-marker-rail">
               {#each unifiedScrollMarkers as marker}
@@ -807,6 +848,19 @@
             </div>
           </div>
         </div>
+        {#if unifiedBottomScrollbarPinned}
+          <div
+            bind:this={unifiedBottomScrollbar}
+            aria-hidden="true"
+            class="pane-bottom-scrollbar pinned-bottom-scrollbar"
+            on:scroll={() => syncUnifiedHorizontalScroll(unifiedBottomScrollbar?.scrollLeft ?? 0)}
+          >
+            <div
+              class="pane-bottom-scrollbar-track"
+              style:width={unifiedContentWidth ? `${unifiedContentWidth}px` : '100%'}
+            ></div>
+          </div>
+        {/if}
       </div>
       {/if}
     {:else if activeDiff.contentKind === 'image'}
