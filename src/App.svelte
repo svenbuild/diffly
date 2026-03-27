@@ -36,6 +36,18 @@
     type UpdateIndicatorState,
     type UpdateStatus,
   } from './lib/app/update-controller'
+  import {
+    applyAppearanceToRoot,
+    resolveAppearanceState,
+    scheduleThemeTransitionCleanup as scheduleThemeCleanup,
+    setThemeColorOverride as applyThemeColorOverride,
+    setThemeContrast as applyThemeContrast,
+    setThemeFontOverride as applyThemeFontOverride,
+    setThemeMode as applyThemeMode,
+    setThemePreset as applyThemePreset,
+    setThemeSemanticColorOverride as applyThemeSemanticColorOverride,
+    setThemeTranslucency as applyThemeTranslucency,
+  } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
@@ -78,19 +90,13 @@
   import {
     getAvailableThemes,
     getDefaultAppearanceSettings,
-    resolveVariant,
     type AppearanceSettings,
     type ThemeDefinition,
-    type ThemeId,
     type ThemeSemanticColorKey,
     type ThemeVariant,
   } from './lib/theme'
   import {
     normalizeAppearanceSettings,
-    resolveThemeCssVariables,
-    resolveThemeForVariant,
-    setVariantOverride,
-    setVariantThemeId,
     MAX_CODE_FONT_SIZE,
     MAX_UI_FONT_SIZE,
     MIN_CODE_FONT_SIZE,
@@ -142,10 +148,7 @@
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
-  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = resolveVariant(
-    appearanceSettings.mode,
-    systemPrefersDark
-  )
+  let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
   let showFullFile = false
   let showInlineHighlights = true
   let wrapSideBySideLines = false
@@ -259,9 +262,9 @@
   const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'binary', 'tooLarge']
   const availableLightThemes = getAvailableThemes('light')
   const availableDarkThemes = getAvailableThemes('dark')
-  let lightAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'light')
-  let darkAppearanceTheme: ThemeDefinition = resolveThemeForVariant(appearanceSettings, 'dark')
-  let visibleAppearanceVariants: ThemeVariant[] = [appearanceSettings.mode === 'dark' ? 'dark' : 'light']
+  let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
+  let darkAppearanceTheme: ThemeDefinition = getAvailableThemes('dark')[0]
+  let visibleAppearanceVariants: ThemeVariant[] = ['light']
 
   const getOptions = () => ({
     ignoreWhitespace,
@@ -481,55 +484,25 @@
     }
   }
 
-  function normalizeHexColor(value: string) {
-    return `#${value.trim().replace(/^#/, '').toUpperCase()}`
-  }
-
   function setThemeMode(nextThemeMode: ThemeMode) {
-    if (appearanceSettings.mode === nextThemeMode) {
-      return
-    }
-
-    if (typeof document === 'undefined') {
-      appearanceSettings = {
-        ...appearanceSettings,
-        mode: nextThemeMode,
-      }
-      return
-    }
-
-    const root = document.documentElement
-    root.classList.add('theme-switching')
-
-    if (typeof document.startViewTransition === 'function') {
-      void document
-        .startViewTransition(() => {
-          appearanceSettings = {
-            ...appearanceSettings,
-            mode: nextThemeMode,
-          }
-        })
-        .finished.finally(() => {
-          scheduleThemeTransitionCleanup(root)
-        })
-
-      return
-    }
-
-    appearanceSettings = {
-      ...appearanceSettings,
-      mode: nextThemeMode,
-    }
-    scheduleThemeTransitionCleanup(root)
+    applyThemeMode(
+      appearanceSettings,
+      nextThemeMode,
+      (nextAppearanceSettings) => {
+        appearanceSettings = nextAppearanceSettings
+      },
+      (root) => scheduleThemeTransitionCleanup(root),
+    )
   }
 
   function setThemePreset(variant: ThemeVariant, themeId: string) {
-    if (
-      (variant === 'light' && availableLightThemes.some((theme) => theme.id === themeId)) ||
-      (variant === 'dark' && availableDarkThemes.some((theme) => theme.id === themeId))
-    ) {
-      appearanceSettings = setVariantThemeId(appearanceSettings, variant, themeId as ThemeId)
-    }
+    appearanceSettings = applyThemePreset(
+      appearanceSettings,
+      variant,
+      themeId,
+      availableLightThemes,
+      availableDarkThemes,
+    )
   }
 
   function setThemeColorOverride(
@@ -537,17 +510,7 @@
     field: 'accent' | 'surface' | 'ink',
     value: string
   ) {
-    const nextColor = normalizeHexColor(value)
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextColor === base[field].toUpperCase()) {
-        delete next[field]
-      } else {
-        next[field] = nextColor
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeColorOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeSemanticColorOverride(
@@ -555,17 +518,7 @@
     field: ThemeSemanticColorKey,
     value: string
   ) {
-    const nextColor = normalizeHexColor(value)
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextColor === base.semanticColors[field].toUpperCase()) {
-        delete next[field]
-      } else {
-        next[field] = nextColor
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeSemanticColorOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeFontOverride(
@@ -573,48 +526,15 @@
     field: 'ui' | 'code',
     value: string
   ) {
-    const nextValue = value.trim() ? value.trim() : null
-    const overrideKey = field === 'ui' ? 'uiFont' : 'codeFont'
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      const baseValue = field === 'ui' ? base.fonts.ui : base.fonts.code
-
-      if (nextValue === baseValue) {
-        delete next[overrideKey]
-      } else {
-        next[overrideKey] = nextValue
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeFontOverride(appearanceSettings, variant, field, value)
   }
 
   function setThemeContrast(variant: ThemeVariant, value: number) {
-    const nextContrast = Math.min(100, Math.max(0, Math.round(value)))
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextContrast === base.contrast) {
-        delete next.contrast
-      } else {
-        next.contrast = nextContrast
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeContrast(appearanceSettings, variant, value)
   }
 
   function setThemeTranslucency(variant: ThemeVariant, enabled: boolean) {
-    const nextOpaqueWindows = !enabled
-
-    appearanceSettings = setVariantOverride(appearanceSettings, variant, (next, base) => {
-      if (nextOpaqueWindows === base.opaqueWindows) {
-        delete next.opaqueWindows
-      } else {
-        next.opaqueWindows = nextOpaqueWindows
-      }
-
-      return next
-    })
+    appearanceSettings = applyThemeTranslucency(appearanceSettings, variant, enabled)
   }
 
   function updateIndicatorTitle() {
@@ -681,14 +601,9 @@
   }
 
   function scheduleThemeTransitionCleanup(root: HTMLElement) {
-    if (themeTransitionTimer !== null) {
-      window.clearTimeout(themeTransitionTimer)
-    }
-
-    themeTransitionTimer = window.setTimeout(() => {
-      root.classList.remove('theme-switching')
-      themeTransitionTimer = null
-    }, THEME_SWITCH_DURATION_MS)
+    scheduleThemeCleanup(root, themeTransitionTimer, THEME_SWITCH_DURATION_MS, (timer) => {
+      themeTransitionTimer = timer
+    })
   }
 
   function clearDetailPrefetch() {
@@ -2075,11 +1990,13 @@
   $: diffFontSize = `${appearanceSettings.codeFontSize}px`
   $: diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   $: diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
-  $: resolvedThemeMode = resolveVariant(appearanceSettings.mode, systemPrefersDark)
-  $: lightAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'light')
-  $: darkAppearanceTheme = resolveThemeForVariant(appearanceSettings, 'dark')
-  $: visibleAppearanceVariants =
-    appearanceSettings.mode === 'system' ? ['light', 'dark'] : [appearanceSettings.mode]
+  $: {
+    const appearanceState = resolveAppearanceState(appearanceSettings, systemPrefersDark)
+    resolvedThemeMode = appearanceState.resolvedThemeMode
+    lightAppearanceTheme = appearanceState.lightAppearanceTheme
+    darkAppearanceTheme = appearanceState.darkAppearanceTheme
+    visibleAppearanceVariants = appearanceState.visibleAppearanceVariants
+  }
 
   $: if (screen === 'compare') {
     activeDiff
@@ -2095,14 +2012,7 @@
 
   $: if (typeof document !== 'undefined') {
     const root = document.documentElement
-    root.dataset.theme = resolvedThemeMode
-    root.style.colorScheme = resolvedThemeMode
-
-    for (const [name, value] of Object.entries(
-      resolveThemeCssVariables(appearanceSettings, systemPrefersDark),
-    )) {
-      root.style.setProperty(name, value)
-    }
+    applyAppearanceToRoot(root, appearanceSettings, systemPrefersDark, resolvedThemeMode)
   }
 
   $: if (persistenceReady) {
