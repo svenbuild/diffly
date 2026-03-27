@@ -25,6 +25,7 @@
     buildUnifiedHunkRanges,
     buildUnifiedRenderItems,
   } from './lib/diff-render'
+  import { createDiffCacheController } from './lib/app/diff-cache'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
     buildFolderSections,
@@ -120,13 +121,6 @@
     | 'failed'
     | 'unavailable'
 
-  interface CachedDiffRenderState {
-    sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-    unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-    sideBySideItems: Map<string, SideBySideRenderItem[]>
-    unifiedItems: Map<string, UnifiedRenderItem[]>
-  }
-
   interface CompareRootDisplay {
     prefix: string
     suffix: string
@@ -203,7 +197,6 @@
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareRefreshTimer: number | null = null
-  let detailPrefetchTimer: number | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let compareSidebarWidth = 252
@@ -240,8 +233,13 @@
     leftRootFullPath: '',
     rightRootFullPath: '',
   }
-  const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
-  const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
+  const diffCache = createDiffCacheController({
+    buildSideBySideHunkRanges,
+    buildUnifiedHunkRanges,
+    buildSideBySideRenderItems,
+    buildUnifiedRenderItems,
+    openCompareItem,
+  })
   let diffFontSize = `${appearanceSettings.codeFontSize}px`
   let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
   let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
@@ -374,9 +372,7 @@
         window.clearTimeout(compareRefreshTimer)
       }
 
-      if (detailPrefetchTimer !== null) {
-        window.clearTimeout(detailPrefetchTimer)
-      }
+      diffCache.clearDetailPrefetch()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -937,103 +933,6 @@
     errorMessage = ''
   }
 
-  function getCachedDiffRenderState(diff: FileDiffResult) {
-    const cached = diffRenderCache.get(diff)
-
-    if (cached) {
-      return cached
-    }
-
-    const state: CachedDiffRenderState = {
-      sideBySideHunks: new Map(),
-      unifiedHunks: new Map(),
-      sideBySideItems: new Map(),
-      unifiedItems: new Map(),
-    }
-
-    diffRenderCache.set(diff, state)
-    return state
-  }
-
-  function getRenderItemsCacheKey(
-    nextContextLines: ContextLinesSetting,
-    includeFullFile: boolean,
-  ) {
-    return `${nextContextLines}:${includeFullFile ? 'full' : 'hunks'}`
-  }
-
-  function getCachedSideBySideHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-    const state = getCachedDiffRenderState(diff)
-    const cached = state.sideBySideHunks.get(nextContextLines)
-
-    if (cached) {
-      return cached
-    }
-
-    const hunks = buildSideBySideHunkRanges(diff.sideBySide, nextContextLines)
-    state.sideBySideHunks.set(nextContextLines, hunks)
-    return hunks
-  }
-
-  function getCachedUnifiedHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-    const state = getCachedDiffRenderState(diff)
-    const cached = state.unifiedHunks.get(nextContextLines)
-
-    if (cached) {
-      return cached
-    }
-
-    const hunks = buildUnifiedHunkRanges(diff.unified, nextContextLines)
-    state.unifiedHunks.set(nextContextLines, hunks)
-    return hunks
-  }
-
-  function getCachedSideBySideRenderItems(
-    diff: FileDiffResult,
-    includeFullFile: boolean,
-    nextContextLines: ContextLinesSetting,
-  ) {
-    const state = getCachedDiffRenderState(diff)
-    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-    const cached = state.sideBySideItems.get(cacheKey)
-
-    if (cached) {
-      return cached
-    }
-
-    const items = buildSideBySideRenderItems(
-      diff.sideBySide,
-      getCachedSideBySideHunks(diff, nextContextLines),
-      includeFullFile,
-    )
-
-    state.sideBySideItems.set(cacheKey, items)
-    return items
-  }
-
-  function getCachedUnifiedRenderItems(
-    diff: FileDiffResult,
-    includeFullFile: boolean,
-    nextContextLines: ContextLinesSetting,
-  ) {
-    const state = getCachedDiffRenderState(diff)
-    const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-    const cached = state.unifiedItems.get(cacheKey)
-
-    if (cached) {
-      return cached
-    }
-
-    const items = buildUnifiedRenderItems(
-      diff.unified,
-      getCachedUnifiedHunks(diff, nextContextLines),
-      includeFullFile,
-    )
-
-    state.unifiedItems.set(cacheKey, items)
-    return items
-  }
-
   function scheduleThemeTransitionCleanup(root: HTMLElement) {
     if (themeTransitionTimer !== null) {
       window.clearTimeout(themeTransitionTimer)
@@ -1045,101 +944,36 @@
     }, THEME_SWITCH_DURATION_MS)
   }
 
-  function buildDetailCacheKey(relativePath: string, revision = compareRevision) {
-    return [
+  function clearDetailPrefetch() {
+    diffCache.clearDetailPrefetch()
+  }
+
+  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
+    return diffCache.getOrCreateDetailDiffPromise({
       revision,
       leftPath,
       rightPath,
       relativePath,
-      ignoreWhitespace ? '1' : '0',
-      ignoreCase ? '1' : '0',
-    ].join('\u0000')
-  }
-
-  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
-    if (!leftPath || !rightPath) {
-      throw new Error('No active compare is available.')
-    }
-
-    const cacheKey = buildDetailCacheKey(relativePath, revision)
-    let resultPromise = detailDiffCache.get(cacheKey)
-
-    if (resultPromise) {
-      return resultPromise
-    }
-
-    resultPromise = openCompareItem(
-      leftPath,
-      rightPath,
-      relativePath,
-      getOptions(),
-    ).catch((error) => {
-      detailDiffCache.delete(cacheKey)
-      throw error
+      ignoreWhitespace,
+      ignoreCase,
     })
-
-    detailDiffCache.set(cacheKey, resultPromise)
-    return resultPromise
-  }
-
-  function clearDetailPrefetch() {
-    if (detailPrefetchTimer !== null) {
-      window.clearTimeout(detailPrefetchTimer)
-      detailPrefetchTimer = null
-    }
   }
 
   function scheduleAdjacentDiffPrefetch(centerRelativePath: string, revision = compareRevision) {
-    clearDetailPrefetch()
-
-    if (
-      screen !== 'compare' ||
-      mode !== 'directory' ||
-      !leftPath ||
-      !rightPath ||
-      filteredDirectoryEntries.length < 2
-    ) {
-      return
-    }
-
-    const centerIndex = filteredDirectoryEntries.findIndex(
-      (entry) => entry.relativePath === centerRelativePath,
-    )
-
-    if (centerIndex === -1) {
-      return
-    }
-
-    const candidates: DirectoryEntryResult[] = []
-
-    for (let offset = 1; offset <= DIFF_PREFETCH_RADIUS; offset += 1) {
-      const nextEntry = filteredDirectoryEntries[centerIndex + offset]
-      const previousEntry = filteredDirectoryEntries[centerIndex - offset]
-
-      if (nextEntry) {
-        candidates.push(nextEntry)
-      }
-
-      if (previousEntry) {
-        candidates.push(previousEntry)
-      }
-    }
-
-    if (candidates.length === 0) {
-      return
-    }
-
-    detailPrefetchTimer = window.setTimeout(() => {
-      detailPrefetchTimer = null
-
-      if (revision !== compareRevision || !leftPath || !rightPath) {
-        return
-      }
-
-      for (const entry of candidates) {
-        void getOrCreateDetailDiffPromise(entry.relativePath, revision).catch(() => undefined)
-      }
-    }, DIFF_PREFETCH_DELAY_MS)
+    diffCache.scheduleAdjacentDiffPrefetch({
+      centerRelativePath,
+      revision,
+      activeRevision: compareRevision,
+      screen,
+      mode,
+      leftPath,
+      rightPath,
+      filteredDirectoryEntries,
+      ignoreWhitespace,
+      ignoreCase,
+      prefetchRadius: DIFF_PREFETCH_RADIUS,
+      prefetchDelayMs: DIFF_PREFETCH_DELAY_MS,
+    })
   }
 
   function paneFor(side: Side) {
@@ -1300,7 +1134,7 @@
     }
 
     activeDetailRequestId += 1
-    detailDiffCache.clear()
+    diffCache.clearDetailDiffs()
     clearDetailPrefetch()
     detailLoading = false
     mode = nextMode
@@ -1611,7 +1445,7 @@
     try {
       const response = await comparePaths(nextLeftPath, nextRightPath, mode, getOptions())
       compareRevision += 1
-      detailDiffCache.clear()
+      diffCache.clearDetailDiffs()
       screen = 'compare'
 
       if (response.kind === 'directory') {
@@ -2449,13 +2283,21 @@
 
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
-      sideBySideHunkRanges = getCachedSideBySideHunks(activeDiff, contextLines)
-      sideBySideRenderItems = getCachedSideBySideRenderItems(activeDiff, showFullFile, contextLines)
+      sideBySideHunkRanges = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
+      sideBySideRenderItems = diffCache.getCachedSideBySideRenderItems(
+        activeDiff,
+        showFullFile,
+        contextLines,
+      )
       unifiedHunkRanges = []
       unifiedRenderItems = []
     } else {
-      unifiedHunkRanges = getCachedUnifiedHunks(activeDiff, contextLines)
-      unifiedRenderItems = getCachedUnifiedRenderItems(activeDiff, showFullFile, contextLines)
+      unifiedHunkRanges = diffCache.getCachedUnifiedHunks(activeDiff, contextLines)
+      unifiedRenderItems = diffCache.getCachedUnifiedRenderItems(
+        activeDiff,
+        showFullFile,
+        contextLines,
+      )
       sideBySideHunkRanges = []
       sideBySideRenderItems = []
     }
