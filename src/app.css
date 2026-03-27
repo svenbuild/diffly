@@ -2815,6 +2815,11 @@ button.filter-chip.tooLarge:focus-visible {
   overflow: hidden;
 }
 
+.pane-scroll-shell.pinned-bottom-scrollbar,
+.unified-grid-shell.pinned-bottom-scrollbar {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .right-diff-pane .pane-scroll-shell {
   grid-template-columns: minmax(0, 1fr) 12px;
 }
@@ -3077,6 +3082,11 @@ button.filter-chip.tooLarge:focus-visible {
   border-top: 1px solid var(--diff-divider);
   background: var(--diff-context-bg);
   scrollbar-gutter: stable;
+}
+
+.pane-bottom-scrollbar.pinned-bottom-scrollbar {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .pane-bottom-scrollbar-track {
