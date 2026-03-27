@@ -287,15 +287,23 @@
       )
     }
 
-    const leftContentHeight = Math.max(0, leftPaneGrid.scrollHeight - leftPaneTrailingSpace)
-    const rightContentHeight = Math.max(0, rightPaneGrid.scrollHeight - rightPaneTrailingSpace)
+    const bottomScrollbarFootprint = getBottomScrollbarFootprint(
+      leftPaneBottomScrollbar,
+      rightPaneBottomScrollbar,
+    )
+    const leftContentHeight = leftPaneGrid.scrollHeight
+    const rightContentHeight = rightPaneGrid.scrollHeight
     const leftMaxScrollTop = Math.max(0, leftContentHeight - leftPaneScroll.clientHeight)
     const rightMaxScrollTop = Math.max(0, rightContentHeight - rightPaneScroll.clientHeight)
     const sharedMaxScrollTop = Math.max(leftMaxScrollTop, rightMaxScrollTop)
+    const leftNeedsPinnedScrollbar =
+      leftContentHeight + bottomScrollbarFootprint > leftPaneScroll.clientHeight
+    const rightNeedsPinnedScrollbar =
+      rightContentHeight + bottomScrollbarFootprint > rightPaneScroll.clientHeight
 
     leftPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - leftMaxScrollTop)
     rightPaneTrailingSpace = Math.max(0, sharedMaxScrollTop - rightMaxScrollTop)
-    pinSplitBottomScrollbar = sharedMaxScrollTop > 0
+    pinSplitBottomScrollbar = leftNeedsPinnedScrollbar || rightNeedsPinnedScrollbar
   }
 
   async function updateUnifiedContentWidth() {
@@ -308,7 +316,10 @@
     }
 
     unifiedContentWidth = Math.max(unifiedContentGrid.scrollWidth, unifiedScroll.clientWidth)
-    pinUnifiedBottomScrollbar = unifiedContentGrid.scrollHeight > unifiedScroll.clientHeight
+    const bottomScrollbarFootprint = getBottomScrollbarFootprint(unifiedBottomScrollbar)
+
+    pinUnifiedBottomScrollbar =
+      unifiedContentGrid.scrollHeight + bottomScrollbarFootprint > unifiedScroll.clientHeight
   }
 
   function scheduleScrollMarkerRefresh() {
@@ -360,6 +371,18 @@
     }
 
     element.scrollLeft = nextScrollLeft
+  }
+
+  function getBottomScrollbarFootprint(...elements: Array<HTMLDivElement | null>) {
+    const measured = elements.reduce((maxValue, element) => {
+      if (!element) {
+        return maxValue
+      }
+
+      return Math.max(maxValue, element.offsetHeight)
+    }, 0)
+
+    return measured || 12
   }
 
   function buildScrollMarkers(
