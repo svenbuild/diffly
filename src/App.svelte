@@ -2177,25 +2177,35 @@
   function mapPaneScrollTop(sourcePane: HTMLDivElement, targetPane: HTMLDivElement) {
     const sourceContentRoot = getPaneContentRoot(sourcePane)
     const targetContentRoot = getPaneContentRoot(targetPane)
+    const sourceMaxScrollTop = getMaxScrollTop(sourcePane)
+    const targetMaxScrollTop = getMaxScrollTop(targetPane)
+
+    if (sourcePane.scrollTop <= 1) {
+      return 0
+    }
+
+    if (sourceMaxScrollTop - sourcePane.scrollTop <= 1) {
+      return targetMaxScrollTop
+    }
 
     if (!sourceContentRoot || !targetContentRoot) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     if (sourceContentRoot.children.length !== targetContentRoot.children.length) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
 
     if (!sourceMatch) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     const targetItem = targetContentRoot.children.item(sourceMatch.index)
 
     if (!(targetItem instanceof HTMLElement)) {
-      return clampScrollOffset(sourcePane.scrollTop, getMaxScrollTop(targetPane))
+      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
     }
 
     const sourceItemHeight = Math.max(sourceMatch.item.offsetHeight, 1)
@@ -2208,7 +2218,7 @@
 
     return clampScrollOffset(
       targetItem.offsetTop + itemProgress * targetItemHeight,
-      getMaxScrollTop(targetPane),
+      targetMaxScrollTop,
     )
   }
 
