@@ -2838,8 +2838,14 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .left-diff-pane .pane-vertical-scroll {
-  overflow-y: hidden;
-  scrollbar-gutter: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.left-diff-pane .pane-vertical-scroll::-webkit-scrollbar {
+  width: 0;
 }
 
 .pane-scroll,
