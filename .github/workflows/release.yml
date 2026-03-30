@@ -43,6 +43,6 @@ jobs:
           releaseName: Diffly ${{ github.event.inputs.tag || github.ref_name }}
           releaseDraft: false
           prerelease: ${{ contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-') }}
-          args: ${{ (contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-')) && '--bundles nsis --config src-tauri/tauri.prerelease.conf.json' || '' }}
+          args: ${{ (contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-')) && '--features prerelease-updater --bundles nsis --config src-tauri/tauri.prerelease.conf.json' || '--features prerelease-updater --bundles nsis --config src-tauri/tauri.release.conf.json' }}
           includeUpdaterJson: ${{ !(contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-')) }}
           updaterJsonPreferNsis: ${{ !(contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-')) }}
