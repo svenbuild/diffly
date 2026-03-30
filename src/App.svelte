@@ -402,8 +402,7 @@
       }
     }
 
-    void initializePickers()
-    void initializeUpdateVersion()
+    void initializeAppStartup()
 
     return () => {
       if (colorSchemeQuery) {
@@ -590,6 +589,12 @@
     return shouldShowUpdateIndicatorState(updateIndicatorState)
   }
 
+  async function initializeAppStartup() {
+    await initializePickers()
+    await initializeUpdateVersion()
+    startStartupUpdateCheck()
+  }
+
   function startStartupUpdateCheck() {
     if (startupUpdateCheckStarted || !checkForUpdatesOnLaunch) {
       return
@@ -714,7 +719,6 @@
       ])
 
       applyPersistedSession(savedSession)
-      startStartupUpdateCheck()
 
       leftExplorer = {
         ...createExplorerPane('Left'),
@@ -783,7 +787,6 @@
       )
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
-      startStartupUpdateCheck()
     } finally {
       pickerLoading = false
       persistenceReady = true
@@ -2154,23 +2157,6 @@
             <h1>Diffly</h1>
             <span>Setup</span>
           </div>
-
-          {#if shouldShowUpdateIndicator()}
-            <button
-              aria-busy={updateIndicatorState.status === 'downloading'}
-              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              class="secondary update-indicator"
-              title={updateIndicatorTitle()}
-              type="button"
-              on:click={openUpdateSettings}
-            >
-              {#if updateIndicatorState.status === 'downloading'}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <span class="update-indicator-badge">Update</span>
-              {/if}
-            </button>
-          {/if}
         </div>
       </div>
 
@@ -2219,6 +2205,23 @@
             </button>
           </div>
         </div>
+
+        {#if shouldShowUpdateIndicator()}
+          <button
+            aria-busy={updateIndicatorState.status === 'downloading'}
+            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
+            class="secondary update-indicator"
+            title={updateIndicatorTitle()}
+            type="button"
+            on:click={openUpdateSettings}
+          >
+            {#if updateIndicatorState.status === 'downloading'}
+              <span class="refresh-spinner visible"></span>
+            {:else}
+              <span class="update-indicator-badge">Update</span>
+            {/if}
+          </button>
+        {/if}
 
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
           Settings
