@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    ffi::OsString,
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
@@ -85,6 +86,17 @@ type HighlightCache = (Vec<Option<Vec<DiffSegment>>>, Vec<Option<Vec<DiffSegment
 struct CompareOptions {
     ignore_whitespace: bool,
     ignore_case: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchContext {
+    open_here_path: String,
+}
+
+#[derive(Clone, Default)]
+struct LaunchContextState {
+    context: Option<LaunchContext>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -543,6 +555,11 @@ fn choose_path(kind: String) -> Option<String> {
 #[tauri::command]
 fn load_session_state(app: AppHandle) -> Result<Option<PersistedSession>, String> {
     read_session_state(&app)
+}
+
+#[tauri::command]
+fn load_launch_context(state: tauri::State<'_, LaunchContextState>) -> Option<LaunchContext> {
+    state.context.clone()
 }
 
 #[tauri::command]
@@ -4003,9 +4020,11 @@ fn parent_path(path: &Path) -> Option<String> {
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(create_update_state())
+        .manage(create_launch_context_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
+            load_launch_context,
             save_session_state,
             get_app_version,
             check_for_updates,
@@ -4060,9 +4079,43 @@ fn create_update_state() -> UpdateState {
     }
 }
 
+fn create_launch_context_state() -> LaunchContextState {
+    LaunchContextState {
+        context: parse_launch_context_from_args(std::env::args_os().skip(1)),
+    }
+}
+
+fn parse_launch_context_from_args<I>(args: I) -> Option<LaunchContext>
+where
+    I: IntoIterator<Item = OsString>,
+{
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        if argument.to_string_lossy() != "--open-here" {
+            continue;
+        }
+
+        let path = args.next()?;
+        return build_launch_context(PathBuf::from(path));
+    }
+
+    None
+}
+
+fn build_launch_context(path: PathBuf) -> Option<LaunchContext> {
+    match fs::metadata(&path) {
+        Ok(metadata) if metadata.is_dir() => Some(LaunchContext {
+            open_here_path: path.to_string_lossy().to_string(),
+        }),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture_root() -> PathBuf {
@@ -4097,6 +4150,47 @@ mod tests {
 
     fn write_temp_bytes_file(path: &Path, contents: &[u8]) {
         fs::write(path, contents).expect("temporary binary file should be written");
+    }
+
+    #[test]
+    fn parse_launch_context_from_args_returns_directory_override() {
+        let temp_root = unique_temp_dir("launch-context-directory");
+
+        let context = parse_launch_context_from_args(vec![
+            OsString::from("--open-here"),
+            temp_root.as_os_str().to_os_string(),
+        ]);
+
+        assert_eq!(
+            context.as_ref().map(|value| value.open_here_path.as_str()),
+            Some(temp_root.to_string_lossy().as_ref())
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn parse_launch_context_from_args_ignores_missing_flag_value() {
+        let context = parse_launch_context_from_args(vec![OsString::from("--open-here")]);
+
+        assert!(context.is_none());
+    }
+
+    #[test]
+    fn parse_launch_context_from_args_rejects_non_directories() {
+        let temp_root = unique_temp_dir("launch-context-file");
+        let file_path = temp_root.join("target.txt");
+
+        write_temp_file(&file_path, "Diffly");
+
+        let context = parse_launch_context_from_args(vec![
+            OsString::from("--open-here"),
+            file_path.as_os_str().to_os_string(),
+        ]);
+
+        assert!(context.is_none());
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
 
     fn test_png_bytes(seed: u8) -> Vec<u8> {

@@ -11,6 +11,10 @@ export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
 export type UpdateChannel = 'stable' | 'prerelease'
 
+export interface LaunchContext {
+  openHerePath: string
+}
+
 export interface PersistedExplorerPane {
   currentPath: string
   history: string[]

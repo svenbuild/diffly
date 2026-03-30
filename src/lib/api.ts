@@ -6,6 +6,7 @@ import type {
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
+  LaunchContext,
   PathInfo,
   PathKind,
   PersistedSession,
@@ -26,6 +27,9 @@ export const pathInfo = (path: string) => invoke<PathInfo>('path_info', { path }
 
 export const loadSessionState = () =>
   invoke<PersistedSession | null>('load_session_state')
+
+export const loadLaunchContext = () =>
+  invoke<LaunchContext | null>('load_launch_context')
 
 export const saveSessionState = (session: PersistedSession) =>
   invoke<void>('save_session_state', { session })

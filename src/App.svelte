@@ -143,6 +143,7 @@
   }
 
   export let initialSession: PersistedSession | null = null
+  export let startupFolderPath: string | null = null
 
   let screen: Screen = 'setup'
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
@@ -205,6 +206,7 @@
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
+  let initialSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let compareSidebarWidth = 252
@@ -725,22 +727,60 @@
       }
 
       if (roots.length > 0) {
-        const leftRoot = await resolveInitialPanePath(savedSession?.leftPane ?? null, roots[0].path)
-        const rightRoot = await resolveInitialPanePath(
-          savedSession?.rightPane ?? null,
-          roots[1]?.path ?? roots[0].path,
-        )
+        const startupRoot = await resolveStartupFolderPath(startupFolderPath)
 
-        await Promise.all([
-          openDirectory('left', leftRoot),
-          openDirectory('right', rightRoot),
-        ])
+        if (startupRoot) {
+          mode = 'directory'
 
-        await Promise.all([
-          restorePaneSelection('left', savedSession?.leftPane ?? null),
-          restorePaneSelection('right', savedSession?.rightPane ?? null),
-        ])
+          await Promise.all([
+            openDirectory('left', startupRoot),
+            openDirectory('right', startupRoot),
+          ])
+
+          selectTarget('left', startupRoot, 'directory')
+          selectTarget('right', startupRoot, 'directory')
+        } else {
+          const leftRoot = await resolveInitialPanePath(
+            savedSession?.leftPane ?? null,
+            roots[0].path,
+          )
+          const rightRoot = await resolveInitialPanePath(
+            savedSession?.rightPane ?? null,
+            roots[1]?.path ?? roots[0].path,
+          )
+
+          await Promise.all([
+            openDirectory('left', leftRoot),
+            openDirectory('right', rightRoot),
+          ])
+
+          await Promise.all([
+            restorePaneSelection('left', savedSession?.leftPane ?? null),
+            restorePaneSelection('right', savedSession?.rightPane ?? null),
+          ])
+        }
       }
+
+      initialSessionFingerprint = JSON.stringify(
+        buildPersistedSession({
+          mode,
+          viewMode,
+          appearanceSettings,
+          ignoreWhitespace,
+          ignoreCase,
+          showFullFile,
+          showInlineHighlights,
+          wrapSideBySideLines,
+          showSyntaxHighlighting,
+          syncSideBySideScroll,
+          contextLines,
+          checkForUpdatesOnLaunch,
+          updateChannel,
+          lastUpdateCheckAt,
+          leftPane: leftExplorer,
+          rightPane: rightExplorer,
+        }),
+      )
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
       startStartupUpdateCheck()
@@ -811,6 +851,24 @@
     }
 
     return fallbackPath
+  }
+
+  async function resolveStartupFolderPath(overridePath: string | null) {
+    if (!overridePath) {
+      return null
+    }
+
+    const info = await pathInfo(overridePath)
+
+    if (info.exists && info.isDirectory) {
+      return info.path
+    }
+
+    if (info.exists && info.isFile && info.parentPath) {
+      return info.parentPath
+    }
+
+    return null
   }
 
   async function restorePaneSelection(side: Side, pane: PersistedExplorerPane | null) {
@@ -1857,6 +1915,12 @@
       leftPane: leftExplorer,
       rightPane: rightExplorer,
     })
+
+    const sessionFingerprint = JSON.stringify(session)
+
+    if (initialSessionFingerprint !== null && sessionFingerprint === initialSessionFingerprint) {
+      return
+    }
 
     saveSessionTimer = window.setTimeout(() => {
       void saveSessionState(session).catch(() => undefined)
