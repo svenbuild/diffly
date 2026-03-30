@@ -967,8 +967,8 @@ export function getDefaultAppearanceSettings(): AppearanceSettings {
     lightOverrides: {},
     darkOverrides: {},
     usePointerCursor: true,
-    uiFontSize: 13,
-    codeFontSize: 12,
+    uiFontSize: 12,
+    codeFontSize: 11,
   }
 }
 

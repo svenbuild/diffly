@@ -13,9 +13,9 @@ import {
   type ThemeVariant,
 } from './index'
 
-export const MIN_UI_FONT_SIZE = 12
+export const MIN_UI_FONT_SIZE = 11
 export const MAX_UI_FONT_SIZE = 16
-export const MIN_CODE_FONT_SIZE = 11
+export const MIN_CODE_FONT_SIZE = 10
 export const MAX_CODE_FONT_SIZE = 18
 
 export function isAppearanceMode(value: string | null | undefined): value is AppearanceMode {

@@ -81,8 +81,8 @@
   --diff-delete-text: #fff1f3;
   --diff-line-number-width: calc(1ch + 18px);
   --diff-prefix-width: calc(1ch + 6px);
-  --diff-font-size: 12px;
-  --diff-row-line-height: 15px;
+  --diff-font-size: 11px;
+  --diff-row-line-height: 14px;
   --diff-row-height: 19px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
