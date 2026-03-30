@@ -51,25 +51,24 @@ interface DetailCacheContext {
   ignoreCase: boolean
 }
 
-interface PrefetchContext {
+interface BackgroundPreloadContext {
   centerRelativePath: string
   revision: number
-  activeRevision: number
-  screen: 'setup' | 'compare' | 'settings'
   mode: CompareMode
   leftPath: string
   rightPath: string
-  filteredDirectoryEntries: DirectoryEntryResult[]
+  directoryEntries: DirectoryEntryResult[]
   ignoreWhitespace: boolean
   ignoreCase: boolean
-  prefetchRadius: number
-  prefetchDelayMs: number
+  preloadConcurrency: number
+  preloadDelayMs: number
 }
 
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
-  let detailPrefetchTimer: number | null = null
+  let backgroundPreloadTimer: number | null = null
+  let backgroundPreloadGeneration = 0
 
   function getCachedDiffRenderState(diff: FileDiffResult) {
     const cached = diffRenderCache.get(diff)
@@ -107,7 +106,54 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
     ].join('\u0000')
   }
 
-  return {
+  function cancelBackgroundPreload() {
+    backgroundPreloadGeneration += 1
+
+    if (backgroundPreloadTimer !== null) {
+      window.clearTimeout(backgroundPreloadTimer)
+      backgroundPreloadTimer = null
+    }
+  }
+
+  function buildPrioritizedPreloadPaths(
+    directoryEntries: DirectoryEntryResult[],
+    centerRelativePath: string,
+  ) {
+    if (directoryEntries.length === 0) {
+      return []
+    }
+
+    const centerIndex = directoryEntries.findIndex(
+      (entry) => entry.relativePath === centerRelativePath,
+    )
+
+    if (centerIndex === -1) {
+      return directoryEntries.map((entry) => entry.relativePath)
+    }
+
+    const relativePaths: string[] = []
+    const seen = new Set<string>()
+
+    const pushEntry = (entry: DirectoryEntryResult | undefined) => {
+      if (!entry || seen.has(entry.relativePath)) {
+        return
+      }
+
+      seen.add(entry.relativePath)
+      relativePaths.push(entry.relativePath)
+    }
+
+    pushEntry(directoryEntries[centerIndex])
+
+    for (let offset = 1; offset < directoryEntries.length; offset += 1) {
+      pushEntry(directoryEntries[centerIndex + offset])
+      pushEntry(directoryEntries[centerIndex - offset])
+    }
+
+    return relativePaths
+  }
+
+  const controller = {
     getCachedSideBySideHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
       const state = getCachedDiffRenderState(diff)
       const cached = state.sideBySideHunks.get(nextContextLines)
@@ -149,7 +195,7 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
 
       const items = dependencies.buildSideBySideRenderItems(
         diff.sideBySide,
-        this.getCachedSideBySideHunks(diff, nextContextLines),
+        controller.getCachedSideBySideHunks(diff, nextContextLines),
         includeFullFile,
       )
 
@@ -172,7 +218,7 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
 
       const items = dependencies.buildUnifiedRenderItems(
         diff.unified,
-        this.getCachedUnifiedHunks(diff, nextContextLines),
+        controller.getCachedUnifiedHunks(diff, nextContextLines),
         includeFullFile,
       )
 
@@ -210,75 +256,82 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       detailDiffCache.clear()
     },
 
-    clearDetailPrefetch() {
-      if (detailPrefetchTimer !== null) {
-        window.clearTimeout(detailPrefetchTimer)
-        detailPrefetchTimer = null
-      }
-    },
+    cancelBackgroundPreload,
 
-    scheduleAdjacentDiffPrefetch(context: PrefetchContext) {
-      this.clearDetailPrefetch()
+    startBackgroundPreload(context: BackgroundPreloadContext) {
+      cancelBackgroundPreload()
 
       if (
-        context.screen !== 'compare' ||
         context.mode !== 'directory' ||
         !context.leftPath ||
         !context.rightPath ||
-        context.filteredDirectoryEntries.length < 2
+        context.directoryEntries.length < 2
       ) {
         return
       }
 
-      const centerIndex = context.filteredDirectoryEntries.findIndex(
-        (entry) => entry.relativePath === context.centerRelativePath,
+      const queue = buildPrioritizedPreloadPaths(
+        context.directoryEntries,
+        context.centerRelativePath,
       )
 
-      if (centerIndex === -1) {
+      if (queue.length <= 1) {
         return
       }
 
-      const candidates: DirectoryEntryResult[] = []
+      backgroundPreloadGeneration += 1
+      const activeGeneration = backgroundPreloadGeneration
 
-      for (let offset = 1; offset <= context.prefetchRadius; offset += 1) {
-        const nextEntry = context.filteredDirectoryEntries[centerIndex + offset]
-        const previousEntry = context.filteredDirectoryEntries[centerIndex - offset]
+      const startWorkers = () => {
+        backgroundPreloadTimer = null
 
-        if (nextEntry) {
-          candidates.push(nextEntry)
+        const workerCount = Math.max(
+          1,
+          Math.min(context.preloadConcurrency, queue.length),
+        )
+
+        const runNext = async () => {
+          while (backgroundPreloadGeneration === activeGeneration) {
+            const relativePath = queue.shift()
+
+            if (typeof relativePath !== 'string') {
+              return
+            }
+
+            try {
+              await controller.getOrCreateDetailDiffPromise({
+                revision: context.revision,
+                leftPath: context.leftPath,
+                rightPath: context.rightPath,
+                relativePath,
+                ignoreWhitespace: context.ignoreWhitespace,
+                ignoreCase: context.ignoreCase,
+              })
+            } catch {
+              // Leave errors to the on-demand selection flow instead of surfacing them from preload.
+            }
+          }
         }
 
-        if (previousEntry) {
-          candidates.push(previousEntry)
+        for (let index = 0; index < workerCount; index += 1) {
+          void runNext()
         }
       }
 
-      if (candidates.length === 0) {
+      if (typeof window === 'undefined' || context.preloadDelayMs <= 0) {
+        startWorkers()
         return
       }
 
-      detailPrefetchTimer = window.setTimeout(() => {
-        detailPrefetchTimer = null
-
-        if (
-          context.revision !== context.activeRevision ||
-          !context.leftPath ||
-          !context.rightPath
-        ) {
+      backgroundPreloadTimer = window.setTimeout(() => {
+        if (backgroundPreloadGeneration !== activeGeneration) {
           return
         }
 
-        for (const entry of candidates) {
-          void this.getOrCreateDetailDiffPromise({
-            revision: context.revision,
-            leftPath: context.leftPath,
-            rightPath: context.rightPath,
-            relativePath: entry.relativePath,
-            ignoreWhitespace: context.ignoreWhitespace,
-            ignoreCase: context.ignoreCase,
-          }).catch(() => undefined)
-        }
-      }, context.prefetchDelayMs)
+        startWorkers()
+      }, context.preloadDelayMs)
     },
   }
+
+  return controller
 }

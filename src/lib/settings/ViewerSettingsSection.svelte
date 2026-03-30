@@ -11,6 +11,8 @@
   export let showInlineHighlights: boolean
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
+  export let comparisonRulesRequireRefresh: boolean
+  export let compareNeedsRefresh: boolean
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onToggleWrapSideBySideLines: () => void
   export let onToggleSyncSideBySideScroll: () => void
@@ -204,8 +206,19 @@
   <section class="settings-group">
     <div class="settings-group-header">
       <h3>Comparison rules</h3>
-      <p>Choose what counts as a meaningful change.</p>
+      <p>
+        Choose what counts as a meaningful change.
+        {#if comparisonRulesRequireRefresh}
+          Press Refresh in the compare toolbar to apply updates to the current folder snapshot.
+        {/if}
+      </p>
     </div>
+
+    {#if compareNeedsRefresh}
+      <p class="settings-inline-note">
+        The current compare is using the previous rules until you refresh it.
+      </p>
+    {/if}
 
     <div class="settings-group-grid">
       <div class="settings-row">

@@ -84,6 +84,7 @@
   import { buildPersistedSession } from './lib/app/session'
   import type {
     CompareMode,
+    CompareOptions,
     ContextLinesSetting,
     DirectoryEntryResult,
     EntryStatus,
@@ -124,8 +125,8 @@
 
   const SESSION_SAVE_DELAY_MS = 180
   const THEME_SWITCH_DURATION_MS = 140
-  const DIFF_PREFETCH_RADIUS = 2
-  const DIFF_PREFETCH_DELAY_MS = 70
+  const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 70
+  const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 2
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const PANE_WHEEL_SMOOTHING = 0.18
   const PANE_WHEEL_MIN_STEP = 1.25
@@ -134,6 +135,7 @@
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
+  type CompareDirtyReason = 'comparisonRules'
   interface CompareRootDisplay {
     prefix: string
     suffix: string
@@ -170,6 +172,10 @@
   let rightPath = ''
   let ignoreWhitespace = false
   let ignoreCase = false
+  let activeCompareOptions: CompareOptions = {
+    ignoreWhitespace: false,
+    ignoreCase: false,
+  }
   let loading = false
   let detailLoading = false
   let pickerLoading = false
@@ -199,11 +205,12 @@
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
-  let compareRefreshTimer: number | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let compareSidebarWidth = 252
   let compareSidebarResizeActive = false
+  let compareDirtyReason: CompareDirtyReason | null = null
+  let compareNeedsRefresh = false
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
   let sideBySideHunkRanges: DiffHunkRange[] = []
@@ -274,10 +281,40 @@
   let darkAppearanceTheme: ThemeDefinition = getAvailableThemes('dark')[0]
   let visibleAppearanceVariants: ThemeVariant[] = ['light']
 
-  const getOptions = () => ({
+  const getPendingCompareOptions = (): CompareOptions => ({
     ignoreWhitespace,
     ignoreCase,
   })
+
+  function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
+    return (
+      leftOptions.ignoreWhitespace === rightOptions.ignoreWhitespace &&
+      leftOptions.ignoreCase === rightOptions.ignoreCase
+    )
+  }
+
+  function hasActiveCompareSession() {
+    return screen === 'compare' || (screen === 'settings' && settingsReturnScreen === 'compare')
+  }
+
+  function syncCompareDirtyState() {
+    if (!hasActiveCompareSession() || mode !== 'directory') {
+      compareDirtyReason = null
+      return
+    }
+
+    compareDirtyReason = compareOptionsMatch(getPendingCompareOptions(), activeCompareOptions)
+      ? null
+      : 'comparisonRules'
+  }
+
+  function runFileCompareRefreshIfActive() {
+    if (screen !== 'compare' || mode !== 'file' || loading || detailLoading) {
+      return
+    }
+
+    void runCompare()
+  }
 
   const toggleViewMode = () => {
     viewMode = viewMode === 'sideBySide' ? 'unified' : 'sideBySide'
@@ -325,12 +362,14 @@
 
   const toggleIgnoreWhitespace = () => {
     ignoreWhitespace = !ignoreWhitespace
-    scheduleCompareRefresh()
+    syncCompareDirtyState()
+    runFileCompareRefreshIfActive()
   }
 
   const toggleIgnoreCase = () => {
     ignoreCase = !ignoreCase
-    scheduleCompareRefresh()
+    syncCompareDirtyState()
+    runFileCompareRefreshIfActive()
   }
 
   const toggleSyncSideBySideScroll = () => {
@@ -377,11 +416,7 @@
         window.clearTimeout(saveSessionTimer)
       }
 
-      if (compareRefreshTimer !== null) {
-        window.clearTimeout(compareRefreshTimer)
-      }
-
-      diffCache.clearDetailPrefetch()
+      diffCache.cancelBackgroundPreload()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -614,8 +649,8 @@
     })
   }
 
-  function clearDetailPrefetch() {
-    diffCache.clearDetailPrefetch()
+  function cancelBackgroundDiffPreload() {
+    diffCache.cancelBackgroundPreload()
   }
 
   function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
@@ -624,25 +659,26 @@
       leftPath,
       rightPath,
       relativePath,
-      ignoreWhitespace,
-      ignoreCase,
+      ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
+      ignoreCase: activeCompareOptions.ignoreCase,
     })
   }
 
-  function scheduleAdjacentDiffPrefetch(centerRelativePath: string, revision = compareRevision) {
-    diffCache.scheduleAdjacentDiffPrefetch({
+  function startBackgroundDiffPreload(
+    centerRelativePath: string,
+    revision = compareRevision,
+  ) {
+    diffCache.startBackgroundPreload({
       centerRelativePath,
       revision,
-      activeRevision: compareRevision,
-      screen,
       mode,
       leftPath,
       rightPath,
-      filteredDirectoryEntries,
-      ignoreWhitespace,
-      ignoreCase,
-      prefetchRadius: DIFF_PREFETCH_RADIUS,
-      prefetchDelayMs: DIFF_PREFETCH_DELAY_MS,
+      directoryEntries,
+      ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
+      ignoreCase: activeCompareOptions.ignoreCase,
+      preloadConcurrency: BACKGROUND_DIFF_PRELOAD_CONCURRENCY,
+      preloadDelayMs: BACKGROUND_DIFF_PRELOAD_DELAY_MS,
     })
   }
 
@@ -805,8 +841,9 @@
 
     activeDetailRequestId += 1
     diffCache.clearDetailDiffs()
-    clearDetailPrefetch()
+    cancelBackgroundDiffPreload()
     detailLoading = false
+    compareDirtyReason = null
     mode = nextMode
     leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
@@ -824,7 +861,8 @@
   function goToSetup() {
     activeDetailRequestId += 1
     detailLoading = false
-    clearDetailPrefetch()
+    cancelBackgroundDiffPreload()
+    compareDirtyReason = null
     screen = 'setup'
     errorMessage = ''
   }
@@ -1103,58 +1141,57 @@
 
     const nextLeftPath = leftExplorer.selectedTargetPath
     const nextRightPath = rightExplorer.selectedTargetPath
+    const nextCompareOptions = getPendingCompareOptions()
+    const previousSelectedPath = selectedRelativePath
 
     loading = true
     detailLoading = false
     errorMessage = ''
     activeDetailRequestId += 1
-    clearDetailPrefetch()
+    cancelBackgroundDiffPreload()
     leftPath = nextLeftPath
     rightPath = nextRightPath
 
     try {
-      const response = await comparePaths(nextLeftPath, nextRightPath, mode, getOptions())
+      const response = await comparePaths(
+        nextLeftPath,
+        nextRightPath,
+        mode,
+        nextCompareOptions,
+      )
       compareRevision += 1
       diffCache.clearDetailDiffs()
+      activeCompareOptions = { ...nextCompareOptions }
+      compareDirtyReason = null
       screen = 'compare'
 
       if (response.kind === 'directory') {
         directoryEntries = response.entries
         syncFilteredDirectoryState(response.entries)
 
-        if (filteredDirectoryEntries.length > 0) {
+        const preservedEntry = filteredDirectoryEntries.find(
+          (entry) => entry.relativePath === previousSelectedPath,
+        )
+
+        if (preservedEntry) {
+          await selectEntry(preservedEntry, compareRevision)
+        } else if (filteredDirectoryEntries.length > 0) {
           await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
+          cancelBackgroundDiffPreload()
         }
       } else {
         selectedRelativePath = ''
         activeDiff = response.result
+        cancelBackgroundDiffPreload()
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
     } finally {
       loading = false
     }
-  }
-
-  function scheduleCompareRefresh() {
-    if (screen !== 'compare' || !canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
-      return
-    }
-
-    if (compareRefreshTimer !== null) {
-      window.clearTimeout(compareRefreshTimer)
-    }
-
-    compareRefreshTimer = window.setTimeout(() => {
-      compareRefreshTimer = null
-
-      if (!loading && !detailLoading) {
-        void runCompare()
-      }
-    }, 120)
   }
 
   async function selectEntry(entry: DirectoryEntryResult, revision = compareRevision) {
@@ -1181,7 +1218,7 @@
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
-        scheduleAdjacentDiffPrefetch(entry.relativePath, revision)
+        startBackgroundDiffPreload(entry.relativePath, revision)
       }
     } catch (error) {
       if (requestId === activeDetailRequestId) {
@@ -2004,6 +2041,7 @@
     scheduleSessionSave()
   }
 
+  $: compareNeedsRefresh = compareDirtyReason !== null
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
   $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
   $: pickerSides = [
@@ -2327,10 +2365,11 @@
         </button>
 
           <button
-            aria-label="Refresh compare"
+            aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
             aria-busy={loading}
+            class:pending-refresh={compareNeedsRefresh}
             class="secondary toolbar-button icon-button refresh-button"
-            title="Refresh compare"
+            title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
             type="button"
             disabled={loading}
             on:click={runCompare}
@@ -2511,6 +2550,8 @@
       lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
       lastUpdateCheckRelativeLabel={formatLastUpdateCheckRelative(lastUpdateCheckAt)}
       updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
+      comparisonRulesRequireRefresh={hasActiveCompareSession() && mode === 'directory'}
+      {compareNeedsRefresh}
       onBack={goBackFromSettings}
       onSelectSection={(section) => (activeSettingsSection = section)}
       onSetThemeMode={setThemeMode}

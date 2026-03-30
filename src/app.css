@@ -1601,6 +1601,17 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.settings-inline-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning-bg) 78%, var(--surface));
+  color: var(--secondary-text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .settings-stepper-unit {
   color: var(--muted);
   font-size: 0.78rem;
@@ -3456,6 +3467,12 @@ button.filter-chip.tooLarge:focus-visible {
   width: 28px;
   height: 28px;
   padding: 0;
+}
+
+.refresh-button.pending-refresh {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning-bg) 72%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, var(--border));
 }
 
 .refresh-icon-slot {

@@ -70,6 +70,8 @@
   export let lastUpdateCheckLabel: string
   export let lastUpdateCheckRelativeLabel: string
   export let updateBusy: boolean
+  export let comparisonRulesRequireRefresh: boolean
+  export let compareNeedsRefresh: boolean
   export let onBack: () => void
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (theme: ThemeMode) => void
@@ -155,7 +157,10 @@
       <header class="settings-panel-header">
         <div class="settings-panel-heading">
           <h1>Settings</h1>
-          <p>Changes apply instantly.</p>
+          <p>
+            Most viewer changes apply instantly. Comparison rules require refresh during an
+            active folder compare.
+          </p>
         </div>
 
         <button
@@ -215,6 +220,8 @@
           {showInlineHighlights}
           {ignoreWhitespace}
           {ignoreCase}
+          {comparisonRulesRequireRefresh}
+          {compareNeedsRefresh}
           {onSetViewMode}
           {onToggleWrapSideBySideLines}
           {onToggleSyncSideBySideScroll}
