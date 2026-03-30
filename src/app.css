@@ -81,8 +81,8 @@
   --diff-delete-text: #fff1f3;
   --diff-line-number-width: calc(1ch + 18px);
   --diff-prefix-width: calc(1ch + 6px);
-  --diff-font-size: 11px;
-  --diff-row-line-height: 14px;
+  --diff-font-size: 12px;
+  --diff-row-line-height: 15px;
   --diff-row-height: 19px;
   --diff-gap-bg: #232323;
   --diff-gap-stripe: rgba(255, 255, 255, 0.06);
@@ -1149,7 +1149,7 @@ h2 {
   border-radius: 999px;
   background: var(--accent);
   color: var(--primary-text);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -1793,7 +1793,7 @@ h2 {
 
 .setup-selection-side {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   flex: 0 0 auto;
@@ -2005,7 +2005,7 @@ h2 {
 }
 
 .list-columns {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
 }
 
 .list-rows {
@@ -2072,7 +2072,7 @@ h2 {
   border: 1px solid var(--accent);
   border-radius: 4px;
   color: var(--active-text);
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   line-height: 1.5;
   margin-left: 2px;
 }
@@ -2093,7 +2093,7 @@ h2 {
 .chevron,
 .line-number,
 .prefix {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
 }
 
 .empty-state,
@@ -2218,7 +2218,7 @@ h2 {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
 }
 
 .status-chip {
@@ -2552,7 +2552,7 @@ button.filter-chip.tooLarge:focus-visible {
   border-radius: 999px;
   background: var(--pane-header-bg);
   color: var(--panel-meta);
-  font-size: 0.66rem;
+  font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -2625,7 +2625,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .binary-meta-label {
   color: var(--muted);
-  font-size: 0.64rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2637,7 +2637,7 @@ button.filter-chip.tooLarge:focus-visible {
   white-space: nowrap;
   color: var(--panel-title);
   font-family: var(--code);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 600;
 }
 
@@ -2703,7 +2703,7 @@ button.filter-chip.tooLarge:focus-visible {
 .binary-offset-header {
   justify-content: flex-end;
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2717,7 +2717,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .binary-group-header {
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2749,7 +2749,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .binary-ascii-byte {
-  font-size: 0.7rem;
+  font-size: 0.74rem;
 }
 
 .binary-byte.changed {
@@ -2790,7 +2790,7 @@ button.filter-chip.tooLarge:focus-visible {
   border-radius: 4px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   pointer-events: none;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
 }
@@ -3316,7 +3316,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .context-card.compact span {
-  font-size: 0.7rem;
+  font-size: 0.76rem;
   white-space: nowrap;
 }
 
@@ -3325,7 +3325,7 @@ button.filter-chip.tooLarge:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
 }
 
 .viewer-source {
@@ -3333,12 +3333,12 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .viewer-source span:first-child {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
 }
 
 .viewer-source strong,
 .pane-source strong {
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3407,7 +3407,7 @@ button.filter-chip.tooLarge:focus-visible {
   justify-content: space-between;
   gap: 12px;
   min-height: 24px;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--secondary-text);
 }
 
