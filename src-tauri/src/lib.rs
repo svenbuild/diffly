@@ -78,6 +78,8 @@ fn default_code_font_size() -> u8 {
     11
 }
 
+type HighlightCache = (Vec<Option<Vec<DiffSegment>>>, Vec<Option<Vec<DiffSegment>>>);
+
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompareOptions {
@@ -1721,7 +1723,7 @@ fn build_replace_highlight_cache(
     left_cells: &[DiffCell],
     right_cells: &[DiffCell],
     alignment: &ReplaceBlockAlignment,
-) -> (Vec<Option<Vec<DiffSegment>>>, Vec<Option<Vec<DiffSegment>>>) {
+) -> HighlightCache {
     let mut left_segments = vec![None; left_cells.len()];
     let mut right_segments = vec![None; right_cells.len()];
 
@@ -3627,11 +3629,8 @@ fn load_binary_details(
     let size = metadata.len();
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
-    let mut bytes = if let Some(limit) = preview_byte_limit {
-        Some(Vec::with_capacity((size.min(limit as u64)) as usize))
-    } else {
-        None
-    };
+    let mut bytes = preview_byte_limit
+        .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
     let mut buffer = [0; BINARY_SAMPLE_BYTES];
 
     loop {
@@ -4003,7 +4002,7 @@ fn parent_path(path: &Path) -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
-        .manage(UpdateState::default())
+        .manage(create_update_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
@@ -4047,6 +4046,18 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn create_update_state() -> UpdateState {
+    #[cfg(feature = "updater")]
+    {
+        UpdateState::default()
+    }
+
+    #[cfg(not(feature = "updater"))]
+    {
+        UpdateState
+    }
 }
 
 #[cfg(test)]
