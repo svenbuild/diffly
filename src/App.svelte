@@ -87,6 +87,7 @@
     createMergeSession,
     getMergeSelectionCounts,
     hasDirtyMergeDrafts,
+    setAllMergeHunks,
     toggleMergeHunk,
     type MergeSession,
   } from './lib/merge-session'
@@ -244,10 +245,18 @@
     left: 0,
     right: 0,
   }
+  let mergeTotalHunks = 0
+  let mergeHasSelections = false
+  let mergeEntryTitle = 'Enter merge mode'
+  let mergeAnnouncement = ''
+  let mergeAnnouncementTimer: number | null = null
   let currentMergeCanApplyLeft = false
   let currentMergeCanApplyRight = false
   let currentMergeAppliedLeft = false
   let currentMergeAppliedRight = false
+  let mergeLastTargetSide: Side | null = null
+  let mergeModeSummary = 'Merge mode'
+  let mergeStatusSummary = ''
   let leftCompareRoot: CompareRootDisplay = {
     prefix: '',
     suffix: '',
@@ -466,6 +475,10 @@
       if (diffNavigationIdleTimer !== null) {
         window.clearTimeout(diffNavigationIdleTimer)
       }
+
+      if (mergeAnnouncementTimer !== null) {
+        window.clearTimeout(mergeAnnouncementTimer)
+      }
     }
   })
 
@@ -667,6 +680,39 @@
     openSettings('updates')
   }
 
+  function announceMerge(message: string) {
+    mergeAnnouncement = ''
+
+    if (typeof window === 'undefined') {
+      mergeAnnouncement = message
+      return
+    }
+
+    if (mergeAnnouncementTimer !== null) {
+      window.clearTimeout(mergeAnnouncementTimer)
+    }
+
+    mergeAnnouncementTimer = window.setTimeout(() => {
+      mergeAnnouncement = message
+      mergeAnnouncementTimer = null
+    }, 16)
+  }
+
+  function isEditableTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    const tagName = target.tagName
+
+    return (
+      target.isContentEditable ||
+      tagName === 'INPUT' ||
+      tagName === 'TEXTAREA' ||
+      tagName === 'SELECT'
+    )
+  }
+
   function restoreMergeViewState() {
     viewMode = mergeRestoreViewMode
     showFullFile = mergeRestoreShowFullFile
@@ -675,6 +721,7 @@
   function leaveMergeMode() {
     interactionMode = 'compare'
     mergeSession = null
+    mergeLastTargetSide = null
     restoreMergeViewState()
   }
 
@@ -713,11 +760,15 @@
     mergeRestoreViewMode = viewMode
     mergeRestoreShowFullFile = showFullFile
     mergeSession = createMergeSession(activeDiff, canonicalHunks)
+    mergeLastTargetSide = null
     interactionMode = 'merge'
     viewMode = 'sideBySide'
     showFullFile = false
     currentDiffHunk =
       currentDiffHunk >= 0 ? Math.min(currentDiffHunk, canonicalHunks.length - 1) : 0
+    announceMerge(
+      `Merge mode active. Hunk ${currentDiffHunk + 1} of ${canonicalHunks.length} selected.`,
+    )
   }
 
   function toggleCurrentMergeHunk(targetSide: Side) {
@@ -725,7 +776,37 @@
       return
     }
 
-    mergeSession = toggleMergeHunk(mergeSession, currentDiffHunk, targetSide)
+    const nextSession = toggleMergeHunk(mergeSession, currentDiffHunk, targetSide)
+    const selection = nextSession.selections[currentDiffHunk]
+    const active = targetSide === 'left' ? selection?.toLeft : selection?.toRight
+    const targetLabel = targetSide === 'left' ? 'left draft' : 'right draft'
+    const sourceLabel = targetSide === 'left' ? 'right side' : 'left side'
+
+    mergeSession = nextSession
+    mergeLastTargetSide = targetSide
+    announceMerge(
+      active
+        ? `Hunk ${currentDiffHunk + 1} now copies the ${sourceLabel} into the ${targetLabel}.`
+        : `Hunk ${currentDiffHunk + 1} removed from the ${targetLabel}.`,
+    )
+  }
+
+  function toggleAllMergeHunks(targetSide: Side) {
+    if (!mergeSession) {
+      return
+    }
+
+    const allSelected = mergeSession.selections.every((selection) =>
+      targetSide === 'left' ? selection.toLeft : selection.toRight,
+    )
+
+    mergeSession = setAllMergeHunks(mergeSession, targetSide, !allSelected)
+    mergeLastTargetSide = targetSide
+    announceMerge(
+      `${allSelected ? 'Removed' : 'Applied'} all changes ${
+        targetSide === 'left' ? 'from right into left' : 'from left into right'
+      }.`,
+    )
   }
 
   async function saveMergeDraft(targetSide: Side) {
@@ -767,11 +848,99 @@
         expectedSha256,
       )
 
+      announceMerge(`Saved the ${targetSide} draft.`)
       leaveMergeMode()
       await runCompare()
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : `Unable to save the ${targetSide} draft.`
+    }
+  }
+
+  async function saveMergeShortcutDraft() {
+    if (!mergeSession) {
+      return
+    }
+
+    if (mergeSession.leftDirty && mergeSession.rightDirty) {
+      await saveMergeDraft(mergeLastTargetSide ?? 'left')
+      return
+    }
+
+    if (mergeSession.leftDirty && !mergeSession.rightDirty) {
+      await saveMergeDraft('left')
+      return
+    }
+
+    if (mergeSession.rightDirty && !mergeSession.leftDirty) {
+      await saveMergeDraft('right')
+      return
+    }
+
+    announceMerge('There are no draft changes to save.')
+  }
+
+  async function handleMergeModeKeydown(event: KeyboardEvent) {
+    if (!mergeModeActive || screen !== 'compare') {
+      return
+    }
+
+    if (event.defaultPrevented) {
+      return
+    }
+
+    if (isEditableTarget(event.target)) {
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      ensureMergeModeClosed('Discard merge changes and exit merge mode?')
+      return
+    }
+
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.key === 'ArrowLeft'
+    ) {
+      event.preventDefault()
+
+      if (event.shiftKey) {
+        toggleAllMergeHunks('left')
+      } else {
+        toggleCurrentMergeHunk('left')
+      }
+
+      return
+    }
+
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.key === 'ArrowRight'
+    ) {
+      event.preventDefault()
+
+      if (event.shiftKey) {
+        toggleAllMergeHunks('right')
+      } else {
+        toggleCurrentMergeHunk('right')
+      }
+
+      return
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 's'
+    ) {
+      event.preventDefault()
+      await saveMergeShortcutDraft()
     }
   }
 
@@ -2351,7 +2520,26 @@
     activeDiff?.contentKind === 'text' &&
     Boolean(activeDiff.text) &&
     visibleDiffHunkCount > 0
+  $: mergeEntryTitle = canEnterMergeMode
+    ? 'Enter merge mode'
+    : !activeDiff
+      ? 'Open a changed text file to use merge mode.'
+      : activeDiff.contentKind !== 'text'
+        ? 'Merge mode is available only for text diffs.'
+        : loading || detailLoading || pickerLoading
+          ? 'Merge mode is unavailable while Diffly is busy.'
+          : 'Merge mode requires a text diff with changes.'
   $: mergeSelectionCounts = getMergeSelectionCounts(mergeSession)
+  $: mergeTotalHunks = mergeSession?.selections.length ?? 0
+  $: mergeHasSelections = mergeSelectionCounts.left > 0 || mergeSelectionCounts.right > 0
+  $: mergeModeSummary =
+    mergeModeActive && mergeTotalHunks > 0
+      ? `Merge ${Math.max(1, currentDiffHunk + 1)}/${mergeTotalHunks}`
+      : 'Merge mode'
+  $: mergeStatusSummary =
+    mergeModeActive && mergeTotalHunks > 0 && mergeHasSelections
+      ? `L ${mergeSelectionCounts.left}/${mergeTotalHunks}  R ${mergeSelectionCounts.right}/${mergeTotalHunks}`
+      : ''
   $: {
     const currentSelection =
       mergeSession && currentDiffHunk >= 0 ? mergeSession.selections[currentDiffHunk] : null
@@ -2458,6 +2646,8 @@
     }))
     .filter((item) => item.count > 0)
 </script>
+
+<svelte:window on:keydown={handleMergeModeKeydown} />
 
 <svelte:head>
   <title>Diffly</title>
@@ -2608,6 +2798,7 @@
   </main>
 {:else if screen === 'compare'}
   <main class="screen compare-screen">
+    <div aria-live="polite" class="sr-only">{mergeAnnouncement}</div>
     <header class="app-bar compare-bar">
       <div class="app-bar-main compare-bar-main">
         <div class="compare-bar-brand">
@@ -2693,26 +2884,28 @@
               role="group"
             >
               <button
+                aria-pressed={currentMergeAppliedLeft}
                 class:active={currentMergeAppliedLeft}
                 class="secondary toolbar-button merge-direction-button"
-                aria-label="Apply the current hunk to the left draft"
+                aria-label="Copy the right side of the current change into the left draft"
                 disabled={!currentMergeCanApplyLeft}
-                title="Apply the current hunk to the left draft"
+                title="Copy the right side of the current change into the left draft. Alt+Left toggles this change. Alt+Shift+Left toggles all changes to the left draft."
                 type="button"
                 on:click={() => toggleCurrentMergeHunk('left')}
               >
-                <span aria-hidden="true">←</span>
+                <span>R&rarr;L</span>
               </button>
               <button
+                aria-pressed={currentMergeAppliedRight}
                 class:active={currentMergeAppliedRight}
                 class="secondary toolbar-button merge-direction-button"
-                aria-label="Apply the current hunk to the right draft"
+                aria-label="Copy the left side of the current change into the right draft"
                 disabled={!currentMergeCanApplyRight}
-                title="Apply the current hunk to the right draft"
+                title="Copy the left side of the current change into the right draft. Alt+Right toggles this change. Alt+Shift+Right toggles all changes to the right draft."
                 type="button"
                 on:click={() => toggleCurrentMergeHunk('right')}
               >
-                <span aria-hidden="true">→</span>
+                <span>L&rarr;R</span>
               </button>
             </div>
           {/if}
@@ -2765,57 +2958,84 @@
         <div class="compare-action-group utility-actions">
           {#if mergeModeActive}
             <span
-              aria-label={`Pending merge drafts: ${mergeSelectionCounts.left} left, ${mergeSelectionCounts.right} right`}
-              class="merge-status-chip"
-              title={`Pending merge drafts: ${mergeSelectionCounts.left} left, ${mergeSelectionCounts.right} right`}
+              aria-label={`Merge mode. Selected change ${Math.max(1, currentDiffHunk + 1)} of ${mergeTotalHunks}.`}
+              class="merge-mode-chip"
+              title="Merge mode. Use Alt+Left or Alt+Right to apply the current change, Ctrl+S to save, and Escape to exit."
             >
-              L{mergeSelectionCounts.left} R{mergeSelectionCounts.right}
+              {mergeModeSummary}
             </span>
+            {#if mergeHasSelections}
+              <span
+                aria-label={`Pending merge selections: left ${mergeSelectionCounts.left} of ${mergeTotalHunks}, right ${mergeSelectionCounts.right} of ${mergeTotalHunks}`}
+                class="merge-status-chip"
+                title={`Pending merge selections: left ${mergeSelectionCounts.left} of ${mergeTotalHunks}, right ${mergeSelectionCounts.right} of ${mergeTotalHunks}`}
+              >
+                {mergeStatusSummary}
+              </span>
+            {/if}
             <button
-              class="secondary toolbar-button icon-button merge-save-button"
+              class="secondary toolbar-button merge-save-button"
               aria-label="Save the left draft"
               disabled={!mergeSession?.leftDirty}
-              title="Save the left draft"
+              title="Save the left draft. Ctrl+S saves the active dirty draft."
               type="button"
               on:click={() => saveMergeDraft('left')}
             >
-              <span aria-hidden="true">←✓</span>
+              <span>Save Left</span>
             </button>
             <button
-              class="secondary toolbar-button icon-button merge-save-button"
+              class="secondary toolbar-button merge-save-button"
               aria-label="Save the right draft"
               disabled={!mergeSession?.rightDirty}
-              title="Save the right draft"
+              title="Save the right draft. Ctrl+S saves the active dirty draft."
               type="button"
               on:click={() => saveMergeDraft('right')}
             >
-              <span aria-hidden="true">→✓</span>
+              <span>Save Right</span>
             </button>
             <button
-              class="secondary toolbar-button icon-button merge-cancel-button"
+              class="secondary toolbar-button merge-cancel-button"
               aria-label="Exit merge mode"
-              title="Exit merge mode"
+              title="Exit merge mode. Escape closes merge mode."
               type="button"
               on:click={() => ensureMergeModeClosed('Discard merge changes and exit merge mode?')}
             >
-              <span aria-hidden="true">×</span>
+              <span>Exit</span>
             </button>
           {:else}
-            <button
-              class="secondary toolbar-button icon-button merge-toggle-button"
-              aria-label="Enter merge mode"
-              disabled={!canEnterMergeMode}
-              title="Enter merge mode"
-              type="button"
-              on:click={enterMergeMode}
-            >
-              <svg aria-hidden="true" class="merge-toggle-icon" viewBox="0 0 16 16">
-                <path d="M2.5 5.3h4.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" />
-                <path d="m6.1 2.8 2.5 2.5-2.5 2.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
-                <path d="M13.5 10.7H8.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" />
-                <path d="m9.9 8.2-2.5 2.5 2.5 2.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
-              </svg>
-            </button>
+            <span class="merge-entry-anchor" title={mergeEntryTitle}>
+              <button
+                class="secondary toolbar-button merge-toggle-button"
+                aria-label={mergeEntryTitle}
+                disabled={!canEnterMergeMode}
+                title={mergeEntryTitle}
+                type="button"
+                on:click={enterMergeMode}
+              >
+                <svg aria-hidden="true" class="merge-toggle-icon" viewBox="0 0 16 16">
+                  <circle cx="4" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  <circle cx="12" cy="8" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  <circle cx="4" cy="12.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  <path
+                    d="M5.5 3.5h2.2a3 3 0 0 1 3 3V8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.3"
+                  />
+                  <path
+                    d="M5.5 12.5h2.2a3 3 0 0 0 3-3V8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.3"
+                  />
+                </svg>
+                <span>Merge</span>
+              </button>
+            </span>
             <button
               class="secondary toolbar-button icon-button swap-button"
               aria-label="Switch left and right sides"

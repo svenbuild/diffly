@@ -276,6 +276,23 @@ export function toggleMergeHunk(
   })
 }
 
+export function setAllMergeHunks(
+  session: MergeSession,
+  targetSide: Side,
+  selected: boolean,
+) {
+  const selections = session.selections.map((selection) => ({
+    ...selection,
+    toLeft: targetSide === 'left' ? selected : selection.toLeft,
+    toRight: targetSide === 'right' ? selected : selection.toRight,
+  }))
+
+  return recomputeDrafts({
+    ...session,
+    selections,
+  })
+}
+
 export function hasDirtyMergeDrafts(session: MergeSession | null) {
   return Boolean(session && (session.leftDirty || session.rightDirty))
 }

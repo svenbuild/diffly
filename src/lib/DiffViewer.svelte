@@ -1068,12 +1068,17 @@
 
                 {#each leftVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? leftVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row">
+                    <div
+                      class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                      class="collapsed-row"
+                    >
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!showFullFile && !item.row.left}
                       class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
@@ -1178,12 +1183,17 @@
 
                 {#each rightVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? rightVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row">
+                    <div
+                      class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                      class="collapsed-row"
+                    >
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!showFullFile && !item.row.right}
                       class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
@@ -1291,12 +1301,17 @@
 
             {#each visibleUnifiedItems as item, visibleIndex (virtualizeUnified ? unifiedVirtualRange.start + visibleIndex : visibleIndex)}
               {#if item.type === 'hunk'}
-                <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row unified-collapsed-row">
+                <div
+                  class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                  class="collapsed-row unified-collapsed-row"
+                >
                   <span class="collapsed-chip">{item.header}</span>
                 </div>
               {:else if item.row}
                 <div
                   class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                   class={`unified-row ${item.row.change}`}
                   data-diff-anchor={virtualizeUnified ? undefined : item.isAnchor ? 'true' : undefined}
                   data-diff-index={virtualizeUnified ? undefined : isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
