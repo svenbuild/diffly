@@ -682,10 +682,10 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 18px;
-  padding: 0 8px;
+  min-height: 22px;
+  padding: 1px 7px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
   color: var(--panel-meta);
   font-size: 0.76rem;
@@ -697,6 +697,7 @@ h2 {
 .merge-status-chip {
   min-width: 52px;
   align-self: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .segmented-control {
@@ -2985,10 +2986,22 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: stretch;
 }
 
-.hunk-row.current-diff-target,
-.diff-row.current-diff-target,
-.unified-row.current-diff-target {
-  box-shadow: inset 2px 0 0 var(--accent);
+.collapsed-row.current-diff-target {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--collapsed-row-bg));
+}
+
+.collapsed-row.current-diff-target::before {
+  border-top-color: color-mix(in srgb, var(--accent) 34%, var(--collapsed-row-line));
+}
+
+.collapsed-row.current-diff-target > .collapsed-chip {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--collapsed-chip-border));
+  background: color-mix(in srgb, var(--accent-soft) 32%, var(--collapsed-chip-bg));
+  color: var(--panel-title);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .collapsed-row {
@@ -3112,6 +3125,19 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row.gap-row .prefix,
 .diff-row.gap-row .line-text {
   color: transparent;
+}
+
+.hunk-row.current-diff-target,
+.diff-row.current-diff-target,
+.unified-row.current-diff-target {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 10%, transparent),
+    transparent 28px
+  );
 }
 
 .virtual-spacer {
@@ -3264,6 +3290,7 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker.active {
   background: var(--accent);
   opacity: 0.95;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 28%, transparent);
 }
 
 .line-fragment.highlighted {

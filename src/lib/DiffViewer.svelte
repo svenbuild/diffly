@@ -1068,7 +1068,7 @@
 
                 {#each leftVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? leftVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class="collapsed-row">
+                    <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row">
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
@@ -1178,7 +1178,7 @@
 
                 {#each rightVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? rightVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class="collapsed-row">
+                    <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row">
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
@@ -1291,7 +1291,7 @@
 
             {#each visibleUnifiedItems as item, visibleIndex (virtualizeUnified ? unifiedVirtualRange.start + visibleIndex : visibleIndex)}
               {#if item.type === 'hunk'}
-                <div class="collapsed-row unified-collapsed-row">
+                <div class:current-diff-target={item.hunkIndex === currentDiffHunk} class="collapsed-row unified-collapsed-row">
                   <span class="collapsed-chip">{item.header}</span>
                 </div>
               {:else if item.row}
