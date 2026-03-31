@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -310,10 +310,26 @@ struct FileDiffResult {
     summary: String,
     left_label: String,
     right_label: String,
+    text: Option<TextDiffPayload>,
     side_by_side: Vec<SideBySideRow>,
     unified: Vec<UnifiedLine>,
     image: Option<ImageDiffPayload>,
     binary: Option<BinaryDiffPayload>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextDiffPayload {
+    left_text: String,
+    right_text: String,
+    left_exists: bool,
+    right_exists: bool,
+    left_sha256: Option<String>,
+    right_sha256: Option<String>,
+    left_line_ending: LineEndingKind,
+    right_line_ending: LineEndingKind,
+    left_has_trailing_newline: bool,
+    right_has_trailing_newline: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -323,6 +339,14 @@ enum ContentKind {
     Image,
     Binary,
     TooLarge,
+}
+
+#[derive(Clone, Copy, Serialize)]
+enum LineEndingKind {
+    #[serde(rename = "lf")]
+    Lf,
+    #[serde(rename = "crlf")]
+    CrLf,
 }
 
 #[derive(Clone, Serialize)]
@@ -419,9 +443,17 @@ enum DiffChange {
 enum LoadedFile {
     Missing,
     TooLarge,
-    Text(String),
+    Text(LoadedTextFile),
     Image(LoadedBinaryFile),
     Binary(LoadedBinaryFile, Vec<u8>, bool),
+}
+
+#[derive(Clone)]
+struct LoadedTextFile {
+    text: String,
+    sha256: String,
+    line_ending: LineEndingKind,
+    has_trailing_newline: bool,
 }
 
 #[derive(Clone)]
@@ -930,6 +962,31 @@ async fn open_compare_item(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn save_compare_text_side(
+    mode: String,
+    left_path: String,
+    right_path: String,
+    relative_path: Option<String>,
+    target_side: String,
+    contents: String,
+    expected_sha256: Option<String>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_compare_text_side_sync(
+            mode,
+            left_path,
+            right_path,
+            relative_path,
+            target_side,
+            contents,
+            expected_sha256,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn open_compare_item_sync(
     left_base: String,
     right_base: String,
@@ -952,6 +1009,37 @@ fn open_compare_item_sync(
         right.to_string_lossy().to_string(),
         &options,
     )
+}
+
+fn save_compare_text_side_sync(
+    mode: String,
+    left_path: String,
+    right_path: String,
+    relative_path: Option<String>,
+    target_side: String,
+    contents: String,
+    expected_sha256: Option<String>,
+) -> Result<(), String> {
+    let (left, right) = resolve_compare_text_paths(&mode, &left_path, &right_path, relative_path)?;
+
+    let target_path = match target_side.as_str() {
+        "left" => left,
+        "right" => right,
+        _ => return Err("Unsupported target side.".to_string()),
+    };
+
+    if let Some(expected_sha256) = expected_sha256 {
+        let current_sha256 = current_file_sha256(&target_path)?;
+
+        if current_sha256.as_deref() != Some(expected_sha256.as_str()) {
+            return Err(
+                "The target file changed since it was loaded. Refresh the compare and try again."
+                    .to_string(),
+            );
+        }
+    }
+
+    write_text_file_atomic(&target_path, &contents)
 }
 
 fn safe_relative_path(value: &str) -> Result<PathBuf, String> {
@@ -1388,6 +1476,7 @@ fn build_file_diff(
             summary: "At least one file exceeds the 1 MB text diff limit.".to_string(),
             left_label,
             right_label,
+            text: None,
             side_by_side: Vec::new(),
             unified: Vec::new(),
             image: None,
@@ -1417,6 +1506,7 @@ fn build_file_diff(
             summary,
             left_label,
             right_label,
+            text: None,
             side_by_side: Vec::new(),
             unified: Vec::new(),
             image: Some(payload),
@@ -1449,6 +1539,7 @@ fn build_file_diff(
             summary,
             left_label,
             right_label,
+            text: None,
             side_by_side: Vec::new(),
             unified: Vec::new(),
             image: None,
@@ -1456,31 +1547,24 @@ fn build_file_diff(
         });
     }
 
-    let left_text = match left_loaded {
-        LoadedFile::Text(text) => text,
-        LoadedFile::Missing => String::new(),
-        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _, _) => String::new(),
-    };
+    let left_snapshot = text_side_snapshot(&left_loaded);
+    let right_snapshot = text_side_snapshot(&right_loaded);
 
-    let right_text = match right_loaded {
-        LoadedFile::Text(text) => text,
-        LoadedFile::Missing => String::new(),
-        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _, _) => String::new(),
-    };
-
-    let normalized_left = normalize_text(&left_text, options);
-    let normalized_right = normalize_text(&right_text, options);
+    let normalized_left = normalize_text(left_snapshot.text.as_str(), options);
+    let normalized_right = normalize_text(right_snapshot.text.as_str(), options);
     let diff = TextDiff::from_lines(&normalized_left, &normalized_right);
     let blocks = diff_blocks(&diff);
-    let left_lines = display_lines(&left_text);
-    let right_lines = display_lines(&right_text);
+    let left_lines = display_lines(left_snapshot.text.as_str());
+    let right_lines = display_lines(right_snapshot.text.as_str());
     let text_views = build_text_diff_views(&blocks, &left_lines, &right_lines);
+    let text_payload = build_text_diff_payload(left_snapshot, right_snapshot);
 
     Ok(FileDiffResult {
         content_kind: ContentKind::Text,
         summary,
         left_label,
         right_label,
+        text: Some(text_payload),
         side_by_side: text_views.side_by_side,
         unified: text_views.unified,
         image: None,
@@ -3587,12 +3671,7 @@ fn load_file(path: &Path) -> Result<LoadedFile, String> {
     match detect_file_kind(path)? {
         DetectedFileKind::Missing => Ok(LoadedFile::Missing),
         DetectedFileKind::TooLarge => Ok(LoadedFile::TooLarge),
-        DetectedFileKind::Text => {
-            let bytes = fs::read(path).map_err(|error| error.to_string())?;
-            Ok(LoadedFile::Text(
-                String::from_utf8_lossy(&bytes).to_string(),
-            ))
-        }
+        DetectedFileKind::Text => Ok(LoadedFile::Text(load_text_file(path)?)),
         DetectedFileKind::Image(format) => {
             let (details, _, _) = load_binary_details(path, Some(format), None)?;
             Ok(LoadedFile::Image(details))
@@ -3687,6 +3766,174 @@ fn load_binary_details(
         bytes,
         truncated,
     ))
+}
+
+fn load_text_file(path: &Path) -> Result<LoadedTextFile, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+
+    Ok(LoadedTextFile {
+        text: String::from_utf8_lossy(&bytes).to_string(),
+        sha256: sha256_hex(&bytes),
+        line_ending: detect_text_line_ending(&bytes),
+        has_trailing_newline: bytes.ends_with(b"\n"),
+    })
+}
+
+fn build_text_diff_payload(
+    left_snapshot: TextSideSnapshot,
+    right_snapshot: TextSideSnapshot,
+) -> TextDiffPayload {
+    TextDiffPayload {
+        left_text: left_snapshot.text,
+        right_text: right_snapshot.text,
+        left_exists: left_snapshot.exists,
+        right_exists: right_snapshot.exists,
+        left_sha256: left_snapshot.sha256,
+        right_sha256: right_snapshot.sha256,
+        left_line_ending: left_snapshot.line_ending,
+        right_line_ending: right_snapshot.line_ending,
+        left_has_trailing_newline: left_snapshot.has_trailing_newline,
+        right_has_trailing_newline: right_snapshot.has_trailing_newline,
+    }
+}
+
+fn text_side_snapshot(loaded: &LoadedFile) -> TextSideSnapshot {
+    match loaded {
+        LoadedFile::Text(text) => TextSideSnapshot {
+            text: text.text.clone(),
+            exists: true,
+            sha256: Some(text.sha256.clone()),
+            line_ending: text.line_ending,
+            has_trailing_newline: text.has_trailing_newline,
+        },
+        LoadedFile::Missing => TextSideSnapshot {
+            text: String::new(),
+            exists: false,
+            sha256: None,
+            line_ending: LineEndingKind::Lf,
+            has_trailing_newline: false,
+        },
+        LoadedFile::TooLarge | LoadedFile::Image(_) | LoadedFile::Binary(_, _, _) => {
+            TextSideSnapshot {
+                text: String::new(),
+                exists: false,
+                sha256: None,
+                line_ending: LineEndingKind::Lf,
+                has_trailing_newline: false,
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TextSideSnapshot {
+    text: String,
+    exists: bool,
+    sha256: Option<String>,
+    line_ending: LineEndingKind,
+    has_trailing_newline: bool,
+}
+
+fn detect_text_line_ending(bytes: &[u8]) -> LineEndingKind {
+    if bytes.windows(2).any(|window| window == b"\r\n") {
+        LineEndingKind::CrLf
+    } else {
+        LineEndingKind::Lf
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn current_file_sha256(path: &Path) -> Result<Option<String>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+
+    if !metadata.is_file() {
+        return Err("The target path must be a file.".to_string());
+    }
+
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    Ok(Some(sha256_hex(&bytes)))
+}
+
+fn resolve_compare_text_paths(
+    mode: &str,
+    left_path: &str,
+    right_path: &str,
+    relative_path: Option<String>,
+) -> Result<(PathBuf, PathBuf), String> {
+    let left_base_path = PathBuf::from(left_path);
+    let right_base_path = PathBuf::from(right_path);
+
+    match mode {
+        "file" => Ok((left_base_path, right_base_path)),
+        "directory" => {
+            let relative_path = safe_relative_path(
+                relative_path.as_deref().ok_or_else(|| {
+                    "The requested path must be relative to the selected compare root."
+                        .to_string()
+                })?,
+            )?;
+            let left = left_base_path.join(&relative_path);
+            let right = right_base_path.join(&relative_path);
+
+            ensure_within_base(&left_base_path, &left)?;
+            ensure_within_base(&right_base_path, &right)?;
+
+            Ok((left, right))
+        }
+        _ => Err("Unsupported compare mode.".to_string()),
+    }
+}
+
+fn write_text_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    if path.exists() {
+        let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+
+        if !metadata.is_file() {
+            return Err("The target path must be a file.".to_string());
+        }
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| "The target path does not have a writable parent directory.".to_string())?;
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let temp_path = parent.join(format!(
+        ".diffly-write-{}-{}",
+        std::process::id(),
+        unique_suffix
+    ));
+
+    {
+        let mut temp_file = fs::File::create(&temp_path).map_err(|error| error.to_string())?;
+        temp_file
+            .write_all(contents.as_bytes())
+            .map_err(|error| error.to_string())?;
+        temp_file.sync_all().map_err(|error| error.to_string())?;
+    }
+
+    match fs::rename(&temp_path, path) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path);
+            Err(error.to_string())
+        }
+    }
 }
 
 fn build_summary(left: &LoadedFile, right: &LoadedFile) -> String {
@@ -4030,6 +4277,7 @@ pub fn run() {
             load_session_state,
             load_launch_context,
             save_session_state,
+            save_compare_text_side,
             get_app_version,
             check_for_updates,
             download_update,
@@ -4617,6 +4865,151 @@ mod tests {
             .unified
             .iter()
             .all(|row| matches!(row.change, DiffChange::Context)));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_text_payload_includes_raw_text_and_metadata() {
+        let temp_root = unique_temp_dir("file-text-payload-metadata");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+        let left_bytes = b"alpha\r\nbeta\r\n";
+        let right_bytes = b"alpha\nbeta";
+
+        write_temp_bytes_file(&left, left_bytes);
+        write_temp_bytes_file(&right, right_bytes);
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        let payload = result.text.expect("text payload should exist");
+        assert_eq!(payload.left_text, "alpha\r\nbeta\r\n");
+        assert_eq!(payload.right_text, "alpha\nbeta");
+        assert!(payload.left_exists);
+        assert!(payload.right_exists);
+        assert_eq!(payload.left_sha256, Some(sha256_hex(left_bytes)));
+        assert_eq!(payload.right_sha256, Some(sha256_hex(right_bytes)));
+        assert!(matches!(payload.left_line_ending, LineEndingKind::CrLf));
+        assert!(matches!(payload.right_line_ending, LineEndingKind::Lf));
+        assert!(payload.left_has_trailing_newline);
+        assert!(!payload.right_has_trailing_newline);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn file_diff_text_payload_marks_missing_side() {
+        let temp_root = unique_temp_dir("file-text-payload-missing-side");
+        let left = temp_root.join("left.txt");
+        let right = temp_root.join("right.txt");
+
+        write_temp_file(&left, "alpha\nbeta\n");
+
+        let result = build_file_diff(
+            &left,
+            &right,
+            "left".to_string(),
+            "right".to_string(),
+            &default_options(),
+        )
+        .expect("file diff should succeed");
+
+        assert!(matches!(result.content_kind, ContentKind::Text));
+        let payload = result.text.expect("text payload should exist");
+        assert!(payload.left_exists);
+        assert!(!payload.right_exists);
+        assert_eq!(payload.right_text, String::new());
+        assert_eq!(payload.right_sha256, None);
+        assert!(matches!(payload.right_line_ending, LineEndingKind::Lf));
+        assert!(!payload.right_has_trailing_newline);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn save_compare_text_side_creates_parent_directories_in_directory_mode() {
+        let temp_root = unique_temp_dir("save-compare-text-side-create-parent");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+        let relative_path = "nested/child.txt";
+        let target_path = left.join(relative_path);
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+
+        save_compare_text_side_sync(
+            "directory".to_string(),
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            Some(relative_path.to_string()),
+            "left".to_string(),
+            "merged\ncontent\n".to_string(),
+            None,
+        )
+        .expect("save should succeed");
+
+        assert_eq!(
+            fs::read_to_string(&target_path).expect("saved file should be readable"),
+            "merged\ncontent\n"
+        );
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn save_compare_text_side_detects_conflicts_using_expected_sha256() {
+        let temp_root = unique_temp_dir("save-compare-text-side-conflict");
+        let left = temp_root.join("left");
+        let right = temp_root.join("right");
+        let relative_path = "sample.txt";
+        let target_path = left.join(relative_path);
+
+        fs::create_dir_all(&left).expect("left directory should exist");
+        fs::create_dir_all(&right).expect("right directory should exist");
+        write_temp_file(&target_path, "alpha\n");
+
+        let expected_sha256 = current_file_sha256(&target_path)
+            .expect("file hash should load")
+            .expect("file hash should exist");
+
+        save_compare_text_side_sync(
+            "directory".to_string(),
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            Some(relative_path.to_string()),
+            "left".to_string(),
+            "beta\n".to_string(),
+            Some(expected_sha256.clone()),
+        )
+        .expect("save should succeed");
+
+        let conflict = save_compare_text_side_sync(
+            "directory".to_string(),
+            left.to_string_lossy().to_string(),
+            right.to_string_lossy().to_string(),
+            Some(relative_path.to_string()),
+            "left".to_string(),
+            "gamma\n".to_string(),
+            Some(expected_sha256),
+        )
+        .expect_err("stale hash should be rejected");
+
+        assert_eq!(
+            conflict,
+            "The target file changed since it was loaded. Refresh the compare and try again."
+        );
+        assert_eq!(
+            fs::read_to_string(&target_path).expect("saved file should remain readable"),
+            "beta\n"
+        );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
