@@ -11,6 +11,7 @@
     FileDiffResult,
     HexRow,
     ImageDiffPayload,
+    InteractionMode,
     SideBySideRow,
     UnifiedLine,
     ViewMode,
@@ -40,6 +41,9 @@
   export let diffFontSize = '11px'
   export let diffRowLineHeight = '14px'
   export let diffRowHeight = '19px'
+  export let interactionMode: InteractionMode = 'compare'
+  export let leftDraftDirty = false
+  export let rightDraftDirty = false
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let scrollDiffHunkIntoView: (targetIndex: number) => void
@@ -78,6 +82,7 @@
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
+  let mergeModeActive = false
   let virtualizeSideBySide = false
   let virtualizeUnified = false
   let leftVirtualRange: VirtualRange = { start: 0, end: 0, topPadding: 0, bottomPadding: 0 }
@@ -151,6 +156,8 @@
         className: null,
       },
     ] satisfies RenderedDiffFragment[]
+
+  $: mergeModeActive = interactionMode === 'merge'
 
   $: rowHeightPx = Math.max(1, Number.parseFloat(diffRowHeight) || 19)
 
@@ -1009,6 +1016,11 @@
             <span class="pane-header-side">Left</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
+            {#if mergeModeActive && leftDraftDirty}
+              <span class="pane-header-badge draft" title="Left draft has unsaved merge changes">
+                Draft
+              </span>
+            {/if}
           </div>
           <div bind:this={leftPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
@@ -1114,6 +1126,11 @@
             <span class="pane-header-side">Right</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
+            {#if mergeModeActive && rightDraftDirty}
+              <span class="pane-header-badge draft" title="Right draft has unsaved merge changes">
+                Draft
+              </span>
+            {/if}
           </div>
           <div bind:this={rightPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div

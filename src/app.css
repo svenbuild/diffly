@@ -658,6 +658,47 @@ h2 {
   flex: 0 0 auto;
 }
 
+.merge-button-group button,
+.merge-save-button,
+.merge-cancel-button,
+.merge-toggle-button {
+  min-width: 30px;
+}
+
+.merge-direction-button,
+.merge-save-button,
+.merge-cancel-button {
+  font-variant-numeric: tabular-nums;
+}
+
+.merge-toggle-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.merge-status-chip,
+.pane-header-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  color: var(--panel-meta);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.merge-status-chip {
+  min-width: 52px;
+  align-self: center;
+}
+
 .segmented-control {
   padding: 2px;
   border: 1px solid var(--border);

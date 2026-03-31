@@ -1,6 +1,7 @@
 import type { AppearanceMode, AppearanceSettings } from './theme'
 
 export type CompareMode = 'file' | 'directory'
+export type InteractionMode = 'compare' | 'merge' | 'edit'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
@@ -120,6 +121,19 @@ export interface BinaryDiffPayload {
   truncated: boolean
 }
 
+export interface TextDiffPayload {
+  leftText: string
+  rightText: string
+  leftExists: boolean
+  rightExists: boolean
+  leftSha256: string | null
+  rightSha256: string | null
+  leftLineEnding: 'lf' | 'crlf'
+  rightLineEnding: 'lf' | 'crlf'
+  leftHasTrailingNewline: boolean
+  rightHasTrailingNewline: boolean
+}
+
 export interface DiffCell {
   lineNumber: number | null
   prefix: string
@@ -154,6 +168,7 @@ export interface FileDiffResult {
   rightLabel: string
   sideBySide: SideBySideRow[]
   unified: UnifiedLine[]
+  text?: TextDiffPayload | null
   image?: ImageDiffPayload | null
   binary?: BinaryDiffPayload | null
 }

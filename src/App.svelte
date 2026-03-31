@@ -17,6 +17,7 @@
     loadSessionState,
     openCompareItem,
     pathInfo,
+    saveCompareTextSide,
     saveSessionState,
   } from './lib/api'
   import {
@@ -82,6 +83,13 @@
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
+  import {
+    createMergeSession,
+    getMergeSelectionCounts,
+    hasDirtyMergeDrafts,
+    toggleMergeHunk,
+    type MergeSession,
+  } from './lib/merge-session'
   import type {
     CompareMode,
     CompareOptions,
@@ -90,6 +98,7 @@
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
+    InteractionMode,
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
@@ -150,6 +159,7 @@
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
+  let interactionMode: InteractionMode = 'compare'
   let viewMode: ViewMode = 'sideBySide'
   let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
     initialSession?.appearance,
@@ -205,6 +215,9 @@
   let diffNavigationScrollFrame: number | null = null
   let diffNavigationIdleTimer: number | null = null
   let currentDiffHunk = -1
+  let mergeSession: MergeSession | null = null
+  let mergeRestoreViewMode: ViewMode = 'sideBySide'
+  let mergeRestoreShowFullFile = false
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let initialSessionFingerprint: string | null = null
@@ -225,6 +238,16 @@
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
   let textDiffActive = false
+  let mergeModeActive = false
+  let canEnterMergeMode = false
+  let mergeSelectionCounts = {
+    left: 0,
+    right: 0,
+  }
+  let currentMergeCanApplyLeft = false
+  let currentMergeCanApplyRight = false
+  let currentMergeAppliedLeft = false
+  let currentMergeAppliedRight = false
   let leftCompareRoot: CompareRootDisplay = {
     prefix: '',
     suffix: '',
@@ -485,10 +508,18 @@
   }
 
   function setViewMode(nextViewMode: ViewMode) {
+    if (interactionMode === 'merge') {
+      return
+    }
+
     viewMode = nextViewMode
   }
 
   function setShowFullFile(nextValue: boolean) {
+    if (interactionMode === 'merge') {
+      return
+    }
+
     showFullFile = nextValue
   }
 
@@ -636,7 +667,119 @@
     openSettings('updates')
   }
 
+  function restoreMergeViewState() {
+    viewMode = mergeRestoreViewMode
+    showFullFile = mergeRestoreShowFullFile
+  }
+
+  function leaveMergeMode() {
+    interactionMode = 'compare'
+    mergeSession = null
+    restoreMergeViewState()
+  }
+
+  function confirmDiscardMergeChanges(message: string) {
+    if (!hasDirtyMergeDrafts(mergeSession) || typeof window === 'undefined') {
+      return true
+    }
+
+    return window.confirm(message)
+  }
+
+  function ensureMergeModeClosed(message: string) {
+    if (interactionMode !== 'merge') {
+      return true
+    }
+
+    if (!confirmDiscardMergeChanges(message)) {
+      return false
+    }
+
+    leaveMergeMode()
+    return true
+  }
+
+  function enterMergeMode() {
+    if (!activeDiff || activeDiff.contentKind !== 'text' || !activeDiff.text) {
+      return
+    }
+
+    const canonicalHunks = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
+
+    if (canonicalHunks.length === 0) {
+      return
+    }
+
+    mergeRestoreViewMode = viewMode
+    mergeRestoreShowFullFile = showFullFile
+    mergeSession = createMergeSession(activeDiff, canonicalHunks)
+    interactionMode = 'merge'
+    viewMode = 'sideBySide'
+    showFullFile = false
+    currentDiffHunk =
+      currentDiffHunk >= 0 ? Math.min(currentDiffHunk, canonicalHunks.length - 1) : 0
+  }
+
+  function toggleCurrentMergeHunk(targetSide: Side) {
+    if (!mergeSession || currentDiffHunk < 0) {
+      return
+    }
+
+    mergeSession = toggleMergeHunk(mergeSession, currentDiffHunk, targetSide)
+  }
+
+  async function saveMergeDraft(targetSide: Side) {
+    if (!mergeSession) {
+      return
+    }
+
+    const savingLeft = targetSide === 'left'
+    const draftText = savingLeft ? mergeSession.leftDraftText : mergeSession.rightDraftText
+    const draftDirty = savingLeft ? mergeSession.leftDirty : mergeSession.rightDirty
+    const expectedSha256 = savingLeft
+      ? mergeSession.leftSnapshot.sha256
+      : mergeSession.rightSnapshot.sha256
+    const opposingDirty = savingLeft ? mergeSession.rightDirty : mergeSession.leftDirty
+    const opposingLabel = savingLeft ? 'right' : 'left'
+
+    if (!draftDirty) {
+      return
+    }
+
+    if (
+      opposingDirty &&
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Save the ${targetSide} draft and discard the unsaved ${opposingLabel} draft?`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      await saveCompareTextSide(
+        mode,
+        leftPath,
+        rightPath,
+        mode === 'directory' ? selectedRelativePath : null,
+        targetSide,
+        draftText,
+        expectedSha256,
+      )
+
+      leaveMergeMode()
+      await runCompare()
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : `Unable to save the ${targetSide} draft.`
+    }
+  }
+
   function openSettings(section: SettingsSection = 'appearance') {
+    if (!ensureMergeModeClosed('Discard merge changes and open settings?')) {
+      return
+    }
+
     if (screen !== 'settings') {
       settingsReturnScreen = screen
     }
@@ -897,6 +1040,10 @@
   }
 
   function setMode(nextMode: CompareMode) {
+    if (!ensureMergeModeClosed('Discard merge changes and switch compare mode?')) {
+      return
+    }
+
     if (mode === nextMode) {
       return
     }
@@ -921,6 +1068,10 @@
   }
 
   function goToSetup() {
+    if (!ensureMergeModeClosed('Discard merge changes and return to setup?')) {
+      return
+    }
+
     activeDetailRequestId += 1
     detailLoading = false
     cancelBackgroundDiffPreload()
@@ -995,6 +1146,10 @@
   }
 
   async function swapComparedSides() {
+    if (!ensureMergeModeClosed('Discard merge changes and switch left and right sides?')) {
+      return
+    }
+
     if (loading || detailLoading || pickerLoading) {
       return
     }
@@ -1011,6 +1166,10 @@
   }
 
   async function browseSystem(side: Side) {
+    if (!ensureMergeModeClosed('Discard merge changes and browse for a different path?')) {
+      return
+    }
+
     const selected = await choosePath(mode === 'file' ? 'file' : 'directory')
 
     if (!selected) {
@@ -1196,6 +1355,10 @@
   }
 
   async function runCompare() {
+    if (!ensureMergeModeClosed('Discard merge changes and refresh the compare?')) {
+      return
+    }
+
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
       errorMessage = 'Select valid targets on both sides first.'
       return
@@ -1257,6 +1420,10 @@
   }
 
   async function selectEntry(entry: DirectoryEntryResult, revision = compareRevision) {
+    if (!ensureMergeModeClosed('Discard merge changes and open a different file?')) {
+      return
+    }
+
     if (!leftPath || !rightPath) {
       return
     }
@@ -2174,6 +2341,26 @@
     visibleDiffHunkCount > 0
 
   $: textDiffActive = activeDiff?.contentKind === 'text'
+  $: mergeModeActive = interactionMode === 'merge'
+  $: canEnterMergeMode =
+    screen === 'compare' &&
+    !mergeModeActive &&
+    !loading &&
+    !detailLoading &&
+    !pickerLoading &&
+    activeDiff?.contentKind === 'text' &&
+    Boolean(activeDiff.text) &&
+    visibleDiffHunkCount > 0
+  $: mergeSelectionCounts = getMergeSelectionCounts(mergeSession)
+  $: {
+    const currentSelection =
+      mergeSession && currentDiffHunk >= 0 ? mergeSession.selections[currentDiffHunk] : null
+
+    currentMergeCanApplyLeft = Boolean(mergeSession && currentDiffHunk >= 0)
+    currentMergeCanApplyRight = Boolean(mergeSession && currentDiffHunk >= 0)
+    currentMergeAppliedLeft = Boolean(currentSelection?.toLeft)
+    currentMergeAppliedRight = Boolean(currentSelection?.toRight)
+  }
 
   $: canGoToPreviousDiff = canNavigateDiffs && currentDiffHunk > 0
 
@@ -2498,6 +2685,37 @@
               </svg>
             </button>
           </div>
+
+          {#if mergeModeActive}
+            <div
+              class="merge-button-group segmented-control toolbar-segmented-control"
+              aria-label="Current hunk merge actions"
+              role="group"
+            >
+              <button
+                class:active={currentMergeAppliedLeft}
+                class="secondary toolbar-button merge-direction-button"
+                aria-label="Apply the current hunk to the left draft"
+                disabled={!currentMergeCanApplyLeft}
+                title="Apply the current hunk to the left draft"
+                type="button"
+                on:click={() => toggleCurrentMergeHunk('left')}
+              >
+                <span aria-hidden="true">←</span>
+              </button>
+              <button
+                class:active={currentMergeAppliedRight}
+                class="secondary toolbar-button merge-direction-button"
+                aria-label="Apply the current hunk to the right draft"
+                disabled={!currentMergeCanApplyRight}
+                title="Apply the current hunk to the right draft"
+                type="button"
+                on:click={() => toggleCurrentMergeHunk('right')}
+              >
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          {/if}
         </div>
 
         <div class="compare-action-group display-actions">
@@ -2506,7 +2724,7 @@
             aria-pressed={viewMode === 'unified'}
             class:unified-active={viewMode === 'unified'}
             class="view-mode-toggle"
-            disabled={!textDiffActive}
+            disabled={!textDiffActive || mergeModeActive}
             type="button"
             on:click={toggleViewMode}
           >
@@ -2537,82 +2755,138 @@
               <span class="view-mode-label">Unified</span>
             </span>
           </button>
-          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
-            Settings
-          </button>
+          {#if !mergeModeActive}
+            <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
+              Settings
+            </button>
+          {/if}
         </div>
 
         <div class="compare-action-group utility-actions">
-          <button
-            class="secondary toolbar-button icon-button swap-button"
-            aria-label="Switch left and right sides"
-            disabled={loading || detailLoading || pickerLoading}
-            title="Switch left and right sides"
-            type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
-        </button>
-
-          <button
-            aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-            aria-busy={loading}
-            class:pending-refresh={compareNeedsRefresh}
-            class="secondary toolbar-button icon-button refresh-button"
-            title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-            type="button"
-            disabled={loading}
-            on:click={runCompare}
-          >
-            <span class="refresh-icon-slot" aria-hidden="true">
-              {#if loading}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <svg class="refresh-icon" viewBox="0 0 16 16">
-                  <path
-                    d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M10.1 10.9h2.7v2.6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M5.9 5.1H3.2V2.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                </svg>
-              {/if}
+          {#if mergeModeActive}
+            <span
+              aria-label={`Pending merge drafts: ${mergeSelectionCounts.left} left, ${mergeSelectionCounts.right} right`}
+              class="merge-status-chip"
+              title={`Pending merge drafts: ${mergeSelectionCounts.left} left, ${mergeSelectionCounts.right} right`}
+            >
+              L{mergeSelectionCounts.left} R{mergeSelectionCounts.right}
             </span>
-          </button>
-          <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
-            Setup
-          </button>
+            <button
+              class="secondary toolbar-button icon-button merge-save-button"
+              aria-label="Save the left draft"
+              disabled={!mergeSession?.leftDirty}
+              title="Save the left draft"
+              type="button"
+              on:click={() => saveMergeDraft('left')}
+            >
+              <span aria-hidden="true">←✓</span>
+            </button>
+            <button
+              class="secondary toolbar-button icon-button merge-save-button"
+              aria-label="Save the right draft"
+              disabled={!mergeSession?.rightDirty}
+              title="Save the right draft"
+              type="button"
+              on:click={() => saveMergeDraft('right')}
+            >
+              <span aria-hidden="true">→✓</span>
+            </button>
+            <button
+              class="secondary toolbar-button icon-button merge-cancel-button"
+              aria-label="Exit merge mode"
+              title="Exit merge mode"
+              type="button"
+              on:click={() => ensureMergeModeClosed('Discard merge changes and exit merge mode?')}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          {:else}
+            <button
+              class="secondary toolbar-button icon-button merge-toggle-button"
+              aria-label="Enter merge mode"
+              disabled={!canEnterMergeMode}
+              title="Enter merge mode"
+              type="button"
+              on:click={enterMergeMode}
+            >
+              <svg aria-hidden="true" class="merge-toggle-icon" viewBox="0 0 16 16">
+                <path d="M2.5 5.3h4.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" />
+                <path d="m6.1 2.8 2.5 2.5-2.5 2.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+                <path d="M13.5 10.7H8.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" />
+                <path d="m9.9 8.2-2.5 2.5 2.5 2.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+              </svg>
+            </button>
+            <button
+              class="secondary toolbar-button icon-button swap-button"
+              aria-label="Switch left and right sides"
+              disabled={loading || detailLoading || pickerLoading}
+              title="Switch left and right sides"
+              type="button"
+              on:click={swapComparedSides}
+            >
+              <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+                <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+                <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+                <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+              </svg>
+            </button>
+
+            <button
+              aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+              aria-busy={loading}
+              class:pending-refresh={compareNeedsRefresh}
+              class="secondary toolbar-button icon-button refresh-button"
+              title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+              type="button"
+              disabled={loading}
+              on:click={runCompare}
+            >
+              <span class="refresh-icon-slot" aria-hidden="true">
+                {#if loading}
+                  <span class="refresh-spinner visible"></span>
+                {:else}
+                  <svg class="refresh-icon" viewBox="0 0 16 16">
+                    <path
+                      d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.7"
+                    />
+                    <path
+                      d="M10.1 10.9h2.7v2.6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.7"
+                    />
+                    <path
+                      d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.7"
+                    />
+                    <path
+                      d="M5.9 5.1H3.2V2.5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.7"
+                    />
+                  </svg>
+                {/if}
+              </span>
+            </button>
+            <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
+              Setup
+            </button>
+          {/if}
         </div>
       </div>
     </header>
@@ -2643,6 +2917,7 @@
           {selectEntry}
           {getFileName}
           {formatSize}
+          interactionLocked={mergeModeActive}
         />
         <button
           aria-label="Resize file list panel"
@@ -2671,6 +2946,9 @@
         {diffFontSize}
         {diffRowLineHeight}
         {diffRowHeight}
+        {interactionMode}
+        leftDraftDirty={mergeSession?.leftDirty ?? false}
+        rightDraftDirty={mergeSession?.rightDirty ?? false}
         {syncPaneWheel}
         {syncPaneScroll}
         {scrollDiffHunkIntoView}
