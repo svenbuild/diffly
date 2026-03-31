@@ -1,3 +1,5 @@
+#[cfg(feature = "updater")]
+use std::sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -6,11 +8,8 @@ use std::{
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(feature = "updater")]
-use std::sync::Mutex;
 
 use rayon::prelude::*;
-use url::Url;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,6 +17,7 @@ use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
 #[cfg(feature = "updater")]
 use tauri_plugin_updater::{Update, UpdaterExt};
+use url::Url;
 use walkdir::WalkDir;
 
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
@@ -1358,14 +1358,14 @@ fn classify_entry_status_from_kinds(
     left: &DetectedFileKind,
     right: &DetectedFileKind,
 ) -> EntryStatus {
+    if matches!(left, DetectedFileKind::TooLarge) || matches!(right, DetectedFileKind::TooLarge) {
+        return EntryStatus::TooLarge;
+    }
+
     if matches!(left, DetectedFileKind::Binary | DetectedFileKind::Image(_))
         || matches!(right, DetectedFileKind::Binary | DetectedFileKind::Image(_))
     {
         return EntryStatus::Binary;
-    }
-
-    if matches!(left, DetectedFileKind::TooLarge) || matches!(right, DetectedFileKind::TooLarge) {
-        return EntryStatus::TooLarge;
     }
 
     EntryStatus::Modified
@@ -3622,16 +3622,16 @@ fn detect_file_kind_from_metadata_sample(
     metadata: &fs::Metadata,
     sample: &[u8],
 ) -> DetectedFileKind {
+    if metadata.len() > MAX_TEXT_BYTES {
+        return DetectedFileKind::TooLarge;
+    }
+
     if looks_binary(sample) {
         if let Some(format) = detect_image_format(sample, path) {
             return DetectedFileKind::Image(format);
         }
 
         return DetectedFileKind::Binary;
-    }
-
-    if metadata.len() > MAX_TEXT_BYTES {
-        return DetectedFileKind::TooLarge;
     }
 
     DetectedFileKind::Text
@@ -4353,6 +4353,31 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.relative_path == "real-topic.png" && matches!(entry.status, EntryStatus::Binary)
         }));
+    }
+
+    #[test]
+    fn detect_file_kind_marks_large_binary_as_too_large() {
+        let temp_root = unique_temp_dir("detect-large-binary-kind");
+        let path = temp_root.join("large.bin");
+        let mut bytes = vec![0u8; (MAX_TEXT_BYTES as usize) + 1];
+        bytes[0] = 0;
+        bytes[1] = 255;
+        write_temp_bytes_file(&path, &bytes);
+
+        let kind = detect_file_kind(&path).expect("file kind detection should succeed");
+        assert!(matches!(kind, DetectedFileKind::TooLarge));
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn classify_entry_status_prioritizes_too_large_over_binary() {
+        let status = classify_entry_status_from_kinds(
+            &DetectedFileKind::TooLarge,
+            &DetectedFileKind::Binary,
+        );
+
+        assert!(matches!(status, EntryStatus::TooLarge));
     }
 
     #[test]
