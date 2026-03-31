@@ -20,6 +20,7 @@ themes.txt
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+.claude/
 .idea
 .DS_Store
 *.suo
@@ -27,3 +28,4 @@ themes.txt
 *.njsproj
 *.sln
 *.sw?
+MERGE_MODE_UX_REPORT.md
