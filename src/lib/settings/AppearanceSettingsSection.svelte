@@ -74,7 +74,7 @@
 
   function formatThemeLabel(value: string) {
     if (value === 'legacy-tuerkis') {
-      return 'Original tÃ¼rkis'
+      return 'Original türkis'
     }
 
     return value
