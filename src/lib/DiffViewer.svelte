@@ -11,10 +11,17 @@
     FileDiffResult,
     HexRow,
     ImageDiffPayload,
+    InteractionMode,
+    SideBySideRow,
     UnifiedLine,
     ViewMode,
   } from './types'
-  import type { DiffHeaderContext, SideBySideRenderItem, UnifiedRenderItem } from './ui-types'
+  import type {
+    DiffHeaderContext,
+    DiffHunkRange,
+    SideBySideRenderItem,
+    UnifiedRenderItem,
+  } from './ui-types'
 
   export let activeDiff: FileDiffResult | null
   export let loading: boolean
@@ -28,10 +35,15 @@
   export let syncSideBySideScroll: boolean
   export let sideBySideRenderItems: SideBySideRenderItem[]
   export let unifiedRenderItems: UnifiedRenderItem[]
+  export let sideBySideHunkRanges: DiffHunkRange[]
+  export let unifiedHunkRanges: DiffHunkRange[]
   export let diffHeaderContext: DiffHeaderContext
   export let diffFontSize = '11px'
   export let diffRowLineHeight = '14px'
   export let diffRowHeight = '19px'
+  export let interactionMode: InteractionMode = 'compare'
+  export let leftDraftDirty = false
+  export let rightDraftDirty = false
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let scrollDiffHunkIntoView: (targetIndex: number) => void
@@ -61,6 +73,7 @@
   let rightPaneTrailingSpace = 0
   let pinSplitBottomScrollbar = false
   let pinUnifiedBottomScrollbar = false
+  let rowHeightPx = 19
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
   let scrollMarkerRefreshQueued = false
@@ -69,6 +82,23 @@
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
+  let mergeModeActive = false
+  let virtualizeSideBySide = false
+  let virtualizeUnified = false
+  let leftVirtualRange: VirtualRange = { start: 0, end: 0, topPadding: 0, bottomPadding: 0 }
+  let rightVirtualRange: VirtualRange = { start: 0, end: 0, topPadding: 0, bottomPadding: 0 }
+  let unifiedVirtualRange: VirtualRange = { start: 0, end: 0, topPadding: 0, bottomPadding: 0 }
+  let leftVisibleSideBySideItems: SideBySideRenderItem[] = []
+  let rightVisibleSideBySideItems: SideBySideRenderItem[] = []
+  let visibleUnifiedItems: UnifiedRenderItem[] = []
+  let sideBySideVirtualAnchors: VirtualHunkAnchor[] = []
+  let unifiedVirtualAnchors: VirtualHunkAnchor[] = []
+  let leftVirtualScrollTop = 0
+  let rightVirtualScrollTop = 0
+  let unifiedVirtualScrollTop = 0
+  let leftVirtualViewportHeight = 0
+  let rightVirtualViewportHeight = 0
+  let unifiedVirtualViewportHeight = 0
   const emptyBinaryMeta: BinaryFileMeta = {
     exists: false,
     path: '',
@@ -91,6 +121,132 @@
     height: number
     kind: 'insert' | 'delete' | 'mixed'
   }
+
+  interface VirtualRange {
+    start: number
+    end: number
+    topPadding: number
+    bottomPadding: number
+  }
+
+  interface VirtualHunkAnchor {
+    hunkIndex: number
+    top: number
+    height: number
+    kind: ScrollMarker['kind']
+  }
+
+  const FULL_FILE_VIRTUALIZATION_MIN_ROWS = 800
+  const FULL_FILE_VIRTUALIZATION_OVERSCAN_ROWS = 80
+  const LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS = 2000
+
+  const emptyVirtualRange: VirtualRange = {
+    start: 0,
+    end: 0,
+    topPadding: 0,
+    bottomPadding: 0,
+  }
+
+  const emptyVirtualAnchors: VirtualHunkAnchor[] = []
+  const plainRenderedFragments = (text: string) =>
+    [
+      {
+        text,
+        highlighted: false,
+        className: null,
+      },
+    ] satisfies RenderedDiffFragment[]
+
+  $: mergeModeActive = interactionMode === 'merge'
+
+  $: rowHeightPx = Math.max(1, Number.parseFloat(diffRowHeight) || 19)
+
+  $: virtualizeSideBySide =
+    activeDiff?.contentKind === 'text' &&
+    viewMode === 'sideBySide' &&
+    showFullFile &&
+    !wrapSideBySideLines &&
+    activeDiff.sideBySide.length > FULL_FILE_VIRTUALIZATION_MIN_ROWS
+
+  $: virtualizeUnified =
+    activeDiff?.contentKind === 'text' &&
+    viewMode === 'unified' &&
+    showFullFile &&
+    activeDiff.unified.length > FULL_FILE_VIRTUALIZATION_MIN_ROWS
+
+  $: leftVirtualRange = virtualizeSideBySide
+    ? buildVirtualRange(
+        activeDiff?.contentKind === 'text' ? activeDiff.sideBySide.length : 0,
+        leftVirtualScrollTop,
+        leftVirtualViewportHeight,
+        rowHeightPx,
+      )
+    : emptyVirtualRange
+
+  $: rightVirtualRange = virtualizeSideBySide
+    ? buildVirtualRange(
+        activeDiff?.contentKind === 'text' ? activeDiff.sideBySide.length : 0,
+        rightVirtualScrollTop,
+        rightVirtualViewportHeight,
+        rowHeightPx,
+      )
+    : emptyVirtualRange
+
+  $: unifiedVirtualRange = virtualizeUnified
+    ? buildVirtualRange(
+        activeDiff?.contentKind === 'text' ? activeDiff.unified.length : 0,
+        unifiedVirtualScrollTop,
+        unifiedVirtualViewportHeight,
+        rowHeightPx,
+      )
+    : emptyVirtualRange
+
+  $: leftVisibleSideBySideItems = virtualizeSideBySide
+    ? buildVisibleFullFileSideBySideItems(
+        activeDiff?.contentKind === 'text' ? activeDiff.sideBySide : [],
+        sideBySideHunkRanges,
+        leftVirtualRange.start,
+        leftVirtualRange.end,
+      )
+    : sideBySideRenderItems
+
+  $: rightVisibleSideBySideItems = virtualizeSideBySide
+    ? buildVisibleFullFileSideBySideItems(
+        activeDiff?.contentKind === 'text' ? activeDiff.sideBySide : [],
+        sideBySideHunkRanges,
+        rightVirtualRange.start,
+        rightVirtualRange.end,
+      )
+    : sideBySideRenderItems
+
+  $: visibleUnifiedItems = virtualizeUnified
+    ? buildVisibleFullFileUnifiedItems(
+        activeDiff?.contentKind === 'text' ? activeDiff.unified : [],
+        unifiedHunkRanges,
+        unifiedVirtualRange.start,
+        unifiedVirtualRange.end,
+      )
+    : unifiedRenderItems
+
+  $: sideBySideVirtualAnchors =
+    virtualizeSideBySide && activeDiff?.contentKind === 'text'
+      ? buildSideBySideVirtualAnchors(activeDiff.sideBySide, sideBySideHunkRanges, rowHeightPx)
+      : emptyVirtualAnchors
+
+  $: unifiedVirtualAnchors =
+    virtualizeUnified && activeDiff?.contentKind === 'text'
+      ? buildUnifiedVirtualAnchors(activeDiff.unified, unifiedHunkRanges, rowHeightPx)
+      : emptyVirtualAnchors
+
+  $: simplifyVirtualizedContextFragments =
+    activeDiff?.contentKind === 'text' && showFullFile && (virtualizeSideBySide || virtualizeUnified)
+
+  $: simplifyLargeFullFileFragments =
+    activeDiff?.contentKind === 'text' &&
+    showFullFile &&
+    ((virtualizeSideBySide &&
+      activeDiff.sideBySide.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS) ||
+      (virtualizeUnified && activeDiff.unified.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS))
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
@@ -148,41 +304,62 @@
     syncScrollMarkerObserver()
   }
 
-  function currentSyntaxKey() {
+  $: {
+    leftPaneScroll
+    rightPaneScroll
+    unifiedScroll
+    sideBySideRenderItems
+    unifiedRenderItems
+    virtualizeSideBySide
+    virtualizeUnified
+    void tick().then(() => {
+      syncVirtualViewportState()
+    })
+  }
+
+  function getFragmentModeKey(change: 'context' | 'delete' | 'insert') {
+    if (!showInlineHighlights && !showSyntaxHighlighting) {
+      return 'plain-static'
+    }
+
+    if (simplifyLargeFullFileFragments) {
+      return 'plain-large-file'
+    }
+
+    if (simplifyVirtualizedContextFragments && change === 'context') {
+      return 'plain-context-file'
+    }
+
     return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
   }
 
   function getCachedDiffCellFragments(cell: DiffCell) {
-    const syntaxKey = currentSyntaxKey()
+    const syntaxKey = getFragmentModeKey(cell.change)
     const cached = diffCellFragmentCache.get(cell)
 
     if (cached && cached.syntaxKey === syntaxKey) {
       return cached.fragments
     }
 
-    const fragments = renderDiffFragments(
-      cell.text,
-      cell.segments,
-      syntaxKey ? syntaxLanguage : null,
-    )
+    const fragments = syntaxKey.startsWith('plain-')
+      ? plainRenderedFragments(cell.text)
+      : renderDiffFragments(cell.text, cell.segments, syntaxKey ? syntaxLanguage : null)
 
     diffCellFragmentCache.set(cell, { fragments, syntaxKey })
     return fragments
   }
 
   function getCachedUnifiedLineFragments(line: UnifiedLine) {
-    const syntaxKey = currentSyntaxKey()
+    const syntaxKey = getFragmentModeKey(line.change)
     const cached = unifiedLineFragmentCache.get(line)
 
     if (cached && cached.syntaxKey === syntaxKey) {
       return cached.fragments
     }
 
-    const fragments = renderDiffFragments(
-      line.text,
-      line.segments,
-      syntaxKey ? syntaxLanguage : null,
-    )
+    const fragments = syntaxKey.startsWith('plain-')
+      ? plainRenderedFragments(line.text)
+      : renderDiffFragments(line.text, line.segments, syntaxKey ? syntaxLanguage : null)
 
     unifiedLineFragmentCache.set(line, { fragments, syntaxKey })
     return fragments
@@ -266,6 +443,229 @@
     }
 
     return chips
+  }
+
+  function findIntersectingHunkIndex(hunks: DiffHunkRange[], rowIndex: number) {
+    let low = 0
+    let high = hunks.length - 1
+
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2)
+      const hunk = hunks[middle]
+
+      if (rowIndex < hunk.start) {
+        high = middle - 1
+        continue
+      }
+
+      if (rowIndex > hunk.end) {
+        low = middle + 1
+        continue
+      }
+
+      return middle
+    }
+
+    return low
+  }
+
+  function buildVisibleFullFileSideBySideItems(
+    rows: SideBySideRow[],
+    hunks: DiffHunkRange[],
+    start: number,
+    end: number,
+  ) {
+    const items: SideBySideRenderItem[] = []
+    let hunkIndex = findIntersectingHunkIndex(hunks, start)
+
+    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
+      const row = rows[rowIndex]
+
+      while (hunkIndex < hunks.length && hunks[hunkIndex].end < rowIndex) {
+        hunkIndex += 1
+      }
+
+      const activeHunk = hunks[hunkIndex]
+      const rowHunkIndex =
+        activeHunk && activeHunk.start <= rowIndex && activeHunk.end >= rowIndex
+          ? hunkIndex
+          : undefined
+
+      items.push({
+        type: 'row',
+        row,
+        hunkIndex: rowHunkIndex,
+        isAnchor: rowHunkIndex !== undefined && activeHunk?.start === rowIndex,
+      })
+    }
+
+    return items
+  }
+
+  function buildVisibleFullFileUnifiedItems(
+    rows: UnifiedLine[],
+    hunks: DiffHunkRange[],
+    start: number,
+    end: number,
+  ) {
+    const items: UnifiedRenderItem[] = []
+    let hunkIndex = findIntersectingHunkIndex(hunks, start)
+
+    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
+      const row = rows[rowIndex]
+
+      while (hunkIndex < hunks.length && hunks[hunkIndex].end < rowIndex) {
+        hunkIndex += 1
+      }
+
+      const activeHunk = hunks[hunkIndex]
+      const rowHunkIndex =
+        activeHunk && activeHunk.start <= rowIndex && activeHunk.end >= rowIndex
+          ? hunkIndex
+          : undefined
+
+      items.push({
+        type: 'row',
+        row,
+        hunkIndex: rowHunkIndex,
+        isAnchor: rowHunkIndex !== undefined && activeHunk?.start === rowIndex,
+      })
+    }
+
+    return items
+  }
+
+  function buildVirtualRange(
+    itemCount: number,
+    scrollTop: number,
+    viewportHeight: number,
+    rowHeight: number,
+  ): VirtualRange {
+    if (itemCount === 0) {
+      return emptyVirtualRange
+    }
+
+    const visibleRows = Math.max(1, Math.ceil(viewportHeight / rowHeight))
+    const start = Math.max(
+      0,
+      Math.floor(scrollTop / rowHeight) - FULL_FILE_VIRTUALIZATION_OVERSCAN_ROWS,
+    )
+    const end = Math.min(
+      itemCount,
+      start + visibleRows + FULL_FILE_VIRTUALIZATION_OVERSCAN_ROWS * 2,
+    )
+
+    return {
+      start,
+      end,
+      topPadding: start * rowHeight,
+      bottomPadding: Math.max(0, (itemCount - end) * rowHeight),
+    }
+  }
+
+  function buildSideBySideVirtualAnchors(
+    rows: FileDiffResult['sideBySide'],
+    hunks: DiffHunkRange[],
+    rowHeight: number,
+  ): VirtualHunkAnchor[] {
+    return hunks.map((hunk, hunkIndex) => ({
+      hunkIndex,
+      top: hunk.start * rowHeight,
+      height: Math.max(rowHeight, (hunk.end - hunk.start + 1) * rowHeight),
+      kind: classifySideBySideHunk(rows, hunk),
+    }))
+  }
+
+  function buildUnifiedVirtualAnchors(
+    rows: FileDiffResult['unified'],
+    hunks: DiffHunkRange[],
+    rowHeight: number,
+  ): VirtualHunkAnchor[] {
+    return hunks.map((hunk, hunkIndex) => ({
+      hunkIndex,
+      top: hunk.start * rowHeight,
+      height: Math.max(rowHeight, (hunk.end - hunk.start + 1) * rowHeight),
+      kind: classifyUnifiedHunk(rows, hunk),
+    }))
+  }
+
+  function classifySideBySideHunk(rows: FileDiffResult['sideBySide'], hunk: DiffHunkRange) {
+    let sawInsert = false
+    let sawDelete = false
+
+    for (let index = hunk.start; index <= hunk.end; index += 1) {
+      const row = rows[index]
+
+      if (!row) {
+        continue
+      }
+
+      if (row.left?.change === 'delete' || row.right?.change === 'delete') {
+        sawDelete = true
+      }
+
+      if (row.left?.change === 'insert' || row.right?.change === 'insert') {
+        sawInsert = true
+      }
+
+      if (sawInsert && sawDelete) {
+        return 'mixed' satisfies ScrollMarker['kind']
+      }
+    }
+
+    if (sawInsert) {
+      return 'insert' satisfies ScrollMarker['kind']
+    }
+
+    if (sawDelete) {
+      return 'delete' satisfies ScrollMarker['kind']
+    }
+
+    return 'mixed' satisfies ScrollMarker['kind']
+  }
+
+  function classifyUnifiedHunk(rows: FileDiffResult['unified'], hunk: DiffHunkRange) {
+    let sawInsert = false
+    let sawDelete = false
+
+    for (let index = hunk.start; index <= hunk.end; index += 1) {
+      const row = rows[index]
+
+      if (!row) {
+        continue
+      }
+
+      if (row.change === 'delete') {
+        sawDelete = true
+      }
+
+      if (row.change === 'insert') {
+        sawInsert = true
+      }
+
+      if (sawInsert && sawDelete) {
+        return 'mixed' satisfies ScrollMarker['kind']
+      }
+    }
+
+    if (sawInsert) {
+      return 'insert' satisfies ScrollMarker['kind']
+    }
+
+    if (sawDelete) {
+      return 'delete' satisfies ScrollMarker['kind']
+    }
+
+    return 'mixed' satisfies ScrollMarker['kind']
+  }
+
+  function syncVirtualViewportState() {
+    leftVirtualScrollTop = leftPaneScroll?.scrollTop ?? 0
+    rightVirtualScrollTop = rightPaneScroll?.scrollTop ?? 0
+    unifiedVirtualScrollTop = unifiedScroll?.scrollTop ?? 0
+    leftVirtualViewportHeight = leftPaneScroll?.clientHeight ?? 0
+    rightVirtualViewportHeight = rightPaneScroll?.clientHeight ?? 0
+    unifiedVirtualViewportHeight = unifiedScroll?.clientHeight ?? 0
   }
 
   async function updateSideBySideContentMetrics() {
@@ -562,6 +962,7 @@
 
 <svelte:window
   on:resize={() => {
+    syncVirtualViewportState()
     void updateSideBySideContentMetrics()
     void updateUnifiedContentWidth()
     scheduleScrollMarkerRefresh()
@@ -597,6 +998,13 @@
     </div>
 
     {#if activeDiff.contentKind === 'text'}
+      {#if simplifyLargeFullFileFragments}
+        <div class="context-card compact large-file-rendering-note">
+          <strong>Large file optimization active</strong>
+          <span>Full-file view is simplifying syntax and inline highlights to keep scrolling responsive.</span>
+        </div>
+      {/if}
+
       {#if viewMode === 'sideBySide'}
       <div
         class:sync-disabled={!syncSideBySideScroll}
@@ -608,13 +1016,21 @@
             <span class="pane-header-side">Left</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
+            {#if mergeModeActive && leftDraftDirty}
+              <span class="pane-header-badge draft" title="Left draft has unsaved merge changes">
+                Draft
+              </span>
+            {/if}
           </div>
           <div bind:this={leftPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
               bind:this={leftPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-left"
               on:wheel={(event) => syncPaneWheel(event, 'left')}
-              on:scroll={() => syncPaneScroll('left')}
+              on:scroll={() => {
+                syncVirtualViewportState()
+                syncPaneScroll('left')
+              }}
             >
               <div
                 bind:this={leftPaneHorizontalScroll}
@@ -627,23 +1043,46 @@
                   data-pane-content-root="true"
                   style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
                   style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
+                  style:position={virtualizeSideBySide ? 'relative' : undefined}
                 >
-                {#if sideBySideRenderItems.length === 0}
+                {#if (!virtualizeSideBySide && sideBySideRenderItems.length === 0) || (virtualizeSideBySide && activeDiff.sideBySide.length === 0)}
                   <div class="empty-inline-state">No changed lines.</div>
                 {/if}
 
-                {#each sideBySideRenderItems as item}
+                {#if virtualizeSideBySide}
+                  {#each sideBySideVirtualAnchors as anchor}
+                    <div
+                      aria-hidden="true"
+                      class={`virtual-hunk-anchor ${anchor.kind}`}
+                      data-diff-anchor="true"
+                      data-diff-index={anchor.hunkIndex}
+                      style:top={`${anchor.top}px`}
+                      style:height={`${anchor.height}px`}
+                    ></div>
+                  {/each}
+
+                  {#if leftVirtualRange.topPadding > 0}
+                    <div aria-hidden="true" class="virtual-spacer" style:height={`${leftVirtualRange.topPadding}px`}></div>
+                  {/if}
+                {/if}
+
+                {#each leftVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? leftVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class="collapsed-row">
+                    <div
+                      class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                      class="collapsed-row"
+                    >
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!showFullFile && !item.row.left}
                       class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
-                      data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                      data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                      data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
+                      data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                     >
                       {#if item.row.left}
                         <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
@@ -666,6 +1105,10 @@
                     </div>
                   {/if}
                 {/each}
+
+                {#if virtualizeSideBySide && leftVirtualRange.bottomPadding > 0}
+                  <div aria-hidden="true" class="virtual-spacer" style:height={`${leftVirtualRange.bottomPadding}px`}></div>
+                {/if}
                 </div>
               </div>
             </div>
@@ -688,13 +1131,21 @@
             <span class="pane-header-side">Right</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
+            {#if mergeModeActive && rightDraftDirty}
+              <span class="pane-header-badge draft" title="Right draft has unsaved merge changes">
+                Draft
+              </span>
+            {/if}
           </div>
           <div bind:this={rightPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
               bind:this={rightPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-right"
               on:wheel={(event) => syncPaneWheel(event, 'right')}
-              on:scroll={() => syncPaneScroll('right')}
+              on:scroll={() => {
+                syncVirtualViewportState()
+                syncPaneScroll('right')
+              }}
             >
               <div
                 bind:this={rightPaneHorizontalScroll}
@@ -707,23 +1158,46 @@
                   data-pane-content-root="true"
                   style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
                   style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
+                  style:position={virtualizeSideBySide ? 'relative' : undefined}
                 >
-                {#if sideBySideRenderItems.length === 0}
+                {#if (!virtualizeSideBySide && sideBySideRenderItems.length === 0) || (virtualizeSideBySide && activeDiff.sideBySide.length === 0)}
                   <div class="empty-inline-state">No changed lines.</div>
                 {/if}
 
-                {#each sideBySideRenderItems as item}
+                {#if virtualizeSideBySide}
+                  {#each sideBySideVirtualAnchors as anchor}
+                    <div
+                      aria-hidden="true"
+                      class={`virtual-hunk-anchor ${anchor.kind}`}
+                      data-diff-anchor="true"
+                      data-diff-index={anchor.hunkIndex}
+                      style:top={`${anchor.top}px`}
+                      style:height={`${anchor.height}px`}
+                    ></div>
+                  {/each}
+
+                  {#if rightVirtualRange.topPadding > 0}
+                    <div aria-hidden="true" class="virtual-spacer" style:height={`${rightVirtualRange.topPadding}px`}></div>
+                  {/if}
+                {/if}
+
+                {#each rightVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? rightVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
-                    <div class="collapsed-row">
+                    <div
+                      class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                      class="collapsed-row"
+                    >
                       <span class="collapsed-chip">{item.header}</span>
                     </div>
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!showFullFile && !item.row.right}
                       class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
-                      data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                      data-diff-index={isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                      data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
+                      data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                     >
                       {#if item.row.right}
                         <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
@@ -746,6 +1220,10 @@
                     </div>
                   {/if}
                 {/each}
+
+                {#if virtualizeSideBySide && rightVirtualRange.bottomPadding > 0}
+                  <div aria-hidden="true" class="virtual-spacer" style:height={`${rightVirtualRange.bottomPadding}px`}></div>
+                {/if}
                 </div>
               </div>
             </div>
@@ -783,7 +1261,10 @@
         <div
           bind:this={unifiedScroll}
           class="pane-vertical-scroll unified-vertical-scroll"
-          on:scroll={scheduleScrollNavigationRefresh}
+          on:scroll={() => {
+            syncVirtualViewportState()
+            scheduleScrollNavigationRefresh()
+          }}
         >
           <div
             bind:this={unifiedHorizontalScroll}
@@ -795,22 +1276,45 @@
               class="unified-content-grid"
               data-pane-content-root="true"
               style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
+              style:position={virtualizeUnified ? 'relative' : undefined}
             >
-            {#if unifiedRenderItems.length === 0}
+            {#if (!virtualizeUnified && unifiedRenderItems.length === 0) || (virtualizeUnified && activeDiff.unified.length === 0)}
               <div class="empty-inline-state">No changed lines.</div>
             {/if}
 
-            {#each unifiedRenderItems as item}
+            {#if virtualizeUnified}
+              {#each unifiedVirtualAnchors as anchor}
+                <div
+                  aria-hidden="true"
+                  class={`virtual-hunk-anchor ${anchor.kind}`}
+                  data-diff-anchor="true"
+                  data-diff-index={anchor.hunkIndex}
+                  style:top={`${anchor.top}px`}
+                  style:height={`${anchor.height}px`}
+                ></div>
+              {/each}
+
+              {#if unifiedVirtualRange.topPadding > 0}
+                <div aria-hidden="true" class="virtual-spacer" style:height={`${unifiedVirtualRange.topPadding}px`}></div>
+              {/if}
+            {/if}
+
+            {#each visibleUnifiedItems as item, visibleIndex (virtualizeUnified ? unifiedVirtualRange.start + visibleIndex : visibleIndex)}
               {#if item.type === 'hunk'}
-                <div class="collapsed-row unified-collapsed-row">
+                <div
+                  class:current-diff-target={item.hunkIndex === currentDiffHunk}
+                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
+                  class="collapsed-row unified-collapsed-row"
+                >
                   <span class="collapsed-chip">{item.header}</span>
                 </div>
               {:else if item.row}
                 <div
                   class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
+                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                   class={`unified-row ${item.row.change}`}
-                  data-diff-anchor={item.isAnchor ? 'true' : undefined}
-                  data-diff-index={isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
+                  data-diff-anchor={virtualizeUnified ? undefined : item.isAnchor ? 'true' : undefined}
+                  data-diff-index={virtualizeUnified ? undefined : isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
                 >
                   <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
                   <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
@@ -828,6 +1332,10 @@
                 </div>
               {/if}
             {/each}
+
+            {#if virtualizeUnified && unifiedVirtualRange.bottomPadding > 0}
+              <div aria-hidden="true" class="virtual-spacer" style:height={`${unifiedVirtualRange.bottomPadding}px`}></div>
+            {/if}
             </div>
           </div>
           <div class="scroll-marker-overlay">

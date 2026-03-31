@@ -658,6 +658,96 @@ h2 {
   flex: 0 0 auto;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.merge-entry-anchor {
+  display: inline-flex;
+}
+
+.merge-button-group button,
+.merge-save-button,
+.merge-cancel-button,
+.merge-toggle-button {
+  min-width: 30px;
+}
+
+.merge-button-group button,
+.merge-toggle-button,
+.merge-save-button,
+.merge-cancel-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.merge-button-group button {
+  min-width: 72px;
+}
+
+.merge-toggle-button {
+  min-width: 78px;
+  padding-inline: 10px;
+}
+
+.merge-save-button,
+.merge-cancel-button {
+  min-width: 84px;
+}
+
+.merge-direction-button,
+.merge-save-button,
+.merge-cancel-button {
+  font-variant-numeric: tabular-nums;
+}
+
+.merge-toggle-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.merge-mode-chip,
+.merge-status-chip,
+.pane-header-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  color: var(--panel-meta);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.merge-mode-chip {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-strong));
+  color: var(--panel-title);
+}
+
+.merge-status-chip {
+  min-width: 52px;
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .segmented-control {
   padding: 2px;
   border: 1px solid var(--border);
@@ -2944,10 +3034,33 @@ button.filter-chip.tooLarge:focus-visible {
   align-items: stretch;
 }
 
-.hunk-row.current-diff-target,
-.diff-row.current-diff-target,
-.unified-row.current-diff-target {
-  box-shadow: inset 2px 0 0 var(--accent);
+.collapsed-row.current-diff-target {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--collapsed-row-bg));
+}
+
+.collapsed-row.current-diff-target::before {
+  border-top-color: color-mix(in srgb, var(--accent) 34%, var(--collapsed-row-line));
+}
+
+.collapsed-row.current-diff-target > .collapsed-chip {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--collapsed-chip-border));
+  background: color-mix(in srgb, var(--accent-soft) 32%, var(--collapsed-chip-bg));
+  color: var(--panel-title);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.collapsed-row.merge-selected-hunk,
+.diff-row.merge-selected-hunk,
+.unified-row.merge-selected-hunk {
+  outline: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+  outline-offset: -1px;
+}
+
+.collapsed-row.merge-selected-hunk:not(.current-diff-target) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--collapsed-row-bg));
 }
 
 .collapsed-row {
@@ -3071,6 +3184,41 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row.gap-row .prefix,
 .diff-row.gap-row .line-text {
   color: transparent;
+}
+
+.hunk-row.current-diff-target,
+.diff-row.current-diff-target,
+.unified-row.current-diff-target {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 10%, transparent),
+    transparent 28px
+  );
+}
+
+.diff-row.merge-selected-hunk:not(.current-diff-target),
+.unified-row.merge-selected-hunk:not(.current-diff-target) {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 6%, transparent),
+    transparent 24px
+  );
+}
+
+.virtual-spacer {
+  width: 100%;
+  pointer-events: none;
+}
+
+.virtual-hunk-anchor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .line-number,
@@ -3210,6 +3358,7 @@ button.filter-chip.tooLarge:focus-visible {
 .scroll-marker.active {
   background: var(--accent);
   opacity: 0.95;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 28%, transparent);
 }
 
 .line-fragment.highlighted {
@@ -3326,6 +3475,10 @@ button.filter-chip.tooLarge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.78rem;
+}
+
+.large-file-rendering-note {
+  margin-bottom: 8px;
 }
 
 .viewer-source {
