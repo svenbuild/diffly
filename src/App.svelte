@@ -1848,7 +1848,11 @@
         return
       }
 
-      const step = Math.sign(remaining) * Math.max(PANE_WHEEL_MIN_STEP, Math.abs(remaining) * PANE_WHEEL_SMOOTHING)
+      const stepMagnitude = Math.min(
+        Math.abs(remaining),
+        Math.max(PANE_WHEEL_MIN_STEP, Math.abs(remaining) * PANE_WHEEL_SMOOTHING),
+      )
+      const step = Math.sign(remaining) * stepMagnitude
       activePane.scrollTop = clampScrollOffset(
         activePane.scrollTop + step,
         getMaxScrollTop(activePane),
@@ -2647,4 +2651,3 @@
     />
   </main>
 {/if}
-
