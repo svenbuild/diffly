@@ -128,6 +128,7 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 70
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 2
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
+  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 1200
   const PANE_WHEEL_SMOOTHING = 0.18
   const PANE_WHEEL_MIN_STEP = 1.25
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
@@ -1990,6 +1991,21 @@
     return getFileName(side === 'left' ? activeDiff.leftLabel : activeDiff.rightLabel)
   }
 
+  function shouldDeferFullFileRenderItems() {
+    if (!activeDiff || activeDiff.contentKind !== 'text' || !showFullFile) {
+      return false
+    }
+
+    if (viewMode === 'sideBySide') {
+      return (
+        !wrapSideBySideLines &&
+        activeDiff.sideBySide.length > FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD
+      )
+    }
+
+    return activeDiff.unified.length > FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD
+  }
+
   $: {
     const { leftSegments, rightSegments } = splitCommonPathPrefix(leftPath, rightPath)
     leftCompareRoot = buildCompareRootDisplay(leftPath, leftSegments)
@@ -2011,20 +2027,24 @@
   $: if (activeDiff?.contentKind === 'text') {
     if (viewMode === 'sideBySide') {
       sideBySideHunkRanges = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
-      sideBySideRenderItems = diffCache.getCachedSideBySideRenderItems(
-        activeDiff,
-        showFullFile,
-        contextLines,
-      )
+      sideBySideRenderItems = shouldDeferFullFileRenderItems()
+        ? []
+        : diffCache.getCachedSideBySideRenderItems(
+            activeDiff,
+            showFullFile,
+            contextLines,
+          )
       unifiedHunkRanges = []
       unifiedRenderItems = []
     } else {
       unifiedHunkRanges = diffCache.getCachedUnifiedHunks(activeDiff, contextLines)
-      unifiedRenderItems = diffCache.getCachedUnifiedRenderItems(
-        activeDiff,
-        showFullFile,
-        contextLines,
-      )
+      unifiedRenderItems = shouldDeferFullFileRenderItems()
+        ? []
+        : diffCache.getCachedUnifiedRenderItems(
+            activeDiff,
+            showFullFile,
+            contextLines,
+          )
       sideBySideHunkRanges = []
       sideBySideRenderItems = []
     }
@@ -2537,6 +2557,8 @@
         {syncSideBySideScroll}
         {sideBySideRenderItems}
         {unifiedRenderItems}
+        {sideBySideHunkRanges}
+        {unifiedHunkRanges}
         {diffHeaderContext}
         {diffFontSize}
         {diffRowLineHeight}
