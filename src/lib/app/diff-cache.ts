@@ -64,6 +64,8 @@ interface BackgroundPreloadContext {
   preloadDelayMs: number
 }
 
+const BACKGROUND_PRELOAD_RADIUS = 20
+
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
@@ -128,7 +130,9 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
     )
 
     if (centerIndex === -1) {
-      return directoryEntries.map((entry) => entry.relativePath)
+      return directoryEntries
+        .slice(0, BACKGROUND_PRELOAD_RADIUS + 1)
+        .map((entry) => entry.relativePath)
     }
 
     const relativePaths: string[] = []
@@ -145,7 +149,12 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
 
     pushEntry(directoryEntries[centerIndex])
 
-    for (let offset = 1; offset < directoryEntries.length; offset += 1) {
+    for (
+      let offset = 1;
+      offset < directoryEntries.length &&
+      relativePaths.length < BACKGROUND_PRELOAD_RADIUS + 1;
+      offset += 1
+    ) {
       pushEntry(directoryEntries[centerIndex + offset])
       pushEntry(directoryEntries[centerIndex - offset])
     }
