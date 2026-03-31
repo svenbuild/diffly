@@ -231,11 +231,15 @@
       ? buildUnifiedVirtualAnchors(activeDiff.unified, unifiedHunkRanges, rowHeightPx)
       : emptyVirtualAnchors
 
+  $: simplifyVirtualizedContextFragments =
+    activeDiff?.contentKind === 'text' && showFullFile && (virtualizeSideBySide || virtualizeUnified)
+
   $: simplifyLargeFullFileFragments =
     activeDiff?.contentKind === 'text' &&
     showFullFile &&
-    ((virtualizeSideBySide && sideBySideRenderItems.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS) ||
-      (virtualizeUnified && unifiedRenderItems.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS))
+    ((virtualizeSideBySide &&
+      activeDiff.sideBySide.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS) ||
+      (virtualizeUnified && activeDiff.unified.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS))
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
@@ -306,23 +310,31 @@
     })
   }
 
-  function currentSyntaxKey() {
+  function getFragmentModeKey(change: 'context' | 'delete' | 'insert') {
+    if (!showInlineHighlights && !showSyntaxHighlighting) {
+      return 'plain-static'
+    }
+
     if (simplifyLargeFullFileFragments) {
       return 'plain-large-file'
+    }
+
+    if (simplifyVirtualizedContextFragments && change === 'context') {
+      return 'plain-context-file'
     }
 
     return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
   }
 
   function getCachedDiffCellFragments(cell: DiffCell) {
-    const syntaxKey = currentSyntaxKey()
+    const syntaxKey = getFragmentModeKey(cell.change)
     const cached = diffCellFragmentCache.get(cell)
 
     if (cached && cached.syntaxKey === syntaxKey) {
       return cached.fragments
     }
 
-    const fragments = simplifyLargeFullFileFragments
+    const fragments = syntaxKey.startsWith('plain-')
       ? plainRenderedFragments(cell.text)
       : renderDiffFragments(cell.text, cell.segments, syntaxKey ? syntaxLanguage : null)
 
@@ -331,14 +343,14 @@
   }
 
   function getCachedUnifiedLineFragments(line: UnifiedLine) {
-    const syntaxKey = currentSyntaxKey()
+    const syntaxKey = getFragmentModeKey(line.change)
     const cached = unifiedLineFragmentCache.get(line)
 
     if (cached && cached.syntaxKey === syntaxKey) {
       return cached.fragments
     }
 
-    const fragments = simplifyLargeFullFileFragments
+    const fragments = syntaxKey.startsWith('plain-')
       ? plainRenderedFragments(line.text)
       : renderDiffFragments(line.text, line.segments, syntaxKey ? syntaxLanguage : null)
 

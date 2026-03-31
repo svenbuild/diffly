@@ -1527,7 +1527,7 @@ fn build_text_diff_views(
                     build_changed_cells(left_lines, old_index, old_len, DiffChange::Delete);
 
                 for left_cell in left_cells {
-                    let segments = plain_segments(&left_cell.text, false);
+                    let segments = Vec::new();
 
                     side_by_side.push(SideBySideRow {
                         left: Some(clone_cell_with_segments(&left_cell, segments.clone())),
@@ -1541,7 +1541,7 @@ fn build_text_diff_views(
                     build_changed_cells(right_lines, new_index, new_len, DiffChange::Insert);
 
                 for right_cell in right_cells {
-                    let segments = plain_segments(&right_cell.text, false);
+                    let segments = Vec::new();
 
                     side_by_side.push(SideBySideRow {
                         left: None,
@@ -1725,7 +1725,11 @@ fn diff_blocks<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> Vec<DiffBlock> {
 }
 
 fn fill_cell_segments(mut cell: DiffCell, highlighted: bool) -> DiffCell {
-    cell.segments = plain_segments(&cell.text, highlighted);
+    cell.segments = if highlighted {
+        plain_segments(&cell.text, true)
+    } else {
+        Vec::new()
+    };
     cell
 }
 
@@ -1760,12 +1764,12 @@ fn build_replace_highlight_cache(
 }
 
 fn highlighted_segments_for_cell(
-    cell: &DiffCell,
+    _cell: &DiffCell,
     highlighted: &Option<Vec<DiffSegment>>,
 ) -> Vec<DiffSegment> {
     highlighted
         .clone()
-        .unwrap_or_else(|| plain_segments(&cell.text, false))
+        .unwrap_or_default()
 }
 
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
@@ -1781,8 +1785,8 @@ fn build_context_cell(lines: &[String], index: usize) -> DiffCell {
     DiffCell {
         line_number: Some(index + 1),
         prefix: " ".to_string(),
-        text: text.clone(),
-        segments: plain_segments(&text, false),
+        text,
+        segments: Vec::new(),
         change: DiffChange::Context,
     }
 }
@@ -3402,7 +3406,7 @@ fn highlight_segments(left: &str, right: &str) -> (Vec<DiffSegment>, Vec<DiffSeg
     let common_pairs = lcs_pairs(&left_tokens, &right_tokens);
 
     if common_pairs.is_empty() {
-        return (plain_segments(left, false), plain_segments(right, false));
+        return (Vec::new(), Vec::new());
     }
 
     let mut left_common = vec![false; left_tokens.len()];

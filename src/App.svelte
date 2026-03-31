@@ -128,7 +128,7 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 70
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 2
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
-  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 1200
+  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 800
   const PANE_WHEEL_SMOOTHING = 0.18
   const PANE_WHEEL_MIN_STEP = 1.25
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
@@ -1346,6 +1346,69 @@
     return viewMode === 'sideBySide' ? leftPaneScroll : unifiedScroll
   }
 
+  function getActiveDiffHunkRanges() {
+    if (!activeDiff || activeDiff.contentKind !== 'text') {
+      return []
+    }
+
+    return viewMode === 'sideBySide' ? sideBySideHunkRanges : unifiedHunkRanges
+  }
+
+  function canUseComputedFullFileNavigation() {
+    if (!activeDiff || activeDiff.contentKind !== 'text' || !showFullFile) {
+      return false
+    }
+
+    return viewMode === 'unified' || !wrapSideBySideLines
+  }
+
+  function getApproximateDiffRowHeightPx() {
+    return Math.max(1, Number.parseFloat(diffRowHeight) || 19)
+  }
+
+  function getCurrentDiffHunkFromScrollTop(
+    scrollTop: number,
+    hunkRanges: DiffHunkRange[],
+    rowHeightPx: number,
+  ) {
+    if (hunkRanges.length === 0) {
+      return -1
+    }
+
+    const threshold = scrollTop + 16
+    let low = 0
+    let high = hunkRanges.length - 1
+    let currentIndex = -1
+
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2)
+      const anchorTop = hunkRanges[middle].start * rowHeightPx
+
+      if (anchorTop <= threshold) {
+        currentIndex = middle
+        low = middle + 1
+      } else {
+        high = middle - 1
+      }
+    }
+
+    return currentIndex
+  }
+
+  function getScrollTopForHunk(
+    targetIndex: number,
+    hunkRanges: DiffHunkRange[],
+    rowHeightPx: number,
+  ) {
+    const targetHunk = hunkRanges[targetIndex]
+
+    if (!targetHunk) {
+      return null
+    }
+
+    return targetHunk.start * rowHeightPx
+  }
+
   function getActiveDiffAnchors() {
     const container = getActiveDiffScrollContainer()
 
@@ -1381,9 +1444,26 @@
 
   function refreshDiffNavigationState() {
     const container = getActiveDiffScrollContainer()
+
+    if (!container) {
+      currentDiffHunk = -1
+      return
+    }
+
+    if (canUseComputedFullFileNavigation()) {
+      const hunkRanges = getActiveDiffHunkRanges()
+
+      currentDiffHunk = getCurrentDiffHunkFromScrollTop(
+        container.scrollTop,
+        hunkRanges,
+        getApproximateDiffRowHeightPx(),
+      )
+      return
+    }
+
     const anchors = getActiveDiffAnchors()
 
-    if (!container || anchors.length === 0) {
+    if (anchors.length === 0) {
       currentDiffHunk = -1
       return
     }
@@ -1546,15 +1626,43 @@
 
   function scrollDiffHunkIntoView(targetIndex: number) {
     const container = getActiveDiffScrollContainer()
-    const anchors = getActiveDiffAnchors()
-    const anchor = anchors[targetIndex]
 
-    if (!container || !anchor) {
+    if (!container) {
       return
     }
 
     currentDiffHunk = targetIndex
     const behavior = prefersReducedMotion() ? 'auto' : 'smooth'
+
+    if (canUseComputedFullFileNavigation()) {
+      const nextTop = getScrollTopForHunk(
+        targetIndex,
+        getActiveDiffHunkRanges(),
+        getApproximateDiffRowHeightPx(),
+      )
+
+      if (nextTop === null) {
+        return
+      }
+
+      if (viewMode === 'sideBySide') {
+        scrollSideBySidePanes(nextTop, nextTop, behavior)
+        return
+      }
+
+      container.scrollTo({
+        top: nextTop,
+        behavior,
+      })
+      return
+    }
+
+    const anchors = getActiveDiffAnchors()
+    const anchor = anchors[targetIndex]
+
+    if (!anchor) {
+      return
+    }
 
     if (viewMode === 'sideBySide') {
       const anchorPair = getSideBySideDiffAnchorPair(targetIndex)
