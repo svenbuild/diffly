@@ -1079,7 +1079,7 @@
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                       class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
-                      class:gap-row={!showFullFile && !item.row.left}
+                      class:gap-row={!item.row.left}
                       class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
                       data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
@@ -1194,7 +1194,7 @@
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                       class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
-                      class:gap-row={!showFullFile && !item.row.right}
+                      class:gap-row={!item.row.right}
                       class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
                       data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
