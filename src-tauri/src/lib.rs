@@ -972,6 +972,13 @@ async fn save_compare_text_side(
     contents: String,
     expected_sha256: Option<String>,
 ) -> Result<(), String> {
+    if mode == "file" {
+        return Err(
+            "Saving direct file compares is temporarily disabled for security reasons."
+                .to_string(),
+        );
+    }
+
     tauri::async_runtime::spawn_blocking(move || {
         save_compare_text_side_sync(
             mode,
