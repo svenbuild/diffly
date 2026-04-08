@@ -295,17 +295,26 @@ button {
     background-color 140ms ease,
     border-color 140ms ease,
     color 140ms ease,
-    box-shadow 140ms ease;
+    box-shadow 140ms ease,
+    transform 100ms ease;
 }
 
 button:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--app-bar-shadow-strong) 30%, transparent);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 button:disabled {
-  opacity: 0.55;
-  cursor: default;
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: saturate(0.7);
 }
 
 input:not([type='checkbox']),
@@ -314,6 +323,13 @@ select {
   padding: 4px 6px;
   background: var(--surface);
   color: var(--text);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+input:not([type='checkbox']):hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-strong) 15%, var(--surface));
 }
 
 input[type='checkbox'] {
@@ -329,7 +345,14 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible {
   border-color: var(--accent-strong);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 32%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-strong) 32%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  outline: none;
+}
+
+button:focus-visible:not(:active) {
+  transform: translateY(-1px);
 }
 
 #app {
@@ -537,6 +560,15 @@ h2 {
 
 .nav-button {
   min-width: 72px;
+  transition: transform 100ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.nav-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.nav-button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .nav-button-icon,
@@ -611,6 +643,10 @@ h2 {
 .view-mode-toggle:focus-visible {
   border-color: var(--border-strong);
   background: var(--list-header-bg);
+}
+
+.view-mode-option {
+  transition: background-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
 }
 
 .view-mode-toggle:disabled {
@@ -816,8 +852,15 @@ h2 {
 .secondary.active {
   border-color: var(--active-border);
   background: var(--active-surface);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 36%, transparent),
+    0 1px 2px color-mix(in srgb, var(--active-border) 10%, transparent);
   color: var(--active-text);
+}
+
+.segmented-control button.active:hover:not(:disabled),
+.secondary.active:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--active-surface) 95%, var(--accent-soft));
 }
 
 .primary {
@@ -825,12 +868,23 @@ h2 {
   background: var(--accent);
   color: var(--primary-text);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 15%, transparent),
+    0 1px 2px color-mix(in srgb, var(--app-bar-shadow-strong) 25%, transparent);
 }
 
 .primary:hover:not(:disabled) {
   border-color: var(--accent-strong);
   background: var(--accent-strong);
   color: var(--primary-hover-text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 20%, transparent),
+    0 3px 6px color-mix(in srgb, var(--app-bar-shadow-strong) 35%, transparent);
+}
+
+.primary:active:not(:disabled) {
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, black 15%, transparent);
 }
 
 .error-banner,
@@ -954,6 +1008,7 @@ h2 {
   border-color: var(--border);
   background: var(--surface-alt);
   color: var(--text);
+  transform: translateX(2px);
 }
 
 .settings-nav-button.active,
@@ -962,8 +1017,15 @@ h2 {
   background: var(--active-surface);
   box-shadow:
     inset 3px 0 0 var(--active-border),
-    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 28%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 28%, transparent),
+    0 2px 6px color-mix(in srgb, var(--active-border) 12%, transparent);
   color: var(--active-text);
+}
+
+.settings-nav-button.active:hover:not(:disabled),
+.settings-section-link.active:hover:not(:disabled) {
+  transform: translateX(2px);
+  background: color-mix(in srgb, var(--accent-soft) 20%, var(--active-surface));
 }
 
 .settings-section-link span:last-child {
@@ -1034,6 +1096,7 @@ h2 {
   padding: 4px 0 14px;
   border-bottom: 1px solid var(--border);
   background: var(--pane-bg);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pane-bg) 80%, transparent);
 }
 
 .settings-panel-heading p,
@@ -1093,6 +1156,7 @@ h2 {
   border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--app-bar-shadow-strong) 8%, transparent);
 }
 
 .settings-group-danger {
@@ -1158,10 +1222,15 @@ h2 {
 
 .settings-row-interactive {
   cursor: var(--interactive-cursor);
+  transition: background-color 120ms ease;
 }
 
 .settings-row-interactive:hover {
   background: color-mix(in srgb, var(--accent-soft) 32%, var(--surface-alt));
+}
+
+.settings-row-interactive:active {
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-alt));
 }
 
 .settings-row-copy {
@@ -1215,6 +1284,13 @@ h2 {
   background: var(--surface-alt);
   text-align: left;
   position: relative;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+  cursor: pointer;
+}
+
+.settings-theme-tile:hover:not(.active) {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent-soft) 10%, var(--surface-alt));
 }
 
 .settings-theme-tile.active {
@@ -1222,7 +1298,8 @@ h2 {
   background: var(--active-surface);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--active-border) 52%, transparent),
-    inset 0 32px 0 color-mix(in srgb, var(--active-border) 8%, transparent);
+    inset 0 32px 0 color-mix(in srgb, var(--active-border) 8%, transparent),
+    0 2px 8px color-mix(in srgb, var(--active-border) 15%, transparent);
   color: var(--active-text);
 }
 
@@ -1390,8 +1467,9 @@ h2 {
   height: 18px;
   border-radius: 50%;
   background: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition:
-    transform 140ms ease,
+    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
     background-color 140ms ease;
 }
 
@@ -1403,10 +1481,17 @@ h2 {
 .settings-switch input:checked + .settings-switch-ui::after {
   transform: translateX(20px);
   background: var(--primary-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .settings-switch input:focus-visible + .settings-switch-ui {
-  box-shadow: 0 0 0 1px var(--accent-strong);
+  box-shadow:
+    0 0 0 1px var(--accent-strong),
+    0 0 0 3px color-mix(in srgb, var(--accent-strong) 15%, transparent);
+}
+
+.settings-switch:hover .settings-switch-ui {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
 }
 
 .app-bar,
@@ -1602,10 +1687,15 @@ h2 {
 
 .settings-theme-editor-row-interactive {
   cursor: var(--interactive-cursor);
+  transition: background-color 120ms ease;
 }
 
 .settings-theme-editor-row-interactive:hover {
   background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-alt));
+}
+
+.settings-theme-editor-row-interactive:active {
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-alt));
 }
 
 .settings-color-control {
@@ -1620,6 +1710,12 @@ h2 {
   background: var(--surface-alt);
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.settings-color-control:focus-within {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 15%, transparent);
 }
 
 .settings-color-control input[type='color'] {
@@ -1812,9 +1908,11 @@ h2 {
   gap: 16px;
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--border) 50%, transparent);
 }
 
 .settings-dialog-header {
@@ -2049,10 +2147,21 @@ h2 {
   height: 28px;
   padding: 0;
   color: var(--secondary-text);
+  transition: transform 100ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--strong-text);
+  transform: translateY(-1px);
+}
+
+.icon-button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .icon-button:disabled {
   color: var(--muted);
+  opacity: 0.5;
 }
 
 .nav-icon,
@@ -2125,7 +2234,13 @@ h2 {
   background: var(--selection-bg);
   box-shadow:
     inset 3px 0 0 var(--active-border),
-    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent),
+    0 1px 3px color-mix(in srgb, var(--active-border) 8%, transparent);
+}
+
+.entry-row:hover:not(.selected),
+.file-row:hover:not(.selected) {
+  background: color-mix(in srgb, var(--accent-soft) 15%, var(--surface-alt));
 }
 
 .entry-row.selected .entry-type,
@@ -2238,11 +2353,15 @@ h2 {
     inset -1px 0 0 var(--border);
   cursor: col-resize;
   touch-action: none;
+  transition: background-color 120ms ease;
 }
 
 .compare-sidebar-resizer:hover,
 .compare-layout.resizing-sidebar .compare-sidebar-resizer {
-  background: color-mix(in srgb, var(--accent) 12%, var(--pane-bg));
+  background: color-mix(in srgb, var(--accent) 18%, var(--pane-bg));
+  box-shadow:
+    inset 1px 0 0 var(--accent),
+    inset -1px 0 0 var(--accent);
 }
 
 .compare-layout > .viewer {
@@ -2320,6 +2439,7 @@ h2 {
   border-radius: 3px;
   background: var(--neutral-bg);
   color: var(--text);
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
 .filter-chip {
@@ -2329,6 +2449,11 @@ h2 {
 button.filter-chip:hover:not(:disabled),
 button.filter-chip:focus-visible {
   background: inherit;
+  transform: translateY(-1px);
+}
+
+button.filter-chip:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .status-chip.modified {
@@ -2416,6 +2541,11 @@ button.filter-chip.tooLarge:focus-visible {
   gap: 6px;
   padding: 5px 8px;
   background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.group-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 10%, transparent);
 }
 
 .tree-indent {
@@ -2487,6 +2617,11 @@ button.filter-chip.tooLarge:focus-visible {
   background: transparent;
   border-bottom: 1px solid var(--border);
   position: relative;
+  transition: background-color 120ms ease;
+}
+
+.file-row:hover:not(.selected) {
+  background: color-mix(in srgb, var(--accent-soft) 8%, transparent);
 }
 
 .file-row-main {
@@ -2675,7 +2810,7 @@ button.filter-chip.tooLarge:focus-visible {
   place-items: center;
   min-height: 220px;
   border: 1px solid var(--diff-divider);
-  border-radius: 4px;
+  border-radius: 6px;
   background:
     linear-gradient(45deg, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 25%, transparent 25%) 0 0 / 18px 18px,
     linear-gradient(-45deg, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 25%, transparent 25%) 0 0 / 18px 18px,
@@ -2683,6 +2818,7 @@ button.filter-chip.tooLarge:focus-visible {
     linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--canvas-alt) 86%, transparent) 75%) 0 0 / 18px 18px,
     var(--diff-context-bg);
   overflow: auto;
+  box-shadow: inset 0 1px 3px color-mix(in srgb, var(--app-bar-shadow-strong) 10%, transparent);
 }
 
 .binary-preview-image {
@@ -2875,14 +3011,15 @@ button.filter-chip.tooLarge:focus-visible {
   top: 8px;
   right: 8px;
   z-index: 2;
-  padding: 4px 7px;
+  padding: 5px 9px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--muted);
   font-size: 0.76rem;
   pointer-events: none;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--app-bar-shadow-strong) 25%, transparent);
+  backdrop-filter: blur(4px);
 }
 
 .split-view {
@@ -3123,7 +3260,7 @@ button.filter-chip.tooLarge:focus-visible {
   overflow-wrap: normal;
   white-space: nowrap;
   text-align: center;
-  box-shadow: none;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--app-bar-shadow-strong) 15%, transparent);
 }
 
 .unified-collapsed-row > .collapsed-chip {
@@ -3162,12 +3299,14 @@ button.filter-chip.tooLarge:focus-visible {
 .unified-row.insert {
   background: var(--diff-insert-bg);
   color: var(--diff-insert-text);
+  box-shadow: inset 2px 0 0 var(--scroll-marker-insert);
 }
 
 .diff-row.delete,
 .unified-row.delete {
   background: var(--diff-delete-bg);
   color: var(--diff-delete-text);
+  box-shadow: inset 2px 0 0 var(--scroll-marker-delete);
 }
 
 .diff-row.gap-row {
@@ -3191,12 +3330,13 @@ button.filter-chip.tooLarge:focus-visible {
 .diff-row.current-diff-target,
 .unified-row.current-diff-target {
   box-shadow:
-    inset 2px 0 0 var(--accent),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+    inset 3px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 1px 3px color-mix(in srgb, var(--accent) 8%, transparent);
   background-image: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent) 10%, transparent),
-    transparent 28px
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent 32px
   );
 }
 
@@ -3334,10 +3474,11 @@ button.filter-chip.tooLarge:focus-visible {
   border: 0;
   border-radius: 2px;
   background: var(--scroll-marker-mixed);
-  opacity: 0.46;
+  opacity: 0.55;
   box-shadow: none;
   cursor: var(--interactive-cursor);
   pointer-events: auto;
+  transition: opacity 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 .scroll-marker.insert {
@@ -3353,13 +3494,16 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .scroll-marker:hover {
-  opacity: 0.74;
+  opacity: 0.9;
+  transform: scaleX(1.1);
 }
 
 .scroll-marker.active {
   background: var(--accent);
-  opacity: 0.95;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 28%, transparent);
+  opacity: 1;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-strong) 35%, transparent),
+    0 2px 4px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .line-fragment.highlighted {
@@ -3510,6 +3654,11 @@ button.filter-chip.tooLarge:focus-visible {
   padding: 0;
   display: inline-grid;
   place-items: center;
+  transition: transform 120ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.theme-toggle:hover:not(:disabled) {
+  transform: rotate(15deg) scale(1.1);
 }
 
 .theme-icon {
@@ -3621,12 +3770,21 @@ button.filter-chip.tooLarge:focus-visible {
   width: 28px;
   height: 28px;
   padding: 0;
+  transition: transform 120ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.refresh-button:hover:not(:disabled) {
+  transform: rotate(15deg);
 }
 
 .refresh-button.pending-refresh {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning-bg) 72%, var(--surface));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, var(--border));
+}
+
+.refresh-button.pending-refresh:hover:not(:disabled) {
+  transform: rotate(30deg);
 }
 
 .refresh-icon-slot {
@@ -3694,6 +3852,7 @@ button.filter-chip.tooLarge:focus-visible {
   border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
   background: var(--scrollbar-thumb);
+  min-height: 40px;
 }
 
 .list-rows::-webkit-scrollbar-thumb:hover,
@@ -3749,7 +3908,15 @@ button.filter-chip.tooLarge:focus-visible {
   .entry-icon,
   .nav-icon,
   .swap-icon,
-  .refresh-spinner {
+  .refresh-spinner,
+  .settings-group,
+  .settings-theme-tile,
+  .settings-color-control,
+  .settings-switch-ui,
+  .binary-preview-shell,
+  .viewer-loading,
+  .settings-dialog,
+  .scroll-marker {
     transition:
       background-color 180ms ease,
       border-color 180ms ease,
@@ -3769,11 +3936,18 @@ button.filter-chip.tooLarge:focus-visible {
   display: grid;
   place-items: center;
   min-height: 80px;
+  color: var(--muted);
+  font-style: italic;
 }
 
 .swap-button {
   width: 28px;
   height: 28px;
+  transition: transform 200ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.swap-button:hover:not(:disabled) {
+  transform: rotate(180deg);
 }
 
 @keyframes spin {
