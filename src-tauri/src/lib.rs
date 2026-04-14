@@ -1,11 +1,10 @@
-#[cfg(feature = "updater")]
-use std::sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     fs,
     io::{Read, Write},
     path::{Component, Path, PathBuf},
+    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -23,6 +22,7 @@ use walkdir::WalkDir;
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
+const MAX_COMPARE_TEXT_SESSIONS: usize = 128;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
@@ -97,6 +97,62 @@ struct LaunchContext {
 #[derive(Clone, Default)]
 struct LaunchContextState {
     context: Option<LaunchContext>,
+}
+
+#[derive(Clone, Debug)]
+struct CompareTextSession {
+    left_path: PathBuf,
+    right_path: PathBuf,
+    sequence: u64,
+}
+
+#[derive(Default)]
+struct CompareTextSessionState {
+    next_sequence: Mutex<u64>,
+    sessions: Mutex<HashMap<String, CompareTextSession>>,
+}
+
+impl CompareTextSessionState {
+    fn issue_session(&self, left_path: PathBuf, right_path: PathBuf) -> Result<String, String> {
+        let sequence = {
+            let mut next_sequence = self
+                .next_sequence
+                .lock()
+                .map_err(|_| "Compare session state is unavailable.".to_string())?;
+            *next_sequence += 1;
+            *next_sequence
+        };
+
+        let token = format!("compare-text-{sequence}");
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "Compare session state is unavailable.".to_string())?;
+
+        sessions.insert(
+            token.clone(),
+            CompareTextSession {
+                left_path,
+                right_path,
+                sequence,
+            },
+        );
+
+        prune_compare_text_sessions(&mut sessions);
+
+        Ok(token)
+    }
+
+    fn resolve_session(&self, token: &str) -> Result<CompareTextSession, String> {
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "Compare session state is unavailable.".to_string())?;
+
+        sessions.get(token).cloned().ok_or_else(|| {
+            "The compare view is no longer active. Refresh and try again.".to_string()
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -324,6 +380,7 @@ struct TextDiffPayload {
     right_text: String,
     left_exists: bool,
     right_exists: bool,
+    save_token: Option<String>,
     left_sha256: Option<String>,
     right_sha256: Option<String>,
     left_line_ending: LineEndingKind,
@@ -918,12 +975,26 @@ async fn compare_paths(
     right_path: String,
     mode: String,
     options: CompareOptions,
+    state: tauri::State<'_, CompareTextSessionState>,
 ) -> Result<CompareResponse, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let save_left_path = left_path.clone();
+    let save_right_path = right_path.clone();
+    let mut response = tauri::async_runtime::spawn_blocking(move || {
         compare_paths_sync(left_path, right_path, mode, options)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+
+    if let CompareResponse::File { result } = &mut response {
+        attach_compare_text_session(
+            &state,
+            result.as_mut(),
+            PathBuf::from(save_left_path),
+            PathBuf::from(save_right_path),
+        )?;
+    }
+
+    Ok(response)
 }
 
 fn compare_paths_sync(
@@ -948,36 +1019,82 @@ fn compare_paths_sync(
     }
 }
 
+fn attach_compare_text_session(
+    state: &CompareTextSessionState,
+    diff: &mut FileDiffResult,
+    left_path: PathBuf,
+    right_path: PathBuf,
+) -> Result<(), String> {
+    if !matches!(diff.content_kind, ContentKind::Text) {
+        return Ok(());
+    }
+
+    let token = state.issue_session(left_path, right_path)?;
+    let text = diff
+        .text
+        .as_mut()
+        .ok_or_else(|| "Text compare payload is unavailable.".to_string())?;
+
+    text.save_token = Some(token);
+
+    Ok(())
+}
+
+fn resolve_open_compare_item_paths(
+    left_base: &str,
+    right_base: &str,
+    relative_path: &str,
+) -> Result<(PathBuf, PathBuf), String> {
+    let left_base_path = PathBuf::from(left_base);
+    let right_base_path = PathBuf::from(right_base);
+    let relative_path = safe_relative_path(relative_path)?;
+    let left = left_base_path.join(&relative_path);
+    let right = right_base_path.join(&relative_path);
+
+    ensure_within_base(&left_base_path, &left)?;
+    ensure_within_base(&right_base_path, &right)?;
+
+    Ok((left, right))
+}
+
 #[tauri::command]
 async fn open_compare_item(
     left_base: String,
     right_base: String,
     relative_path: String,
     options: CompareOptions,
+    state: tauri::State<'_, CompareTextSessionState>,
 ) -> Result<FileDiffResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let save_left_base = left_base.clone();
+    let save_right_base = right_base.clone();
+    let save_relative_path = relative_path.clone();
+    let mut result = tauri::async_runtime::spawn_blocking(move || {
         open_compare_item_sync(left_base, right_base, relative_path, options)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+
+    let (left_path, right_path) =
+        resolve_open_compare_item_paths(&save_left_base, &save_right_base, &save_relative_path)?;
+    attach_compare_text_session(&state, &mut result, left_path, right_path)?;
+
+    Ok(result)
 }
 
 #[tauri::command]
 async fn save_compare_text_side(
-    mode: String,
-    left_path: String,
-    right_path: String,
-    relative_path: Option<String>,
+    save_token: String,
     target_side: String,
     contents: String,
     expected_sha256: Option<String>,
+    state: tauri::State<'_, CompareTextSessionState>,
 ) -> Result<(), String> {
+    let compare_session = state.resolve_session(&save_token)?;
+
     tauri::async_runtime::spawn_blocking(move || {
         save_compare_text_side_sync(
-            mode,
-            left_path,
-            right_path,
-            relative_path,
+            compare_session.left_path,
+            compare_session.right_path,
             target_side,
             contents,
             expected_sha256,
@@ -993,14 +1110,7 @@ fn open_compare_item_sync(
     relative_path: String,
     options: CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let left_base_path = PathBuf::from(&left_base);
-    let right_base_path = PathBuf::from(&right_base);
-    let relative_path = safe_relative_path(&relative_path)?;
-    let left = left_base_path.join(&relative_path);
-    let right = right_base_path.join(&relative_path);
-
-    ensure_within_base(&left_base_path, &left)?;
-    ensure_within_base(&right_base_path, &right)?;
+    let (left, right) = resolve_open_compare_item_paths(&left_base, &right_base, &relative_path)?;
 
     build_file_diff(
         &left,
@@ -1012,19 +1122,15 @@ fn open_compare_item_sync(
 }
 
 fn save_compare_text_side_sync(
-    mode: String,
-    left_path: String,
-    right_path: String,
-    relative_path: Option<String>,
+    left_path: PathBuf,
+    right_path: PathBuf,
     target_side: String,
     contents: String,
     expected_sha256: Option<String>,
 ) -> Result<(), String> {
-    let (left, right) = resolve_compare_text_paths(&mode, &left_path, &right_path, relative_path)?;
-
     let target_path = match target_side.as_str() {
-        "left" => left,
-        "right" => right,
+        "left" => left_path,
+        "right" => right_path,
         _ => return Err("Unsupported target side.".to_string()),
     };
 
@@ -1851,9 +1957,7 @@ fn highlighted_segments_for_cell(
     _cell: &DiffCell,
     highlighted: &Option<Vec<DiffSegment>>,
 ) -> Vec<DiffSegment> {
-    highlighted
-        .clone()
-        .unwrap_or_default()
+    highlighted.clone().unwrap_or_default()
 }
 
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
@@ -3729,8 +3833,8 @@ fn load_binary_details(
     let size = metadata.len();
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
-    let mut bytes = preview_byte_limit
-        .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
+    let mut bytes =
+        preview_byte_limit.map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
     let mut buffer = [0; BINARY_SAMPLE_BYTES];
 
     loop {
@@ -3788,6 +3892,7 @@ fn build_text_diff_payload(
         right_text: right_snapshot.text,
         left_exists: left_snapshot.exists,
         right_exists: right_snapshot.exists,
+        save_token: None,
         left_sha256: left_snapshot.sha256,
         right_sha256: right_snapshot.sha256,
         left_line_ending: left_snapshot.line_ending,
@@ -3861,36 +3966,6 @@ fn current_file_sha256(path: &Path) -> Result<Option<String>, String> {
 
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     Ok(Some(sha256_hex(&bytes)))
-}
-
-fn resolve_compare_text_paths(
-    mode: &str,
-    left_path: &str,
-    right_path: &str,
-    relative_path: Option<String>,
-) -> Result<(PathBuf, PathBuf), String> {
-    let left_base_path = PathBuf::from(left_path);
-    let right_base_path = PathBuf::from(right_path);
-
-    match mode {
-        "file" => Ok((left_base_path, right_base_path)),
-        "directory" => {
-            let relative_path = safe_relative_path(
-                relative_path.as_deref().ok_or_else(|| {
-                    "The requested path must be relative to the selected compare root."
-                        .to_string()
-                })?,
-            )?;
-            let left = left_base_path.join(&relative_path);
-            let right = right_base_path.join(&relative_path);
-
-            ensure_within_base(&left_base_path, &left)?;
-            ensure_within_base(&right_base_path, &right)?;
-
-            Ok((left, right))
-        }
-        _ => Err("Unsupported compare mode.".to_string()),
-    }
 }
 
 fn write_text_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
@@ -4271,6 +4346,7 @@ fn parent_path(path: &Path) -> Option<String> {
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(create_update_state())
+        .manage(create_compare_text_session_state())
         .manage(create_launch_context_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
@@ -4328,6 +4404,24 @@ fn create_update_state() -> UpdateState {
     #[cfg(not(feature = "updater"))]
     {
         UpdateState
+    }
+}
+
+fn create_compare_text_session_state() -> CompareTextSessionState {
+    CompareTextSessionState::default()
+}
+
+fn prune_compare_text_sessions(sessions: &mut HashMap<String, CompareTextSession>) {
+    while sessions.len() > MAX_COMPARE_TEXT_SESSIONS {
+        let Some(oldest_token) = sessions
+            .iter()
+            .min_by_key(|(_, session)| session.sequence)
+            .map(|(token, _)| token.clone())
+        else {
+            break;
+        };
+
+        sessions.remove(&oldest_token);
     }
 }
 
@@ -4920,6 +5014,7 @@ mod tests {
         assert_eq!(payload.right_text, "alpha\nbeta");
         assert!(payload.left_exists);
         assert!(payload.right_exists);
+        assert_eq!(payload.save_token, None);
         assert_eq!(payload.left_sha256, Some(sha256_hex(left_bytes)));
         assert_eq!(payload.right_sha256, Some(sha256_hex(right_bytes)));
         assert!(matches!(payload.left_line_ending, LineEndingKind::CrLf));
@@ -4951,12 +5046,43 @@ mod tests {
         let payload = result.text.expect("text payload should exist");
         assert!(payload.left_exists);
         assert!(!payload.right_exists);
+        assert_eq!(payload.save_token, None);
         assert_eq!(payload.right_text, String::new());
         assert_eq!(payload.right_sha256, None);
         assert!(matches!(payload.right_line_ending, LineEndingKind::Lf));
         assert!(!payload.right_has_trailing_newline);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn compare_text_session_state_issues_and_resolves_tokens() {
+        let state = CompareTextSessionState::default();
+        let left = PathBuf::from("left.txt");
+        let right = PathBuf::from("right.txt");
+
+        let token = state
+            .issue_session(left.clone(), right.clone())
+            .expect("issuing a compare text session should succeed");
+        let session = state
+            .resolve_session(&token)
+            .expect("session token should resolve");
+
+        assert_eq!(session.left_path, left);
+        assert_eq!(session.right_path, right);
+    }
+
+    #[test]
+    fn compare_text_session_state_rejects_unknown_token() {
+        let state = CompareTextSessionState::default();
+        let error = state
+            .resolve_session("compare-text-missing")
+            .expect_err("unknown token should be rejected");
+
+        assert_eq!(
+            error,
+            "The compare view is no longer active. Refresh and try again."
+        );
     }
 
     #[test]
@@ -4971,10 +5097,8 @@ mod tests {
         fs::create_dir_all(&right).expect("right directory should exist");
 
         save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
+            target_path.clone(),
+            right.join(relative_path),
             "left".to_string(),
             "merged\ncontent\n".to_string(),
             None,
@@ -5006,10 +5130,8 @@ mod tests {
             .expect("file hash should exist");
 
         save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
+            target_path.clone(),
+            right.join(relative_path),
             "left".to_string(),
             "beta\n".to_string(),
             Some(expected_sha256.clone()),
@@ -5017,10 +5139,8 @@ mod tests {
         .expect("save should succeed");
 
         let conflict = save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
+            target_path.clone(),
+            right.join(relative_path),
             "left".to_string(),
             "gamma\n".to_string(),
             Some(expected_sha256),

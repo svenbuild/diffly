@@ -126,6 +126,7 @@ export interface TextDiffPayload {
   rightText: string
   leftExists: boolean
   rightExists: boolean
+  saveToken: string | null
   leftSha256: string | null
   rightSha256: string | null
   leftLineEnding: 'lf' | 'crlf'

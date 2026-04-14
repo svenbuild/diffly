@@ -24,6 +24,7 @@ export interface MergeHunkOperation {
 }
 
 export interface MergeSession {
+  saveToken: string | null
   leftSnapshot: TextSnapshot
   rightSnapshot: TextSnapshot
   operations: MergeHunkOperation[]
@@ -240,6 +241,7 @@ export function createMergeSession(
   }))
 
   return recomputeDrafts({
+    saveToken: diff.text.saveToken,
     leftSnapshot,
     rightSnapshot,
     operations,

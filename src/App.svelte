@@ -820,10 +820,16 @@
     const expectedSha256 = savingLeft
       ? mergeSession.leftSnapshot.sha256
       : mergeSession.rightSnapshot.sha256
+    const saveToken = mergeSession.saveToken
     const opposingDirty = savingLeft ? mergeSession.rightDirty : mergeSession.leftDirty
     const opposingLabel = savingLeft ? 'right' : 'left'
 
     if (!draftDirty) {
+      return
+    }
+
+    if (!saveToken) {
+      errorMessage = 'This compare view can no longer save. Refresh and try again.'
       return
     }
 
@@ -839,10 +845,7 @@
 
     try {
       await saveCompareTextSide(
-        mode,
-        leftPath,
-        rightPath,
-        mode === 'directory' ? selectedRelativePath : null,
+        saveToken,
         targetSide,
         draftText,
         expectedSha256,
