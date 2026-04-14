@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     fs,
-    io::{Read, Write},
+    io::Read,
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -962,31 +962,6 @@ async fn open_compare_item(
     .map_err(|error| error.to_string())?
 }
 
-#[tauri::command]
-async fn save_compare_text_side(
-    mode: String,
-    left_path: String,
-    right_path: String,
-    relative_path: Option<String>,
-    target_side: String,
-    contents: String,
-    expected_sha256: Option<String>,
-) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        save_compare_text_side_sync(
-            mode,
-            left_path,
-            right_path,
-            relative_path,
-            target_side,
-            contents,
-            expected_sha256,
-        )
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
 fn open_compare_item_sync(
     left_base: String,
     right_base: String,
@@ -1009,37 +984,6 @@ fn open_compare_item_sync(
         right.to_string_lossy().to_string(),
         &options,
     )
-}
-
-fn save_compare_text_side_sync(
-    mode: String,
-    left_path: String,
-    right_path: String,
-    relative_path: Option<String>,
-    target_side: String,
-    contents: String,
-    expected_sha256: Option<String>,
-) -> Result<(), String> {
-    let (left, right) = resolve_compare_text_paths(&mode, &left_path, &right_path, relative_path)?;
-
-    let target_path = match target_side.as_str() {
-        "left" => left,
-        "right" => right,
-        _ => return Err("Unsupported target side.".to_string()),
-    };
-
-    if let Some(expected_sha256) = expected_sha256 {
-        let current_sha256 = current_file_sha256(&target_path)?;
-
-        if current_sha256.as_deref() != Some(expected_sha256.as_str()) {
-            return Err(
-                "The target file changed since it was loaded. Refresh the compare and try again."
-                    .to_string(),
-            );
-        }
-    }
-
-    write_text_file_atomic(&target_path, &contents)
 }
 
 fn safe_relative_path(value: &str) -> Result<PathBuf, String> {
@@ -3848,94 +3792,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn current_file_sha256(path: &Path) -> Result<Option<String>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-
-    if !metadata.is_file() {
-        return Err("The target path must be a file.".to_string());
-    }
-
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    Ok(Some(sha256_hex(&bytes)))
-}
-
-fn resolve_compare_text_paths(
-    mode: &str,
-    left_path: &str,
-    right_path: &str,
-    relative_path: Option<String>,
-) -> Result<(PathBuf, PathBuf), String> {
-    let left_base_path = PathBuf::from(left_path);
-    let right_base_path = PathBuf::from(right_path);
-
-    match mode {
-        "file" => Ok((left_base_path, right_base_path)),
-        "directory" => {
-            let relative_path = safe_relative_path(
-                relative_path.as_deref().ok_or_else(|| {
-                    "The requested path must be relative to the selected compare root."
-                        .to_string()
-                })?,
-            )?;
-            let left = left_base_path.join(&relative_path);
-            let right = right_base_path.join(&relative_path);
-
-            ensure_within_base(&left_base_path, &left)?;
-            ensure_within_base(&right_base_path, &right)?;
-
-            Ok((left, right))
-        }
-        _ => Err("Unsupported compare mode.".to_string()),
-    }
-}
-
-fn write_text_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    if path.exists() {
-        let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-
-        if !metadata.is_file() {
-            return Err("The target path must be a file.".to_string());
-        }
-    }
-
-    let parent = path
-        .parent()
-        .ok_or_else(|| "The target path does not have a writable parent directory.".to_string())?;
-    let unique_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_nanos();
-    let temp_path = parent.join(format!(
-        ".diffly-write-{}-{}",
-        std::process::id(),
-        unique_suffix
-    ));
-
-    {
-        let mut temp_file = fs::File::create(&temp_path).map_err(|error| error.to_string())?;
-        temp_file
-            .write_all(contents.as_bytes())
-            .map_err(|error| error.to_string())?;
-        temp_file.sync_all().map_err(|error| error.to_string())?;
-    }
-
-    match fs::rename(&temp_path, path) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            let _ = fs::remove_file(&temp_path);
-            Err(error.to_string())
-        }
-    }
-}
-
 fn build_summary(left: &LoadedFile, right: &LoadedFile) -> String {
     match (left, right) {
         (LoadedFile::Missing, LoadedFile::Missing) => "Neither file exists.".to_string(),
@@ -4277,7 +4133,6 @@ pub fn run() {
             load_session_state,
             load_launch_context,
             save_session_state,
-            save_compare_text_side,
             get_app_version,
             check_for_updates,
             download_update,
@@ -4955,86 +4810,6 @@ mod tests {
         assert_eq!(payload.right_sha256, None);
         assert!(matches!(payload.right_line_ending, LineEndingKind::Lf));
         assert!(!payload.right_has_trailing_newline);
-
-        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
-    }
-
-    #[test]
-    fn save_compare_text_side_creates_parent_directories_in_directory_mode() {
-        let temp_root = unique_temp_dir("save-compare-text-side-create-parent");
-        let left = temp_root.join("left");
-        let right = temp_root.join("right");
-        let relative_path = "nested/child.txt";
-        let target_path = left.join(relative_path);
-
-        fs::create_dir_all(&left).expect("left directory should exist");
-        fs::create_dir_all(&right).expect("right directory should exist");
-
-        save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
-            "left".to_string(),
-            "merged\ncontent\n".to_string(),
-            None,
-        )
-        .expect("save should succeed");
-
-        assert_eq!(
-            fs::read_to_string(&target_path).expect("saved file should be readable"),
-            "merged\ncontent\n"
-        );
-
-        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
-    }
-
-    #[test]
-    fn save_compare_text_side_detects_conflicts_using_expected_sha256() {
-        let temp_root = unique_temp_dir("save-compare-text-side-conflict");
-        let left = temp_root.join("left");
-        let right = temp_root.join("right");
-        let relative_path = "sample.txt";
-        let target_path = left.join(relative_path);
-
-        fs::create_dir_all(&left).expect("left directory should exist");
-        fs::create_dir_all(&right).expect("right directory should exist");
-        write_temp_file(&target_path, "alpha\n");
-
-        let expected_sha256 = current_file_sha256(&target_path)
-            .expect("file hash should load")
-            .expect("file hash should exist");
-
-        save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
-            "left".to_string(),
-            "beta\n".to_string(),
-            Some(expected_sha256.clone()),
-        )
-        .expect("save should succeed");
-
-        let conflict = save_compare_text_side_sync(
-            "directory".to_string(),
-            left.to_string_lossy().to_string(),
-            right.to_string_lossy().to_string(),
-            Some(relative_path.to_string()),
-            "left".to_string(),
-            "gamma\n".to_string(),
-            Some(expected_sha256),
-        )
-        .expect_err("stale hash should be rejected");
-
-        assert_eq!(
-            conflict,
-            "The target file changed since it was loaded. Refresh the compare and try again."
-        );
-        assert_eq!(
-            fs::read_to_string(&target_path).expect("saved file should remain readable"),
-            "beta\n"
-        );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }

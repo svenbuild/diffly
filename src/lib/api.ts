@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/core'
 
 import type {
   CompareOptions,
-  CompareMode,
   CompareResponse,
   DirectoryListing,
   ExplorerEntry,
@@ -71,23 +70,4 @@ export const openCompareItem = (
     rightBase,
     relativePath,
     options,
-  })
-
-export const saveCompareTextSide = (
-  mode: CompareMode,
-  leftPath: string,
-  rightPath: string,
-  relativePath: string | null,
-  targetSide: 'left' | 'right',
-  contents: string,
-  expectedSha256: string | null,
-) =>
-  invoke<void>('save_compare_text_side', {
-    mode,
-    leftPath,
-    rightPath,
-    relativePath,
-    targetSide,
-    contents,
-    expectedSha256,
   })

@@ -1,7 +1,6 @@
 import type { AppearanceMode, AppearanceSettings } from './theme'
 
 export type CompareMode = 'file' | 'directory'
-export type InteractionMode = 'compare' | 'merge' | 'edit'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20

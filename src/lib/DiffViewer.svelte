@@ -11,7 +11,6 @@
     FileDiffResult,
     HexRow,
     ImageDiffPayload,
-    InteractionMode,
     SideBySideRow,
     UnifiedLine,
     ViewMode,
@@ -41,9 +40,6 @@
   export let diffFontSize = '11px'
   export let diffRowLineHeight = '14px'
   export let diffRowHeight = '19px'
-  export let interactionMode: InteractionMode = 'compare'
-  export let leftDraftDirty = false
-  export let rightDraftDirty = false
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
   export let scrollDiffHunkIntoView: (targetIndex: number) => void
@@ -82,7 +78,6 @@
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
-  let mergeModeActive = false
   let virtualizeSideBySide = false
   let virtualizeUnified = false
   let leftVirtualRange: VirtualRange = { start: 0, end: 0, topPadding: 0, bottomPadding: 0 }
@@ -156,8 +151,6 @@
         className: null,
       },
     ] satisfies RenderedDiffFragment[]
-
-  $: mergeModeActive = interactionMode === 'merge'
 
   $: rowHeightPx = Math.max(1, Number.parseFloat(diffRowHeight) || 19)
 
@@ -1016,11 +1009,6 @@
             <span class="pane-header-side">Left</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
-            {#if mergeModeActive && leftDraftDirty}
-              <span class="pane-header-badge draft" title="Left draft has unsaved merge changes">
-                Draft
-              </span>
-            {/if}
           </div>
           <div bind:this={leftPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
@@ -1070,7 +1058,6 @@
                   {#if item.type === 'hunk'}
                     <div
                       class:current-diff-target={item.hunkIndex === currentDiffHunk}
-                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class="collapsed-row"
                     >
                       <span class="collapsed-chip">{item.header}</span>
@@ -1078,7 +1065,6 @@
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!item.row.left}
                       class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
@@ -1131,11 +1117,6 @@
             <span class="pane-header-side">Right</span>
             <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
-            {#if mergeModeActive && rightDraftDirty}
-              <span class="pane-header-badge draft" title="Right draft has unsaved merge changes">
-                Draft
-              </span>
-            {/if}
           </div>
           <div bind:this={rightPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
@@ -1185,7 +1166,6 @@
                   {#if item.type === 'hunk'}
                     <div
                       class:current-diff-target={item.hunkIndex === currentDiffHunk}
-                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class="collapsed-row"
                     >
                       <span class="collapsed-chip">{item.header}</span>
@@ -1193,7 +1173,6 @@
                   {:else if item.row}
                     <div
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                      class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!item.row.right}
                       class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
                       data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
@@ -1303,7 +1282,6 @@
               {#if item.type === 'hunk'}
                 <div
                   class:current-diff-target={item.hunkIndex === currentDiffHunk}
-                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                   class="collapsed-row unified-collapsed-row"
                 >
                   <span class="collapsed-chip">{item.header}</span>
@@ -1311,7 +1289,6 @@
               {:else if item.row}
                 <div
                   class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
-                  class:merge-selected-hunk={mergeModeActive && item.hunkIndex === currentDiffHunk}
                   class={`unified-row ${item.row.change}`}
                   data-diff-anchor={virtualizeUnified ? undefined : item.isAnchor ? 'true' : undefined}
                   data-diff-index={virtualizeUnified ? undefined : isChangedUnifiedRow(item) ? item.hunkIndex : undefined}

@@ -706,56 +706,6 @@ h2 {
   border: 0;
 }
 
-.merge-entry-anchor {
-  display: inline-flex;
-}
-
-.merge-button-group button,
-.merge-save-button,
-.merge-cancel-button,
-.merge-toggle-button {
-  min-width: 30px;
-}
-
-.merge-button-group button,
-.merge-toggle-button,
-.merge-save-button,
-.merge-cancel-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.merge-button-group button {
-  min-width: 72px;
-}
-
-.merge-toggle-button {
-  min-width: 78px;
-  padding-inline: 10px;
-}
-
-.merge-save-button,
-.merge-cancel-button {
-  min-width: 84px;
-}
-
-.merge-direction-button,
-.merge-save-button,
-.merge-cancel-button {
-  font-variant-numeric: tabular-nums;
-}
-
-.merge-toggle-icon {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-
-.merge-mode-chip,
-.merge-status-chip,
 .pane-header-badge {
   display: inline-flex;
   align-items: center;
@@ -770,18 +720,6 @@ h2 {
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-}
-
-.merge-mode-chip {
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-strong));
-  color: var(--panel-title);
-}
-
-.merge-status-chip {
-  min-width: 52px;
-  align-self: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .segmented-control {
@@ -3190,17 +3128,6 @@ button.filter-chip.tooLarge:focus-visible {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.collapsed-row.merge-selected-hunk,
-.diff-row.merge-selected-hunk,
-.unified-row.merge-selected-hunk {
-  outline: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  outline-offset: -1px;
-}
-
-.collapsed-row.merge-selected-hunk:not(.current-diff-target) {
-  background: color-mix(in srgb, var(--accent) 4%, var(--collapsed-row-bg));
-}
-
 .collapsed-row {
   display: grid;
   grid-template-columns: var(--diff-line-number-width) var(--diff-prefix-width) minmax(0, 1fr);
@@ -3337,15 +3264,6 @@ button.filter-chip.tooLarge:focus-visible {
     90deg,
     color-mix(in srgb, var(--accent) 12%, transparent),
     transparent 32px
-  );
-}
-
-.diff-row.merge-selected-hunk:not(.current-diff-target),
-.unified-row.merge-selected-hunk:not(.current-diff-target) {
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent) 6%, transparent),
-    transparent 24px
   );
 }
 

@@ -22,7 +22,6 @@
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
   export let getFileName: (path: string) => string
   export let formatSize: (size: number | null) => string
-  export let interactionLocked = false
 
   let fileFilter = ''
   let hideCollapsedFoldersWithoutMatches = true
@@ -76,7 +75,6 @@
             aria-pressed={isStatusFilterActive(item.status)}
             class:active-filter={isStatusFilterActive(item.status)}
             class={`status-chip filter-chip ${item.status}`}
-            disabled={interactionLocked}
             type="button"
             on:click={() => toggleStatusFilter(item.status)}
           >
@@ -92,7 +90,6 @@
         <input
           bind:value={fileFilter}
           autocomplete="off"
-          disabled={interactionLocked}
           placeholder="Filter files"
           spellcheck="false"
           type="text"
@@ -100,7 +97,7 @@
       </label>
 
       <label class="browser-toggle">
-        <input bind:checked={hideCollapsedFoldersWithoutMatches} disabled={interactionLocked} type="checkbox" />
+        <input bind:checked={hideCollapsedFoldersWithoutMatches} type="checkbox" />
         <span>Hide empty folders</span>
       </label>
     </div>
@@ -119,7 +116,6 @@
           <button
             aria-expanded={!collapsedGroups[group.key]}
             class="group-toggle"
-            disabled={interactionLocked}
             style={`--tree-depth: ${group.depth}`}
             type="button"
             on:click={() => toggleGroup(group.key)}
@@ -144,7 +140,6 @@
                 <button
                   class:selected={selectedRelativePath === entry.relativePath}
                   class="file-row"
-                  disabled={interactionLocked}
                   style={`--tree-depth: ${group.depth + 1}`}
                   type="button"
                   on:click={() => selectEntry(entry)}
