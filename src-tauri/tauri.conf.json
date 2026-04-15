@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Diffly",
-  "version": "0.1.6-rc.4",
+  "version": "0.1.6-rc.5",
   "identifier": "com.diffly.desktop",
   "build": {
     "frontendDist": "../dist",
