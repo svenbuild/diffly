@@ -2289,6 +2289,11 @@
             <h1>Diffly</h1>
             <span>Setup</span>
           </div>
+          {#if shouldShowUpdateIndicator()}
+            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+            </button>
+          {/if}
         </div>
       </div>
 
@@ -2341,22 +2346,6 @@
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
           Settings
         </button>
-        {#if shouldShowUpdateIndicator()}
-          <button
-            aria-busy={updateIndicatorState.status === 'downloading'}
-            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class="secondary update-indicator"
-            title={updateIndicatorTitle()}
-            type="button"
-            on:click={openUpdateSettings}
-          >
-            {#if updateIndicatorState.status === 'downloading'}
-              <span class="refresh-spinner visible"></span>
-            {:else}
-              Update
-            {/if}
-          </button>
-        {/if}
         <button
           class="secondary icon-button swap-button"
           aria-label="Switch left and right sides"
@@ -2432,7 +2421,11 @@
               <h1>Diffly</h1>
               <span>Compare</span>
             </div>
-
+            {#if shouldShowUpdateIndicator()}
+              <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+                {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+              </button>
+            {/if}
           </div>
         </div>
       </div>
@@ -2528,22 +2521,6 @@
           <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
             Settings
           </button>
-          {#if shouldShowUpdateIndicator()}
-            <button
-              aria-busy={updateIndicatorState.status === 'downloading'}
-              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              class="secondary toolbar-button update-indicator"
-              title={updateIndicatorTitle()}
-              type="button"
-              on:click={openUpdateSettings}
-            >
-              {#if updateIndicatorState.status === 'downloading'}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                Update
-              {/if}
-            </button>
-          {/if}
         </div>
 
         <div class="compare-action-group utility-actions">
@@ -2694,7 +2671,11 @@
             <h1>Diffly</h1>
             <span>Settings</span>
           </div>
-
+          {#if shouldShowUpdateIndicator()}
+            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+            </button>
+          {/if}
         </div>
       </div>
     </header>
