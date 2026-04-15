@@ -1,7 +1,6 @@
 import type { AppearanceMode, AppearanceSettings } from './theme'
 
 export type CompareMode = 'file' | 'directory'
-export type InteractionMode = 'compare' | 'merge' | 'edit'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
@@ -41,6 +40,8 @@ export interface PersistedSession {
   checkForUpdatesOnLaunch?: boolean
   updateChannel?: UpdateChannel
   lastUpdateCheckAt?: string
+  lastUpdateStatus?: string
+  lastUpdateMetadata?: UpdateMetadata | null
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
 }
@@ -99,24 +100,14 @@ export interface ImageDiffPayload {
   rightMeta: BinaryFileMeta
 }
 
-export interface HexCell {
-  hex: string
-  ascii: string
-  changed: boolean
-}
-
-export interface HexRow {
-  offset: number
-  left: HexCell[]
-  right: HexCell[]
-}
-
 export interface BinaryDiffPayload {
   leftMeta: BinaryFileMeta
   rightMeta: BinaryFileMeta
-  rows: HexRow[]
+  leftBytes: number[]
+  rightBytes: number[]
   bytesPerRow: 16
   changedByteCount: number | null
+  changedRowCount: number | null
   firstDifferenceOffset: number | null
   truncated: boolean
 }
@@ -126,7 +117,6 @@ export interface TextDiffPayload {
   rightText: string
   leftExists: boolean
   rightExists: boolean
-  saveToken: string | null
   leftSha256: string | null
   rightSha256: string | null
   leftLineEnding: 'lf' | 'crlf'

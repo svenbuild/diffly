@@ -17,7 +17,6 @@
     loadSessionState,
     openCompareItem,
     pathInfo,
-    saveCompareTextSide,
     saveSessionState,
   } from './lib/api'
   import {
@@ -83,14 +82,6 @@
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
-  import {
-    createMergeSession,
-    getMergeSelectionCounts,
-    hasDirtyMergeDrafts,
-    setAllMergeHunks,
-    toggleMergeHunk,
-    type MergeSession,
-  } from './lib/merge-session'
   import type {
     CompareMode,
     CompareOptions,
@@ -99,7 +90,6 @@
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
-    InteractionMode,
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
@@ -138,7 +128,7 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 70
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 2
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
-  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 800
+  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
   const PANE_WHEEL_SMOOTHING = 0.18
   const PANE_WHEEL_MIN_STEP = 1.25
   const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
@@ -160,7 +150,6 @@
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
-  let interactionMode: InteractionMode = 'compare'
   let viewMode: ViewMode = 'sideBySide'
   let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
     initialSession?.appearance,
@@ -216,9 +205,6 @@
   let diffNavigationScrollFrame: number | null = null
   let diffNavigationIdleTimer: number | null = null
   let currentDiffHunk = -1
-  let mergeSession: MergeSession | null = null
-  let mergeRestoreViewMode: ViewMode = 'sideBySide'
-  let mergeRestoreShowFullFile = false
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let initialSessionFingerprint: string | null = null
@@ -239,24 +225,6 @@
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
   let textDiffActive = false
-  let mergeModeActive = false
-  let canEnterMergeMode = false
-  let mergeSelectionCounts = {
-    left: 0,
-    right: 0,
-  }
-  let mergeTotalHunks = 0
-  let mergeHasSelections = false
-  let mergeEntryTitle = 'Enter merge mode'
-  let mergeAnnouncement = ''
-  let mergeAnnouncementTimer: number | null = null
-  let currentMergeCanApplyLeft = false
-  let currentMergeCanApplyRight = false
-  let currentMergeAppliedLeft = false
-  let currentMergeAppliedRight = false
-  let mergeLastTargetSide: Side | null = null
-  let mergeModeSummary = 'Merge mode'
-  let mergeStatusSummary = ''
   let leftCompareRoot: CompareRootDisplay = {
     prefix: '',
     suffix: '',
@@ -475,10 +443,6 @@
       if (diffNavigationIdleTimer !== null) {
         window.clearTimeout(diffNavigationIdleTimer)
       }
-
-      if (mergeAnnouncementTimer !== null) {
-        window.clearTimeout(mergeAnnouncementTimer)
-      }
     }
   })
 
@@ -521,18 +485,10 @@
   }
 
   function setViewMode(nextViewMode: ViewMode) {
-    if (interactionMode === 'merge') {
-      return
-    }
-
     viewMode = nextViewMode
   }
 
   function setShowFullFile(nextValue: boolean) {
-    if (interactionMode === 'merge') {
-      return
-    }
-
     showFullFile = nextValue
   }
 
@@ -680,278 +636,7 @@
     openSettings('updates')
   }
 
-  function announceMerge(message: string) {
-    mergeAnnouncement = ''
-
-    if (typeof window === 'undefined') {
-      mergeAnnouncement = message
-      return
-    }
-
-    if (mergeAnnouncementTimer !== null) {
-      window.clearTimeout(mergeAnnouncementTimer)
-    }
-
-    mergeAnnouncementTimer = window.setTimeout(() => {
-      mergeAnnouncement = message
-      mergeAnnouncementTimer = null
-    }, 16)
-  }
-
-  function isEditableTarget(target: EventTarget | null) {
-    if (!(target instanceof HTMLElement)) {
-      return false
-    }
-
-    const tagName = target.tagName
-
-    return (
-      target.isContentEditable ||
-      tagName === 'INPUT' ||
-      tagName === 'TEXTAREA' ||
-      tagName === 'SELECT'
-    )
-  }
-
-  function restoreMergeViewState() {
-    viewMode = mergeRestoreViewMode
-    showFullFile = mergeRestoreShowFullFile
-  }
-
-  function leaveMergeMode() {
-    interactionMode = 'compare'
-    mergeSession = null
-    mergeLastTargetSide = null
-    restoreMergeViewState()
-  }
-
-  function confirmDiscardMergeChanges(message: string) {
-    if (!hasDirtyMergeDrafts(mergeSession) || typeof window === 'undefined') {
-      return true
-    }
-
-    return window.confirm(message)
-  }
-
-  function ensureMergeModeClosed(message: string) {
-    if (interactionMode !== 'merge') {
-      return true
-    }
-
-    if (!confirmDiscardMergeChanges(message)) {
-      return false
-    }
-
-    leaveMergeMode()
-    return true
-  }
-
-  function enterMergeMode() {
-    if (!activeDiff || activeDiff.contentKind !== 'text' || !activeDiff.text) {
-      return
-    }
-
-    const canonicalHunks = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
-
-    if (canonicalHunks.length === 0) {
-      return
-    }
-
-    mergeRestoreViewMode = viewMode
-    mergeRestoreShowFullFile = showFullFile
-    mergeSession = createMergeSession(activeDiff, canonicalHunks)
-    mergeLastTargetSide = null
-    interactionMode = 'merge'
-    viewMode = 'sideBySide'
-    showFullFile = false
-    currentDiffHunk =
-      currentDiffHunk >= 0 ? Math.min(currentDiffHunk, canonicalHunks.length - 1) : 0
-    announceMerge(
-      `Merge mode active. Hunk ${currentDiffHunk + 1} of ${canonicalHunks.length} selected.`,
-    )
-  }
-
-  function toggleCurrentMergeHunk(targetSide: Side) {
-    if (!mergeSession || currentDiffHunk < 0) {
-      return
-    }
-
-    const nextSession = toggleMergeHunk(mergeSession, currentDiffHunk, targetSide)
-    const selection = nextSession.selections[currentDiffHunk]
-    const active = targetSide === 'left' ? selection?.toLeft : selection?.toRight
-    const targetLabel = targetSide === 'left' ? 'left draft' : 'right draft'
-    const sourceLabel = targetSide === 'left' ? 'right side' : 'left side'
-
-    mergeSession = nextSession
-    mergeLastTargetSide = targetSide
-    announceMerge(
-      active
-        ? `Hunk ${currentDiffHunk + 1} now copies the ${sourceLabel} into the ${targetLabel}.`
-        : `Hunk ${currentDiffHunk + 1} removed from the ${targetLabel}.`,
-    )
-  }
-
-  function toggleAllMergeHunks(targetSide: Side) {
-    if (!mergeSession) {
-      return
-    }
-
-    const allSelected = mergeSession.selections.every((selection) =>
-      targetSide === 'left' ? selection.toLeft : selection.toRight,
-    )
-
-    mergeSession = setAllMergeHunks(mergeSession, targetSide, !allSelected)
-    mergeLastTargetSide = targetSide
-    announceMerge(
-      `${allSelected ? 'Removed' : 'Applied'} all changes ${
-        targetSide === 'left' ? 'from right into left' : 'from left into right'
-      }.`,
-    )
-  }
-
-  async function saveMergeDraft(targetSide: Side) {
-    if (!mergeSession) {
-      return
-    }
-
-    const savingLeft = targetSide === 'left'
-    const draftText = savingLeft ? mergeSession.leftDraftText : mergeSession.rightDraftText
-    const draftDirty = savingLeft ? mergeSession.leftDirty : mergeSession.rightDirty
-    const expectedSha256 = savingLeft
-      ? mergeSession.leftSnapshot.sha256
-      : mergeSession.rightSnapshot.sha256
-    const saveToken = mergeSession.saveToken
-    const opposingDirty = savingLeft ? mergeSession.rightDirty : mergeSession.leftDirty
-    const opposingLabel = savingLeft ? 'right' : 'left'
-
-    if (!draftDirty) {
-      return
-    }
-
-    if (!saveToken) {
-      errorMessage = 'This compare view can no longer save. Refresh and try again.'
-      return
-    }
-
-    if (
-      opposingDirty &&
-      typeof window !== 'undefined' &&
-      !window.confirm(
-        `Save the ${targetSide} draft and discard the unsaved ${opposingLabel} draft?`,
-      )
-    ) {
-      return
-    }
-
-    try {
-      await saveCompareTextSide(
-        saveToken,
-        targetSide,
-        draftText,
-        expectedSha256,
-      )
-
-      announceMerge(`Saved the ${targetSide} draft.`)
-      leaveMergeMode()
-      await runCompare()
-    } catch (error) {
-      errorMessage =
-        error instanceof Error ? error.message : `Unable to save the ${targetSide} draft.`
-    }
-  }
-
-  async function saveMergeShortcutDraft() {
-    if (!mergeSession) {
-      return
-    }
-
-    if (mergeSession.leftDirty && mergeSession.rightDirty) {
-      await saveMergeDraft(mergeLastTargetSide ?? 'left')
-      return
-    }
-
-    if (mergeSession.leftDirty && !mergeSession.rightDirty) {
-      await saveMergeDraft('left')
-      return
-    }
-
-    if (mergeSession.rightDirty && !mergeSession.leftDirty) {
-      await saveMergeDraft('right')
-      return
-    }
-
-    announceMerge('There are no draft changes to save.')
-  }
-
-  async function handleMergeModeKeydown(event: KeyboardEvent) {
-    if (!mergeModeActive || screen !== 'compare') {
-      return
-    }
-
-    if (event.defaultPrevented) {
-      return
-    }
-
-    if (isEditableTarget(event.target)) {
-      return
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      ensureMergeModeClosed('Discard merge changes and exit merge mode?')
-      return
-    }
-
-    if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      event.key === 'ArrowLeft'
-    ) {
-      event.preventDefault()
-
-      if (event.shiftKey) {
-        toggleAllMergeHunks('left')
-      } else {
-        toggleCurrentMergeHunk('left')
-      }
-
-      return
-    }
-
-    if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      event.key === 'ArrowRight'
-    ) {
-      event.preventDefault()
-
-      if (event.shiftKey) {
-        toggleAllMergeHunks('right')
-      } else {
-        toggleCurrentMergeHunk('right')
-      }
-
-      return
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 's'
-    ) {
-      event.preventDefault()
-      await saveMergeShortcutDraft()
-    }
-  }
-
   function openSettings(section: SettingsSection = 'appearance') {
-    if (!ensureMergeModeClosed('Discard merge changes and open settings?')) {
-      return
-    }
-
     if (screen !== 'settings') {
       settingsReturnScreen = screen
     }
@@ -1097,6 +782,8 @@
           checkForUpdatesOnLaunch,
           updateChannel,
           lastUpdateCheckAt,
+          lastUpdateStatus: updateIndicatorState.status,
+          lastUpdateMetadata: updateIndicatorState.metadata,
           leftPane: leftExplorer,
           rightPane: rightExplorer,
         }),
@@ -1138,6 +825,16 @@
     checkForUpdatesOnLaunch = session.checkForUpdatesOnLaunch ?? true
     updateChannel = session.updateChannel ?? DEFAULT_UPDATE_CHANNEL
     lastUpdateCheckAt = session.lastUpdateCheckAt ?? ''
+
+    // Restore update indicator if the last session found an available update
+    if (session.lastUpdateStatus === 'available' && session.lastUpdateMetadata) {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'available',
+        metadata: session.lastUpdateMetadata,
+        message: 'A new Diffly build is available.',
+      }
+    }
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -1212,10 +909,6 @@
   }
 
   function setMode(nextMode: CompareMode) {
-    if (!ensureMergeModeClosed('Discard merge changes and switch compare mode?')) {
-      return
-    }
-
     if (mode === nextMode) {
       return
     }
@@ -1240,10 +933,6 @@
   }
 
   function goToSetup() {
-    if (!ensureMergeModeClosed('Discard merge changes and return to setup?')) {
-      return
-    }
-
     activeDetailRequestId += 1
     detailLoading = false
     cancelBackgroundDiffPreload()
@@ -1318,10 +1007,6 @@
   }
 
   async function swapComparedSides() {
-    if (!ensureMergeModeClosed('Discard merge changes and switch left and right sides?')) {
-      return
-    }
-
     if (loading || detailLoading || pickerLoading) {
       return
     }
@@ -1338,10 +1023,6 @@
   }
 
   async function browseSystem(side: Side) {
-    if (!ensureMergeModeClosed('Discard merge changes and browse for a different path?')) {
-      return
-    }
-
     const selected = await choosePath(mode === 'file' ? 'file' : 'directory')
 
     if (!selected) {
@@ -1527,10 +1208,6 @@
   }
 
   async function runCompare() {
-    if (!ensureMergeModeClosed('Discard merge changes and refresh the compare?')) {
-      return
-    }
-
     if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
       errorMessage = 'Select valid targets on both sides first.'
       return
@@ -1592,10 +1269,6 @@
   }
 
   async function selectEntry(entry: DirectoryEntryResult, revision = compareRevision) {
-    if (!ensureMergeModeClosed('Discard merge changes and open a different file?')) {
-      return
-    }
-
     if (!leftPath || !rightPath) {
       return
     }
@@ -2367,6 +2040,8 @@
       checkForUpdatesOnLaunch,
       updateChannel,
       lastUpdateCheckAt,
+      lastUpdateStatus: updateIndicatorState.status,
+      lastUpdateMetadata: updateIndicatorState.metadata,
       leftPane: leftExplorer,
       rightPane: rightExplorer,
     })
@@ -2517,45 +2192,6 @@
     visibleDiffHunkCount > 0
 
   $: textDiffActive = activeDiff?.contentKind === 'text'
-  $: mergeModeActive = interactionMode === 'merge'
-  $: canEnterMergeMode =
-    screen === 'compare' &&
-    !mergeModeActive &&
-    !loading &&
-    !detailLoading &&
-    !pickerLoading &&
-    activeDiff?.contentKind === 'text' &&
-    Boolean(activeDiff.text) &&
-    visibleDiffHunkCount > 0
-  $: mergeEntryTitle = canEnterMergeMode
-    ? 'Enter merge mode'
-    : !activeDiff
-      ? 'Open a changed text file to use merge mode.'
-      : activeDiff.contentKind !== 'text'
-        ? 'Merge mode is available only for text diffs.'
-        : loading || detailLoading || pickerLoading
-          ? 'Merge mode is unavailable while Diffly is busy.'
-          : 'Merge mode requires a text diff with changes.'
-  $: mergeSelectionCounts = getMergeSelectionCounts(mergeSession)
-  $: mergeTotalHunks = mergeSession?.selections.length ?? 0
-  $: mergeHasSelections = mergeSelectionCounts.left > 0 || mergeSelectionCounts.right > 0
-  $: mergeModeSummary =
-    mergeModeActive && mergeTotalHunks > 0
-      ? `Merge ${Math.max(1, currentDiffHunk + 1)}/${mergeTotalHunks}`
-      : 'Merge mode'
-  $: mergeStatusSummary =
-    mergeModeActive && mergeTotalHunks > 0 && mergeHasSelections
-      ? `L ${mergeSelectionCounts.left}/${mergeTotalHunks}  R ${mergeSelectionCounts.right}/${mergeTotalHunks}`
-      : ''
-  $: {
-    const currentSelection =
-      mergeSession && currentDiffHunk >= 0 ? mergeSession.selections[currentDiffHunk] : null
-
-    currentMergeCanApplyLeft = Boolean(mergeSession && currentDiffHunk >= 0)
-    currentMergeCanApplyRight = Boolean(mergeSession && currentDiffHunk >= 0)
-    currentMergeAppliedLeft = Boolean(currentSelection?.toLeft)
-    currentMergeAppliedRight = Boolean(currentSelection?.toRight)
-  }
 
   $: canGoToPreviousDiff = canNavigateDiffs && currentDiffHunk > 0
 
@@ -2605,6 +2241,7 @@
     checkForUpdatesOnLaunch
     updateChannel
     lastUpdateCheckAt
+    updateIndicatorState
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
     leftExplorer.selectedTargetKind
@@ -2654,8 +2291,6 @@
     .filter((item) => item.count > 0)
 </script>
 
-<svelte:window on:keydown={handleMergeModeKeydown} />
-
 <svelte:head>
   <title>Diffly</title>
 </svelte:head>
@@ -2669,6 +2304,11 @@
             <h1>Diffly</h1>
             <span>Setup</span>
           </div>
+          {#if shouldShowUpdateIndicator()}
+            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+            </button>
+          {/if}
         </div>
       </div>
 
@@ -2717,23 +2357,6 @@
             </button>
           </div>
         </div>
-
-        {#if shouldShowUpdateIndicator()}
-          <button
-            aria-busy={updateIndicatorState.status === 'downloading'}
-            class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-            class="secondary update-indicator"
-            title={updateIndicatorTitle()}
-            type="button"
-            on:click={openUpdateSettings}
-          >
-            {#if updateIndicatorState.status === 'downloading'}
-              <span class="refresh-spinner visible"></span>
-            {:else}
-              <span class="update-indicator-badge">Update</span>
-            {/if}
-          </button>
-        {/if}
 
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
           Settings
@@ -2805,7 +2428,6 @@
   </main>
 {:else if screen === 'compare'}
   <main class="screen compare-screen">
-    <div aria-live="polite" class="sr-only">{mergeAnnouncement}</div>
     <header class="app-bar compare-bar">
       <div class="app-bar-main compare-bar-main">
         <div class="compare-bar-brand">
@@ -2814,21 +2436,9 @@
               <h1>Diffly</h1>
               <span>Compare</span>
             </div>
-
             {#if shouldShowUpdateIndicator()}
-              <button
-                aria-busy={updateIndicatorState.status === 'downloading'}
-                class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-                class="secondary update-indicator"
-                title={updateIndicatorTitle()}
-                type="button"
-                on:click={openUpdateSettings}
-              >
-                {#if updateIndicatorState.status === 'downloading'}
-                  <span class="refresh-spinner visible"></span>
-                {:else}
-                  <span class="update-indicator-badge">Update</span>
-                {/if}
+              <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+                {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
               </button>
             {/if}
           </div>
@@ -2884,38 +2494,6 @@
             </button>
           </div>
 
-          {#if mergeModeActive}
-            <div
-              class="merge-button-group segmented-control toolbar-segmented-control"
-              aria-label="Current hunk merge actions"
-              role="group"
-            >
-              <button
-                aria-pressed={currentMergeAppliedLeft}
-                class:active={currentMergeAppliedLeft}
-                class="secondary toolbar-button merge-direction-button"
-                aria-label="Copy the right side of the current change into the left draft"
-                disabled={!currentMergeCanApplyLeft}
-                title="Copy the right side of the current change into the left draft. Alt+Left toggles this change. Alt+Shift+Left toggles all changes to the left draft."
-                type="button"
-                on:click={() => toggleCurrentMergeHunk('left')}
-              >
-                <span>R&rarr;L</span>
-              </button>
-              <button
-                aria-pressed={currentMergeAppliedRight}
-                class:active={currentMergeAppliedRight}
-                class="secondary toolbar-button merge-direction-button"
-                aria-label="Copy the left side of the current change into the right draft"
-                disabled={!currentMergeCanApplyRight}
-                title="Copy the left side of the current change into the right draft. Alt+Right toggles this change. Alt+Shift+Right toggles all changes to the right draft."
-                type="button"
-                on:click={() => toggleCurrentMergeHunk('right')}
-              >
-                <span>L&rarr;R</span>
-              </button>
-            </div>
-          {/if}
         </div>
 
         <div class="compare-action-group display-actions">
@@ -2924,7 +2502,7 @@
             aria-pressed={viewMode === 'unified'}
             class:unified-active={viewMode === 'unified'}
             class="view-mode-toggle"
-            disabled={!textDiffActive || mergeModeActive}
+            disabled={!textDiffActive}
             type="button"
             on:click={toggleViewMode}
           >
@@ -2955,165 +2533,82 @@
               <span class="view-mode-label">Unified</span>
             </span>
           </button>
-          {#if !mergeModeActive}
-            <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
-              Settings
-            </button>
-          {/if}
+          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
+            Settings
+          </button>
         </div>
 
         <div class="compare-action-group utility-actions">
-          {#if mergeModeActive}
-            <span
-              aria-label={`Merge mode. Selected change ${Math.max(1, currentDiffHunk + 1)} of ${mergeTotalHunks}.`}
-              class="merge-mode-chip"
-              title="Merge mode. Use Alt+Left or Alt+Right to apply the current change, Ctrl+S to save, and Escape to exit."
-            >
-              {mergeModeSummary}
-            </span>
-            {#if mergeHasSelections}
-              <span
-                aria-label={`Pending merge selections: left ${mergeSelectionCounts.left} of ${mergeTotalHunks}, right ${mergeSelectionCounts.right} of ${mergeTotalHunks}`}
-                class="merge-status-chip"
-                title={`Pending merge selections: left ${mergeSelectionCounts.left} of ${mergeTotalHunks}, right ${mergeSelectionCounts.right} of ${mergeTotalHunks}`}
-              >
-                {mergeStatusSummary}
-              </span>
-            {/if}
-            <button
-              class="secondary toolbar-button merge-save-button"
-              aria-label="Save the left draft"
-              disabled={!mergeSession?.leftDirty}
-              title="Save the left draft. Ctrl+S saves the active dirty draft."
-              type="button"
-              on:click={() => saveMergeDraft('left')}
-            >
-              <span>Save Left</span>
-            </button>
-            <button
-              class="secondary toolbar-button merge-save-button"
-              aria-label="Save the right draft"
-              disabled={!mergeSession?.rightDirty}
-              title="Save the right draft. Ctrl+S saves the active dirty draft."
-              type="button"
-              on:click={() => saveMergeDraft('right')}
-            >
-              <span>Save Right</span>
-            </button>
-            <button
-              class="secondary toolbar-button merge-cancel-button"
-              aria-label="Exit merge mode"
-              title="Exit merge mode. Escape closes merge mode."
-              type="button"
-              on:click={() => ensureMergeModeClosed('Discard merge changes and exit merge mode?')}
-            >
-              <span>Exit</span>
-            </button>
-          {:else}
-            <span class="merge-entry-anchor" title={mergeEntryTitle}>
-              <button
-                class="secondary toolbar-button merge-toggle-button"
-                aria-label={mergeEntryTitle}
-                disabled={!canEnterMergeMode}
-                title={mergeEntryTitle}
-                type="button"
-                on:click={enterMergeMode}
-              >
-                <svg aria-hidden="true" class="merge-toggle-icon" viewBox="0 0 16 16">
-                  <circle cx="4" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-                  <circle cx="12" cy="8" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-                  <circle cx="4" cy="12.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+          <button
+            class="secondary toolbar-button icon-button swap-button"
+            aria-label="Switch left and right sides"
+            disabled={loading || detailLoading || pickerLoading}
+            title="Switch left and right sides"
+            type="button"
+            on:click={swapComparedSides}
+          >
+            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+              <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+              <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            </svg>
+          </button>
+
+          <button
+            aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+            aria-busy={loading}
+            class:pending-refresh={compareNeedsRefresh}
+            class="secondary toolbar-button icon-button refresh-button"
+            title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+            type="button"
+            disabled={loading}
+            on:click={runCompare}
+          >
+            <span class="refresh-icon-slot" aria-hidden="true">
+              {#if loading}
+                <span class="refresh-spinner visible"></span>
+              {:else}
+                <svg class="refresh-icon" viewBox="0 0 16 16">
                   <path
-                    d="M5.5 3.5h2.2a3 3 0 0 1 3 3V8"
+                    d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.3"
+                    stroke-width="1.7"
                   />
                   <path
-                    d="M5.5 12.5h2.2a3 3 0 0 0 3-3V8"
+                    d="M10.1 10.9h2.7v2.6"
                     fill="none"
                     stroke="currentColor"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="1.3"
+                    stroke-width="1.7"
+                  />
+                  <path
+                    d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.7"
+                  />
+                  <path
+                    d="M5.9 5.1H3.2V2.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.7"
                   />
                 </svg>
-                <span>Merge</span>
-              </button>
+              {/if}
             </span>
-            <button
-              class="secondary toolbar-button icon-button swap-button"
-              aria-label="Switch left and right sides"
-              disabled={loading || detailLoading || pickerLoading}
-              title="Switch left and right sides"
-              type="button"
-              on:click={swapComparedSides}
-            >
-              <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-                <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-                <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-                <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-                <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-              </svg>
-            </button>
-
-            <button
-              aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-              aria-busy={loading}
-              class:pending-refresh={compareNeedsRefresh}
-              class="secondary toolbar-button icon-button refresh-button"
-              title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-              type="button"
-              disabled={loading}
-              on:click={runCompare}
-            >
-              <span class="refresh-icon-slot" aria-hidden="true">
-                {#if loading}
-                  <span class="refresh-spinner visible"></span>
-                {:else}
-                  <svg class="refresh-icon" viewBox="0 0 16 16">
-                    <path
-                      d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                    />
-                    <path
-                      d="M10.1 10.9h2.7v2.6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                    />
-                    <path
-                      d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                    />
-                    <path
-                      d="M5.9 5.1H3.2V2.5"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.7"
-                    />
-                  </svg>
-                {/if}
-              </span>
-            </button>
-            <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
-              Setup
-            </button>
-          {/if}
+          </button>
+          <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
+            Setup
+          </button>
         </div>
       </div>
     </header>
@@ -3144,7 +2639,6 @@
           {selectEntry}
           {getFileName}
           {formatSize}
-          interactionLocked={mergeModeActive}
         />
         <button
           aria-label="Resize file list panel"
@@ -3173,9 +2667,6 @@
         {diffFontSize}
         {diffRowLineHeight}
         {diffRowHeight}
-        {interactionMode}
-        leftDraftDirty={mergeSession?.leftDirty ?? false}
-        rightDraftDirty={mergeSession?.rightDirty ?? false}
         {syncPaneWheel}
         {syncPaneScroll}
         {scrollDiffHunkIntoView}
@@ -3195,21 +2686,9 @@
             <h1>Diffly</h1>
             <span>Settings</span>
           </div>
-
           {#if shouldShowUpdateIndicator()}
-            <button
-              aria-busy={updateIndicatorState.status === 'downloading'}
-              class:has-update={updateIndicatorState.status === 'available' || updateIndicatorState.status === 'downloaded'}
-              class="secondary update-indicator"
-              title={updateIndicatorTitle()}
-              type="button"
-              on:click={openUpdateSettings}
-            >
-              {#if updateIndicatorState.status === 'downloading'}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <span class="update-indicator-badge">Update</span>
-              {/if}
+            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
             </button>
           {/if}
         </div>

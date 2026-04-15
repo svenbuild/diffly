@@ -1,10 +1,11 @@
+#[cfg(feature = "updater")]
+use std::sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
     fs,
-    io::{Read, Write},
+    io::Read,
     path::{Component, Path, PathBuf},
-    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -22,7 +23,6 @@ use walkdir::WalkDir;
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
-const MAX_COMPARE_TEXT_SESSIONS: usize = 128;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
@@ -97,62 +97,6 @@ struct LaunchContext {
 #[derive(Clone, Default)]
 struct LaunchContextState {
     context: Option<LaunchContext>,
-}
-
-#[derive(Clone, Debug)]
-struct CompareTextSession {
-    left_path: PathBuf,
-    right_path: PathBuf,
-    sequence: u64,
-}
-
-#[derive(Default)]
-struct CompareTextSessionState {
-    next_sequence: Mutex<u64>,
-    sessions: Mutex<HashMap<String, CompareTextSession>>,
-}
-
-impl CompareTextSessionState {
-    fn issue_session(&self, left_path: PathBuf, right_path: PathBuf) -> Result<String, String> {
-        let sequence = {
-            let mut next_sequence = self
-                .next_sequence
-                .lock()
-                .map_err(|_| "Compare session state is unavailable.".to_string())?;
-            *next_sequence += 1;
-            *next_sequence
-        };
-
-        let token = format!("compare-text-{sequence}");
-        let mut sessions = self
-            .sessions
-            .lock()
-            .map_err(|_| "Compare session state is unavailable.".to_string())?;
-
-        sessions.insert(
-            token.clone(),
-            CompareTextSession {
-                left_path,
-                right_path,
-                sequence,
-            },
-        );
-
-        prune_compare_text_sessions(&mut sessions);
-
-        Ok(token)
-    }
-
-    fn resolve_session(&self, token: &str) -> Result<CompareTextSession, String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|_| "Compare session state is unavailable.".to_string())?;
-
-        sessions.get(token).cloned().ok_or_else(|| {
-            "The compare view is no longer active. Refresh and try again.".to_string()
-        })
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -262,18 +206,30 @@ struct UpdateActionResponse {
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GitHubReleaseAsset {
     name: String,
     browser_download_url: String,
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GitHubRelease {
     draft: bool,
     prerelease: bool,
     assets: Vec<GitHubReleaseAsset>,
+}
+
+#[cfg(feature = "prerelease-updater")]
+const GITHUB_API_COOLDOWN_SECS: u64 = 300; // 5 minutes
+
+#[cfg(feature = "prerelease-updater")]
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct GitHubApiCache {
+    etag: Option<String>,
+    releases: Option<Vec<GitHubRelease>>,
+    #[serde(default)]
+    last_fetch_epoch: u64,
 }
 
 #[cfg(feature = "updater")]
@@ -284,9 +240,21 @@ struct PendingUpdate {
 }
 
 #[cfg(feature = "updater")]
-#[derive(Default)]
 struct UpdateState {
     pending: Mutex<Option<PendingUpdate>>,
+    #[cfg(feature = "prerelease-updater")]
+    github_cache: Mutex<GitHubApiCache>,
+}
+
+#[cfg(feature = "updater")]
+impl Default for UpdateState {
+    fn default() -> Self {
+        Self {
+            pending: Mutex::new(None),
+            #[cfg(feature = "prerelease-updater")]
+            github_cache: Mutex::new(GitHubApiCache::default()),
+        }
+    }
 }
 
 #[cfg(not(feature = "updater"))]
@@ -380,7 +348,6 @@ struct TextDiffPayload {
     right_text: String,
     left_exists: bool,
     right_exists: bool,
-    save_token: Option<String>,
     left_sha256: Option<String>,
     right_sha256: Option<String>,
     left_line_ending: LineEndingKind,
@@ -428,28 +395,14 @@ struct ImageDiffPayload {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HexCell {
-    hex: String,
-    ascii: String,
-    changed: bool,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HexRow {
-    offset: usize,
-    left: Vec<HexCell>,
-    right: Vec<HexCell>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct BinaryDiffPayload {
     left_meta: BinaryFileMeta,
     right_meta: BinaryFileMeta,
-    rows: Vec<HexRow>,
+    left_bytes: Vec<u8>,
+    right_bytes: Vec<u8>,
     bytes_per_row: usize,
     changed_byte_count: Option<usize>,
+    changed_row_count: Option<usize>,
     first_difference_offset: Option<usize>,
     truncated: bool,
 }
@@ -684,7 +637,7 @@ async fn check_for_updates(
         return Ok(response);
     }
 
-    let endpoints = match resolve_update_endpoints(&channel).await {
+    let endpoints = match resolve_update_endpoints(&channel, &state, &app).await {
         Ok(endpoints) => endpoints,
         Err(error) => {
             let response = UpdateCheckResponse {
@@ -975,26 +928,12 @@ async fn compare_paths(
     right_path: String,
     mode: String,
     options: CompareOptions,
-    state: tauri::State<'_, CompareTextSessionState>,
 ) -> Result<CompareResponse, String> {
-    let save_left_path = left_path.clone();
-    let save_right_path = right_path.clone();
-    let mut response = tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         compare_paths_sync(left_path, right_path, mode, options)
     })
     .await
-    .map_err(|error| error.to_string())??;
-
-    if let CompareResponse::File { result } = &mut response {
-        attach_compare_text_session(
-            &state,
-            result.as_mut(),
-            PathBuf::from(save_left_path),
-            PathBuf::from(save_right_path),
-        )?;
-    }
-
-    Ok(response)
+    .map_err(|error| error.to_string())?
 }
 
 fn compare_paths_sync(
@@ -1019,86 +958,15 @@ fn compare_paths_sync(
     }
 }
 
-fn attach_compare_text_session(
-    state: &CompareTextSessionState,
-    diff: &mut FileDiffResult,
-    left_path: PathBuf,
-    right_path: PathBuf,
-) -> Result<(), String> {
-    if !matches!(diff.content_kind, ContentKind::Text) {
-        return Ok(());
-    }
-
-    let token = state.issue_session(left_path, right_path)?;
-    let text = diff
-        .text
-        .as_mut()
-        .ok_or_else(|| "Text compare payload is unavailable.".to_string())?;
-
-    text.save_token = Some(token);
-
-    Ok(())
-}
-
-fn resolve_open_compare_item_paths(
-    left_base: &str,
-    right_base: &str,
-    relative_path: &str,
-) -> Result<(PathBuf, PathBuf), String> {
-    let left_base_path = PathBuf::from(left_base);
-    let right_base_path = PathBuf::from(right_base);
-    let relative_path = safe_relative_path(relative_path)?;
-    let left = left_base_path.join(&relative_path);
-    let right = right_base_path.join(&relative_path);
-
-    ensure_within_base(&left_base_path, &left)?;
-    ensure_within_base(&right_base_path, &right)?;
-
-    Ok((left, right))
-}
-
 #[tauri::command]
 async fn open_compare_item(
     left_base: String,
     right_base: String,
     relative_path: String,
     options: CompareOptions,
-    state: tauri::State<'_, CompareTextSessionState>,
 ) -> Result<FileDiffResult, String> {
-    let save_left_base = left_base.clone();
-    let save_right_base = right_base.clone();
-    let save_relative_path = relative_path.clone();
-    let mut result = tauri::async_runtime::spawn_blocking(move || {
-        open_compare_item_sync(left_base, right_base, relative_path, options)
-    })
-    .await
-    .map_err(|error| error.to_string())??;
-
-    let (left_path, right_path) =
-        resolve_open_compare_item_paths(&save_left_base, &save_right_base, &save_relative_path)?;
-    attach_compare_text_session(&state, &mut result, left_path, right_path)?;
-
-    Ok(result)
-}
-
-#[tauri::command]
-async fn save_compare_text_side(
-    save_token: String,
-    target_side: String,
-    contents: String,
-    expected_sha256: Option<String>,
-    state: tauri::State<'_, CompareTextSessionState>,
-) -> Result<(), String> {
-    let compare_session = state.resolve_session(&save_token)?;
-
     tauri::async_runtime::spawn_blocking(move || {
-        save_compare_text_side_sync(
-            compare_session.left_path,
-            compare_session.right_path,
-            target_side,
-            contents,
-            expected_sha256,
-        )
+        open_compare_item_sync(left_base, right_base, relative_path, options)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -1110,7 +978,14 @@ fn open_compare_item_sync(
     relative_path: String,
     options: CompareOptions,
 ) -> Result<FileDiffResult, String> {
-    let (left, right) = resolve_open_compare_item_paths(&left_base, &right_base, &relative_path)?;
+    let left_base_path = PathBuf::from(&left_base);
+    let right_base_path = PathBuf::from(&right_base);
+    let relative_path = safe_relative_path(&relative_path)?;
+    let left = left_base_path.join(&relative_path);
+    let right = right_base_path.join(&relative_path);
+
+    ensure_within_base(&left_base_path, &left)?;
+    ensure_within_base(&right_base_path, &right)?;
 
     build_file_diff(
         &left,
@@ -1119,33 +994,6 @@ fn open_compare_item_sync(
         right.to_string_lossy().to_string(),
         &options,
     )
-}
-
-fn save_compare_text_side_sync(
-    left_path: PathBuf,
-    right_path: PathBuf,
-    target_side: String,
-    contents: String,
-    expected_sha256: Option<String>,
-) -> Result<(), String> {
-    let target_path = match target_side.as_str() {
-        "left" => left_path,
-        "right" => right_path,
-        _ => return Err("Unsupported target side.".to_string()),
-    };
-
-    if let Some(expected_sha256) = expected_sha256 {
-        let current_sha256 = current_file_sha256(&target_path)?;
-
-        if current_sha256.as_deref() != Some(expected_sha256.as_str()) {
-            return Err(
-                "The target file changed since it was loaded. Refresh the compare and try again."
-                    .to_string(),
-            );
-        }
-    }
-
-    write_text_file_atomic(&target_path, &contents)
 }
 
 fn safe_relative_path(value: &str) -> Result<PathBuf, String> {
@@ -1422,6 +1270,34 @@ fn write_session_state(app: &AppHandle, session: &PersistedSession) -> Result<()
     fs::write(session_path, json).map_err(|error| error.to_string())
 }
 
+#[cfg(feature = "prerelease-updater")]
+fn github_cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let session_path = session_file_path(app)?;
+    Ok(session_path.with_file_name("github-api-cache.json"))
+}
+
+#[cfg(feature = "prerelease-updater")]
+fn load_github_cache_from_disk(app: &AppHandle) -> GitHubApiCache {
+    let path = match github_cache_file_path(app) {
+        Ok(p) => p,
+        Err(_) => return GitHubApiCache::default(),
+    };
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return GitHubApiCache::default(),
+    };
+    serde_json::from_str(&contents).unwrap_or_default()
+}
+
+#[cfg(feature = "prerelease-updater")]
+fn save_github_cache_to_disk(app: &AppHandle, cache: &GitHubApiCache) {
+    if let Ok(path) = github_cache_file_path(app) {
+        if let Ok(json) = serde_json::to_string(cache) {
+            let _ = fs::write(path, json);
+        }
+    }
+}
+
 fn current_unix_timestamp_string() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1451,15 +1327,20 @@ fn normalize_update_channel(value: Option<&str>) -> String {
 }
 
 #[cfg(feature = "updater")]
-async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
+async fn resolve_update_endpoints(
+    channel: &str,
+    state: &tauri::State<'_, UpdateState>,
+    app: &AppHandle,
+) -> Result<Vec<Url>, String> {
     #[cfg(not(feature = "prerelease-updater"))]
     if channel == "prerelease" {
+        let _ = (state, app);
         return Err("Prerelease updates are disabled in fast debug builds.".to_string());
     }
 
     #[cfg(feature = "prerelease-updater")]
     if channel == "prerelease" {
-        let endpoint = resolve_latest_prerelease_manifest_url().await?;
+        let endpoint = resolve_latest_prerelease_manifest_url(state, app).await?;
         return Ok(vec![endpoint]);
     }
 
@@ -1469,35 +1350,135 @@ async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
 }
 
 #[cfg(feature = "prerelease-updater")]
-async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
+fn find_prerelease_manifest_url(releases: &[GitHubRelease]) -> Option<String> {
+    releases
+        .iter()
+        .find(|release| release.prerelease && !release.draft)
+        .and_then(|release| {
+            release
+                .assets
+                .iter()
+                .find(|asset| asset.name == PRERELEASE_UPDATE_MANIFEST_NAME)
+                .map(|asset| asset.browser_download_url.clone())
+        })
+}
+
+#[cfg(feature = "prerelease-updater")]
+async fn resolve_latest_prerelease_manifest_url(
+    state: &tauri::State<'_, UpdateState>,
+    app: &AppHandle,
+) -> Result<Url, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Read cache: check cooldown + get ETag
+    let (cached_etag, can_fetch) = {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let elapsed = now.saturating_sub(cache.last_fetch_epoch);
+        (cache.etag.clone(), elapsed >= GITHUB_API_COOLDOWN_SECS)
+    };
+
+    // Within cooldown: return cached data without hitting the API
+    if !can_fetch {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let asset_url = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+            .ok_or_else(|| {
+                "No published prerelease update feed is available yet.".to_string()
+            })?;
+        return Url::parse(&asset_url).map_err(|error| error.to_string());
+    }
+
     let client = reqwest::Client::builder()
         .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| error.to_string())?;
-    let response = client
-        .get(GITHUB_RELEASES_API_ENDPOINT)
+
+    let mut request = client.get(GITHUB_RELEASES_API_ENDPOINT);
+    if let Some(ref etag) = cached_etag {
+        request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|error| error.to_string())?;
+
+    let status = response.status();
+
+    // 304 Not Modified — use cached releases (free against rate limit)
+    if status == reqwest::StatusCode::NOT_MODIFIED {
+        if let Ok(mut cache) = state.github_cache.lock() {
+            cache.last_fetch_epoch = now;
+            save_github_cache_to_disk(app, &cache);
+        }
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let asset_url = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+            .ok_or_else(|| {
+                "No published prerelease update feed is available yet.".to_string()
+            })?;
+        return Url::parse(&asset_url).map_err(|error| error.to_string());
+    }
+
+    // 403 rate limited — fall back to cache if available
+    if status == reqwest::StatusCode::FORBIDDEN {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if let Some(asset_url) = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+        {
+            return Url::parse(&asset_url).map_err(|error| error.to_string());
+        }
+        // No cache at all — report the error
+        return Err("GitHub API rate limit exceeded. Try again later.".to_string());
+    }
+
     let response = response
         .error_for_status()
         .map_err(|error| error.to_string())?;
+
+    // Store new ETag from response
+    let new_etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(String::from);
+
     let releases = response
         .json::<Vec<GitHubRelease>>()
         .await
         .map_err(|error| error.to_string())?;
 
-    let asset_url = releases
-        .into_iter()
-        .find(|release| release.prerelease && !release.draft)
-        .and_then(|release| {
-            release
-                .assets
-                .into_iter()
-                .find(|asset| asset.name == PRERELEASE_UPDATE_MANIFEST_NAME)
-                .map(|asset| asset.browser_download_url)
-        })
+    let asset_url = find_prerelease_manifest_url(&releases)
         .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
+
+    // Update in-memory + disk cache
+    if let Ok(mut cache) = state.github_cache.lock() {
+        cache.etag = new_etag;
+        cache.releases = Some(releases);
+        cache.last_fetch_epoch = now;
+        save_github_cache_to_disk(app, &cache);
+    }
 
     Url::parse(&asset_url).map_err(|error| error.to_string())
 }
@@ -1957,7 +1938,9 @@ fn highlighted_segments_for_cell(
     _cell: &DiffCell,
     highlighted: &Option<Vec<DiffSegment>>,
 ) -> Vec<DiffSegment> {
-    highlighted.clone().unwrap_or_default()
+    highlighted
+        .clone()
+        .unwrap_or_default()
 }
 
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
@@ -3833,8 +3816,8 @@ fn load_binary_details(
     let size = metadata.len();
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
-    let mut bytes =
-        preview_byte_limit.map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
+    let mut bytes = preview_byte_limit
+        .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
     let mut buffer = [0; BINARY_SAMPLE_BYTES];
 
     loop {
@@ -3892,7 +3875,6 @@ fn build_text_diff_payload(
         right_text: right_snapshot.text,
         left_exists: left_snapshot.exists,
         right_exists: right_snapshot.exists,
-        save_token: None,
         left_sha256: left_snapshot.sha256,
         right_sha256: right_snapshot.sha256,
         left_line_ending: left_snapshot.line_ending,
@@ -3951,64 +3933,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
-}
-
-fn current_file_sha256(path: &Path) -> Result<Option<String>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-
-    if !metadata.is_file() {
-        return Err("The target path must be a file.".to_string());
-    }
-
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    Ok(Some(sha256_hex(&bytes)))
-}
-
-fn write_text_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    if path.exists() {
-        let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-
-        if !metadata.is_file() {
-            return Err("The target path must be a file.".to_string());
-        }
-    }
-
-    let parent = path
-        .parent()
-        .ok_or_else(|| "The target path does not have a writable parent directory.".to_string())?;
-    let unique_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_nanos();
-    let temp_path = parent.join(format!(
-        ".diffly-write-{}-{}",
-        std::process::id(),
-        unique_suffix
-    ));
-
-    {
-        let mut temp_file = fs::File::create(&temp_path).map_err(|error| error.to_string())?;
-        temp_file
-            .write_all(contents.as_bytes())
-            .map_err(|error| error.to_string())?;
-        temp_file.sync_all().map_err(|error| error.to_string())?;
-    }
-
-    match fs::rename(&temp_path, path) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            let _ = fs::remove_file(&temp_path);
-            Err(error.to_string())
-        }
-    }
 }
 
 fn build_summary(left: &LoadedFile, right: &LoadedFile) -> String {
@@ -4071,78 +3995,67 @@ fn build_binary_payload(
         .is_some_and(|(left, right)| left.sha256 == right.sha256);
     let truncated = matches!(left_loaded, LoadedFile::Binary(_, _, true))
         || matches!(right_loaded, LoadedFile::Binary(_, _, true));
-    let (rows, changed_byte_count, first_difference_offset) = if identical {
-        (Vec::new(), None, None)
-    } else if truncated {
-        let rows = build_hex_rows(
-            loaded_file_bytes(left_loaded),
-            loaded_file_bytes(right_loaded),
-        );
-        (rows, None, None)
-    } else {
-        let (rows, changed_byte_count, first_difference_offset) = build_binary_preview(
-            loaded_file_bytes(left_loaded),
-            loaded_file_bytes(right_loaded),
-        );
-        (rows, Some(changed_byte_count), first_difference_offset)
-    };
+
+    let left_bytes_slice = loaded_file_bytes(left_loaded).unwrap_or(&[]);
+    let right_bytes_slice = loaded_file_bytes(right_loaded).unwrap_or(&[]);
+
+    let (changed_byte_count, changed_row_count, first_difference_offset) =
+        if identical || truncated {
+            (None, None, None)
+        } else {
+            compute_binary_diff_stats(left_bytes_slice, right_bytes_slice)
+        };
 
     Ok(BinaryDiffPayload {
         left_meta: build_binary_meta(left_path, left_details, identical),
         right_meta: build_binary_meta(right_path, right_details, identical),
-        rows,
+        left_bytes: left_bytes_slice.to_vec(),
+        right_bytes: right_bytes_slice.to_vec(),
         bytes_per_row: HEX_BYTES_PER_ROW,
         changed_byte_count,
+        changed_row_count,
         first_difference_offset,
         truncated,
     })
 }
 
-fn build_binary_preview(
-    left_bytes: Option<&[u8]>,
-    right_bytes: Option<&[u8]>,
-) -> (Vec<HexRow>, usize, Option<usize>) {
-    let left_bytes = left_bytes.unwrap_or(&[]);
-    let right_bytes = right_bytes.unwrap_or(&[]);
+fn compute_binary_diff_stats(
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+) -> (Option<usize>, Option<usize>, Option<usize>) {
     let total = left_bytes.len().max(right_bytes.len());
-    let mut rows = Vec::new();
     let mut changed_byte_count = 0usize;
-    let mut first_difference_offset = None;
+    let mut changed_row_count = 0usize;
+    let mut first_difference_offset: Option<usize> = None;
 
     for offset in (0..total).step_by(HEX_BYTES_PER_ROW) {
-        let mut left_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
-        let mut right_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+        let mut row_changed = false;
 
         for index in 0..HEX_BYTES_PER_ROW {
             let byte_offset = offset + index;
-            let left_byte = left_bytes.get(byte_offset).copied();
-            let right_byte = right_bytes.get(byte_offset).copied();
-            let changed = left_byte != right_byte;
+            let left_byte = left_bytes.get(byte_offset);
+            let right_byte = right_bytes.get(byte_offset);
 
-            if changed {
+            if left_byte != right_byte {
                 changed_byte_count += 1;
+                row_changed = true;
 
                 if first_difference_offset.is_none() {
                     first_difference_offset = Some(byte_offset);
                 }
             }
-
-            left_row.push(build_hex_cell(left_byte, changed));
-            right_row.push(build_hex_cell(right_byte, changed));
         }
 
-        rows.push(HexRow {
-            offset,
-            left: left_row,
-            right: right_row,
-        });
+        if row_changed {
+            changed_row_count += 1;
+        }
     }
 
-    (rows, changed_byte_count, first_difference_offset)
-}
-
-fn build_hex_rows(left_bytes: Option<&[u8]>, right_bytes: Option<&[u8]>) -> Vec<HexRow> {
-    build_binary_preview(left_bytes, right_bytes).0
+    (
+        Some(changed_byte_count),
+        Some(changed_row_count),
+        first_difference_offset,
+    )
 }
 
 fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
@@ -4193,28 +4106,6 @@ fn image_asset_url(path: &Path) -> Option<String> {
         .map(|url| format!("asset://localhost{}", url.path()))
 }
 
-fn build_hex_cell(byte: Option<u8>, changed: bool) -> HexCell {
-    match byte {
-        Some(value) => HexCell {
-            hex: format!("{:02X}", value),
-            ascii: ascii_for_byte(value),
-            changed,
-        },
-        None => HexCell {
-            hex: String::new(),
-            ascii: String::new(),
-            changed: false,
-        },
-    }
-}
-
-fn ascii_for_byte(value: u8) -> String {
-    if (32..=126).contains(&value) {
-        char::from(value).to_string()
-    } else {
-        ".".to_string()
-    }
-}
 
 fn detect_image_format(bytes: &[u8], path: &Path) -> Option<String> {
     if is_png(bytes) {
@@ -4346,14 +4237,12 @@ fn parent_path(path: &Path) -> Option<String> {
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(create_update_state())
-        .manage(create_compare_text_session_state())
         .manage(create_launch_context_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
             load_launch_context,
             save_session_state,
-            save_compare_text_side,
             get_app_version,
             check_for_updates,
             download_update,
@@ -4386,7 +4275,21 @@ pub fn run() {
                 )?;
             }
 
-            #[cfg(not(feature = "debug-log"))]
+            // Load persisted GitHub API cache into UpdateState
+            #[cfg(feature = "prerelease-updater")]
+            {
+                let cached = load_github_cache_from_disk(app.handle());
+                if let Ok(mut guard) = app
+                    .handle()
+                    .state::<UpdateState>()
+                    .github_cache
+                    .lock()
+                {
+                    *guard = cached;
+                }
+            }
+
+            #[cfg(all(not(feature = "debug-log"), not(feature = "prerelease-updater")))]
             let _ = app;
 
             Ok(())
@@ -4404,24 +4307,6 @@ fn create_update_state() -> UpdateState {
     #[cfg(not(feature = "updater"))]
     {
         UpdateState
-    }
-}
-
-fn create_compare_text_session_state() -> CompareTextSessionState {
-    CompareTextSessionState::default()
-}
-
-fn prune_compare_text_sessions(sessions: &mut HashMap<String, CompareTextSession>) {
-    while sessions.len() > MAX_COMPARE_TEXT_SESSIONS {
-        let Some(oldest_token) = sessions
-            .iter()
-            .min_by_key(|(_, session)| session.sequence)
-            .map(|(token, _)| token.clone())
-        else {
-            break;
-        };
-
-        sessions.remove(&oldest_token);
     }
 }
 
@@ -4814,14 +4699,14 @@ mod tests {
         assert_eq!(payload.bytes_per_row, HEX_BYTES_PER_ROW);
         assert!(!payload.truncated);
         assert_eq!(payload.changed_byte_count, Some(3));
+        assert_eq!(payload.changed_row_count, Some(1));
         assert_eq!(payload.first_difference_offset, Some(3));
-        assert_eq!(payload.rows.len(), 1);
-        assert_eq!(payload.rows[0].offset, 0);
-        assert_eq!(payload.rows[0].left[3].hex, "03");
-        assert_eq!(payload.rows[0].right[3].hex, "04");
-        assert!(payload.rows[0].left[3].changed);
-        assert!(payload.rows[0].right[3].changed);
-        assert_eq!(payload.rows[0].left[1].ascii, ".");
+        assert_eq!(payload.left_bytes.len(), 12);
+        assert_eq!(payload.right_bytes.len(), 12);
+        assert_eq!(payload.left_bytes[3], 0x03);
+        assert_eq!(payload.right_bytes[3], 0x04);
+        // Byte at index 1 is 0x01, outside printable ASCII range
+        assert!(payload.left_bytes[1] < 32);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4848,10 +4733,8 @@ mod tests {
         assert!(!payload.right_meta.exists);
         assert_eq!(payload.changed_byte_count, Some(8));
         assert_eq!(payload.first_difference_offset, Some(0));
-        assert!(payload.rows[0]
-            .right
-            .iter()
-            .all(|cell| cell.hex.is_empty() && !cell.changed));
+        assert_eq!(payload.left_bytes.len(), 8);
+        assert!(payload.right_bytes.is_empty());
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4882,18 +4765,12 @@ mod tests {
         let payload = result.binary.expect("binary payload should exist");
         assert!(payload.truncated);
         assert_eq!(payload.changed_byte_count, None);
+        assert_eq!(payload.changed_row_count, None);
         assert_eq!(payload.first_difference_offset, None);
-        assert_eq!(
-            payload.rows.len(),
-            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
-        );
-        assert_eq!(payload.rows[0].offset, 0);
-        assert!(payload.rows.iter().all(|row| {
-            row.left
-                .iter()
-                .zip(row.right.iter())
-                .all(|(left, right)| left.hex == right.hex)
-        }));
+        assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        // Both sides are truncated to same content (all zeros), so bytes match
+        assert_eq!(payload.left_bytes, payload.right_bytes);
         assert_eq!(
             result.summary,
             "Binary files differ. The hex view is truncated at 256 KB per side."
@@ -4941,10 +4818,8 @@ mod tests {
         assert!(payload.truncated);
         assert_eq!(payload.first_difference_offset, None);
         assert_eq!(payload.changed_byte_count, None);
-        assert_eq!(
-            payload.rows.len(),
-            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
-        );
+        assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
     }
 
     #[test]
@@ -5014,7 +4889,6 @@ mod tests {
         assert_eq!(payload.right_text, "alpha\nbeta");
         assert!(payload.left_exists);
         assert!(payload.right_exists);
-        assert_eq!(payload.save_token, None);
         assert_eq!(payload.left_sha256, Some(sha256_hex(left_bytes)));
         assert_eq!(payload.right_sha256, Some(sha256_hex(right_bytes)));
         assert!(matches!(payload.left_line_ending, LineEndingKind::CrLf));
@@ -5046,115 +4920,10 @@ mod tests {
         let payload = result.text.expect("text payload should exist");
         assert!(payload.left_exists);
         assert!(!payload.right_exists);
-        assert_eq!(payload.save_token, None);
         assert_eq!(payload.right_text, String::new());
         assert_eq!(payload.right_sha256, None);
         assert!(matches!(payload.right_line_ending, LineEndingKind::Lf));
         assert!(!payload.right_has_trailing_newline);
-
-        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
-    }
-
-    #[test]
-    fn compare_text_session_state_issues_and_resolves_tokens() {
-        let state = CompareTextSessionState::default();
-        let left = PathBuf::from("left.txt");
-        let right = PathBuf::from("right.txt");
-
-        let token = state
-            .issue_session(left.clone(), right.clone())
-            .expect("issuing a compare text session should succeed");
-        let session = state
-            .resolve_session(&token)
-            .expect("session token should resolve");
-
-        assert_eq!(session.left_path, left);
-        assert_eq!(session.right_path, right);
-    }
-
-    #[test]
-    fn compare_text_session_state_rejects_unknown_token() {
-        let state = CompareTextSessionState::default();
-        let error = state
-            .resolve_session("compare-text-missing")
-            .expect_err("unknown token should be rejected");
-
-        assert_eq!(
-            error,
-            "The compare view is no longer active. Refresh and try again."
-        );
-    }
-
-    #[test]
-    fn save_compare_text_side_creates_parent_directories_in_directory_mode() {
-        let temp_root = unique_temp_dir("save-compare-text-side-create-parent");
-        let left = temp_root.join("left");
-        let right = temp_root.join("right");
-        let relative_path = "nested/child.txt";
-        let target_path = left.join(relative_path);
-
-        fs::create_dir_all(&left).expect("left directory should exist");
-        fs::create_dir_all(&right).expect("right directory should exist");
-
-        save_compare_text_side_sync(
-            target_path.clone(),
-            right.join(relative_path),
-            "left".to_string(),
-            "merged\ncontent\n".to_string(),
-            None,
-        )
-        .expect("save should succeed");
-
-        assert_eq!(
-            fs::read_to_string(&target_path).expect("saved file should be readable"),
-            "merged\ncontent\n"
-        );
-
-        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
-    }
-
-    #[test]
-    fn save_compare_text_side_detects_conflicts_using_expected_sha256() {
-        let temp_root = unique_temp_dir("save-compare-text-side-conflict");
-        let left = temp_root.join("left");
-        let right = temp_root.join("right");
-        let relative_path = "sample.txt";
-        let target_path = left.join(relative_path);
-
-        fs::create_dir_all(&left).expect("left directory should exist");
-        fs::create_dir_all(&right).expect("right directory should exist");
-        write_temp_file(&target_path, "alpha\n");
-
-        let expected_sha256 = current_file_sha256(&target_path)
-            .expect("file hash should load")
-            .expect("file hash should exist");
-
-        save_compare_text_side_sync(
-            target_path.clone(),
-            right.join(relative_path),
-            "left".to_string(),
-            "beta\n".to_string(),
-            Some(expected_sha256.clone()),
-        )
-        .expect("save should succeed");
-
-        let conflict = save_compare_text_side_sync(
-            target_path.clone(),
-            right.join(relative_path),
-            "left".to_string(),
-            "gamma\n".to_string(),
-            Some(expected_sha256),
-        )
-        .expect_err("stale hash should be rejected");
-
-        assert_eq!(
-            conflict,
-            "The target file changed since it was loaded. Refresh the compare and try again."
-        );
-        assert_eq!(
-            fs::read_to_string(&target_path).expect("saved file should remain readable"),
-            "beta\n"
-        );
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }

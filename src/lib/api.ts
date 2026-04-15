@@ -71,16 +71,3 @@ export const openCompareItem = (
     relativePath,
     options,
   })
-
-export const saveCompareTextSide = (
-  saveToken: string,
-  targetSide: 'left' | 'right',
-  contents: string,
-  expectedSha256: string | null,
-) =>
-  invoke<void>('save_compare_text_side', {
-    saveToken,
-    targetSide,
-    contents,
-    expectedSha256,
-  })
