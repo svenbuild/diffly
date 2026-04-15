@@ -206,18 +206,25 @@ struct UpdateActionResponse {
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct GitHubReleaseAsset {
     name: String,
     browser_download_url: String,
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct GitHubRelease {
     draft: bool,
     prerelease: bool,
     assets: Vec<GitHubReleaseAsset>,
+}
+
+#[cfg(feature = "prerelease-updater")]
+#[derive(Default)]
+struct GitHubApiCache {
+    etag: Option<String>,
+    releases: Option<Vec<GitHubRelease>>,
 }
 
 #[cfg(feature = "updater")]
@@ -228,9 +235,21 @@ struct PendingUpdate {
 }
 
 #[cfg(feature = "updater")]
-#[derive(Default)]
 struct UpdateState {
     pending: Mutex<Option<PendingUpdate>>,
+    #[cfg(feature = "prerelease-updater")]
+    github_cache: Mutex<GitHubApiCache>,
+}
+
+#[cfg(feature = "updater")]
+impl Default for UpdateState {
+    fn default() -> Self {
+        Self {
+            pending: Mutex::new(None),
+            #[cfg(feature = "prerelease-updater")]
+            github_cache: Mutex::new(GitHubApiCache::default()),
+        }
+    }
 }
 
 #[cfg(not(feature = "updater"))]
@@ -613,7 +632,7 @@ async fn check_for_updates(
         return Ok(response);
     }
 
-    let endpoints = match resolve_update_endpoints(&channel).await {
+    let endpoints = match resolve_update_endpoints(&channel, &state).await {
         Ok(endpoints) => endpoints,
         Err(error) => {
             let response = UpdateCheckResponse {
@@ -1275,15 +1294,19 @@ fn normalize_update_channel(value: Option<&str>) -> String {
 }
 
 #[cfg(feature = "updater")]
-async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
+async fn resolve_update_endpoints(
+    channel: &str,
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Vec<Url>, String> {
     #[cfg(not(feature = "prerelease-updater"))]
     if channel == "prerelease" {
+        let _ = state;
         return Err("Prerelease updates are disabled in fast debug builds.".to_string());
     }
 
     #[cfg(feature = "prerelease-updater")]
     if channel == "prerelease" {
-        let endpoint = resolve_latest_prerelease_manifest_url().await?;
+        let endpoint = resolve_latest_prerelease_manifest_url(state).await?;
         return Ok(vec![endpoint]);
     }
 
@@ -1293,35 +1316,86 @@ async fn resolve_update_endpoints(channel: &str) -> Result<Vec<Url>, String> {
 }
 
 #[cfg(feature = "prerelease-updater")]
-async fn resolve_latest_prerelease_manifest_url() -> Result<Url, String> {
+fn find_prerelease_manifest_url(releases: &[GitHubRelease]) -> Option<String> {
+    releases
+        .iter()
+        .find(|release| release.prerelease && !release.draft)
+        .and_then(|release| {
+            release
+                .assets
+                .iter()
+                .find(|asset| asset.name == PRERELEASE_UPDATE_MANIFEST_NAME)
+                .map(|asset| asset.browser_download_url.clone())
+        })
+}
+
+#[cfg(feature = "prerelease-updater")]
+async fn resolve_latest_prerelease_manifest_url(
+    state: &tauri::State<'_, UpdateState>,
+) -> Result<Url, String> {
     let client = reqwest::Client::builder()
         .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| error.to_string())?;
-    let response = client
-        .get(GITHUB_RELEASES_API_ENDPOINT)
+
+    // Read cached ETag if available
+    let cached_etag = state
+        .github_cache
+        .lock()
+        .map_err(|error| error.to_string())?
+        .etag
+        .clone();
+
+    let mut request = client.get(GITHUB_RELEASES_API_ENDPOINT);
+    if let Some(ref etag) = cached_etag {
+        request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|error| error.to_string())?;
+
+    // 304 Not Modified — use cached releases
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let asset_url = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+            .ok_or_else(|| {
+                "No published prerelease update feed is available yet.".to_string()
+            })?;
+        return Url::parse(&asset_url).map_err(|error| error.to_string());
+    }
+
     let response = response
         .error_for_status()
         .map_err(|error| error.to_string())?;
+
+    // Store new ETag from response
+    let new_etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(String::from);
+
     let releases = response
         .json::<Vec<GitHubRelease>>()
         .await
         .map_err(|error| error.to_string())?;
 
-    let asset_url = releases
-        .into_iter()
-        .find(|release| release.prerelease && !release.draft)
-        .and_then(|release| {
-            release
-                .assets
-                .into_iter()
-                .find(|asset| asset.name == PRERELEASE_UPDATE_MANIFEST_NAME)
-                .map(|asset| asset.browser_download_url)
-        })
+    let asset_url = find_prerelease_manifest_url(&releases)
         .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
+
+    // Update cache
+    if let Ok(mut cache) = state.github_cache.lock() {
+        cache.etag = new_etag;
+        cache.releases = Some(releases);
+    }
 
     Url::parse(&asset_url).map_err(|error| error.to_string())
 }
