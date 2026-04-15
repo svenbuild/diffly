@@ -40,6 +40,8 @@ export interface PersistedSession {
   checkForUpdatesOnLaunch?: boolean
   updateChannel?: UpdateChannel
   lastUpdateCheckAt?: string
+  lastUpdateStatus?: string
+  lastUpdateMetadata?: UpdateMetadata | null
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
 }

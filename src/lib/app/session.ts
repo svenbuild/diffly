@@ -4,6 +4,7 @@ import type {
   PersistedExplorerPane,
   PersistedSession,
   UpdateChannel,
+  UpdateMetadata,
   ViewMode,
 } from '../types'
 import type { AppearanceSettings } from '../theme'
@@ -24,6 +25,8 @@ export interface BuildPersistedSessionArgs {
   checkForUpdatesOnLaunch: boolean
   updateChannel: UpdateChannel
   lastUpdateCheckAt: string
+  lastUpdateStatus: string
+  lastUpdateMetadata: UpdateMetadata | null
   leftPane: ExplorerPaneState
   rightPane: ExplorerPaneState
 }
@@ -56,6 +59,8 @@ export function buildPersistedSession(args: BuildPersistedSessionArgs): Persiste
     checkForUpdatesOnLaunch: args.checkForUpdatesOnLaunch,
     updateChannel: args.updateChannel,
     lastUpdateCheckAt: args.lastUpdateCheckAt,
+    lastUpdateStatus: args.lastUpdateStatus,
+    lastUpdateMetadata: args.lastUpdateMetadata,
     leftPane: buildPersistedPane(args.leftPane),
     rightPane: buildPersistedPane(args.rightPane),
   }

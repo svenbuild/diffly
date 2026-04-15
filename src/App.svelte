@@ -782,6 +782,8 @@
           checkForUpdatesOnLaunch,
           updateChannel,
           lastUpdateCheckAt,
+          lastUpdateStatus: updateIndicatorState.status,
+          lastUpdateMetadata: updateIndicatorState.metadata,
           leftPane: leftExplorer,
           rightPane: rightExplorer,
         }),
@@ -823,6 +825,16 @@
     checkForUpdatesOnLaunch = session.checkForUpdatesOnLaunch ?? true
     updateChannel = session.updateChannel ?? DEFAULT_UPDATE_CHANNEL
     lastUpdateCheckAt = session.lastUpdateCheckAt ?? ''
+
+    // Restore update indicator if the last session found an available update
+    if (session.lastUpdateStatus === 'available' && session.lastUpdateMetadata) {
+      updateIndicatorState = {
+        ...updateIndicatorState,
+        status: 'available',
+        metadata: session.lastUpdateMetadata,
+        message: 'A new Diffly build is available.',
+      }
+    }
 
     const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
     contextLines = isContextLinesSetting(nextContextLines)
@@ -2028,6 +2040,8 @@
       checkForUpdatesOnLaunch,
       updateChannel,
       lastUpdateCheckAt,
+      lastUpdateStatus: updateIndicatorState.status,
+      lastUpdateMetadata: updateIndicatorState.metadata,
       leftPane: leftExplorer,
       rightPane: rightExplorer,
     })
@@ -2227,6 +2241,7 @@
     checkForUpdatesOnLaunch
     updateChannel
     lastUpdateCheckAt
+    updateIndicatorState
     leftExplorer.currentPath
     leftExplorer.selectedTargetPath
     leftExplorer.selectedTargetKind
