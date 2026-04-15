@@ -206,14 +206,14 @@ struct UpdateActionResponse {
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GitHubReleaseAsset {
     name: String,
     browser_download_url: String,
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GitHubRelease {
     draft: bool,
     prerelease: bool,
@@ -221,7 +221,7 @@ struct GitHubRelease {
 }
 
 #[cfg(feature = "prerelease-updater")]
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 struct GitHubApiCache {
     etag: Option<String>,
     releases: Option<Vec<GitHubRelease>>,
@@ -632,7 +632,7 @@ async fn check_for_updates(
         return Ok(response);
     }
 
-    let endpoints = match resolve_update_endpoints(&channel, &state).await {
+    let endpoints = match resolve_update_endpoints(&channel, &state, &app).await {
         Ok(endpoints) => endpoints,
         Err(error) => {
             let response = UpdateCheckResponse {
@@ -1265,6 +1265,34 @@ fn write_session_state(app: &AppHandle, session: &PersistedSession) -> Result<()
     fs::write(session_path, json).map_err(|error| error.to_string())
 }
 
+#[cfg(feature = "prerelease-updater")]
+fn github_cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let session_path = session_file_path(app)?;
+    Ok(session_path.with_file_name("github-api-cache.json"))
+}
+
+#[cfg(feature = "prerelease-updater")]
+fn load_github_cache_from_disk(app: &AppHandle) -> GitHubApiCache {
+    let path = match github_cache_file_path(app) {
+        Ok(p) => p,
+        Err(_) => return GitHubApiCache::default(),
+    };
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return GitHubApiCache::default(),
+    };
+    serde_json::from_str(&contents).unwrap_or_default()
+}
+
+#[cfg(feature = "prerelease-updater")]
+fn save_github_cache_to_disk(app: &AppHandle, cache: &GitHubApiCache) {
+    if let Ok(path) = github_cache_file_path(app) {
+        if let Ok(json) = serde_json::to_string(cache) {
+            let _ = fs::write(path, json);
+        }
+    }
+}
+
 fn current_unix_timestamp_string() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1297,16 +1325,17 @@ fn normalize_update_channel(value: Option<&str>) -> String {
 async fn resolve_update_endpoints(
     channel: &str,
     state: &tauri::State<'_, UpdateState>,
+    app: &AppHandle,
 ) -> Result<Vec<Url>, String> {
     #[cfg(not(feature = "prerelease-updater"))]
     if channel == "prerelease" {
-        let _ = state;
+        let _ = (state, app);
         return Err("Prerelease updates are disabled in fast debug builds.".to_string());
     }
 
     #[cfg(feature = "prerelease-updater")]
     if channel == "prerelease" {
-        let endpoint = resolve_latest_prerelease_manifest_url(state).await?;
+        let endpoint = resolve_latest_prerelease_manifest_url(state, app).await?;
         return Ok(vec![endpoint]);
     }
 
@@ -1332,13 +1361,14 @@ fn find_prerelease_manifest_url(releases: &[GitHubRelease]) -> Option<String> {
 #[cfg(feature = "prerelease-updater")]
 async fn resolve_latest_prerelease_manifest_url(
     state: &tauri::State<'_, UpdateState>,
+    app: &AppHandle,
 ) -> Result<Url, String> {
     let client = reqwest::Client::builder()
         .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| error.to_string())?;
 
-    // Read cached ETag if available
+    // Read cached ETag if available (loaded from disk on startup)
     let cached_etag = state
         .github_cache
         .lock()
@@ -1356,7 +1386,7 @@ async fn resolve_latest_prerelease_manifest_url(
         .await
         .map_err(|error| error.to_string())?;
 
-    // 304 Not Modified — use cached releases
+    // 304 Not Modified — use cached releases (costs 0 against rate limit)
     if response.status() == reqwest::StatusCode::NOT_MODIFIED {
         let cache = state
             .github_cache
@@ -1391,10 +1421,11 @@ async fn resolve_latest_prerelease_manifest_url(
     let asset_url = find_prerelease_manifest_url(&releases)
         .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
 
-    // Update cache
+    // Update in-memory + disk cache
     if let Ok(mut cache) = state.github_cache.lock() {
         cache.etag = new_etag;
         cache.releases = Some(releases);
+        save_github_cache_to_disk(app, &cache);
     }
 
     Url::parse(&asset_url).map_err(|error| error.to_string())
@@ -4192,7 +4223,21 @@ pub fn run() {
                 )?;
             }
 
-            #[cfg(not(feature = "debug-log"))]
+            // Load persisted GitHub API cache into UpdateState
+            #[cfg(feature = "prerelease-updater")]
+            {
+                let cached = load_github_cache_from_disk(app.handle());
+                if let Ok(mut guard) = app
+                    .handle()
+                    .state::<UpdateState>()
+                    .github_cache
+                    .lock()
+                {
+                    *guard = cached;
+                }
+            }
+
+            #[cfg(all(not(feature = "debug-log"), not(feature = "prerelease-updater")))]
             let _ = app;
 
             Ok(())
