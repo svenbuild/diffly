@@ -456,11 +456,6 @@ h2 {
   min-width: 0;
 }
 
-.setup-screen .app-identity {
-  flex: 0 0 19ch;
-  min-width: 19ch;
-}
-
 .setup-app-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -547,11 +542,6 @@ h2 {
   align-items: center;
   gap: 10px;
   min-width: 0;
-}
-
-.compare-bar-brand .app-identity {
-  flex: 0 0 19ch;
-  min-width: 19ch;
 }
 
 .compare-bar-brand h1 {
@@ -3271,7 +3261,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .diff-pane + .diff-pane {
-  border-left: 1px solid var(--border);
+  border-left: 4px solid var(--diff-divider);
 }
 
 .pane-header,
@@ -3334,11 +3324,11 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .left-diff-pane .pane-scroll-shell {
-  grid-template-columns: minmax(0, 1fr) 21px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .right-diff-pane .pane-scroll-shell {
-  grid-template-columns: minmax(0, 1fr) 12px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .pane-vertical-scroll,
@@ -3351,7 +3341,6 @@ button.filter-chip.tooLarge:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   background-color: var(--diff-context-bg);
-  scrollbar-gutter: stable;
 }
 
 .left-diff-pane .pane-vertical-scroll {
@@ -3664,7 +3653,12 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .split-scroll-marker-overlay {
-  grid-column: 2;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  grid-column: unset;
 }
 
 .scroll-marker-rail {

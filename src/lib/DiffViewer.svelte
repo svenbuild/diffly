@@ -794,8 +794,8 @@
       leftPaneBottomScrollbar,
       rightPaneBottomScrollbar,
     )
-    const leftContentHeight = getRenderedContentHeight(leftPaneGrid)
-    const rightContentHeight = getRenderedContentHeight(rightPaneGrid)
+    const leftContentHeight = getRenderedContentHeight(leftPaneGrid) - leftPaneTrailingSpace
+    const rightContentHeight = getRenderedContentHeight(rightPaneGrid) - rightPaneTrailingSpace
     const leftViewportHeight = getViewportHeight(leftPaneScroll)
     const rightViewportHeight = getViewportHeight(rightPaneScroll)
     const leftMaxScrollTop = Math.max(0, leftContentHeight - leftViewportHeight)
