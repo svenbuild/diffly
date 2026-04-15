@@ -371,28 +371,14 @@ struct ImageDiffPayload {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HexCell {
-    hex: String,
-    ascii: String,
-    changed: bool,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HexRow {
-    offset: usize,
-    left: Vec<HexCell>,
-    right: Vec<HexCell>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct BinaryDiffPayload {
     left_meta: BinaryFileMeta,
     right_meta: BinaryFileMeta,
-    rows: Vec<HexRow>,
+    left_bytes: Vec<u8>,
+    right_bytes: Vec<u8>,
     bytes_per_row: usize,
     changed_byte_count: Option<usize>,
+    changed_row_count: Option<usize>,
     first_difference_offset: Option<usize>,
     truncated: bool,
 }
@@ -3852,78 +3838,67 @@ fn build_binary_payload(
         .is_some_and(|(left, right)| left.sha256 == right.sha256);
     let truncated = matches!(left_loaded, LoadedFile::Binary(_, _, true))
         || matches!(right_loaded, LoadedFile::Binary(_, _, true));
-    let (rows, changed_byte_count, first_difference_offset) = if identical {
-        (Vec::new(), None, None)
-    } else if truncated {
-        let rows = build_hex_rows(
-            loaded_file_bytes(left_loaded),
-            loaded_file_bytes(right_loaded),
-        );
-        (rows, None, None)
-    } else {
-        let (rows, changed_byte_count, first_difference_offset) = build_binary_preview(
-            loaded_file_bytes(left_loaded),
-            loaded_file_bytes(right_loaded),
-        );
-        (rows, Some(changed_byte_count), first_difference_offset)
-    };
+
+    let left_bytes_slice = loaded_file_bytes(left_loaded).unwrap_or(&[]);
+    let right_bytes_slice = loaded_file_bytes(right_loaded).unwrap_or(&[]);
+
+    let (changed_byte_count, changed_row_count, first_difference_offset) =
+        if identical || truncated {
+            (None, None, None)
+        } else {
+            compute_binary_diff_stats(left_bytes_slice, right_bytes_slice)
+        };
 
     Ok(BinaryDiffPayload {
         left_meta: build_binary_meta(left_path, left_details, identical),
         right_meta: build_binary_meta(right_path, right_details, identical),
-        rows,
+        left_bytes: left_bytes_slice.to_vec(),
+        right_bytes: right_bytes_slice.to_vec(),
         bytes_per_row: HEX_BYTES_PER_ROW,
         changed_byte_count,
+        changed_row_count,
         first_difference_offset,
         truncated,
     })
 }
 
-fn build_binary_preview(
-    left_bytes: Option<&[u8]>,
-    right_bytes: Option<&[u8]>,
-) -> (Vec<HexRow>, usize, Option<usize>) {
-    let left_bytes = left_bytes.unwrap_or(&[]);
-    let right_bytes = right_bytes.unwrap_or(&[]);
+fn compute_binary_diff_stats(
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+) -> (Option<usize>, Option<usize>, Option<usize>) {
     let total = left_bytes.len().max(right_bytes.len());
-    let mut rows = Vec::new();
     let mut changed_byte_count = 0usize;
-    let mut first_difference_offset = None;
+    let mut changed_row_count = 0usize;
+    let mut first_difference_offset: Option<usize> = None;
 
     for offset in (0..total).step_by(HEX_BYTES_PER_ROW) {
-        let mut left_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
-        let mut right_row = Vec::with_capacity(HEX_BYTES_PER_ROW);
+        let mut row_changed = false;
 
         for index in 0..HEX_BYTES_PER_ROW {
             let byte_offset = offset + index;
-            let left_byte = left_bytes.get(byte_offset).copied();
-            let right_byte = right_bytes.get(byte_offset).copied();
-            let changed = left_byte != right_byte;
+            let left_byte = left_bytes.get(byte_offset);
+            let right_byte = right_bytes.get(byte_offset);
 
-            if changed {
+            if left_byte != right_byte {
                 changed_byte_count += 1;
+                row_changed = true;
 
                 if first_difference_offset.is_none() {
                     first_difference_offset = Some(byte_offset);
                 }
             }
-
-            left_row.push(build_hex_cell(left_byte, changed));
-            right_row.push(build_hex_cell(right_byte, changed));
         }
 
-        rows.push(HexRow {
-            offset,
-            left: left_row,
-            right: right_row,
-        });
+        if row_changed {
+            changed_row_count += 1;
+        }
     }
 
-    (rows, changed_byte_count, first_difference_offset)
-}
-
-fn build_hex_rows(left_bytes: Option<&[u8]>, right_bytes: Option<&[u8]>) -> Vec<HexRow> {
-    build_binary_preview(left_bytes, right_bytes).0
+    (
+        Some(changed_byte_count),
+        Some(changed_row_count),
+        first_difference_offset,
+    )
 }
 
 fn loaded_file_details(file: &LoadedFile) -> Option<&LoadedBinaryFile> {
@@ -3974,28 +3949,6 @@ fn image_asset_url(path: &Path) -> Option<String> {
         .map(|url| format!("asset://localhost{}", url.path()))
 }
 
-fn build_hex_cell(byte: Option<u8>, changed: bool) -> HexCell {
-    match byte {
-        Some(value) => HexCell {
-            hex: format!("{:02X}", value),
-            ascii: ascii_for_byte(value),
-            changed,
-        },
-        None => HexCell {
-            hex: String::new(),
-            ascii: String::new(),
-            changed: false,
-        },
-    }
-}
-
-fn ascii_for_byte(value: u8) -> String {
-    if (32..=126).contains(&value) {
-        char::from(value).to_string()
-    } else {
-        ".".to_string()
-    }
-}
 
 fn detect_image_format(bytes: &[u8], path: &Path) -> Option<String> {
     if is_png(bytes) {
@@ -4575,14 +4528,14 @@ mod tests {
         assert_eq!(payload.bytes_per_row, HEX_BYTES_PER_ROW);
         assert!(!payload.truncated);
         assert_eq!(payload.changed_byte_count, Some(3));
+        assert_eq!(payload.changed_row_count, Some(1));
         assert_eq!(payload.first_difference_offset, Some(3));
-        assert_eq!(payload.rows.len(), 1);
-        assert_eq!(payload.rows[0].offset, 0);
-        assert_eq!(payload.rows[0].left[3].hex, "03");
-        assert_eq!(payload.rows[0].right[3].hex, "04");
-        assert!(payload.rows[0].left[3].changed);
-        assert!(payload.rows[0].right[3].changed);
-        assert_eq!(payload.rows[0].left[1].ascii, ".");
+        assert_eq!(payload.left_bytes.len(), 12);
+        assert_eq!(payload.right_bytes.len(), 12);
+        assert_eq!(payload.left_bytes[3], 0x03);
+        assert_eq!(payload.right_bytes[3], 0x04);
+        // Byte at index 1 is 0x01, outside printable ASCII range
+        assert!(payload.left_bytes[1] < 32);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4609,10 +4562,8 @@ mod tests {
         assert!(!payload.right_meta.exists);
         assert_eq!(payload.changed_byte_count, Some(8));
         assert_eq!(payload.first_difference_offset, Some(0));
-        assert!(payload.rows[0]
-            .right
-            .iter()
-            .all(|cell| cell.hex.is_empty() && !cell.changed));
+        assert_eq!(payload.left_bytes.len(), 8);
+        assert!(payload.right_bytes.is_empty());
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
@@ -4643,18 +4594,12 @@ mod tests {
         let payload = result.binary.expect("binary payload should exist");
         assert!(payload.truncated);
         assert_eq!(payload.changed_byte_count, None);
+        assert_eq!(payload.changed_row_count, None);
         assert_eq!(payload.first_difference_offset, None);
-        assert_eq!(
-            payload.rows.len(),
-            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
-        );
-        assert_eq!(payload.rows[0].offset, 0);
-        assert!(payload.rows.iter().all(|row| {
-            row.left
-                .iter()
-                .zip(row.right.iter())
-                .all(|(left, right)| left.hex == right.hex)
-        }));
+        assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        // Both sides are truncated to same content (all zeros), so bytes match
+        assert_eq!(payload.left_bytes, payload.right_bytes);
         assert_eq!(
             result.summary,
             "Binary files differ. The hex view is truncated at 256 KB per side."
@@ -4702,10 +4647,8 @@ mod tests {
         assert!(payload.truncated);
         assert_eq!(payload.first_difference_offset, None);
         assert_eq!(payload.changed_byte_count, None);
-        assert_eq!(
-            payload.rows.len(),
-            (MAX_BINARY_RENDER_BYTES as usize) / HEX_BYTES_PER_ROW
-        );
+        assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
     }
 
     #[test]

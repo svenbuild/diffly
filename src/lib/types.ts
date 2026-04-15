@@ -98,24 +98,14 @@ export interface ImageDiffPayload {
   rightMeta: BinaryFileMeta
 }
 
-export interface HexCell {
-  hex: string
-  ascii: string
-  changed: boolean
-}
-
-export interface HexRow {
-  offset: number
-  left: HexCell[]
-  right: HexCell[]
-}
-
 export interface BinaryDiffPayload {
   leftMeta: BinaryFileMeta
   rightMeta: BinaryFileMeta
-  rows: HexRow[]
+  leftBytes: number[]
+  rightBytes: number[]
   bytesPerRow: 16
   changedByteCount: number | null
+  changedRowCount: number | null
   firstDifferenceOffset: number | null
   truncated: boolean
 }
