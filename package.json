@@ -1,7 +1,7 @@
 {
   "name": "diffly",
   "private": true,
-  "version": "0.1.6-rc.5",
+  "version": "0.1.6-rc.6",
   "description": "Desktop file and directory diff tool built with Svelte and Tauri.",
   "type": "module",
   "scripts": {
