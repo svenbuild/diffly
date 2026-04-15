@@ -221,10 +221,15 @@ struct GitHubRelease {
 }
 
 #[cfg(feature = "prerelease-updater")]
+const GITHUB_API_COOLDOWN_SECS: u64 = 300; // 5 minutes
+
+#[cfg(feature = "prerelease-updater")]
 #[derive(Clone, Default, Serialize, Deserialize)]
 struct GitHubApiCache {
     etag: Option<String>,
     releases: Option<Vec<GitHubRelease>>,
+    #[serde(default)]
+    last_fetch_epoch: u64,
 }
 
 #[cfg(feature = "updater")]
@@ -1363,31 +1368,23 @@ async fn resolve_latest_prerelease_manifest_url(
     state: &tauri::State<'_, UpdateState>,
     app: &AppHandle,
 ) -> Result<Url, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|error| error.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
-    // Read cached ETag if available (loaded from disk on startup)
-    let cached_etag = state
-        .github_cache
-        .lock()
-        .map_err(|error| error.to_string())?
-        .etag
-        .clone();
+    // Read cache: check cooldown + get ETag
+    let (cached_etag, can_fetch) = {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let elapsed = now.saturating_sub(cache.last_fetch_epoch);
+        (cache.etag.clone(), elapsed >= GITHUB_API_COOLDOWN_SECS)
+    };
 
-    let mut request = client.get(GITHUB_RELEASES_API_ENDPOINT);
-    if let Some(ref etag) = cached_etag {
-        request = request.header(reqwest::header::IF_NONE_MATCH, etag);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-
-    // 304 Not Modified — use cached releases (costs 0 against rate limit)
-    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+    // Within cooldown: return cached data without hitting the API
+    if !can_fetch {
         let cache = state
             .github_cache
             .lock()
@@ -1400,6 +1397,60 @@ async fn resolve_latest_prerelease_manifest_url(
                 "No published prerelease update feed is available yet.".to_string()
             })?;
         return Url::parse(&asset_url).map_err(|error| error.to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent(format!("Diffly/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    let mut request = client.get(GITHUB_RELEASES_API_ENDPOINT);
+    if let Some(ref etag) = cached_etag {
+        request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let status = response.status();
+
+    // 304 Not Modified — use cached releases (free against rate limit)
+    if status == reqwest::StatusCode::NOT_MODIFIED {
+        if let Ok(mut cache) = state.github_cache.lock() {
+            cache.last_fetch_epoch = now;
+            save_github_cache_to_disk(app, &cache);
+        }
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let asset_url = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+            .ok_or_else(|| {
+                "No published prerelease update feed is available yet.".to_string()
+            })?;
+        return Url::parse(&asset_url).map_err(|error| error.to_string());
+    }
+
+    // 403 rate limited — fall back to cache if available
+    if status == reqwest::StatusCode::FORBIDDEN {
+        let cache = state
+            .github_cache
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if let Some(asset_url) = cache
+            .releases
+            .as_ref()
+            .and_then(|releases| find_prerelease_manifest_url(releases))
+        {
+            return Url::parse(&asset_url).map_err(|error| error.to_string());
+        }
+        // No cache at all — report the error
+        return Err("GitHub API rate limit exceeded. Try again later.".to_string());
     }
 
     let response = response
@@ -1425,6 +1476,7 @@ async fn resolve_latest_prerelease_manifest_url(
     if let Ok(mut cache) = state.github_cache.lock() {
         cache.etag = new_etag;
         cache.releases = Some(releases);
+        cache.last_fetch_epoch = now;
         save_github_cache_to_disk(app, &cache);
     }
 
