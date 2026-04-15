@@ -1,6 +1,6 @@
 [package]
 name = "diffly"
-version = "0.1.6-rc.7"
+version = "0.1.6-rc.8"
 description = "Desktop file and directory diff tool."
 authors = ["Diffly contributors"]
 license = ""
