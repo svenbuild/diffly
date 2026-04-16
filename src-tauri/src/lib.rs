@@ -12,9 +12,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use base64::Engine;
 use rayon::prelude::*;
 use rfd::FileDialog;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use similar::{DiffOp, TextDiff};
 use tauri::{AppHandle, Manager};
@@ -484,13 +485,16 @@ struct ImageDiffPayload {
 struct BinaryDiffPayload {
     left_meta: BinaryFileMeta,
     right_meta: BinaryFileMeta,
+    #[serde(serialize_with = "serialize_binary_bytes_base64")]
     left_bytes: Vec<u8>,
+    #[serde(serialize_with = "serialize_binary_bytes_base64")]
     right_bytes: Vec<u8>,
     bytes_per_row: usize,
     changed_byte_count: Option<usize>,
     changed_row_count: Option<usize>,
     first_difference_offset: Option<usize>,
     truncated: bool,
+    preview_loaded: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -1094,9 +1098,9 @@ fn compare_paths_sync(
             )?,
         }),
         "file" => Ok(CompareResponse::File {
-            result: Box::new(build_file_diff(
+            result: Box::new(without_binary_preview(build_file_diff(
                 &left, &right, left_path, right_path, &options,
-            )?),
+            )?)),
         }),
         _ => Err("Unsupported compare mode.".to_string()),
     }
@@ -1256,6 +1260,24 @@ async fn open_compare_item(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn load_binary_preview(
+    left_path: String,
+    right_path: String,
+    options: CompareOptions,
+    compare_priority_state: tauri::State<'_, CompareIoPriorityState>,
+) -> Result<BinaryDiffPayload, String> {
+    let compare_priority_state = compare_priority_state.inner().clone();
+    begin_detail_open(&compare_priority_state);
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = load_binary_preview_sync(left_path, right_path, options);
+        end_detail_open(&compare_priority_state);
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn open_compare_item_sync(
     left_base: String,
     right_base: String,
@@ -1278,6 +1300,22 @@ fn open_compare_item_sync(
         right.to_string_lossy().to_string(),
         &options,
     )
+    .map(without_binary_preview)
+}
+
+fn load_binary_preview_sync(
+    left_path: String,
+    right_path: String,
+    options: CompareOptions,
+) -> Result<BinaryDiffPayload, String> {
+    let left = PathBuf::from(&left_path);
+    let right = PathBuf::from(&right_path);
+    let result = build_file_diff(&left, &right, left_path, right_path, &options)?;
+
+    match result.binary {
+        Some(payload) => Ok(payload),
+        None => Err("The selected compare item does not have a binary preview.".to_string()),
+    }
 }
 
 fn safe_relative_path(value: &str) -> Result<PathBuf, String> {
@@ -4711,7 +4749,28 @@ fn build_binary_payload(
         changed_row_count,
         first_difference_offset,
         truncated,
+        preview_loaded: true,
     })
+}
+
+fn without_binary_preview(mut result: FileDiffResult) -> FileDiffResult {
+    if let Some(payload) = result.binary.as_mut() {
+        payload.left_bytes.clear();
+        payload.right_bytes.clear();
+        payload.changed_byte_count = None;
+        payload.changed_row_count = None;
+        payload.first_difference_offset = None;
+        payload.preview_loaded = false;
+    }
+
+    result
+}
+
+fn serialize_binary_bytes_base64<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 fn compute_binary_diff_stats(
@@ -4980,7 +5039,8 @@ pub fn run() {
             compare_paths,
             start_directory_compare,
             poll_directory_compare,
-            open_compare_item
+            open_compare_item,
+            load_binary_preview
         ]);
 
     #[cfg(feature = "window-state")]

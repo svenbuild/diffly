@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import type {
+  BinaryDiffPayload,
   CompareOptions,
   CompareResponse,
+  DirectoryEntryResult,
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
@@ -16,6 +18,64 @@ import type {
   UpdateActionResult,
   UpdateCheckResult,
 } from './types'
+
+type BinaryDiffPayloadWire = Omit<BinaryDiffPayload, 'leftBytes' | 'rightBytes'> & {
+  leftBytes: string
+  rightBytes: string
+}
+
+type FileDiffResultWire = Omit<FileDiffResult, 'binary'> & {
+  binary?: BinaryDiffPayloadWire | null
+}
+
+type CompareResponseWire =
+  | {
+      kind: 'directory'
+      entries: DirectoryEntryResult[]
+    }
+  | {
+      kind: 'file'
+      result: FileDiffResultWire
+    }
+
+function decodeBase64Bytes(value: string) {
+  if (!value) {
+    return new Uint8Array(0)
+  }
+
+  const decoded = globalThis.atob(value)
+  const bytes = new Uint8Array(decoded.length)
+  for (let index = 0; index < decoded.length; index += 1) {
+    bytes[index] = decoded.charCodeAt(index)
+  }
+  return bytes
+}
+
+function normalizeBinaryDiffPayload(payload: BinaryDiffPayloadWire): BinaryDiffPayload {
+  return {
+    ...payload,
+    leftBytes: decodeBase64Bytes(payload.leftBytes),
+    rightBytes: decodeBase64Bytes(payload.rightBytes),
+  }
+}
+
+function normalizeFileDiffResult(result: FileDiffResultWire): FileDiffResult {
+  return {
+    ...result,
+    binary: result.binary ? normalizeBinaryDiffPayload(result.binary) : result.binary,
+  }
+}
+
+function normalizeCompareResponse(response: CompareResponseWire): CompareResponse {
+  if (response.kind === 'file') {
+    return {
+      kind: 'file',
+      result: normalizeFileDiffResult(response.result),
+    }
+  }
+
+  return response
+}
 
 export const choosePath = (kind: PathKind) =>
   invoke<string | null>('choose_path', { kind })
@@ -54,12 +114,12 @@ export const comparePaths = (
   mode: 'file' | 'directory',
   options: CompareOptions,
 ) =>
-  invoke<CompareResponse>('compare_paths', {
+  invoke<CompareResponseWire>('compare_paths', {
     leftPath,
     rightPath,
     mode,
     options,
-  })
+  }).then(normalizeCompareResponse)
 
 export const startDirectoryCompare = (
   leftPath: string,
@@ -83,9 +143,20 @@ export const openCompareItem = (
   relativePath: string,
   options: CompareOptions,
 ) =>
-  invoke<FileDiffResult>('open_compare_item', {
+  invoke<FileDiffResultWire>('open_compare_item', {
     leftBase,
     rightBase,
     relativePath,
     options,
-  })
+  }).then(normalizeFileDiffResult)
+
+export const loadBinaryPreview = (
+  leftPath: string,
+  rightPath: string,
+  options: CompareOptions,
+) =>
+  invoke<BinaryDiffPayloadWire>('load_binary_preview', {
+    leftPath,
+    rightPath,
+    options,
+  }).then(normalizeBinaryDiffPayload)

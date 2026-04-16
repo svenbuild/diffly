@@ -1,6 +1,7 @@
 <script lang="ts">
   import { convertFileSrc } from '@tauri-apps/api/core'
   import { onDestroy, tick } from 'svelte'
+  import { loadBinaryPreview } from './api'
   import { formatSize } from './format'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { RenderedDiffFragment } from './syntax'
@@ -77,6 +78,9 @@
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
+  let binaryPreviewLoading = false
+  let binaryPreviewError = ''
+  let activeBinaryPreviewRequestId = 0
   let leftImageError = false
   let rightImageError = false
   let leftImageRetried = false
@@ -298,6 +302,11 @@
   $: if (activeDiff) { leftImageError = false; rightImageError = false; leftImageRetried = false; rightImageRetried = false }
 
   $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
+  $: if (activeDiff?.contentKind !== 'binary') {
+    activeBinaryPreviewRequestId += 1
+    binaryPreviewLoading = false
+    binaryPreviewError = ''
+  }
 
   $: {
     leftPaneScroll
@@ -442,8 +451,8 @@
   }
 
   function isBinaryRowChangedFromBytes(
-    leftBytes: number[],
-    rightBytes: number[],
+    leftBytes: ArrayLike<number>,
+    rightBytes: ArrayLike<number>,
     rowOffset: number,
     bytesPerRow: number,
   ): boolean {
@@ -469,7 +478,7 @@
   }
 
   function updateBinaryVirtualRange() {
-    if (!binaryHexScroll || !binaryDiff) return
+    if (!binaryHexScroll || !binaryDiff?.previewLoaded) return
     const totalRows = computeBinaryTotalRows(binaryDiff)
     const scrollTop = binaryHexScroll.scrollTop
     const viewportHeight = binaryHexScroll.clientHeight || 800
@@ -485,15 +494,61 @@
   }
 
   // Initialize virtual range immediately from data (no DOM needed for first render)
-  $: if (binaryDiff) {
+  $: if (binaryDiff?.previewLoaded) {
     const totalRows = computeBinaryTotalRows(binaryDiff)
     binaryVirtualStart = 0
     binaryVirtualEnd = Math.min(totalRows, 100)
+  } else {
+    binaryVirtualStart = 0
+    binaryVirtualEnd = 0
   }
 
   // Refine to actual viewport once scroll container is mounted
-  $: if (binaryDiff && binaryHexScroll) {
+  $: if (binaryDiff?.previewLoaded && binaryHexScroll) {
     requestAnimationFrame(() => updateBinaryVirtualRange())
+  }
+
+  $: if (
+    activeDiff?.contentKind === 'binary' &&
+    binaryDiff &&
+    !binaryDiff.previewLoaded &&
+    !binaryPreviewLoading &&
+    !binaryPreviewError
+  ) {
+    const requestId = activeBinaryPreviewRequestId + 1
+    activeBinaryPreviewRequestId = requestId
+    binaryPreviewLoading = true
+    binaryPreviewError = ''
+
+    const leftPath = binaryDiff.leftMeta.path || activeDiff.leftLabel
+    const rightPath = binaryDiff.rightMeta.path || activeDiff.rightLabel
+
+    void tick().then(() =>
+      loadBinaryPreview(leftPath, rightPath, {
+        ignoreWhitespace: false,
+        ignoreCase: false,
+      })
+        .then((preview) => {
+          if (requestId !== activeBinaryPreviewRequestId || activeDiff?.contentKind !== 'binary') {
+            return
+          }
+
+          binaryDiff = preview
+        })
+        .catch((error) => {
+          if (requestId !== activeBinaryPreviewRequestId) {
+            return
+          }
+
+          binaryPreviewError =
+            error instanceof Error ? error.message : 'Binary preview could not be loaded.'
+        })
+        .finally(() => {
+          if (requestId === activeBinaryPreviewRequestId) {
+            binaryPreviewLoading = false
+          }
+        }),
+    )
   }
 
   function getBinarySummaryChips(
@@ -510,7 +565,11 @@
     ]
 
     if (kind === 'binary' && diff) {
-      chips.push(`${diff.changedRowCount ?? 0} changed rows`)
+      if (diff.previewLoaded && diff.changedRowCount !== null) {
+        chips.push(`${diff.changedRowCount} changed rows`)
+      } else if (!diff.previewLoaded) {
+        chips.push('Preview pending')
+      }
 
       if (diff.truncated) {
         chips.push('Truncated')
@@ -1670,15 +1729,23 @@
         <div class="binary-hex-shell">
           <div class="binary-hex-scroll" bind:this={binaryHexScroll} on:scroll={onBinaryHexScroll}>
             {#if binaryDiff}
-              {@const totalRows = computeBinaryTotalRows(binaryDiff)}
-              {@const totalHeight = totalRows * BINARY_ROW_HEIGHT}
-              {#if totalRows === 0}
+              {#if !binaryDiff.previewLoaded}
+                <div class="empty-inline-state binary-empty-state">
+                  {binaryPreviewError ||
+                    (binaryPreviewLoading
+                      ? 'Loading binary preview...'
+                      : 'Binary preview is not available yet.')}
+                </div>
+              {:else}
+                {@const totalRows = computeBinaryTotalRows(binaryDiff)}
+                {@const totalHeight = totalRows * BINARY_ROW_HEIGHT}
+                {#if totalRows === 0}
                 <div class="empty-inline-state binary-empty-state">
                   {binaryDiff.truncated
                     ? 'Binary content is too large to render as hex.'
                     : 'No byte differences.'}
                 </div>
-              {:else}
+                {:else}
                 <div class="binary-hex-table" style="display: block; height: {totalHeight + 24}px; position: relative;">
                   <div class="binary-hex-header">
                     <span class="binary-hex-cell binary-offset-header">Offset</span>
@@ -1755,6 +1822,7 @@
                     {/each}
                   </div>
                 </div>
+                {/if}
               {/if}
             {/if}
           </div>

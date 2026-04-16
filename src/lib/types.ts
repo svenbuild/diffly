@@ -103,13 +103,14 @@ export interface ImageDiffPayload {
 export interface BinaryDiffPayload {
   leftMeta: BinaryFileMeta
   rightMeta: BinaryFileMeta
-  leftBytes: number[]
-  rightBytes: number[]
+  leftBytes: Uint8Array
+  rightBytes: Uint8Array
   bytesPerRow: 16
   changedByteCount: number | null
   changedRowCount: number | null
   firstDifferenceOffset: number | null
   truncated: boolean
+  previewLoaded: boolean
 }
 
 export interface TextDiffPayload {
