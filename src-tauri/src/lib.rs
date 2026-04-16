@@ -8,7 +8,8 @@ use std::{
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use rayon::prelude::*;
@@ -27,7 +28,8 @@ const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const FILE_IO_BUFFER_BYTES: usize = 256 * 1024;
-const DIRECTORY_COMPARE_IO_CONCURRENCY: usize = 4;
+const DIRECTORY_COMPARE_IO_CONCURRENCY: usize = 1;
+const DIRECTORY_COMPARE_PRIORITY_SLEEP_MS: u64 = 8;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
@@ -112,6 +114,11 @@ struct DirectoryCompareCacheState {
 struct DirectoryCompareJobState {
     next_job_id: Arc<AtomicU64>,
     jobs: Arc<Mutex<HashMap<String, Arc<DirectoryCompareJob>>>>,
+}
+
+#[derive(Clone, Default)]
+struct CompareIoPriorityState {
+    active_detail_opens: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -1020,12 +1027,14 @@ async fn start_directory_compare(
     options: CompareOptions,
     compare_cache_state: tauri::State<'_, DirectoryCompareCacheState>,
     compare_job_state: tauri::State<'_, DirectoryCompareJobState>,
+    compare_priority_state: tauri::State<'_, CompareIoPriorityState>,
 ) -> Result<StartDirectoryCompareResponse, String> {
     let job_id = next_directory_compare_job_id(compare_job_state.inner());
     let job = Arc::new(DirectoryCompareJob::new());
     insert_directory_compare_job(compare_job_state.inner(), job_id.clone(), job.clone())?;
 
     let compare_cache_state = compare_cache_state.inner().clone();
+    let compare_priority_state = compare_priority_state.inner().clone();
 
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(error) = run_directory_compare_job(
@@ -1033,6 +1042,7 @@ async fn start_directory_compare(
             &right_path,
             &options,
             &compare_cache_state,
+            &compare_priority_state,
             &job,
         ) {
             job.fail(error);
@@ -1093,6 +1103,7 @@ fn run_directory_compare_job(
     right_path: &str,
     options: &CompareOptions,
     compare_cache_state: &DirectoryCompareCacheState,
+    compare_priority_state: &CompareIoPriorityState,
     job: &DirectoryCompareJob,
 ) -> Result<(), String> {
     let left = PathBuf::from(left_path);
@@ -1155,6 +1166,8 @@ fn run_directory_compare_job(
                 if index >= sorted_paths.len() {
                     return;
                 }
+
+                wait_for_detail_priority(compare_priority_state);
 
                 let relative_path = &sorted_paths[index];
                 let left_file = left_files.get(relative_path);
@@ -1226,9 +1239,14 @@ async fn open_compare_item(
     right_base: String,
     relative_path: String,
     options: CompareOptions,
+    compare_priority_state: tauri::State<'_, CompareIoPriorityState>,
 ) -> Result<FileDiffResult, String> {
+    let compare_priority_state = compare_priority_state.inner().clone();
+    begin_detail_open(&compare_priority_state);
     tauri::async_runtime::spawn_blocking(move || {
-        open_compare_item_sync(left_base, right_base, relative_path, options)
+        let result = open_compare_item_sync(left_base, right_base, relative_path, options);
+        end_detail_open(&compare_priority_state);
+        result
     })
     .await
     .map_err(|error| error.to_string())?
@@ -2005,6 +2023,24 @@ fn remove_directory_compare_job(
     let mut jobs = state.jobs.lock().map_err(|error| error.to_string())?;
     jobs.remove(job_id);
     Ok(())
+}
+
+fn begin_detail_open(priority_state: &CompareIoPriorityState) {
+    priority_state
+        .active_detail_opens
+        .fetch_add(1, Ordering::AcqRel);
+}
+
+fn end_detail_open(priority_state: &CompareIoPriorityState) {
+    priority_state
+        .active_detail_opens
+        .fetch_sub(1, Ordering::AcqRel);
+}
+
+fn wait_for_detail_priority(priority_state: &CompareIoPriorityState) {
+    while priority_state.active_detail_opens.load(Ordering::Acquire) > 0 {
+        thread::sleep(Duration::from_millis(DIRECTORY_COMPARE_PRIORITY_SLEEP_MS));
+    }
 }
 
 impl DirectoryCompareJob {
@@ -4846,6 +4882,7 @@ pub fn run() {
         .manage(create_launch_context_state())
         .manage(create_directory_compare_cache_state())
         .manage(create_directory_compare_job_state())
+        .manage(create_compare_io_priority_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
@@ -4932,6 +4969,10 @@ fn create_directory_compare_cache_state() -> DirectoryCompareCacheState {
 
 fn create_directory_compare_job_state() -> DirectoryCompareJobState {
     DirectoryCompareJobState::default()
+}
+
+fn create_compare_io_priority_state() -> CompareIoPriorityState {
+    CompareIoPriorityState::default()
 }
 
 fn parse_launch_context_from_args<I>(args: I) -> Option<LaunchContext>
