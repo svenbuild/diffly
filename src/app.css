@@ -3261,7 +3261,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .diff-pane + .diff-pane {
-  border-left: 4px solid var(--diff-divider);
+  border-left: 2px solid var(--diff-divider);
 }
 
 .pane-header,
@@ -3340,12 +3340,14 @@ button.filter-chip.tooLarge:focus-visible {
   flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background-color: var(--diff-context-bg);
 }
 
 .left-diff-pane .pane-vertical-scroll {
   overflow-y: scroll;
   scrollbar-width: none;
+  padding-right: 9px; /* match right pane's scrollbar width */
 }
 
 .left-diff-pane .pane-vertical-scroll::-webkit-scrollbar {
