@@ -68,8 +68,11 @@ Long-term maintainability is a core priority.
 
 ### Commit And Push
 
+- If any file changed during a turn, commit and push before ending that turn.
+- Treat commit plus push as mandatory completion criteria, not optional cleanup.
 - Commit logical units of work as they complete.
 - Push each commit after creating it.
+- Do not leave local unpushed work from your own changes at the end of a turn.
 - Keep commit messages specific to behavior or scope changed.
 - If the tree is dirty, verify your staged diff before every commit.
 
