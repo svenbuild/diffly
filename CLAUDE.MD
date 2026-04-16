@@ -37,7 +37,7 @@ Diffly is a desktop local file and directory diff tool built with Svelte, TypeSc
 - Avoid accidental `O(n^2)` work in hot paths such as diff painting, scroll syncing, minimap generation, filtering, and tree traversal.
 - Do not recompute expensive derived data on every render when it can be cached, streamed, or incrementally updated.
 - Avoid unnecessary DOM churn. Preserve stable keys and avoid resetting scroll or selection without a strong reason.
-- Measure impact when changing rendering, syntax highlighting, diff chunking, minimap logic, or large fixture generation.
+- Measure impact when changing rendering, syntax highlighting, diff chunking, or minimap logic.
 
 ## Maintainability
 
@@ -56,33 +56,6 @@ Long-term maintainability is a core priority.
 - Do not silently discard user context such as selected file, expanded tree state, scroll position, or merge intent unless required for correctness.
 - When wiring frontend to Tauri commands, handle timeout, cancellation, malformed payloads, and stale responses deliberately.
 - Keep desktop-specific behavior predictable across restart, update, and offline use.
-
-## Testing And Verification
-
-Run the smallest useful validation during iteration, then run the standard path before finishing any non-trivial change.
-
-Standard validation path:
-
-```bash
-npm run check
-npm test
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-```
-
-Use targeted validation when appropriate:
-
-- `npm run check` for Svelte and TypeScript changes
-- `npm test` for Rust logic and integration behavior
-- `cargo test --manifest-path src-tauri/Cargo.toml <test_name>` for focused Rust work
-- manual validation in `npm run tauri:dev` for UI behavior, scroll sync, merge flows, session restore, and failure handling
-
-If validation is skipped, say exactly what was not run and why.
-
-## Fixtures And Regression Coverage
-
-- Prefer extending existing fixtures over inventing ad hoc local samples.
-- Add or update regression coverage when fixing bugs in parsing, diff rendering, merge behavior, directory traversal, minimap rendering, or restore logic.
-- Keep large fixtures intentional. Do not bloat them without need.
 
 ## Git Workflow
 
