@@ -814,6 +814,7 @@ dependencies = [
 name = "diffly"
 version = "0.1.6-rc.8"
 dependencies = [
+ "base64 0.22.1",
  "log",
  "rayon",
  "reqwest 0.12.28",
