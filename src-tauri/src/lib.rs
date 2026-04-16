@@ -40,10 +40,12 @@ const LINE_PAIR_BLANK_MATCH_SCORE: i32 = 160;
 const LINE_PAIR_WEAK_STRUCTURAL_MATCH_SCORE: i32 = 70;
 const LINE_PAIR_STRONG_MODIFIED_SCORE: i32 = 150;
 const LINE_PAIR_LOOKAHEAD_WINDOW: usize = 8;
-const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 12;
+const LINE_PAIR_FALLBACK_DP_LIMIT: usize = 48;
 const LINE_PAIR_LOCALITY_PENALTY: i32 = 8;
 const LINE_PAIR_ANCHOR_MAX_PREFIX_GAP: usize = 1;
 const LCS_MAX_MATRIX_CELLS: usize = 16_384;
+const DIRECT_REPLACE_ALIGNMENT_MIN_BLOCK: usize = 24;
+const DIRECT_REPLACE_ALIGNMENT_SAMPLE: usize = 32;
 #[cfg(feature = "updater")]
 const STABLE_UPDATE_ENDPOINT: &str =
     "https://github.com/svenbuild/diffly/releases/latest/download/latest.json";
@@ -2612,6 +2614,10 @@ fn align_replace_block_rows(
     left_cells: &[DiffCell],
     right_cells: &[DiffCell],
 ) -> ReplaceBlockAlignment {
+    if should_use_direct_replace_alignment(left_cells, right_cells) {
+        return direct_replace_alignment(left_cells.len());
+    }
+
     let left_descriptors = left_cells
         .iter()
         .map(|cell| build_line_descriptor(&cell.text))
@@ -2657,6 +2663,64 @@ fn align_replace_block_rows(
     ReplaceBlockAlignment {
         row_pairs,
         left_matches,
+    }
+}
+
+fn should_use_direct_replace_alignment(left_cells: &[DiffCell], right_cells: &[DiffCell]) -> bool {
+    if left_cells.len() != right_cells.len() {
+        return false;
+    }
+
+    if left_cells.len() <= 4 {
+        return true;
+    }
+
+    if left_cells.len() < DIRECT_REPLACE_ALIGNMENT_MIN_BLOCK {
+        return false;
+    }
+
+    let sample_len = left_cells.len().min(DIRECT_REPLACE_ALIGNMENT_SAMPLE);
+    let mut matches = 0usize;
+
+    for index in 0..sample_len {
+        if fast_same_index_line_match(&left_cells[index].text, &right_cells[index].text) {
+            matches += 1;
+        }
+    }
+
+    matches * 100 >= sample_len * 70
+}
+
+fn fast_same_index_line_match(left: &str, right: &str) -> bool {
+    if left == right || left.eq_ignore_ascii_case(right) {
+        return true;
+    }
+
+    let left_trimmed = left.trim();
+    let right_trimmed = right.trim();
+
+    if left_trimmed == right_trimmed || left_trimmed.eq_ignore_ascii_case(right_trimmed) {
+        return true;
+    }
+
+    let left_signature = collapse_whitespace(trim_trailing_line_comment(left_trimmed).trim());
+    let right_signature = collapse_whitespace(trim_trailing_line_comment(right_trimmed).trim());
+
+    if left_signature == right_signature || left_signature.eq_ignore_ascii_case(&right_signature) {
+        return true;
+    }
+
+    let shared_prefix = common_prefix_len(left_trimmed, right_trimmed);
+    let shared_suffix = common_suffix_len(left_trimmed, right_trimmed);
+    let max_len = left_trimmed.chars().count().max(right_trimmed.chars().count());
+
+    max_len > 0 && (shared_prefix + shared_suffix) * 100 >= max_len * 60
+}
+
+fn direct_replace_alignment(len: usize) -> ReplaceBlockAlignment {
+    ReplaceBlockAlignment {
+        row_pairs: (0..len).map(|index| (Some(index), Some(index))).collect(),
+        left_matches: (0..len).map(Some).collect(),
     }
 }
 
