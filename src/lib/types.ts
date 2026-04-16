@@ -183,6 +183,23 @@ export interface UpdateActionResult {
   message?: string | null
 }
 
+export interface DirectoryCompareUpdate {
+  index: number
+  entry: DirectoryEntryResult | null
+}
+
+export interface StartDirectoryCompareResponse {
+  jobId: string
+}
+
+export interface PollDirectoryCompareResponse {
+  totalCount: number | null
+  completedCount: number
+  updates: DirectoryCompareUpdate[]
+  done: boolean
+  error: string | null
+}
+
 export type CompareResponse =
   | {
       kind: 'directory'

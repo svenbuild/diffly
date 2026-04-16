@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -24,6 +27,7 @@ const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const FILE_IO_BUFFER_BYTES: usize = 256 * 1024;
+const DIRECTORY_COMPARE_IO_CONCURRENCY: usize = 4;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
@@ -104,6 +108,12 @@ struct DirectoryCompareCacheState {
     session: Arc<Mutex<Option<DirectoryCompareCacheSession>>>,
 }
 
+#[derive(Clone, Default)]
+struct DirectoryCompareJobState {
+    next_job_id: Arc<AtomicU64>,
+    jobs: Arc<Mutex<HashMap<String, Arc<DirectoryCompareJob>>>>,
+}
+
 #[derive(Clone)]
 struct DirectoryCompareCacheSession {
     key: DirectoryCompareCacheKey,
@@ -129,6 +139,16 @@ struct CachedDirectoryCompareEntry {
 struct CachedFileIdentity {
     size: u64,
     modified_ms: Option<u64>,
+}
+
+#[derive(Clone)]
+struct DirectoryCompareJob {
+    total_count: Arc<AtomicUsize>,
+    total_known: Arc<AtomicBool>,
+    completed_count: Arc<AtomicUsize>,
+    done: Arc<AtomicBool>,
+    error: Arc<Mutex<Option<String>>>,
+    updates: Arc<Mutex<Vec<DirectoryCompareUpdate>>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -298,6 +318,29 @@ struct UpdateState;
 enum CompareResponse {
     Directory { entries: Vec<DirectoryEntryResult> },
     File { result: Box<FileDiffResult> },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartDirectoryCompareResponse {
+    job_id: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirectoryCompareUpdate {
+    index: usize,
+    entry: Option<DirectoryEntryResult>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PollDirectoryCompareResponse {
+    total_count: Option<usize>,
+    completed_count: usize,
+    updates: Vec<DirectoryCompareUpdate>,
+    done: bool,
+    error: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -970,6 +1013,51 @@ async fn compare_paths(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn start_directory_compare(
+    left_path: String,
+    right_path: String,
+    options: CompareOptions,
+    compare_cache_state: tauri::State<'_, DirectoryCompareCacheState>,
+    compare_job_state: tauri::State<'_, DirectoryCompareJobState>,
+) -> Result<StartDirectoryCompareResponse, String> {
+    let job_id = next_directory_compare_job_id(compare_job_state.inner());
+    let job = Arc::new(DirectoryCompareJob::new());
+    insert_directory_compare_job(compare_job_state.inner(), job_id.clone(), job.clone())?;
+
+    let compare_cache_state = compare_cache_state.inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = run_directory_compare_job(
+            &left_path,
+            &right_path,
+            &options,
+            &compare_cache_state,
+            &job,
+        ) {
+            job.fail(error);
+        }
+    });
+
+    Ok(StartDirectoryCompareResponse { job_id })
+}
+
+#[tauri::command]
+fn poll_directory_compare(
+    job_id: String,
+    compare_job_state: tauri::State<'_, DirectoryCompareJobState>,
+) -> Result<PollDirectoryCompareResponse, String> {
+    let job = get_directory_compare_job(compare_job_state.inner(), &job_id)?
+        .ok_or_else(|| "Directory compare job not found.".to_string())?;
+    let response = job.poll();
+
+    if response.done && response.updates.is_empty() {
+        remove_directory_compare_job(compare_job_state.inner(), &job_id)?;
+    }
+
+    Ok(response)
+}
+
 fn compare_paths_sync(
     left_path: String,
     right_path: String,
@@ -998,6 +1086,138 @@ fn compare_paths_sync(
         }),
         _ => Err("Unsupported compare mode.".to_string()),
     }
+}
+
+fn run_directory_compare_job(
+    left_path: &str,
+    right_path: &str,
+    options: &CompareOptions,
+    compare_cache_state: &DirectoryCompareCacheState,
+    job: &DirectoryCompareJob,
+) -> Result<(), String> {
+    let left = PathBuf::from(left_path);
+    let right = PathBuf::from(right_path);
+
+    if !left.is_dir() {
+        return Err("The left path is not a directory.".to_string());
+    }
+
+    if !right.is_dir() {
+        return Err("The right path is not a directory.".to_string());
+    }
+
+    let left_files = Arc::new(collect_directory_files(&left)?);
+    let right_files = Arc::new(collect_directory_files(&right)?);
+    let mut all_paths = HashSet::with_capacity(left_files.len() + right_files.len());
+
+    for key in left_files.keys() {
+        all_paths.insert(key.clone());
+    }
+
+    for key in right_files.keys() {
+        all_paths.insert(key.clone());
+    }
+
+    let mut sorted_paths = all_paths.into_iter().collect::<Vec<_>>();
+    sorted_paths.sort_unstable();
+    job.set_total_count(sorted_paths.len());
+
+    let cache_key = directory_compare_cache_key(left_path, right_path, options);
+    let previous_entries = Arc::new(take_cached_directory_compare_entries(
+        compare_cache_state,
+        &cache_key,
+    )?);
+    let sorted_paths = Arc::new(sorted_paths);
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let next_cached_entries = Arc::new(Mutex::new(HashMap::with_capacity(sorted_paths.len())));
+    let worker_count = DIRECTORY_COMPARE_IO_CONCURRENCY.max(1).min(sorted_paths.len().max(1));
+    let worker_error = Arc::new(Mutex::new(None::<String>));
+
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let left_files = Arc::clone(&left_files);
+            let right_files = Arc::clone(&right_files);
+            let previous_entries = Arc::clone(&previous_entries);
+            let sorted_paths = Arc::clone(&sorted_paths);
+            let next_index = Arc::clone(&next_index);
+            let next_cached_entries = Arc::clone(&next_cached_entries);
+            let worker_error = Arc::clone(&worker_error);
+            let options = options.clone();
+            let job = job.clone();
+
+            scope.spawn(move || loop {
+                if worker_error.lock().ok().and_then(|slot| slot.clone()).is_some() {
+                    return;
+                }
+
+                let index = next_index.fetch_add(1, Ordering::Relaxed);
+
+                if index >= sorted_paths.len() {
+                    return;
+                }
+
+                let relative_path = &sorted_paths[index];
+                let left_file = left_files.get(relative_path);
+                let right_file = right_files.get(relative_path);
+                let cached_entry = previous_entries.get(relative_path);
+
+                let result = match (left_file, right_file) {
+                    (Some(left_file), Some(right_file)) => compare_directory_pair(
+                        relative_path,
+                        left_file,
+                        right_file,
+                        &options,
+                        cached_entry,
+                    ),
+                    (Some(left_file), None) => {
+                        compare_one_sided_directory_entry(relative_path, left_file, true, cached_entry)
+                    }
+                    (None, Some(right_file)) => compare_one_sided_directory_entry(
+                        relative_path,
+                        right_file,
+                        false,
+                        cached_entry,
+                    ),
+                    (None, None) => Ok((
+                        None,
+                        CachedDirectoryCompareEntry {
+                            left: None,
+                            right: None,
+                            result: None,
+                        },
+                    )),
+                };
+
+                match result {
+                    Ok((entry, cached_entry)) => {
+                        if let Ok(mut entries) = next_cached_entries.lock() {
+                            entries.insert(relative_path.clone(), cached_entry);
+                        }
+                        job.push_update(index, entry);
+                    }
+                    Err(error) => {
+                        if let Ok(mut slot) = worker_error.lock() {
+                            *slot = Some(error.clone());
+                        }
+                        job.fail(error);
+                        return;
+                    }
+                }
+            });
+        }
+    });
+
+    if let Some(error) = worker_error.lock().ok().and_then(|slot| slot.clone()) {
+        return Err(error);
+    }
+
+    let next_cached_entries = next_cached_entries
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    store_cached_directory_compare_entries(compare_cache_state, cache_key, next_cached_entries)?;
+    job.finish();
+    Ok(())
 }
 
 #[tauri::command]
@@ -1280,6 +1500,53 @@ fn compare_directory_pair(
         right_path: Some(right_file.to_string_lossy().to_string()),
         left_size: Some(left_meta.len()),
         right_size: Some(right_meta.len()),
+    };
+
+    Ok((
+        Some(entry.clone()),
+        CachedDirectoryCompareEntry {
+            result: Some(entry),
+            ..next_cached_entry
+        },
+    ))
+}
+
+fn compare_one_sided_directory_entry(
+    relative_path: &str,
+    file_path: &Path,
+    is_left: bool,
+    cached_entry: Option<&CachedDirectoryCompareEntry>,
+) -> Result<(Option<DirectoryEntryResult>, CachedDirectoryCompareEntry), String> {
+    let metadata = fs::metadata(file_path).map_err(|error| error.to_string())?;
+    let next_cached_entry = CachedDirectoryCompareEntry {
+        left: is_left.then(|| cached_file_identity(&metadata)),
+        right: (!is_left).then(|| cached_file_identity(&metadata)),
+        result: None,
+    };
+
+    if cached_entry.is_some_and(|cached| {
+        cached.left == next_cached_entry.left && cached.right == next_cached_entry.right
+    }) {
+        return Ok((
+            cached_entry.and_then(|cached| cached.result.clone()),
+            CachedDirectoryCompareEntry {
+                result: cached_entry.and_then(|cached| cached.result.clone()),
+                ..next_cached_entry
+            },
+        ));
+    }
+
+    let entry = DirectoryEntryResult {
+        relative_path: relative_path.to_string(),
+        status: if is_left {
+            EntryStatus::LeftOnly
+        } else {
+            EntryStatus::RightOnly
+        },
+        left_path: is_left.then(|| file_path.to_string_lossy().to_string()),
+        right_path: (!is_left).then(|| file_path.to_string_lossy().to_string()),
+        left_size: is_left.then_some(metadata.len()),
+        right_size: (!is_left).then_some(metadata.len()),
     };
 
     Ok((
@@ -1703,6 +1970,95 @@ fn cached_file_identity(metadata: &fs::Metadata) -> CachedFileIdentity {
     CachedFileIdentity {
         size: metadata.len(),
         modified_ms: metadata_modified_ms(metadata),
+    }
+}
+
+fn next_directory_compare_job_id(state: &DirectoryCompareJobState) -> String {
+    format!(
+        "directory-compare-{}",
+        state.next_job_id.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn insert_directory_compare_job(
+    state: &DirectoryCompareJobState,
+    job_id: String,
+    job: Arc<DirectoryCompareJob>,
+) -> Result<(), String> {
+    let mut jobs = state.jobs.lock().map_err(|error| error.to_string())?;
+    jobs.insert(job_id, job);
+    Ok(())
+}
+
+fn get_directory_compare_job(
+    state: &DirectoryCompareJobState,
+    job_id: &str,
+) -> Result<Option<Arc<DirectoryCompareJob>>, String> {
+    let jobs = state.jobs.lock().map_err(|error| error.to_string())?;
+    Ok(jobs.get(job_id).cloned())
+}
+
+fn remove_directory_compare_job(
+    state: &DirectoryCompareJobState,
+    job_id: &str,
+) -> Result<(), String> {
+    let mut jobs = state.jobs.lock().map_err(|error| error.to_string())?;
+    jobs.remove(job_id);
+    Ok(())
+}
+
+impl DirectoryCompareJob {
+    fn new() -> Self {
+        Self {
+            total_count: Arc::new(AtomicUsize::new(0)),
+            total_known: Arc::new(AtomicBool::new(false)),
+            completed_count: Arc::new(AtomicUsize::new(0)),
+            done: Arc::new(AtomicBool::new(false)),
+            error: Arc::new(Mutex::new(None)),
+            updates: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn set_total_count(&self, total_count: usize) {
+        self.total_count.store(total_count, Ordering::Release);
+        self.total_known.store(true, Ordering::Release);
+    }
+
+    fn push_update(&self, index: usize, entry: Option<DirectoryEntryResult>) {
+        if let Ok(mut updates) = self.updates.lock() {
+            updates.push(DirectoryCompareUpdate { index, entry });
+        }
+        self.completed_count.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn fail(&self, error: String) {
+        if let Ok(mut slot) = self.error.lock() {
+            *slot = Some(error);
+        }
+        self.done.store(true, Ordering::Release);
+    }
+
+    fn finish(&self) {
+        self.done.store(true, Ordering::Release);
+    }
+
+    fn poll(&self) -> PollDirectoryCompareResponse {
+        let updates = if let Ok(mut queued) = self.updates.lock() {
+            std::mem::take(&mut *queued)
+        } else {
+            Vec::new()
+        };
+
+        PollDirectoryCompareResponse {
+            total_count: self
+                .total_known
+                .load(Ordering::Acquire)
+                .then(|| self.total_count.load(Ordering::Acquire)),
+            completed_count: self.completed_count.load(Ordering::Acquire),
+            updates,
+            done: self.done.load(Ordering::Acquire),
+            error: self.error.lock().ok().and_then(|slot| slot.clone()),
+        }
     }
 }
 
@@ -4489,6 +4845,7 @@ pub fn run() {
         .manage(create_update_state())
         .manage(create_launch_context_state())
         .manage(create_directory_compare_cache_state())
+        .manage(create_directory_compare_job_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
@@ -4502,6 +4859,8 @@ pub fn run() {
             list_directory,
             path_info,
             compare_paths,
+            start_directory_compare,
+            poll_directory_compare,
             open_compare_item
         ]);
 
@@ -4569,6 +4928,10 @@ fn create_launch_context_state() -> LaunchContextState {
 
 fn create_directory_compare_cache_state() -> DirectoryCompareCacheState {
     DirectoryCompareCacheState::default()
+}
+
+fn create_directory_compare_job_state() -> DirectoryCompareJobState {
+    DirectoryCompareJobState::default()
 }
 
 fn parse_launch_context_from_args<I>(args: I) -> Option<LaunchContext>

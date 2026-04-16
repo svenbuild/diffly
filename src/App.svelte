@@ -16,8 +16,10 @@
     listRoots,
     loadSessionState,
     openCompareItem,
+    pollDirectoryCompare,
     pathInfo,
     saveSessionState,
+    startDirectoryCompare,
   } from './lib/api'
   import {
     buildSideBySideHunkRanges,
@@ -127,6 +129,7 @@
   const THEME_SWITCH_DURATION_MS = 140
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
+  const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
   const PANE_WHEEL_SMOOTHING = 0.18
@@ -194,6 +197,9 @@
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
+  let activeDirectoryCompareJobId = ''
+  let directoryComparePollTimer: number | null = null
+  let directoryCompareEntrySlots: Array<DirectoryEntryResult | null | undefined> = []
   let scrollEchoTarget: 'left' | 'right' | null = null
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
@@ -435,6 +441,8 @@
       if (paneWheelScrollFrame !== null) {
         window.cancelAnimationFrame(paneWheelScrollFrame)
       }
+
+      clearDirectoryComparePollTimer()
 
       if (diffNavigationScrollFrame !== null) {
         window.cancelAnimationFrame(diffNavigationScrollFrame)
@@ -688,6 +696,107 @@
       preloadConcurrency: BACKGROUND_DIFF_PRELOAD_CONCURRENCY,
       preloadDelayMs: BACKGROUND_DIFF_PRELOAD_DELAY_MS,
     })
+  }
+
+  function clearDirectoryComparePollTimer() {
+    if (directoryComparePollTimer !== null) {
+      window.clearTimeout(directoryComparePollTimer)
+      directoryComparePollTimer = null
+    }
+  }
+
+  function stopDirectoryComparePolling(clearEntries = false) {
+    clearDirectoryComparePollTimer()
+    activeDirectoryCompareJobId = ''
+    if (clearEntries) {
+      directoryCompareEntrySlots = []
+    }
+  }
+
+  function applyDirectoryCompareUpdates(updates: Array<{ index: number; entry: DirectoryEntryResult | null }>) {
+    if (updates.length === 0) {
+      return
+    }
+
+    for (const update of updates) {
+      if (update.index >= directoryCompareEntrySlots.length) {
+        directoryCompareEntrySlots.length = update.index + 1
+      }
+
+      directoryCompareEntrySlots[update.index] = update.entry
+    }
+
+    directoryEntries = directoryCompareEntrySlots.flatMap((entry) => (entry ? [entry] : []))
+    syncFilteredDirectoryState(directoryEntries)
+  }
+
+  function queueDirectoryComparePoll(
+    jobId: string,
+    previousSelectedPath: string,
+    revision: number,
+  ) {
+    clearDirectoryComparePollTimer()
+    directoryComparePollTimer = window.setTimeout(() => {
+      void pollDirectoryCompareJob(jobId, previousSelectedPath, revision)
+    }, DIRECTORY_COMPARE_POLL_INTERVAL_MS)
+  }
+
+  async function pollDirectoryCompareJob(
+    jobId: string,
+    previousSelectedPath: string,
+    revision: number,
+  ) {
+    try {
+      const response = await pollDirectoryCompare(jobId)
+
+      if (jobId !== activeDirectoryCompareJobId || revision !== compareRevision) {
+        return
+      }
+
+      applyDirectoryCompareUpdates(response.updates)
+
+      if (!detailLoading && !activeDiff) {
+        const preservedEntry = previousSelectedPath
+          ? filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
+          : undefined
+        const nextEntry =
+          preservedEntry ??
+          (filteredDirectoryEntries.length > 0 ? defaultDirectoryEntry(filteredDirectoryEntries) : null)
+
+        if (nextEntry) {
+          void selectEntry(nextEntry, revision)
+        }
+      }
+
+      if (response.done) {
+        stopDirectoryComparePolling()
+        loading = false
+
+        if (response.error) {
+          errorMessage = response.error
+          return
+        }
+
+        if (directoryEntries.length === 0) {
+          selectedRelativePath = ''
+          activeDiff = null
+          cancelBackgroundDiffPreload()
+        }
+
+        return
+      }
+
+      queueDirectoryComparePoll(jobId, previousSelectedPath, revision)
+    } catch (error) {
+      if (jobId !== activeDirectoryCompareJobId || revision !== compareRevision) {
+        return
+      }
+
+      stopDirectoryComparePolling()
+      loading = false
+      errorMessage =
+        error instanceof Error ? error.message : 'Compare progress could not be loaded.'
+    }
   }
 
   function paneFor(side: Side) {
@@ -1223,10 +1332,33 @@
     errorMessage = ''
     activeDetailRequestId += 1
     cancelBackgroundDiffPreload()
+    stopDirectoryComparePolling(true)
     leftPath = nextLeftPath
     rightPath = nextRightPath
 
     try {
+      if (mode === 'directory') {
+        compareRevision += 1
+        diffCache.clearDetailDiffs()
+        activeCompareOptions = { ...nextCompareOptions }
+        compareDirtyReason = null
+        screen = 'compare'
+        directoryEntries = []
+        syncFilteredDirectoryState([])
+        selectedRelativePath = ''
+        activeDiff = null
+
+        const response = await startDirectoryCompare(
+          nextLeftPath,
+          nextRightPath,
+          nextCompareOptions,
+        )
+
+        activeDirectoryCompareJobId = response.jobId
+        void pollDirectoryCompareJob(response.jobId, previousSelectedPath, compareRevision)
+        return
+      }
+
       const response = await comparePaths(
         nextLeftPath,
         nextRightPath,
@@ -1264,7 +1396,9 @@
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
     } finally {
-      loading = false
+      if (!activeDirectoryCompareJobId) {
+        loading = false
+      }
     }
   }
 
@@ -2667,7 +2801,7 @@
 
       <DiffViewer
         {activeDiff}
-        {loading}
+        loading={mode === 'file' ? loading : false}
         {detailLoading}
         {viewMode}
         {currentDiffHunk}

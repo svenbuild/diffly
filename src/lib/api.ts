@@ -7,9 +7,11 @@ import type {
   ExplorerEntry,
   FileDiffResult,
   LaunchContext,
+  PollDirectoryCompareResponse,
   PathInfo,
   PathKind,
   PersistedSession,
+  StartDirectoryCompareResponse,
   UpdateChannel,
   UpdateActionResult,
   UpdateCheckResult,
@@ -57,6 +59,22 @@ export const comparePaths = (
     rightPath,
     mode,
     options,
+  })
+
+export const startDirectoryCompare = (
+  leftPath: string,
+  rightPath: string,
+  options: CompareOptions,
+) =>
+  invoke<StartDirectoryCompareResponse>('start_directory_compare', {
+    leftPath,
+    rightPath,
+    options,
+  })
+
+export const pollDirectoryCompare = (jobId: string) =>
+  invoke<PollDirectoryCompareResponse>('poll_directory_compare', {
+    jobId,
   })
 
 export const openCompareItem = (
