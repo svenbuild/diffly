@@ -1885,10 +1885,12 @@ async fn resolve_latest_prerelease_manifest_url(
 
     // 403 rate limited — fall back to cache if available
     if status == reqwest::StatusCode::FORBIDDEN {
-        let cache = state
+        let mut cache = state
             .github_cache
             .lock()
             .map_err(|error| error.to_string())?;
+        cache.last_fetch_epoch = now;
+        save_github_cache_to_disk(app, &cache);
         if let Some(asset_url) = cache
             .releases
             .as_ref()
