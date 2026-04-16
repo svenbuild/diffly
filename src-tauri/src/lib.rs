@@ -1,5 +1,4 @@
-#[cfg(feature = "updater")]
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -24,6 +23,7 @@ const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
+const FILE_IO_BUFFER_BYTES: usize = 256 * 1024;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
@@ -97,6 +97,38 @@ struct LaunchContext {
 #[derive(Clone, Default)]
 struct LaunchContextState {
     context: Option<LaunchContext>,
+}
+
+#[derive(Clone, Default)]
+struct DirectoryCompareCacheState {
+    session: Arc<Mutex<Option<DirectoryCompareCacheSession>>>,
+}
+
+#[derive(Clone)]
+struct DirectoryCompareCacheSession {
+    key: DirectoryCompareCacheKey,
+    entries: HashMap<String, CachedDirectoryCompareEntry>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct DirectoryCompareCacheKey {
+    left_path: String,
+    right_path: String,
+    ignore_whitespace: bool,
+    ignore_case: bool,
+}
+
+#[derive(Clone)]
+struct CachedDirectoryCompareEntry {
+    left: Option<CachedFileIdentity>,
+    right: Option<CachedFileIdentity>,
+    result: Option<DirectoryEntryResult>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct CachedFileIdentity {
+    size: u64,
+    modified_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -928,9 +960,11 @@ async fn compare_paths(
     right_path: String,
     mode: String,
     options: CompareOptions,
+    state: tauri::State<'_, DirectoryCompareCacheState>,
 ) -> Result<CompareResponse, String> {
+    let compare_cache_state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        compare_paths_sync(left_path, right_path, mode, options)
+        compare_paths_sync(left_path, right_path, mode, options, compare_cache_state)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -941,13 +975,21 @@ fn compare_paths_sync(
     right_path: String,
     mode: String,
     options: CompareOptions,
+    compare_cache_state: DirectoryCompareCacheState,
 ) -> Result<CompareResponse, String> {
     let left = PathBuf::from(&left_path);
     let right = PathBuf::from(&right_path);
 
     match mode.as_str() {
         "directory" => Ok(CompareResponse::Directory {
-            entries: compare_directories(&left, &right, &options)?,
+            entries: compare_directories(
+                &left,
+                &right,
+                &left_path,
+                &right_path,
+                &options,
+                &compare_cache_state,
+            )?,
         }),
         "file" => Ok(CompareResponse::File {
             result: Box::new(build_file_diff(
@@ -1034,7 +1076,10 @@ fn ensure_within_base(base: &Path, candidate: &Path) -> Result<(), String> {
 fn compare_directories(
     left: &Path,
     right: &Path,
+    left_path: &str,
+    right_path: &str,
     options: &CompareOptions,
+    compare_cache_state: &DirectoryCompareCacheState,
 ) -> Result<Vec<DirectoryEntryResult>, String> {
     if !left.is_dir() {
         return Err("The left path is not a directory.".to_string());
@@ -1059,48 +1104,104 @@ fn compare_directories(
     let mut sorted_paths = all_paths.into_iter().collect::<Vec<_>>();
     sorted_paths.sort_unstable();
 
+    let cache_key = directory_compare_cache_key(left_path, right_path, options);
+    let previous_entries = take_cached_directory_compare_entries(compare_cache_state, &cache_key)?;
+
     let entry_results = sorted_paths
         .par_iter()
         .map(
-            |relative_path| -> Result<Option<DirectoryEntryResult>, String> {
+            |relative_path| -> Result<(Option<DirectoryEntryResult>, CachedDirectoryCompareEntry), String> {
                 let left_file = left_files.get(relative_path);
                 let right_file = right_files.get(relative_path);
+                let cached_entry = previous_entries.get(relative_path);
 
-                let entry = match (left_file, right_file) {
+                match (left_file, right_file) {
                     (Some(left_file), Some(right_file)) => {
-                        compare_directory_pair(relative_path, left_file, right_file, options)?
+                        compare_directory_pair(
+                            relative_path,
+                            left_file,
+                            right_file,
+                            options,
+                            cached_entry,
+                        )
                     }
-                    (Some(left_file), None) => Some(DirectoryEntryResult {
-                        relative_path: relative_path.clone(),
-                        status: EntryStatus::LeftOnly,
-                        left_path: Some(left_file.to_string_lossy().to_string()),
-                        right_path: None,
-                        left_size: file_size(left_file),
-                        right_size: None,
-                    }),
-                    (None, Some(right_file)) => Some(DirectoryEntryResult {
-                        relative_path: relative_path.clone(),
-                        status: EntryStatus::RightOnly,
-                        left_path: None,
-                        right_path: Some(right_file.to_string_lossy().to_string()),
-                        left_size: None,
-                        right_size: file_size(right_file),
-                    }),
-                    (None, None) => return Ok(None),
-                };
+                    (Some(left_file), None) => {
+                        let left_meta = fs::metadata(left_file).map_err(|error| error.to_string())?;
+                        let entry = DirectoryEntryResult {
+                            relative_path: relative_path.clone(),
+                            status: EntryStatus::LeftOnly,
+                            left_path: Some(left_file.to_string_lossy().to_string()),
+                            right_path: None,
+                            left_size: Some(left_meta.len()),
+                            right_size: None,
+                        };
+                        let next_cached_entry = CachedDirectoryCompareEntry {
+                            left: Some(cached_file_identity(&left_meta)),
+                            right: None,
+                            result: Some(entry.clone()),
+                        };
 
-                Ok(entry)
+                        if cached_entry.is_some_and(|cached| {
+                            cached.left == next_cached_entry.left
+                                && cached.right == next_cached_entry.right
+                        }) {
+                            Ok((cached_entry.and_then(|cached| cached.result.clone()), next_cached_entry))
+                        } else {
+                            Ok((Some(entry), next_cached_entry))
+                        }
+                    }
+                    (None, Some(right_file)) => {
+                        let right_meta =
+                            fs::metadata(right_file).map_err(|error| error.to_string())?;
+                        let entry = DirectoryEntryResult {
+                            relative_path: relative_path.clone(),
+                            status: EntryStatus::RightOnly,
+                            left_path: None,
+                            right_path: Some(right_file.to_string_lossy().to_string()),
+                            left_size: None,
+                            right_size: Some(right_meta.len()),
+                        };
+                        let next_cached_entry = CachedDirectoryCompareEntry {
+                            left: None,
+                            right: Some(cached_file_identity(&right_meta)),
+                            result: Some(entry.clone()),
+                        };
+
+                        if cached_entry.is_some_and(|cached| {
+                            cached.left == next_cached_entry.left
+                                && cached.right == next_cached_entry.right
+                        }) {
+                            Ok((cached_entry.and_then(|cached| cached.result.clone()), next_cached_entry))
+                        } else {
+                            Ok((Some(entry), next_cached_entry))
+                        }
+                    }
+                    (None, None) => Ok((
+                        None,
+                        CachedDirectoryCompareEntry {
+                            left: None,
+                            right: None,
+                            result: None,
+                        },
+                    )),
+                }
             },
         )
         .collect::<Vec<_>>();
 
     let mut entries = Vec::with_capacity(entry_results.len());
+    let mut next_cached_entries = HashMap::with_capacity(entry_results.len());
 
-    for entry_result in entry_results {
-        if let Some(entry) = entry_result? {
+    for (index, entry_result) in entry_results.into_iter().enumerate() {
+        let (entry, cached_entry) = entry_result?;
+        next_cached_entries.insert(sorted_paths[index].clone(), cached_entry);
+
+        if let Some(entry) = entry {
             entries.push(entry);
         }
     }
+
+    store_cached_directory_compare_entries(compare_cache_state, cache_key, next_cached_entries)?;
 
     Ok(entries)
 }
@@ -1110,16 +1211,45 @@ fn compare_directory_pair(
     left_file: &Path,
     right_file: &Path,
     options: &CompareOptions,
-) -> Result<Option<DirectoryEntryResult>, String> {
+    cached_entry: Option<&CachedDirectoryCompareEntry>,
+) -> Result<(Option<DirectoryEntryResult>, CachedDirectoryCompareEntry), String> {
     let left_meta = fs::metadata(left_file).map_err(|error| error.to_string())?;
     let right_meta = fs::metadata(right_file).map_err(|error| error.to_string())?;
+    let next_cached_entry = CachedDirectoryCompareEntry {
+        left: Some(cached_file_identity(&left_meta)),
+        right: Some(cached_file_identity(&right_meta)),
+        result: None,
+    };
 
-    if left_meta.len() == right_meta.len() && files_are_identical(left_file, right_file)? {
-        return Ok(None);
+    if cached_entry.is_some_and(|cached| {
+        cached.left == next_cached_entry.left && cached.right == next_cached_entry.right
+    }) {
+        return Ok((
+            cached_entry.and_then(|cached| cached.result.clone()),
+            CachedDirectoryCompareEntry {
+                result: cached_entry.and_then(|cached| cached.result.clone()),
+                ..next_cached_entry
+            },
+        ));
     }
 
-    let left_sample = sample_file_bytes(left_file)?;
-    let right_sample = sample_file_bytes(right_file)?;
+    let (left_sample, right_sample) = if left_meta.len() == right_meta.len() {
+        let probe = compare_files_with_sample(left_file, right_file)?;
+
+        if probe.identical {
+            return Ok((
+                None,
+                CachedDirectoryCompareEntry {
+                    result: None,
+                    ..next_cached_entry
+                },
+            ));
+        }
+
+        (probe.left_sample, probe.right_sample)
+    } else {
+        (sample_file_bytes(left_file)?, sample_file_bytes(right_file)?)
+    };
     let left_kind = detect_file_kind_from_metadata_sample(left_file, &left_meta, &left_sample);
     let right_kind = detect_file_kind_from_metadata_sample(right_file, &right_meta, &right_sample);
 
@@ -1133,18 +1263,32 @@ fn compare_directory_pair(
         if normalize_text(&String::from_utf8_lossy(&left_text), options)
             == normalize_text(&String::from_utf8_lossy(&right_text), options)
         {
-            return Ok(None);
+            return Ok((
+                None,
+                CachedDirectoryCompareEntry {
+                    result: None,
+                    ..next_cached_entry
+                },
+            ));
         }
     }
 
-    Ok(Some(DirectoryEntryResult {
+    let entry = DirectoryEntryResult {
         relative_path: relative_path.to_string(),
         status: classify_entry_status_from_kinds(&left_kind, &right_kind),
         left_path: Some(left_file.to_string_lossy().to_string()),
         right_path: Some(right_file.to_string_lossy().to_string()),
         left_size: Some(left_meta.len()),
         right_size: Some(right_meta.len()),
-    }))
+    };
+
+    Ok((
+        Some(entry.clone()),
+        CachedDirectoryCompareEntry {
+            result: Some(entry),
+            ..next_cached_entry
+        },
+    ))
 }
 
 fn read_directory_entries(base: &Path) -> Result<(Vec<ExplorerEntry>, Vec<ExplorerEntry>), String> {
@@ -1506,6 +1650,60 @@ fn set_pending_update(
     let mut pending = state.pending.lock().map_err(|error| error.to_string())?;
     *pending = Some(update);
     Ok(())
+}
+
+fn directory_compare_cache_key(
+    left_path: &str,
+    right_path: &str,
+    options: &CompareOptions,
+) -> DirectoryCompareCacheKey {
+    DirectoryCompareCacheKey {
+        left_path: left_path.to_string(),
+        right_path: right_path.to_string(),
+        ignore_whitespace: options.ignore_whitespace,
+        ignore_case: options.ignore_case,
+    }
+}
+
+fn take_cached_directory_compare_entries(
+    state: &DirectoryCompareCacheState,
+    key: &DirectoryCompareCacheKey,
+) -> Result<HashMap<String, CachedDirectoryCompareEntry>, String> {
+    let mut session = state.session.lock().map_err(|error| error.to_string())?;
+
+    match session.take() {
+        Some(cached_session) if cached_session.key == *key => Ok(cached_session.entries),
+        Some(cached_session) => {
+            *session = Some(cached_session);
+            Ok(HashMap::new())
+        }
+        None => Ok(HashMap::new()),
+    }
+}
+
+fn store_cached_directory_compare_entries(
+    state: &DirectoryCompareCacheState,
+    key: DirectoryCompareCacheKey,
+    entries: HashMap<String, CachedDirectoryCompareEntry>,
+) -> Result<(), String> {
+    let mut session = state.session.lock().map_err(|error| error.to_string())?;
+    *session = Some(DirectoryCompareCacheSession { key, entries });
+    Ok(())
+}
+
+fn metadata_modified_ms(metadata: &fs::Metadata) -> Option<u64> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis() as u64)
+}
+
+fn cached_file_identity(metadata: &fs::Metadata) -> CachedFileIdentity {
+    CachedFileIdentity {
+        size: metadata.len(),
+        modified_ms: metadata_modified_ms(metadata),
+    }
 }
 
 fn collect_directory_files(base: &Path) -> Result<HashMap<String, PathBuf>, String> {
@@ -3821,7 +4019,7 @@ fn load_binary_details(
     let mut hasher = should_hash_full_file.then(Sha256::new);
     let mut bytes = preview_byte_limit
         .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
-    let mut buffer = [0; BINARY_SAMPLE_BYTES];
+    let mut buffer = vec![0; FILE_IO_BUFFER_BYTES];
     let preview_byte_limit_value = preview_byte_limit.unwrap_or_default();
 
     loop {
@@ -4187,11 +4385,29 @@ fn is_webp(bytes: &[u8]) -> bool {
     bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP"
 }
 
-fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
+struct FileCompareProbe {
+    identical: bool,
+    left_sample: Vec<u8>,
+    right_sample: Vec<u8>,
+}
+
+fn extend_sample(sample: &mut Vec<u8>, chunk: &[u8]) {
+    let remaining = BINARY_SAMPLE_BYTES.saturating_sub(sample.len());
+
+    if remaining == 0 {
+        return;
+    }
+
+    sample.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+}
+
+fn compare_files_with_sample(left: &Path, right: &Path) -> Result<FileCompareProbe, String> {
     let mut left_file = fs::File::open(left).map_err(|error| error.to_string())?;
     let mut right_file = fs::File::open(right).map_err(|error| error.to_string())?;
-    let mut left_buffer = [0; BINARY_SAMPLE_BYTES];
-    let mut right_buffer = [0; BINARY_SAMPLE_BYTES];
+    let mut left_buffer = vec![0; FILE_IO_BUFFER_BYTES];
+    let mut right_buffer = vec![0; FILE_IO_BUFFER_BYTES];
+    let mut left_sample = Vec::with_capacity(BINARY_SAMPLE_BYTES);
+    let mut right_sample = Vec::with_capacity(BINARY_SAMPLE_BYTES);
 
     loop {
         let left_read = left_file
@@ -4202,15 +4418,30 @@ fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
             .map_err(|error| error.to_string())?;
 
         if left_read != right_read {
-            return Ok(false);
+            return Ok(FileCompareProbe {
+                identical: false,
+                left_sample,
+                right_sample,
+            });
         }
 
         if left_read == 0 {
-            return Ok(true);
+            return Ok(FileCompareProbe {
+                identical: true,
+                left_sample,
+                right_sample,
+            });
         }
 
+        extend_sample(&mut left_sample, &left_buffer[..left_read]);
+        extend_sample(&mut right_sample, &right_buffer[..right_read]);
+
         if left_buffer[..left_read] != right_buffer[..right_read] {
-            return Ok(false);
+            return Ok(FileCompareProbe {
+                identical: false,
+                left_sample,
+                right_sample,
+            });
         }
     }
 }
@@ -4241,10 +4472,6 @@ fn looks_binary(bytes: &[u8]) -> bool {
     !sample.is_empty() && suspicious * 100 / sample.len() > 10
 }
 
-fn file_size(path: &Path) -> Option<u64> {
-    fs::metadata(path).ok().map(|metadata| metadata.len())
-}
-
 fn entry_name(path: &Path) -> String {
     path.file_name()
         .map(|value| value.to_string_lossy().to_string())
@@ -4261,6 +4488,7 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(create_update_state())
         .manage(create_launch_context_state())
+        .manage(create_directory_compare_cache_state())
         .invoke_handler(tauri::generate_handler![
             choose_path,
             load_session_state,
@@ -4337,6 +4565,10 @@ fn create_launch_context_state() -> LaunchContextState {
     LaunchContextState {
         context: parse_launch_context_from_args(std::env::args_os().skip(1)),
     }
+}
+
+fn create_directory_compare_cache_state() -> DirectoryCompareCacheState {
+    DirectoryCompareCacheState::default()
 }
 
 fn parse_launch_context_from_args<I>(args: I) -> Option<LaunchContext>
@@ -4542,10 +4774,13 @@ mod tests {
         let entries = compare_directories(
             &left,
             &right,
+            &left.to_string_lossy(),
+            &right.to_string_lossy(),
             &CompareOptions {
                 ignore_whitespace: true,
                 ignore_case: false,
             },
+            &create_directory_compare_cache_state(),
         )
         .expect("directory compare should succeed");
 
@@ -4571,10 +4806,13 @@ mod tests {
         let entries = compare_directories(
             &left,
             &right,
+            &left.to_string_lossy(),
+            &right.to_string_lossy(),
             &CompareOptions {
                 ignore_whitespace: false,
                 ignore_case: true,
             },
+            &create_directory_compare_cache_state(),
         )
         .expect("directory compare should succeed");
 
@@ -4588,10 +4826,15 @@ mod tests {
 
     #[test]
     fn directory_compare_marks_binary_and_large_entries() {
+        let left = fixture_path("left", "");
+        let right = fixture_path("right", "");
         let entries = compare_directories(
-            &fixture_path("left", ""),
-            &fixture_path("right", ""),
+            &left,
+            &right,
+            &left.to_string_lossy(),
+            &right.to_string_lossy(),
             &default_options(),
+            &create_directory_compare_cache_state(),
         )
         .expect("directory compare should succeed");
 
@@ -4730,6 +4973,48 @@ mod tests {
         assert_eq!(payload.right_bytes[3], 0x04);
         // Byte at index 1 is 0x01, outside printable ASCII range
         assert!(payload.left_bytes[1] < 32);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn compare_files_with_sample_reports_identical_files() {
+        let temp_root = unique_temp_dir("compare-files-identical");
+        let left = temp_root.join("left.bin");
+        let right = temp_root.join("right.bin");
+        let bytes: Vec<u8> = (0..64).collect();
+
+        write_temp_bytes_file(&left, &bytes);
+        write_temp_bytes_file(&right, &bytes);
+
+        let probe = compare_files_with_sample(&left, &right)
+            .expect("buffered file comparison should succeed");
+
+        assert!(probe.identical);
+        assert_eq!(probe.left_sample, bytes);
+        assert_eq!(probe.right_sample, bytes);
+
+        fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn compare_files_with_sample_reports_changed_files() {
+        let temp_root = unique_temp_dir("compare-files-changed");
+        let left = temp_root.join("left.bin");
+        let right = temp_root.join("right.bin");
+        let left_bytes: Vec<u8> = (0..64).collect();
+        let mut right_bytes = left_bytes.clone();
+        right_bytes[31] = 255;
+
+        write_temp_bytes_file(&left, &left_bytes);
+        write_temp_bytes_file(&right, &right_bytes);
+
+        let probe = compare_files_with_sample(&left, &right)
+            .expect("buffered file comparison should succeed");
+
+        assert!(!probe.identical);
+        assert_eq!(probe.left_sample, left_bytes);
+        assert_eq!(probe.right_sample, right_bytes);
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
     }
