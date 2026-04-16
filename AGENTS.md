@@ -74,6 +74,8 @@ Long-term maintainability is a core priority.
 - Push each commit after creating it.
 - Do not leave local unpushed work from your own changes at the end of a turn.
 - Keep commit messages specific to behavior or scope changed.
+- Do not mention Claude, Codex, or any AI assistant in commit messages, commit bodies, trailers, co-author lines, signatures, or generated-by text.
+- Commits must describe repository changes only, never the assistant that made them.
 - If the tree is dirty, verify your staged diff before every commit.
 
 ### Merge Back To Main

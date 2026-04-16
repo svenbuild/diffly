@@ -19,3 +19,4 @@ Apply repository rules from `AGENTS.md` and `CLAUDE.MD`.
 
 - After every turn, if any file changed, commit and push before replying.
 - Treat uncommitted or unpushed own changes as incomplete work.
+- Do not include Claude, Codex, or any AI self-reference in commit messages, commit bodies, trailers, co-author lines, signatures, or generated-by text.
