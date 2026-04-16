@@ -26,6 +26,8 @@ use walkdir::WalkDir;
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const MAX_BINARY_RENDER_BYTES: u64 = 256 * 1024;
 const MAX_SESSION_STATE_BYTES: u64 = 1024 * 1024;
+#[cfg(feature = "prerelease-updater")]
+const MAX_GITHUB_CACHE_BYTES: u64 = 1024 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 8192;
 const FILE_IO_BUFFER_BYTES: usize = 256 * 1024;
 const DIRECTORY_COMPARE_IO_CONCURRENCY: usize = 1;
@@ -1713,10 +1715,22 @@ fn load_github_cache_from_disk(app: &AppHandle) -> GitHubApiCache {
         Ok(p) => p,
         Err(_) => return GitHubApiCache::default(),
     };
-    let contents = match fs::read_to_string(&path) {
-        Ok(c) => c,
+    let file = match fs::File::open(&path) {
+        Ok(file) => file,
         Err(_) => return GitHubApiCache::default(),
     };
+    let mut limited = file.take(MAX_GITHUB_CACHE_BYTES + 1);
+    let mut bytes = Vec::with_capacity(MAX_GITHUB_CACHE_BYTES as usize);
+
+    if limited.read_to_end(&mut bytes).is_err() || bytes.len() as u64 > MAX_GITHUB_CACHE_BYTES {
+        return GitHubApiCache::default();
+    }
+
+    let contents = match String::from_utf8(bytes) {
+        Ok(contents) => contents,
+        Err(_) => return GitHubApiCache::default(),
+    };
+
     serde_json::from_str(&contents).unwrap_or_default()
 }
 
@@ -1724,7 +1738,9 @@ fn load_github_cache_from_disk(app: &AppHandle) -> GitHubApiCache {
 fn save_github_cache_to_disk(app: &AppHandle, cache: &GitHubApiCache) {
     if let Ok(path) = github_cache_file_path(app) {
         if let Ok(json) = serde_json::to_string(cache) {
-            let _ = fs::write(path, json);
+            if json.len() as u64 <= MAX_GITHUB_CACHE_BYTES {
+                let _ = fs::write(path, json);
+            }
         }
     }
 }
