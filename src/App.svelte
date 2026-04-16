@@ -125,8 +125,8 @@
 
   const SESSION_SAVE_DELAY_MS = 180
   const THEME_SWITCH_DURATION_MS = 140
-  const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 70
-  const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 2
+  const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
+  const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
   const PANE_WHEEL_SMOOTHING = 0.18
@@ -1248,9 +1248,9 @@
         )
 
         if (preservedEntry) {
-          await selectEntry(preservedEntry, compareRevision)
+          void selectEntry(preservedEntry, compareRevision)
         } else if (filteredDirectoryEntries.length > 0) {
-          await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
+          void selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
@@ -1277,6 +1277,7 @@
       return
     }
 
+    const switchingEntry = selectedRelativePath !== entry.relativePath
     const requestId = activeDetailRequestId + 1
 
     activeDetailRequestId = requestId
@@ -1284,15 +1285,31 @@
     detailLoading = true
     errorMessage = ''
 
+    // Bump the preload generation so existing workers exit after their current
+    // IPC resolves. They won't pile up thanks to the bounded worker pool; the
+    // new preload below re-enters the same pool immediately.
+    cancelBackgroundDiffPreload()
+
     try {
-      const resultPromise = getOrCreateDetailDiffPromise(entry.relativePath, revision)
+      if (switchingEntry) {
+        activeDiff = null
+      }
+
       await tick()
 
-      const result = await resultPromise
+      if (revision !== compareRevision || requestId !== activeDetailRequestId) {
+        return
+      }
+
+      const result = await getOrCreateDetailDiffPromise(entry.relativePath, revision)
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
-        startBackgroundDiffPreload(entry.relativePath, revision)
+        if (result.contentKind === 'text') {
+          startBackgroundDiffPreload(entry.relativePath, revision)
+        } else {
+          cancelBackgroundDiffPreload()
+        }
       }
     } catch (error) {
       if (requestId === activeDetailRequestId) {

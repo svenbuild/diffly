@@ -470,7 +470,7 @@ struct LoadedTextFile {
 struct LoadedBinaryFile {
     path: String,
     size: u64,
-    sha256: String,
+    sha256: Option<String>,
     format: Option<String>,
 }
 
@@ -3815,10 +3815,14 @@ fn load_binary_details(
     let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
     let size = metadata.len();
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
-    let mut hasher = Sha256::new();
+    let should_hash_full_file = preview_byte_limit
+        .map(|limit| size <= limit as u64)
+        .unwrap_or(true);
+    let mut hasher = should_hash_full_file.then(Sha256::new);
     let mut bytes = preview_byte_limit
         .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
     let mut buffer = [0; BINARY_SAMPLE_BYTES];
+    let preview_byte_limit_value = preview_byte_limit.unwrap_or_default();
 
     loop {
         let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
@@ -3827,20 +3831,29 @@ fn load_binary_details(
             break;
         }
 
-        hasher.update(&buffer[..read]);
+        if let Some(active_hasher) = hasher.as_mut() {
+            active_hasher.update(&buffer[..read]);
+        }
 
         if let Some(collected_bytes) = bytes.as_mut() {
-            let byte_limit = preview_byte_limit.expect("preview byte limit should be set");
-            let remaining = byte_limit.saturating_sub(collected_bytes.len());
+            let remaining = preview_byte_limit_value.saturating_sub(collected_bytes.len());
 
             if remaining > 0 {
                 let take = remaining.min(read);
                 collected_bytes.extend_from_slice(&buffer[..take]);
             }
         }
+
+        if !should_hash_full_file
+            && bytes
+                .as_ref()
+                .is_some_and(|collected_bytes| collected_bytes.len() >= preview_byte_limit_value)
+        {
+            break;
+        }
     }
 
-    let sha256 = format!("{:x}", hasher.finalize());
+    let sha256 = hasher.map(|active_hasher| format!("{:x}", active_hasher.finalize()));
     let truncated = preview_byte_limit.is_some_and(|limit| size > limit as u64);
 
     Ok((
@@ -3962,7 +3975,12 @@ fn build_image_payload(
     let left_identical = left_details
         .as_ref()
         .zip(right_details.as_ref())
-        .is_some_and(|(left, right)| left.sha256 == right.sha256);
+        .is_some_and(|(left, right)| {
+            left.sha256
+                .as_ref()
+                .zip(right.sha256.as_ref())
+                .is_some_and(|(left_hash, right_hash)| left_hash == right_hash)
+        });
     let right_identical = left_identical;
 
     Ok(ImageDiffPayload {
@@ -3992,7 +4010,12 @@ fn build_binary_payload(
     let identical = left_details
         .as_ref()
         .zip(right_details.as_ref())
-        .is_some_and(|(left, right)| left.sha256 == right.sha256);
+        .is_some_and(|(left, right)| {
+            left.sha256
+                .as_ref()
+                .zip(right.sha256.as_ref())
+                .is_some_and(|(left_hash, right_hash)| left_hash == right_hash)
+        });
     let truncated = matches!(left_loaded, LoadedFile::Binary(_, _, true))
         || matches!(right_loaded, LoadedFile::Binary(_, _, true));
 
@@ -4085,7 +4108,7 @@ fn build_binary_meta(
             exists: true,
             path: details.path.clone(),
             size: Some(details.size),
-            sha256: Some(details.sha256.clone()),
+            sha256: details.sha256.clone(),
             format: details.format.clone(),
             identical_to_other_side,
         },
@@ -4769,6 +4792,8 @@ mod tests {
         assert_eq!(payload.first_difference_offset, None);
         assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
         assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.left_meta.sha256, None);
+        assert_eq!(payload.right_meta.sha256, None);
         // Both sides are truncated to same content (all zeros), so bytes match
         assert_eq!(payload.left_bytes, payload.right_bytes);
         assert_eq!(
@@ -4820,6 +4845,8 @@ mod tests {
         assert_eq!(payload.changed_byte_count, None);
         assert_eq!(payload.left_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
         assert_eq!(payload.right_bytes.len(), MAX_BINARY_RENDER_BYTES as usize);
+        assert_eq!(payload.left_meta.sha256, None);
+        assert_eq!(payload.right_meta.sha256, None);
     }
 
     #[test]
