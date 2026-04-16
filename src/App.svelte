@@ -129,6 +129,7 @@
   const THEME_SWITCH_DURATION_MS = 140
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
+  const IMMEDIATE_DETAIL_PRIME_COUNT = 2
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
@@ -680,6 +681,67 @@
     })
   }
 
+  function isImmediatePrimeCandidate(entry: DirectoryEntryResult, centerRelativePath: string) {
+    return (
+      entry.relativePath !== centerRelativePath &&
+      entry.status !== 'binary' &&
+      entry.status !== 'tooLarge'
+    )
+  }
+
+  function primeAdjacentDetailDiffs(
+    centerRelativePath: string,
+    revision = compareRevision,
+    entries = filteredDirectoryEntries,
+  ) {
+    if (
+      mode !== 'directory' ||
+      !leftPath ||
+      !rightPath ||
+      IMMEDIATE_DETAIL_PRIME_COUNT <= 0 ||
+      entries.length < 2
+    ) {
+      return
+    }
+
+    const centerIndex = entries.findIndex((entry) => entry.relativePath === centerRelativePath)
+    if (centerIndex === -1) {
+      return
+    }
+
+    const primePaths: string[] = []
+
+    for (
+      let offset = 1;
+      offset < entries.length && primePaths.length < IMMEDIATE_DETAIL_PRIME_COUNT;
+      offset += 1
+    ) {
+      const nextEntry = entries[centerIndex + offset]
+      if (
+        nextEntry &&
+        isImmediatePrimeCandidate(nextEntry, centerRelativePath) &&
+        !primePaths.includes(nextEntry.relativePath)
+      ) {
+        primePaths.push(nextEntry.relativePath)
+      }
+
+      const previousEntry = entries[centerIndex - offset]
+      if (
+        previousEntry &&
+        isImmediatePrimeCandidate(previousEntry, centerRelativePath) &&
+        !primePaths.includes(previousEntry.relativePath)
+      ) {
+        primePaths.push(previousEntry.relativePath)
+      }
+    }
+
+    for (const relativePath of primePaths) {
+      void getOrCreateDetailDiffPromise(relativePath, revision).catch(() => {
+        // Leave neighbor-prime failures to explicit file open handling.
+      })
+    }
+  }
+
   function startBackgroundDiffPreload(
     centerRelativePath: string,
     revision = compareRevision,
@@ -764,6 +826,7 @@
           (filteredDirectoryEntries.length > 0 ? defaultDirectoryEntry(filteredDirectoryEntries) : null)
 
         if (nextEntry) {
+          primeAdjacentDetailDiffs(nextEntry.relativePath, revision)
           void selectEntry(nextEntry, revision)
         }
       }
@@ -1380,9 +1443,12 @@
         )
 
         if (preservedEntry) {
+          primeAdjacentDetailDiffs(preservedEntry.relativePath, compareRevision)
           void selectEntry(preservedEntry, compareRevision)
         } else if (filteredDirectoryEntries.length > 0) {
-          void selectEntry(defaultDirectoryEntry(filteredDirectoryEntries), compareRevision)
+          const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
+          primeAdjacentDetailDiffs(nextEntry.relativePath, compareRevision)
+          void selectEntry(nextEntry, compareRevision)
         } else {
           selectedRelativePath = ''
           activeDiff = null
