@@ -3,6 +3,9 @@
   import { onDestroy, tick } from 'svelte'
   import { loadBinaryPreview } from './api'
   import { formatSize } from './format'
+  import { normalizeWheelDelta } from './app/pane-scroll-sync'
+  import Minimap from './Minimap.svelte'
+  import type { MinimapRow } from './minimap-render'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
   import type { RenderedDiffFragment } from './syntax'
   import type {
@@ -36,6 +39,9 @@
   export let unifiedRenderItems: UnifiedRenderItem[]
   export let sideBySideHunkRanges: DiffHunkRange[]
   export let unifiedHunkRanges: DiffHunkRange[]
+  export let sideBySideMinimapData: MinimapRow[] = []
+  export let unifiedMinimapData: MinimapRow[] = []
+  export let maxLineNumber = 0
   export let diffHeaderContext: DiffHeaderContext
   export let diffFontSize = '11px'
   export let diffRowLineHeight = '14px'
@@ -59,9 +65,6 @@
   let leftPaneGrid: HTMLDivElement | null = null
   let rightPaneGrid: HTMLDivElement | null = null
   let unifiedContentGrid: HTMLDivElement | null = null
-  let leftScrollMarkers: ScrollMarker[] = []
-  let rightScrollMarkers: ScrollMarker[] = []
-  let unifiedScrollMarkers: ScrollMarker[] = []
   let syntaxLanguage: ReturnType<typeof detectSyntaxLanguage> = null
   let sideBySideContentWidth = 0
   let unifiedContentWidth = 0
@@ -72,8 +75,6 @@
   let rowHeightPx = 19
   let lineNumberColumnWidth = 'calc(1ch + 18px)'
   let prefixColumnWidth = 'calc(1ch + 8px)'
-  let scrollMarkerRefreshQueued = false
-  let scrollMarkerObserver: ResizeObserver | null = null
   let splitHorizontalScrollSyncLocked = false
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
@@ -118,13 +119,6 @@
     syntaxKey: string
   }
 
-  interface ScrollMarker {
-    hunkIndex: number
-    top: number
-    height: number
-    kind: 'insert' | 'delete' | 'mixed'
-  }
-
   interface VirtualRange {
     start: number
     end: number
@@ -136,13 +130,22 @@
     hunkIndex: number
     top: number
     height: number
-    kind: ScrollMarker['kind']
+    kind: 'insert' | 'delete' | 'mixed'
+  }
+
+  interface ItemLayout {
+    offsets: number[]
+    total: number
+    anchors: VirtualHunkAnchor[]
   }
 
   const FULL_FILE_VIRTUALIZATION_MIN_ROWS = 200
   const FULL_FILE_VIRTUALIZATION_BASE_OVERSCAN = 40
   const LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS = 600
   const HUGE_FILE_THRESHOLD = 3000
+  const NON_FULL_VIRTUALIZATION_MIN_ITEMS = 200
+  // Collapsed hunk separator row. Matches .collapsed-row: 28px + margin-block 6px 4px.
+  const COLLAPSED_ROW_HEIGHT = 38
 
   const emptyVirtualRange: VirtualRange = {
     start: 0,
@@ -152,6 +155,7 @@
   }
 
   const emptyVirtualAnchors: VirtualHunkAnchor[] = []
+  const emptyItemLayout: ItemLayout = { offsets: [0], total: 0, anchors: [] }
   const plainRenderedFragments = (text: string) =>
     [
       {
@@ -176,6 +180,42 @@
     showFullFile &&
     activeDiff.unified.length > FULL_FILE_VIRTUALIZATION_MIN_ROWS
 
+  $: virtualizeNonFullSideBySide =
+    activeDiff?.contentKind === 'text' &&
+    viewMode === 'sideBySide' &&
+    !showFullFile &&
+    !wrapSideBySideLines &&
+    sideBySideRenderItems.length > NON_FULL_VIRTUALIZATION_MIN_ITEMS
+
+  $: virtualizeNonFullUnified =
+    activeDiff?.contentKind === 'text' &&
+    viewMode === 'unified' &&
+    !showFullFile &&
+    unifiedRenderItems.length > NON_FULL_VIRTUALIZATION_MIN_ITEMS
+
+  $: virtualizeSideBySideActive = virtualizeSideBySide || virtualizeNonFullSideBySide
+  $: virtualizeUnifiedActive = virtualizeUnified || virtualizeNonFullUnified
+
+  $: sideBySideItemLayout =
+    virtualizeNonFullSideBySide && activeDiff?.contentKind === 'text'
+      ? buildSideBySideItemLayout(
+          activeDiff.sideBySide,
+          sideBySideRenderItems,
+          sideBySideHunkRanges,
+          rowHeightPx,
+        )
+      : emptyItemLayout
+
+  $: unifiedItemLayout =
+    virtualizeNonFullUnified && activeDiff?.contentKind === 'text'
+      ? buildUnifiedItemLayout(
+          activeDiff.unified,
+          unifiedRenderItems,
+          unifiedHunkRanges,
+          rowHeightPx,
+        )
+      : emptyItemLayout
+
   $: leftVirtualRange = virtualizeSideBySide
     ? buildVirtualRange(
         activeDiff?.contentKind === 'text' ? activeDiff.sideBySide.length : 0,
@@ -183,7 +223,14 @@
         leftVirtualViewportHeight,
         rowHeightPx,
       )
-    : emptyVirtualRange
+    : virtualizeNonFullSideBySide
+      ? buildVirtualRangeFromLayout(
+          sideBySideItemLayout,
+          leftVirtualScrollTop,
+          leftVirtualViewportHeight,
+          rowHeightPx,
+        )
+      : emptyVirtualRange
 
   $: rightVirtualRange = virtualizeSideBySide
     ? buildVirtualRange(
@@ -192,7 +239,14 @@
         rightVirtualViewportHeight,
         rowHeightPx,
       )
-    : emptyVirtualRange
+    : virtualizeNonFullSideBySide
+      ? buildVirtualRangeFromLayout(
+          sideBySideItemLayout,
+          rightVirtualScrollTop,
+          rightVirtualViewportHeight,
+          rowHeightPx,
+        )
+      : emptyVirtualRange
 
   $: unifiedVirtualRange = virtualizeUnified
     ? buildVirtualRange(
@@ -201,7 +255,14 @@
         unifiedVirtualViewportHeight,
         rowHeightPx,
       )
-    : emptyVirtualRange
+    : virtualizeNonFullUnified
+      ? buildVirtualRangeFromLayout(
+          unifiedItemLayout,
+          unifiedVirtualScrollTop,
+          unifiedVirtualViewportHeight,
+          rowHeightPx,
+        )
+      : emptyVirtualRange
 
   $: leftVisibleSideBySideItems = virtualizeSideBySide
     ? buildVisibleFullFileSideBySideItems(
@@ -210,7 +271,9 @@
         leftVirtualRange.start,
         leftVirtualRange.end,
       )
-    : sideBySideRenderItems
+    : virtualizeNonFullSideBySide
+      ? sideBySideRenderItems.slice(leftVirtualRange.start, leftVirtualRange.end)
+      : sideBySideRenderItems
 
   $: rightVisibleSideBySideItems = virtualizeSideBySide
     ? buildVisibleFullFileSideBySideItems(
@@ -219,7 +282,9 @@
         rightVirtualRange.start,
         rightVirtualRange.end,
       )
-    : sideBySideRenderItems
+    : virtualizeNonFullSideBySide
+      ? sideBySideRenderItems.slice(rightVirtualRange.start, rightVirtualRange.end)
+      : sideBySideRenderItems
 
   $: visibleUnifiedItems = virtualizeUnified
     ? buildVisibleFullFileUnifiedItems(
@@ -228,46 +293,45 @@
         unifiedVirtualRange.start,
         unifiedVirtualRange.end,
       )
-    : unifiedRenderItems
+    : virtualizeNonFullUnified
+      ? unifiedRenderItems.slice(unifiedVirtualRange.start, unifiedVirtualRange.end)
+      : unifiedRenderItems
 
   $: sideBySideVirtualAnchors =
     virtualizeSideBySide && activeDiff?.contentKind === 'text'
       ? buildSideBySideVirtualAnchors(activeDiff.sideBySide, sideBySideHunkRanges, rowHeightPx)
-      : emptyVirtualAnchors
+      : virtualizeNonFullSideBySide
+        ? sideBySideItemLayout.anchors
+        : emptyVirtualAnchors
 
   $: unifiedVirtualAnchors =
     virtualizeUnified && activeDiff?.contentKind === 'text'
       ? buildUnifiedVirtualAnchors(activeDiff.unified, unifiedHunkRanges, rowHeightPx)
-      : emptyVirtualAnchors
+      : virtualizeNonFullUnified
+        ? unifiedItemLayout.anchors
+        : emptyVirtualAnchors
+
+  $: rightPaneMinimapRows = sideBySideMinimapData
 
   $: simplifyVirtualizedContextFragments =
-    activeDiff?.contentKind === 'text' && showFullFile && (virtualizeSideBySide || virtualizeUnified)
+    activeDiff?.contentKind === 'text' && (virtualizeSideBySideActive || virtualizeUnifiedActive)
 
   $: simplifyLargeFullFileFragments =
     activeDiff?.contentKind === 'text' &&
-    showFullFile &&
-    ((virtualizeSideBySide &&
-      activeDiff.sideBySide.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS) ||
-      (virtualizeUnified && activeDiff.unified.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS))
+    ((virtualizeSideBySideActive &&
+      sideBySideRenderItems.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS) ||
+      (virtualizeUnifiedActive &&
+        unifiedRenderItems.length >= LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS))
 
   $: simplifyHugeFileFragments =
     activeDiff?.contentKind === 'text' &&
-    showFullFile &&
-    ((virtualizeSideBySide && activeDiff.sideBySide.length >= HUGE_FILE_THRESHOLD) ||
-      (virtualizeUnified && activeDiff.unified.length >= HUGE_FILE_THRESHOLD))
+    ((virtualizeSideBySideActive && sideBySideRenderItems.length >= HUGE_FILE_THRESHOLD) ||
+      (virtualizeUnifiedActive && unifiedRenderItems.length >= HUGE_FILE_THRESHOLD))
 
   $: syntaxLanguage = activeDiff ? detectSyntaxLanguage(activeDiff.rightLabel) : null
 
   $: {
-    const maxLineNumber = activeDiff
-      ? activeDiff.sideBySide.reduce((maxValue, row) => {
-          const leftLineNumber = row.left?.lineNumber ?? 0
-          const rightLineNumber = row.right?.lineNumber ?? 0
-          return Math.max(maxValue, leftLineNumber, rightLineNumber)
-        }, 0)
-      : 0
     const digitCount = Math.max(1, String(maxLineNumber).length)
-
     lineNumberColumnWidth = `calc(${digitCount}ch + 18px)`
     prefixColumnWidth = 'calc(1ch + 6px)'
   }
@@ -283,24 +347,8 @@
     void updateUnifiedContentWidth()
   }
 
-  $: if (activeDiff?.contentKind === 'text') {
-    viewMode
-    wrapSideBySideLines
-    diffFontSize
-    diffRowLineHeight
-    diffRowHeight
-    sideBySideRenderItems
-    unifiedRenderItems
-    scheduleScrollMarkerRefresh()
-  } else {
-    leftScrollMarkers = []
-    rightScrollMarkers = []
-    unifiedScrollMarkers = []
-  }
-
   $: imageDiff = activeDiff?.contentKind === 'image' ? activeDiff.image ?? null : null
   $: if (activeDiff) { leftImageError = false; rightImageError = false; leftImageRetried = false; rightImageRetried = false }
-
   $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
   $: if (activeDiff?.contentKind !== 'binary') {
     activeBinaryPreviewRequestId += 1
@@ -312,20 +360,12 @@
     leftPaneScroll
     rightPaneScroll
     unifiedScroll
-    leftPaneGrid
-    rightPaneGrid
-    unifiedContentGrid
-    syncScrollMarkerObserver()
-  }
-
-  $: {
-    leftPaneScroll
-    rightPaneScroll
-    unifiedScroll
     sideBySideRenderItems
     unifiedRenderItems
     virtualizeSideBySide
     virtualizeUnified
+    virtualizeNonFullSideBySide
+    virtualizeNonFullUnified
     void tick().then(() => {
       syncVirtualViewportState()
     })
@@ -441,13 +481,30 @@
   for (let i = 0; i < 256; i++) {
     HEX_LOOKUP.push(i.toString(16).toUpperCase().padStart(2, '0'))
   }
-
-  function byteToHex(b: number): string {
-    return HEX_LOOKUP[b]
+  const ASCII_LOOKUP: string[] = []
+  for (let i = 0; i < 256; i++) {
+    ASCII_LOOKUP.push(i >= 32 && i <= 126 ? String.fromCharCode(i) : '.')
   }
 
-  function byteToAscii(b: number): string {
-    return b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'
+  interface BinaryFragment {
+    text: string
+    changed: boolean
+  }
+
+  interface BinaryRowView {
+    offset: string
+    leftHex: BinaryFragment[]
+    leftAscii: BinaryFragment[]
+    rightHex: BinaryFragment[]
+    rightAscii: BinaryFragment[]
+    changed: boolean
+  }
+
+  interface BinaryViewState {
+    mask: Uint8Array
+    rowMask: Uint8Array
+    totalRows: number
+    rowCache: Map<number, BinaryRowView>
   }
 
   function isBinaryRowChangedFromBytes(
@@ -469,43 +526,168 @@
   let binaryHexScroll: HTMLDivElement | null = null
   let binaryVirtualStart = 0
   let binaryVirtualEnd = 0
-  const BINARY_ROW_HEIGHT = 19
-  const BINARY_OVERSCAN = 20
+  let binaryTotalRows = 0
+  let binaryScrollRafId: number | null = null
+  // Per-payload caches. Keyed by BinaryDiffPayload identity so masks + row views
+  // can never leak across file switches. GC reclaims entries when the payload
+  // drops out of the detail cache.
+  const binaryViewStates = new WeakMap<BinaryDiffPayload, BinaryViewState>()
+  const BINARY_ROW_HEIGHT = 22
+  const BINARY_HEADER_HEIGHT = 26
+  const BINARY_OVERSCAN = 32
 
   function computeBinaryTotalRows(diff: BinaryDiffPayload): number {
     const total = Math.max(diff.leftBytes.length, diff.rightBytes.length)
     return Math.ceil(total / diff.bytesPerRow)
   }
 
+  function buildBinaryViewState(diff: BinaryDiffPayload): BinaryViewState {
+    const lb = diff.leftBytes
+    const rb = diff.rightBytes
+    const max = Math.max(lb.length, rb.length)
+    const mask = new Uint8Array(max)
+    const common = Math.min(lb.length, rb.length)
+    for (let i = 0; i < common; i += 1) {
+      if (lb[i] !== rb[i]) mask[i] = 1
+    }
+    for (let i = common; i < max; i += 1) mask[i] = 1
+
+    const bpr = diff.bytesPerRow
+    const totalRows = Math.ceil(max / bpr)
+    const rowMask = new Uint8Array(totalRows)
+    for (let r = 0; r < totalRows; r += 1) {
+      const start = r * bpr
+      const end = Math.min(start + bpr, max)
+      for (let i = start; i < end; i += 1) {
+        if (mask[i]) {
+          rowMask[r] = 1
+          break
+        }
+      }
+    }
+
+    return { mask, rowMask, totalRows, rowCache: new Map() }
+  }
+
+  function getBinaryViewState(diff: BinaryDiffPayload): BinaryViewState {
+    const cached = binaryViewStates.get(diff)
+    if (cached) return cached
+    const state = buildBinaryViewState(diff)
+    binaryViewStates.set(diff, state)
+    return state
+  }
+
+  function buildHexFragments(
+    bytes: number[],
+    rowOffset: number,
+    bytesPerRow: number,
+    mask: Uint8Array,
+  ): BinaryFragment[] {
+    const fragments: BinaryFragment[] = []
+    let cur: BinaryFragment | null = null
+    for (let i = 0; i < bytesPerRow; i += 1) {
+      const idx = rowOffset + i
+      const inRange = idx < bytes.length
+      const changed = inRange && mask[idx] === 1
+      const byteText = inRange ? HEX_LOOKUP[bytes[idx]] : '  '
+      const sep = i === 0 ? '' : i === bytesPerRow / 2 ? '  ' : ' '
+      if (!cur) {
+        cur = { text: sep + byteText, changed }
+      } else if (cur.changed === changed) {
+        cur.text += sep + byteText
+      } else {
+        if (sep) cur.text += sep
+        fragments.push(cur)
+        cur = { text: byteText, changed }
+      }
+    }
+    if (cur) fragments.push(cur)
+    return fragments
+  }
+
+  function buildAsciiFragments(
+    bytes: number[],
+    rowOffset: number,
+    bytesPerRow: number,
+    mask: Uint8Array,
+  ): BinaryFragment[] {
+    const fragments: BinaryFragment[] = []
+    let cur: BinaryFragment | null = null
+    for (let i = 0; i < bytesPerRow; i += 1) {
+      const idx = rowOffset + i
+      const inRange = idx < bytes.length
+      const changed = inRange && mask[idx] === 1
+      const char = inRange ? ASCII_LOOKUP[bytes[idx]] : ' '
+      if (!cur) {
+        cur = { text: char, changed }
+      } else if (cur.changed === changed) {
+        cur.text += char
+      } else {
+        fragments.push(cur)
+        cur = { text: char, changed }
+      }
+    }
+    if (cur) fragments.push(cur)
+    return fragments
+  }
+
+  function getBinaryRowView(rowIndex: number): BinaryRowView | null {
+    if (!binaryDiff) return null
+    const state = getBinaryViewState(binaryDiff)
+    const cached = state.rowCache.get(rowIndex)
+    if (cached) return cached
+
+    const bpr = binaryDiff.bytesPerRow
+    const rowOffset = rowIndex * bpr
+    const view: BinaryRowView = {
+      offset: formatBinaryOffset(rowOffset),
+      leftHex: buildHexFragments(binaryDiff.leftBytes, rowOffset, bpr, state.mask),
+      leftAscii: buildAsciiFragments(binaryDiff.leftBytes, rowOffset, bpr, state.mask),
+      rightHex: buildHexFragments(binaryDiff.rightBytes, rowOffset, bpr, state.mask),
+      rightAscii: buildAsciiFragments(binaryDiff.rightBytes, rowOffset, bpr, state.mask),
+      changed: state.rowMask[rowIndex] === 1,
+    }
+    state.rowCache.set(rowIndex, view)
+    return view
+  }
+
   function updateBinaryVirtualRange() {
     if (!binaryHexScroll || !binaryDiff?.previewLoaded) return
-    const totalRows = computeBinaryTotalRows(binaryDiff)
     const scrollTop = binaryHexScroll.scrollTop
     const viewportHeight = binaryHexScroll.clientHeight || 800
-    const start = Math.max(0, Math.floor(scrollTop / BINARY_ROW_HEIGHT) - BINARY_OVERSCAN)
     const visibleCount = Math.ceil(viewportHeight / BINARY_ROW_HEIGHT)
-    const end = Math.min(totalRows, start + visibleCount + BINARY_OVERSCAN * 2)
+    const rawStart = Math.floor(scrollTop / BINARY_ROW_HEIGHT) - BINARY_OVERSCAN
+    const start = Math.max(0, Math.min(binaryTotalRows, rawStart))
+    const end = Math.min(binaryTotalRows, start + visibleCount + BINARY_OVERSCAN * 2)
     binaryVirtualStart = start
     binaryVirtualEnd = end
   }
 
   function onBinaryHexScroll() {
-    updateBinaryVirtualRange()
+    if (binaryScrollRafId !== null) return
+    binaryScrollRafId = requestAnimationFrame(() => {
+      binaryScrollRafId = null
+      updateBinaryVirtualRange()
+    })
   }
 
-  // Initialize virtual range immediately from data (no DOM needed for first render)
+  // Prime the view state for the current payload (reuses WeakMap entry if
+  // already warmed by preload) and reset the virtual range to the top.
   $: if (binaryDiff?.previewLoaded) {
-    const totalRows = computeBinaryTotalRows(binaryDiff)
+    const state = getBinaryViewState(binaryDiff)
+    binaryTotalRows = state.totalRows
     binaryVirtualStart = 0
-    binaryVirtualEnd = Math.min(totalRows, 100)
+    binaryVirtualEnd = Math.min(binaryTotalRows, 100)
+    void tick().then(() => {
+      if (binaryHexScroll) {
+        binaryHexScroll.scrollTop = 0
+      }
+      updateBinaryVirtualRange()
+    })
   } else {
+    binaryTotalRows = 0
     binaryVirtualStart = 0
     binaryVirtualEnd = 0
-  }
-
-  // Refine to actual viewport once scroll container is mounted
-  $: if (binaryDiff?.previewLoaded && binaryHexScroll) {
-    requestAnimationFrame(() => updateBinaryVirtualRange())
   }
 
   $: if (
@@ -711,6 +893,128 @@
     }
   }
 
+  function buildItemOffsets(
+    itemTypes: ReadonlyArray<{ type: 'row' | 'hunk' }>,
+    rowHeight: number,
+  ): { offsets: number[]; total: number } {
+    const offsets = new Array<number>(itemTypes.length + 1)
+    offsets[0] = 0
+    let cursor = 0
+    for (let index = 0; index < itemTypes.length; index += 1) {
+      cursor += itemTypes[index].type === 'row' ? rowHeight : COLLAPSED_ROW_HEIGHT
+      offsets[index + 1] = cursor
+    }
+    return { offsets, total: cursor }
+  }
+
+  function collectAnchorRanges(
+    items: ReadonlyArray<{ hunkIndex?: number }>,
+  ): Map<number, { firstIndex: number; pastLastIndex: number }> {
+    const ranges = new Map<number, { firstIndex: number; pastLastIndex: number }>()
+    for (let index = 0; index < items.length; index += 1) {
+      const hunkIndex = items[index].hunkIndex
+      if (hunkIndex === undefined) {
+        continue
+      }
+      const existing = ranges.get(hunkIndex)
+      if (existing) {
+        existing.pastLastIndex = index + 1
+      } else {
+        ranges.set(hunkIndex, { firstIndex: index, pastLastIndex: index + 1 })
+      }
+    }
+    return ranges
+  }
+
+  function buildSideBySideItemLayout(
+    rows: FileDiffResult['sideBySide'],
+    items: SideBySideRenderItem[],
+    hunks: DiffHunkRange[],
+    rowHeight: number,
+  ): ItemLayout {
+    const { offsets, total } = buildItemOffsets(items, rowHeight)
+    const anchorRanges = collectAnchorRanges(items)
+    const anchors: VirtualHunkAnchor[] = []
+    for (const [hunkIndex, range] of anchorRanges) {
+      const hunk = hunks[hunkIndex]
+      if (!hunk) continue
+      anchors.push({
+        hunkIndex,
+        top: offsets[range.firstIndex],
+        height: offsets[range.pastLastIndex] - offsets[range.firstIndex],
+        kind: classifySideBySideHunk(rows, hunk),
+      })
+    }
+    return { offsets, total, anchors }
+  }
+
+  function buildUnifiedItemLayout(
+    rows: FileDiffResult['unified'],
+    items: UnifiedRenderItem[],
+    hunks: DiffHunkRange[],
+    rowHeight: number,
+  ): ItemLayout {
+    const { offsets, total } = buildItemOffsets(items, rowHeight)
+    const anchorRanges = collectAnchorRanges(items)
+    const anchors: VirtualHunkAnchor[] = []
+    for (const [hunkIndex, range] of anchorRanges) {
+      const hunk = hunks[hunkIndex]
+      if (!hunk) continue
+      anchors.push({
+        hunkIndex,
+        top: offsets[range.firstIndex],
+        height: offsets[range.pastLastIndex] - offsets[range.firstIndex],
+        kind: classifyUnifiedHunk(rows, hunk),
+      })
+    }
+    return { offsets, total, anchors }
+  }
+
+  function buildVirtualRangeFromLayout(
+    layout: ItemLayout,
+    scrollTop: number,
+    viewportHeight: number,
+    rowHeight: number,
+  ): VirtualRange {
+    const offsets = layout.offsets
+    const itemCount = offsets.length - 1
+    if (itemCount === 0) {
+      return emptyVirtualRange
+    }
+
+    const overscan = getEffectiveOverscan(itemCount)
+    const overscanPx = overscan * rowHeight
+    const rangeTop = Math.max(0, scrollTop - overscanPx)
+    const rangeBottom = scrollTop + viewportHeight + overscanPx
+
+    // largest index with offsets[index] <= rangeTop
+    let lo = 0
+    let hi = itemCount
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1
+      if (offsets[mid] <= rangeTop) lo = mid
+      else hi = mid - 1
+    }
+    const start = lo
+
+    // smallest index with offsets[index] >= rangeBottom
+    lo = start
+    hi = itemCount
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (offsets[mid] >= rangeBottom) hi = mid
+      else lo = mid + 1
+    }
+    const end = Math.min(itemCount, hi)
+
+    return {
+      start,
+      end,
+      topPadding: offsets[start],
+      bottomPadding: Math.max(0, layout.total - offsets[end]),
+    }
+  }
+
   function buildSideBySideVirtualAnchors(
     rows: FileDiffResult['sideBySide'],
     hunks: DiffHunkRange[],
@@ -757,19 +1061,19 @@
       }
 
       if (sawInsert && sawDelete) {
-        return 'mixed' satisfies ScrollMarker['kind']
+        return 'mixed' satisfies VirtualHunkAnchor['kind']
       }
     }
 
     if (sawInsert) {
-      return 'insert' satisfies ScrollMarker['kind']
+      return 'insert' satisfies VirtualHunkAnchor['kind']
     }
 
     if (sawDelete) {
-      return 'delete' satisfies ScrollMarker['kind']
+      return 'delete' satisfies VirtualHunkAnchor['kind']
     }
 
-    return 'mixed' satisfies ScrollMarker['kind']
+    return 'mixed' satisfies VirtualHunkAnchor['kind']
   }
 
   function classifyUnifiedHunk(rows: FileDiffResult['unified'], hunk: DiffHunkRange) {
@@ -792,19 +1096,19 @@
       }
 
       if (sawInsert && sawDelete) {
-        return 'mixed' satisfies ScrollMarker['kind']
+        return 'mixed' satisfies VirtualHunkAnchor['kind']
       }
     }
 
     if (sawInsert) {
-      return 'insert' satisfies ScrollMarker['kind']
+      return 'insert' satisfies VirtualHunkAnchor['kind']
     }
 
     if (sawDelete) {
-      return 'delete' satisfies ScrollMarker['kind']
+      return 'delete' satisfies VirtualHunkAnchor['kind']
     }
 
-    return 'mixed' satisfies ScrollMarker['kind']
+    return 'mixed' satisfies VirtualHunkAnchor['kind']
   }
 
   let virtualSyncRafId: number | null = null
@@ -895,25 +1199,6 @@
       : unifiedScroll.scrollHeight - unifiedScroll.clientHeight > 0.25
   }
 
-  function scheduleScrollMarkerRefresh() {
-    if (scrollMarkerRefreshQueued) {
-      return
-    }
-
-    scrollMarkerRefreshQueued = true
-
-    void tick().then(() => {
-      scrollMarkerRefreshQueued = false
-      updateScrollMarkers()
-    })
-  }
-
-  function updateScrollMarkers() {
-    leftScrollMarkers = []
-    rightScrollMarkers = buildScrollMarkers(rightPaneScroll, rightPaneGrid, rightPaneTrailingSpace)
-    unifiedScrollMarkers = buildScrollMarkers(unifiedScroll, unifiedContentGrid)
-  }
-
   function syncSplitHorizontalScroll(nextScrollLeft: number) {
     if (splitHorizontalScrollSyncLocked) {
       return
@@ -946,6 +1231,149 @@
     element.scrollLeft = nextScrollLeft
   }
 
+  // ─── Smooth wheel scrolling ──────────────────────────────────────────────
+  // RAF-driven scroll animator keyed per element. Each wheel tick adds to the
+  // target offset; a single frame loop eases the element toward it.
+  type SmoothScrollState = {
+    targetTop: number
+    targetLeft: number
+    frame: number | null
+  }
+  const smoothScrollStates = new WeakMap<HTMLElement, SmoothScrollState>()
+  const SMOOTH_FACTOR = 0.22
+  const SMOOTH_MIN_STEP = 1.25
+
+  function scheduleSmoothScroll(
+    element: HTMLElement | null,
+    addDx: number,
+    addDy: number,
+    onStep?: () => void,
+  ) {
+    if (!element) return
+    const maxTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    const maxLeft = Math.max(0, element.scrollWidth - element.clientWidth)
+    let state = smoothScrollStates.get(element)
+    if (!state) {
+      state = { targetTop: element.scrollTop, targetLeft: element.scrollLeft, frame: null }
+      smoothScrollStates.set(element, state)
+    }
+    // Keep target honest if the element was scrolled by other means since we last
+    // animated (e.g. jump-to-hunk, sync from the other pane).
+    if (state.frame === null) {
+      state.targetTop = element.scrollTop
+      state.targetLeft = element.scrollLeft
+    }
+    state.targetTop = Math.min(maxTop, Math.max(0, state.targetTop + addDy))
+    state.targetLeft = Math.min(maxLeft, Math.max(0, state.targetLeft + addDx))
+    if (state.frame !== null) return
+    const tick = () => {
+      const s = state!
+      s.frame = null
+      const remTop = s.targetTop - element.scrollTop
+      const remLeft = s.targetLeft - element.scrollLeft
+      const absTop = Math.abs(remTop)
+      const absLeft = Math.abs(remLeft)
+      if (absTop < 0.5 && absLeft < 0.5) {
+        element.scrollTop = s.targetTop
+        element.scrollLeft = s.targetLeft
+        onStep?.()
+        return
+      }
+      if (absTop >= 0.5) {
+        const stepY =
+          absTop < SMOOTH_MIN_STEP ? remTop : remTop * SMOOTH_FACTOR + Math.sign(remTop) * 0.4
+        element.scrollTop = element.scrollTop + stepY
+      }
+      if (absLeft >= 0.5) {
+        const stepX =
+          absLeft < SMOOTH_MIN_STEP ? remLeft : remLeft * SMOOTH_FACTOR + Math.sign(remLeft) * 0.4
+        element.scrollLeft = element.scrollLeft + stepX
+      }
+      onStep?.()
+      s.frame = requestAnimationFrame(tick)
+    }
+    state.frame = requestAnimationFrame(tick)
+  }
+
+  function isHorizontalWheelIntent(event: WheelEvent) {
+    return Math.abs(event.deltaX) > Math.abs(event.deltaY)
+  }
+
+  function getHorizontalWheelDelta(event: WheelEvent) {
+    const primary = isHorizontalWheelIntent(event) ? event.deltaX : event.deltaY
+    return normalizeWheelDelta(primary, event.deltaMode)
+  }
+
+  function handleSplitPaneWheel(event: WheelEvent, side: 'left' | 'right') {
+    if (event.ctrlKey) return
+    const horizontal = side === 'left' ? leftPaneHorizontalScroll : rightPaneHorizontalScroll
+    const wantsHorizontal = event.shiftKey || isHorizontalWheelIntent(event)
+    if (wantsHorizontal && horizontal) {
+      const maxLeft = Math.max(0, horizontal.scrollWidth - horizontal.clientWidth)
+      if (maxLeft > 0.5) {
+        event.preventDefault()
+        const dx = getHorizontalWheelDelta(event)
+        scheduleSmoothScroll(horizontal, dx, 0, () => {
+          syncSplitHorizontalScroll(horizontal.scrollLeft)
+        })
+        return
+      }
+    }
+    // Non-horizontal.
+    // If sync is on the App-level handler already animates + mirrors.
+    if (syncSideBySideScroll) {
+      syncPaneWheel(event, side)
+      return
+    }
+    // Sync off → smooth the active pane locally so wheel still feels eased.
+    const pane = side === 'left' ? leftPaneScroll : rightPaneScroll
+    if (!pane || Math.abs(event.deltaY) < 0.1) return
+    event.preventDefault()
+    const dy = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    scheduleSmoothScroll(pane, 0, dy)
+  }
+
+  function handleUnifiedPaneWheel(event: WheelEvent) {
+    if (event.ctrlKey || !unifiedScroll) return
+    const wantsHorizontal = event.shiftKey || isHorizontalWheelIntent(event)
+    if (wantsHorizontal && unifiedHorizontalScroll) {
+      const maxLeft = Math.max(
+        0,
+        unifiedHorizontalScroll.scrollWidth - unifiedHorizontalScroll.clientWidth,
+      )
+      if (maxLeft > 0.5) {
+        event.preventDefault()
+        const dx = getHorizontalWheelDelta(event)
+        scheduleSmoothScroll(unifiedHorizontalScroll, dx, 0, () => {
+          syncUnifiedHorizontalScroll(unifiedHorizontalScroll!.scrollLeft)
+        })
+        return
+      }
+    }
+    if (Math.abs(event.deltaY) < 0.1) return
+    event.preventDefault()
+    const dy = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    scheduleSmoothScroll(unifiedScroll, 0, dy)
+  }
+
+  function handleBinaryWheel(event: WheelEvent) {
+    if (event.ctrlKey || !binaryHexScroll) return
+    const wantsHorizontal = event.shiftKey || isHorizontalWheelIntent(event)
+    if (wantsHorizontal) {
+      const maxLeft = Math.max(0, binaryHexScroll.scrollWidth - binaryHexScroll.clientWidth)
+      if (maxLeft > 0.5) {
+        event.preventDefault()
+        const dx = getHorizontalWheelDelta(event)
+        scheduleSmoothScroll(binaryHexScroll, dx, 0)
+        return
+      }
+    }
+    if (Math.abs(event.deltaY) < 0.1) return
+    event.preventDefault()
+    const dy = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    scheduleSmoothScroll(binaryHexScroll, 0, dy)
+  }
+
   function getBottomScrollbarFootprint(...elements: Array<HTMLDivElement | null>) {
     const measured = elements.reduce((maxValue, element) => {
       if (!element) {
@@ -974,74 +1402,6 @@
     return element.getBoundingClientRect().height
   }
 
-  function buildScrollMarkers(
-    scrollContainer: HTMLDivElement | null,
-    contentRoot: HTMLDivElement | null,
-    trailingSpace = 0,
-  ) {
-    if (!scrollContainer || !contentRoot) {
-      return []
-    }
-
-    const scrollHeight = Math.max(0, contentRoot.scrollHeight - trailingSpace)
-
-    if (scrollHeight <= 0) {
-      return []
-    }
-
-    const nodes = Array.from(contentRoot.querySelectorAll<HTMLElement>('[data-diff-index]'))
-
-    if (nodes.length === 0) {
-      return []
-    }
-
-    const markerRanges = new Map<number, { top: number; bottom: number; kinds: Set<ScrollMarker['kind']> }>()
-
-    for (const node of nodes) {
-      const rawIndex = Number(node.dataset.diffIndex)
-
-      if (!Number.isFinite(rawIndex)) {
-        continue
-      }
-
-      const hunkIndex = rawIndex
-      const top = node.offsetTop
-      const bottom = top + node.offsetHeight
-      const kind = getScrollMarkerKind(node)
-      const currentRange = markerRanges.get(hunkIndex)
-
-      if (currentRange) {
-        currentRange.top = Math.min(currentRange.top, top)
-        currentRange.bottom = Math.max(currentRange.bottom, bottom)
-        currentRange.kinds.add(kind)
-        continue
-      }
-
-      markerRanges.set(hunkIndex, { top, bottom, kinds: new Set([kind]) })
-    }
-
-    return [...markerRanges.entries()]
-      .sort((left, right) => left[0] - right[0])
-      .map(([hunkIndex, range]) => ({
-        hunkIndex,
-        top: range.top / scrollHeight,
-        height: Math.max((range.bottom - range.top) / scrollHeight, 0.004),
-        kind: range.kinds.size === 1 ? [...range.kinds][0] : 'mixed',
-      }))
-  }
-
-  function getScrollMarkerKind(node: HTMLElement): ScrollMarker['kind'] {
-    if (node.classList.contains('insert')) {
-      return 'insert'
-    }
-
-    if (node.classList.contains('delete')) {
-      return 'delete'
-    }
-
-    return 'mixed'
-  }
-
   function isChangedSideBySideRow(item: SideBySideRenderItem) {
     if (!item.row) {
       return false
@@ -1054,47 +1414,7 @@
     return item.row?.change !== 'context'
   }
 
-  function syncScrollMarkerObserver() {
-    if (typeof ResizeObserver === 'undefined') {
-      return
-    }
-
-    if (!scrollMarkerObserver) {
-      scrollMarkerObserver = new ResizeObserver(() => {
-        scheduleScrollMarkerRefresh()
-      })
-    }
-
-    scrollMarkerObserver.disconnect()
-
-    if (leftPaneScroll) {
-      scrollMarkerObserver.observe(leftPaneScroll)
-    }
-
-    if (rightPaneScroll) {
-      scrollMarkerObserver.observe(rightPaneScroll)
-    }
-
-    if (unifiedScroll) {
-      scrollMarkerObserver.observe(unifiedScroll)
-    }
-
-    if (leftPaneGrid) {
-      scrollMarkerObserver.observe(leftPaneGrid)
-    }
-
-    if (rightPaneGrid) {
-      scrollMarkerObserver.observe(rightPaneGrid)
-    }
-
-    if (unifiedContentGrid) {
-      scrollMarkerObserver.observe(unifiedContentGrid)
-    }
-  }
-
   onDestroy(() => {
-    scrollMarkerObserver?.disconnect()
-
     if (virtualSyncRafId !== null) {
       cancelAnimationFrame(virtualSyncRafId)
       virtualSyncRafId = null
@@ -1131,7 +1451,6 @@
     syncVirtualViewportState()
     void updateSideBySideContentMetrics()
     void updateUnifiedContentWidth()
-    scheduleScrollMarkerRefresh()
   }}
 />
 
@@ -1181,7 +1500,7 @@
             <span>Scrolling may be less responsive due to syntax highlighting on a large file.</span>
           {:else}
             <strong>Large file optimization active</strong>
-            <span>Full-file view is simplifying syntax and inline highlights to keep scrolling responsive.</span>
+            <span>Simplifying syntax and inline highlights to keep scrolling responsive.</span>
           {/if}
         </div>
       {/if}
@@ -1202,7 +1521,7 @@
             <div
               bind:this={leftPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-left"
-              on:wheel={(event) => syncPaneWheel(event, 'left')}
+              on:wheel={(event) => handleSplitPaneWheel(event, 'left')}
               on:scroll={() => {
                 throttledVirtualViewportSync()
                 syncPaneScroll('left')
@@ -1219,13 +1538,13 @@
                   data-pane-content-root="true"
                   style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
                   style:padding-bottom={leftPaneTrailingSpace ? `${leftPaneTrailingSpace}px` : undefined}
-                  style:position={virtualizeSideBySide ? 'relative' : undefined}
+                  style:position={virtualizeSideBySideActive ? 'relative' : undefined}
                 >
-                {#if (!virtualizeSideBySide && sideBySideRenderItems.length === 0) || (virtualizeSideBySide && activeDiff.sideBySide.length === 0)}
+                {#if sideBySideRenderItems.length === 0 && (!virtualizeSideBySide || activeDiff.sideBySide.length === 0)}
                   <div class="empty-inline-state">No changed lines.</div>
                 {/if}
 
-                {#if virtualizeSideBySide}
+                {#if virtualizeSideBySideActive}
                   {#each sideBySideVirtualAnchors as anchor}
                     <div
                       aria-hidden="true"
@@ -1242,7 +1561,7 @@
                   {/if}
                 {/if}
 
-                {#each leftVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? leftVirtualRange.start + visibleIndex : visibleIndex)}
+                {#each leftVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySideActive ? leftVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
                     <div
                       class:current-diff-target={item.hunkIndex === currentDiffHunk}
@@ -1255,8 +1574,8 @@
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!item.row.left}
                       class={`diff-row ${item.row.left?.change ?? item.row.right?.change ?? 'context'}`}
-                      data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
-                      data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                      data-diff-anchor={virtualizeSideBySideActive ? undefined : item.isAnchor ? 'true' : undefined}
+                      data-diff-index={virtualizeSideBySideActive ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                     >
                       {#if item.row.left}
                         <span class="line-number">{item.row.left.lineNumber ?? ''}</span>
@@ -1280,7 +1599,7 @@
                   {/if}
                 {/each}
 
-                {#if virtualizeSideBySide && leftVirtualRange.bottomPadding > 0}
+                {#if virtualizeSideBySideActive && leftVirtualRange.bottomPadding > 0}
                   <div aria-hidden="true" class="virtual-spacer" style:height={`${leftVirtualRange.bottomPadding}px`}></div>
                 {/if}
                 </div>
@@ -1310,7 +1629,7 @@
             <div
               bind:this={rightPaneScroll}
               class="pane-vertical-scroll pane-vertical-scroll-right"
-              on:wheel={(event) => syncPaneWheel(event, 'right')}
+              on:wheel={(event) => handleSplitPaneWheel(event, 'right')}
               on:scroll={() => {
                 throttledVirtualViewportSync()
                 syncPaneScroll('right')
@@ -1327,13 +1646,13 @@
                   data-pane-content-root="true"
                   style:min-width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : undefined}
                   style:padding-bottom={rightPaneTrailingSpace ? `${rightPaneTrailingSpace}px` : undefined}
-                  style:position={virtualizeSideBySide ? 'relative' : undefined}
+                  style:position={virtualizeSideBySideActive ? 'relative' : undefined}
                 >
-                {#if (!virtualizeSideBySide && sideBySideRenderItems.length === 0) || (virtualizeSideBySide && activeDiff.sideBySide.length === 0)}
+                {#if sideBySideRenderItems.length === 0 && (!virtualizeSideBySide || activeDiff.sideBySide.length === 0)}
                   <div class="empty-inline-state">No changed lines.</div>
                 {/if}
 
-                {#if virtualizeSideBySide}
+                {#if virtualizeSideBySideActive}
                   {#each sideBySideVirtualAnchors as anchor}
                     <div
                       aria-hidden="true"
@@ -1350,7 +1669,7 @@
                   {/if}
                 {/if}
 
-                {#each rightVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySide ? rightVirtualRange.start + visibleIndex : visibleIndex)}
+                {#each rightVisibleSideBySideItems as item, visibleIndex (virtualizeSideBySideActive ? rightVirtualRange.start + visibleIndex : visibleIndex)}
                   {#if item.type === 'hunk'}
                     <div
                       class:current-diff-target={item.hunkIndex === currentDiffHunk}
@@ -1363,8 +1682,8 @@
                       class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                       class:gap-row={!item.row.right}
                       class={`diff-row ${item.row.right?.change ?? item.row.left?.change ?? 'context'}`}
-                      data-diff-anchor={virtualizeSideBySide ? undefined : item.isAnchor ? 'true' : undefined}
-                      data-diff-index={virtualizeSideBySide ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
+                      data-diff-anchor={virtualizeSideBySideActive ? undefined : item.isAnchor ? 'true' : undefined}
+                      data-diff-index={virtualizeSideBySideActive ? undefined : isChangedSideBySideRow(item) ? item.hunkIndex : undefined}
                     >
                       {#if item.row.right}
                         <span class="line-number">{item.row.right.lineNumber ?? ''}</span>
@@ -1388,7 +1707,7 @@
                   {/if}
                 {/each}
 
-                {#if virtualizeSideBySide && rightVirtualRange.bottomPadding > 0}
+                {#if virtualizeSideBySideActive && rightVirtualRange.bottomPadding > 0}
                   <div aria-hidden="true" class="virtual-spacer" style:height={`${rightVirtualRange.bottomPadding}px`}></div>
                 {/if}
                 </div>
@@ -1405,21 +1724,11 @@
                 style:width={!wrapSideBySideLines && sideBySideContentWidth ? `${sideBySideContentWidth}px` : '100%'}
               ></div>
             </div>
-            <div class="scroll-marker-overlay split-scroll-marker-overlay">
-              <div class="scroll-marker-rail">
-                {#each rightScrollMarkers as marker}
-                  <button
-                    aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                    class:active={marker.hunkIndex === currentDiffHunk}
-                    class={`scroll-marker ${marker.kind}`}
-                    style:top={`${marker.top * 100}%`}
-                    style:height={`${marker.height * 100}%`}
-                    type="button"
-                    on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                  ></button>
-                {/each}
-              </div>
-            </div>
+            <Minimap
+              rows={rightPaneMinimapRows}
+              scrollContainer={rightPaneScroll}
+              onScrollTo={(top) => { if (rightPaneScroll) rightPaneScroll.scrollTop = top }}
+            />
           </div>
         </section>
       </div>
@@ -1428,6 +1737,7 @@
         <div
           bind:this={unifiedScroll}
           class="pane-vertical-scroll unified-vertical-scroll"
+          on:wheel={handleUnifiedPaneWheel}
           on:scroll={() => {
             throttledVirtualViewportSync()
             scheduleScrollNavigationRefresh()
@@ -1443,13 +1753,13 @@
               class="unified-content-grid"
               data-pane-content-root="true"
               style:min-width={unifiedContentWidth ? `${unifiedContentWidth}px` : undefined}
-              style:position={virtualizeUnified ? 'relative' : undefined}
+              style:position={virtualizeUnifiedActive ? 'relative' : undefined}
             >
-            {#if (!virtualizeUnified && unifiedRenderItems.length === 0) || (virtualizeUnified && activeDiff.unified.length === 0)}
+            {#if unifiedRenderItems.length === 0 && (!virtualizeUnified || activeDiff.unified.length === 0)}
               <div class="empty-inline-state">No changed lines.</div>
             {/if}
 
-            {#if virtualizeUnified}
+            {#if virtualizeUnifiedActive}
               {#each unifiedVirtualAnchors as anchor}
                 <div
                   aria-hidden="true"
@@ -1466,7 +1776,7 @@
               {/if}
             {/if}
 
-            {#each visibleUnifiedItems as item, visibleIndex (virtualizeUnified ? unifiedVirtualRange.start + visibleIndex : visibleIndex)}
+            {#each visibleUnifiedItems as item, visibleIndex (virtualizeUnifiedActive ? unifiedVirtualRange.start + visibleIndex : visibleIndex)}
               {#if item.type === 'hunk'}
                 <div
                   class:current-diff-target={item.hunkIndex === currentDiffHunk}
@@ -1478,8 +1788,8 @@
                 <div
                   class:current-diff-target={item.isAnchor && item.hunkIndex === currentDiffHunk}
                   class={`unified-row ${item.row.change}`}
-                  data-diff-anchor={virtualizeUnified ? undefined : item.isAnchor ? 'true' : undefined}
-                  data-diff-index={virtualizeUnified ? undefined : isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
+                  data-diff-anchor={virtualizeUnifiedActive ? undefined : item.isAnchor ? 'true' : undefined}
+                  data-diff-index={virtualizeUnifiedActive ? undefined : isChangedUnifiedRow(item) ? item.hunkIndex : undefined}
                 >
                   <span class="line-number">{item.row.leftLineNumber ?? ''}</span>
                   <span class="line-number">{item.row.rightLineNumber ?? ''}</span>
@@ -1498,27 +1808,17 @@
               {/if}
             {/each}
 
-            {#if virtualizeUnified && unifiedVirtualRange.bottomPadding > 0}
+            {#if virtualizeUnifiedActive && unifiedVirtualRange.bottomPadding > 0}
               <div aria-hidden="true" class="virtual-spacer" style:height={`${unifiedVirtualRange.bottomPadding}px`}></div>
             {/if}
             </div>
           </div>
-          <div class="scroll-marker-overlay">
-            <div class="scroll-marker-rail">
-              {#each unifiedScrollMarkers as marker}
-                <button
-                  aria-label={`Jump to change ${marker.hunkIndex + 1}`}
-                  class:active={marker.hunkIndex === currentDiffHunk}
-                  class={`scroll-marker ${marker.kind}`}
-                  style:top={`${marker.top * 100}%`}
-                  style:height={`${marker.height * 100}%`}
-                  type="button"
-                  on:click={() => scrollDiffHunkIntoView(marker.hunkIndex)}
-                ></button>
-              {/each}
-            </div>
-          </div>
         </div>
+        <Minimap
+          rows={unifiedMinimapData}
+          scrollContainer={unifiedScroll}
+          onScrollTo={(top) => { if (unifiedScroll) unifiedScroll.scrollTop = top }}
+        />
         <div
           bind:this={unifiedBottomScrollbar}
           aria-hidden="true"
@@ -1727,7 +2027,12 @@
         </div>
 
         <div class="binary-hex-shell">
-          <div class="binary-hex-scroll" bind:this={binaryHexScroll} on:scroll={onBinaryHexScroll}>
+          <div
+            class="binary-hex-scroll"
+            bind:this={binaryHexScroll}
+            on:scroll={onBinaryHexScroll}
+            on:wheel={handleBinaryWheel}
+          >
             {#if binaryDiff}
               {#if !binaryDiff.previewLoaded}
                 <div class="empty-inline-state binary-empty-state">
@@ -1736,89 +2041,52 @@
                       ? 'Loading binary preview...'
                       : 'Binary preview is not available yet.')}
                 </div>
-              {:else}
-                {@const totalRows = computeBinaryTotalRows(binaryDiff)}
-                {@const totalHeight = totalRows * BINARY_ROW_HEIGHT}
-                {#if totalRows === 0}
+              {:else if binaryTotalRows === 0}
                 <div class="empty-inline-state binary-empty-state">
                   {binaryDiff.truncated
                     ? 'Binary content is too large to render as hex.'
                     : 'No byte differences.'}
                 </div>
-                {:else}
-                <div class="binary-hex-table" style="display: block; height: {totalHeight + 24}px; position: relative;">
-                  <div class="binary-hex-header">
-                    <span class="binary-hex-cell binary-offset-header">Offset</span>
-                    <span class="binary-hex-cell binary-group-header">Left hex</span>
-                    <span class="binary-hex-cell binary-group-header">Left ASCII</span>
-                    <span class="binary-hex-cell binary-group-header">Right hex</span>
-                    <span class="binary-hex-cell binary-group-header">Right ASCII</span>
+              {:else}
+                <div
+                  class="binary-hex-table"
+                  style:height={`${BINARY_HEADER_HEIGHT + binaryTotalRows * BINARY_ROW_HEIGHT}px`}
+                >
+                  <div class="binary-hex-header" style:height={`${BINARY_HEADER_HEIGHT}px`}>
+                    <span class="binary-hex-cell binary-col-offset">Offset</span>
+                    <span class="binary-hex-cell binary-col-hex">Left hex</span>
+                    <span class="binary-hex-cell binary-col-ascii">Left ascii</span>
+                    <span class="binary-hex-cell binary-col-hex">Right hex</span>
+                    <span class="binary-hex-cell binary-col-ascii">Right ascii</span>
                   </div>
 
-                  <div style="position: absolute; top: {24 + binaryVirtualStart * BINARY_ROW_HEIGHT}px; left: 0; right: 0;">
-                    {#each { length: binaryVirtualEnd - binaryVirtualStart } as _, i}
-                      {@const rowIndex = binaryVirtualStart + i}
-                      {@const rowOffset = rowIndex * binaryDiff.bytesPerRow}
-                      {@const rowChanged = isBinaryRowChangedFromBytes(binaryDiff.leftBytes, binaryDiff.rightBytes, rowOffset, binaryDiff.bytesPerRow)}
-                      <div class:changed={rowChanged} class="binary-hex-row">
-                        <span class="binary-hex-cell binary-offset-cell">{formatBinaryOffset(rowOffset)}</span>
-
-                        <span class="binary-hex-cell binary-byte-group">
-                          {#each { length: binaryDiff.bytesPerRow } as _, ci}
-                            {@const idx = rowOffset + ci}
-                            {@const lb = idx < binaryDiff.leftBytes.length ? binaryDiff.leftBytes[idx] : -1}
-                            {@const rb = idx < binaryDiff.rightBytes.length ? binaryDiff.rightBytes[idx] : -1}
-                            {@const cellChanged = lb !== rb}
-                            <span
-                              class:changed={cellChanged}
-                              class="binary-byte binary-hex-byte"
-                              title={lb >= 0 ? byteToHex(lb) : ''}
-                            >
-                              {lb >= 0 ? byteToHex(lb) : '\u00a0\u00a0'}
-                            </span>
-                          {/each}
-                        </span>
-
-                        <span class="binary-hex-cell binary-byte-group binary-ascii-group">
-                          {#each { length: binaryDiff.bytesPerRow } as _, ci}
-                            {@const idx = rowOffset + ci}
-                            {@const lb = idx < binaryDiff.leftBytes.length ? binaryDiff.leftBytes[idx] : -1}
-                            {@const rb = idx < binaryDiff.rightBytes.length ? binaryDiff.rightBytes[idx] : -1}
-                            {@const cellChanged = lb !== rb}
-                            <span class:changed={cellChanged} class="binary-byte binary-ascii-byte">
-                              {lb >= 0 ? byteToAscii(lb) : '\u00a0'}
-                            </span>
-                          {/each}
-                        </span>
-
-                        <span class="binary-hex-cell binary-byte-group">
-                          {#each { length: binaryDiff.bytesPerRow } as _, ci}
-                            {@const idx = rowOffset + ci}
-                            {@const lb = idx < binaryDiff.leftBytes.length ? binaryDiff.leftBytes[idx] : -1}
-                            {@const rb = idx < binaryDiff.rightBytes.length ? binaryDiff.rightBytes[idx] : -1}
-                            {@const cellChanged = lb !== rb}
-                            <span
-                              class:changed={cellChanged}
-                              class="binary-byte binary-hex-byte"
-                              title={rb >= 0 ? byteToHex(rb) : ''}
-                            >
-                              {rb >= 0 ? byteToHex(rb) : '\u00a0\u00a0'}
-                            </span>
-                          {/each}
-                        </span>
-
-                        <span class="binary-hex-cell binary-byte-group binary-ascii-group">
-                          {#each { length: binaryDiff.bytesPerRow } as _, ci}
-                            {@const idx = rowOffset + ci}
-                            {@const lb = idx < binaryDiff.leftBytes.length ? binaryDiff.leftBytes[idx] : -1}
-                            {@const rb = idx < binaryDiff.rightBytes.length ? binaryDiff.rightBytes[idx] : -1}
-                            {@const cellChanged = lb !== rb}
-                            <span class:changed={cellChanged} class="binary-byte binary-ascii-byte">
-                              {rb >= 0 ? byteToAscii(rb) : '\u00a0'}
-                            </span>
-                          {/each}
-                        </span>
-                      </div>
+                  <div
+                    class="binary-hex-rows"
+                    style:top={`${BINARY_HEADER_HEIGHT + binaryVirtualStart * BINARY_ROW_HEIGHT}px`}
+                  >
+                    {#each { length: binaryVirtualEnd - binaryVirtualStart } as _, i (binaryVirtualStart + i)}
+                      {@const view = getBinaryRowView(binaryVirtualStart + i)}
+                      {#if view}
+                        <div
+                          class:changed={view.changed}
+                          class="binary-hex-row"
+                          style:height={`${BINARY_ROW_HEIGHT}px`}
+                        >
+                          <span class="binary-hex-cell binary-col-offset">{view.offset}</span>
+                          <span class="binary-hex-cell binary-col-hex">
+                            {#each view.leftHex as fragment}<span class:changed={fragment.changed}>{fragment.text}</span>{/each}
+                          </span>
+                          <span class="binary-hex-cell binary-col-ascii">
+                            {#each view.leftAscii as fragment}<span class:changed={fragment.changed}>{fragment.text}</span>{/each}
+                          </span>
+                          <span class="binary-hex-cell binary-col-hex">
+                            {#each view.rightHex as fragment}<span class:changed={fragment.changed}>{fragment.text}</span>{/each}
+                          </span>
+                          <span class="binary-hex-cell binary-col-ascii">
+                            {#each view.rightAscii as fragment}<span class:changed={fragment.changed}>{fragment.text}</span>{/each}
+                          </span>
+                        </div>
+                      {/if}
                     {/each}
                   </div>
                 </div>
@@ -1831,7 +2099,7 @@
     {:else}
       <div class="message-card">{activeDiff.summary}</div>
     {/if}
-    {#if detailLoading}
+    {#if loading || detailLoading}
       <div class="viewer-loading">Refreshing diff...</div>
     {/if}
   {:else if detailLoading}

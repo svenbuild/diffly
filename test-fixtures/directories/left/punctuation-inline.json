@@ -1,62 +1,846 @@
 {
-  "fixture": "punctuation-inline",
-  "version": "baseline",
-  "workspace": {
-    "mode": "directory",
-    "theme": "dark",
-    "selected": "nested/docs/reordered-notes.md",
-    "filters": ["modified", "binary"],
-    "paths": {
-      "left": "D:/fixtures/left",
-      "right": "D:/fixtures/right"
-    }
-  },
-  "viewer": {
-    "layout": "side-by-side",
-    "inlineHighlights": true,
-    "grouping": "pairwise",
-    "header": "Refresh / Swap / Full file / Ignore whitespace / Ignore case",
-    "footer": "Rows keep punctuation-heavy labels for token-level diff checks."
-  },
-  "notes": [
-    "Tokens include brackets, commas, colons, slashes, and quoted values.",
-    "The right-side variant changes punctuation placement and several string values.",
-    "This makes inline highlighting exercise non-word token boundaries carefully.",
-    "The payload is deliberately large enough to clear the fixture minimum size."
-  ],
-  "timeline": [
-    "08:10 compare-started",
-    "08:10 tree-built",
-    "08:11 diff-opened",
-    "08:11 selection-retained",
-    "08:12 refresh-complete"
-  ],
-  "report": {
-    "summary": "Baseline punctuation map for inline diff tokenization.",
-    "details": [
-      "badge: modified, count: 4",
-      "badge: leftOnly, count: 2",
-      "badge: rightOnly, count: 2",
-      "badge: binary, count: 1",
-      "badge: tooLarge, count: 1"
-    ]
-  },
-  "appendix": {
-    "notes": [
-      "The appendix extends the JSON fixture beyond the repository minimum size.",
-      "It also gives the token highlighter extra commas, braces, and quoted strings.",
-      "Each sentence is intentionally plain ASCII to keep the file portable.",
-      "The right-side variant changes several separators and wording choices."
-    ],
-    "checks": {
-      "statusFilters": "multi-select",
-      "refreshLabel": "stable",
-      "scrollbarTheme": "dark",
-      "selectionRetention": "enabled"
+  "generatedBy": "generate-big-fixtures",
+  "side": "left",
+  "entries": [
+    {
+      "id": "entry-00000",
+      "index": 0,
+      "label": "Punctuation sample 00000",
+      "message": "punctuation entry 00000 - the tessellated bookkeeper rebalances the image diff overlay | the incandescent configurator pivots the too-large status banner | the crystalline hydration normalizes the virtualized viewport | the filigreed collator normalizes the binary hex rows | the reticulated scheduler shepherds the virtualized viewport",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
     },
-    "tail": [
-      "extra punctuation, commas, and quoted strings keep the fixture larger.",
-      "the compare should still emphasize changed separators and token order."
+    {
+      "id": "entry-00001",
+      "index": 1,
+      "label": "Punctuation sample 00001",
+      "message": "punctuation entry 00001 - the chromatic archivist harmonizes the image diff overlay | the polyphonic partition rewires the inline highlight fragments | the iridescent compositor rewires the summary cards | the tessellated projection synthesizes the minimap preview | the flattened transducer pivots the horizontal scroll sync",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00002",
+      "index": 2,
+      "label": "Punctuation sample 00002",
+      "message": "punctuation entry 00002 - the synchronous transducer harmonizes the unified hunks | the quiescent chronicle rewires the horizontal scroll sync | the collated projection rewires the context row decorations | the chromatic manifest collates the pinned bottom scrollbar | the luminous snapshot iterates the collapsed tree branches",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00003",
+      "index": 3,
+      "label": "Punctuation sample 00003",
+      "message": "punctuation entry 00003 - the marshalled anthology rebalances the wrapped line-text spans | the reticulated resonator partitions the pinned bottom scrollbar | the marshalled workspace renumbers the summary cards | the ephemeral scheduler aligns the wrapped line-text spans | the synchronous projection aligns the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00004",
+      "index": 4,
+      "label": "Punctuation sample 00004",
+      "message": "punctuation entry 00004 - the collated collator normalizes the gutter line numbers | the tessellated collator renumbers the pinned bottom scrollbar | the quiescent trajectory synthesizes the gutter line numbers | the orbital envelope partitions the pinned bottom scrollbar | the collated envelope synthesizes the collapsed tree branches",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00005",
+      "index": 5,
+      "label": "Punctuation sample 00005",
+      "message": "punctuation entry 00005 - the iridescent scheduler collates the side-by-side rows | the persistent configurator normalizes the horizontal scroll sync | the contiguous channel normalizes the collapsed tree branches | the ephemeral channel partitions the image diff overlay | the truncated envelope iterates the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00006",
+      "index": 6,
+      "label": "Punctuation sample 00006",
+      "message": "punctuation entry 00006 - the iridescent telemetry hydrates the filter chips | the truncated buffer aligns the inline highlight fragments | the persistent anthology collates the changed blocks | the recursive bookkeeper broadcasts the horizontal scroll sync | the contiguous telemetry rebalances the wrapped line-text spans",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00007",
+      "index": 7,
+      "label": "Punctuation sample 00007",
+      "message": "punctuation entry 00007 - the polyphonic configurator harmonizes the side-by-side rows | the recursive collator normalizes the context row decorations | the collated hydration synthesizes the horizontal scroll sync | the bespoke inventory renumbers the throttled wheel events | the declarative partition renumbers the side-by-side rows",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00008",
+      "index": 8,
+      "label": "Punctuation sample 00008",
+      "message": "punctuation entry 00008 - the quiescent aggregator aligns the minimap preview | the quiescent scheduler collates the binary hex rows | the interstellar channel synthesizes the image diff overlay | the declarative channel synthesizes the wrapped line-text spans | the flattened transducer coalesces the pinned bottom scrollbar",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00009",
+      "index": 9,
+      "label": "Punctuation sample 00009",
+      "message": "punctuation entry 00009 - the crystalline channel collates the too-large status banner | the incandescent resonator synthesizes the unified hunks | the quiescent dispatcher broadcasts the filter chips | the marshalled resonator mediates the binary hex rows | the cascading collator recomposes the inline highlight fragments",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00010",
+      "index": 10,
+      "label": "Punctuation sample 00010",
+      "message": "punctuation entry 00010 - the synchronous pipeline synthesizes the pinned bottom scrollbar | the tessellated anthology rebalances the unified hunks | the chromatic bookkeeper mediates the collapsed tree branches | the imperative configurator harmonizes the filter chips | the marshalled collator pivots the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00011",
+      "index": 11,
+      "label": "Punctuation sample 00011",
+      "message": "punctuation entry 00011 - the granular archivist aligns the gutter line numbers | the synchronous inventory harmonizes the gutter line numbers | the marshalled snapshot collates the minimap preview | the luminous workspace renumbers the virtualized viewport | the imperative aggregator mediates the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00012",
+      "index": 12,
+      "label": "Punctuation sample 00012",
+      "message": "punctuation entry 00012 - the imperative scheduler shepherds the minimap preview | the persistent archivist mediates the changed blocks | the polyphonic buffer aligns the filter chips | the truncated configurator rebalances the pinned bottom scrollbar | the flattened cartographer aligns the summary cards | the cascading channel recomposes the summary cards",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00013",
+      "index": 13,
+      "label": "Punctuation sample 00013",
+      "message": "punctuation entry 00013 - the frictionless buffer rebalances the inline highlight fragments | the truncated transducer mediates the minimap preview | the granular accumulator fans out the wrapped line-text spans | the synchronous trajectory rebalances the inline highlight fragments | the tessellated aggregator harmonizes the gutter line numbers",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00014",
+      "index": 14,
+      "label": "Punctuation sample 00014",
+      "message": "punctuation entry 00014 - the orbital pipeline ingests the too-large status banner | the granular aggregator pivots the filter chips | the bespoke telemetry hydrates the virtualized viewport | the luminous snapshot shepherds the inline highlight fragments | the persistent manifest iterates the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00015",
+      "index": 15,
+      "label": "Punctuation sample 00015",
+      "message": "punctuation entry 00015 - the filigreed workspace harmonizes the unified hunks | the collated trajectory renumbers the virtualized viewport | the meandering telemetry aligns the filter chips | the tessellated scheduler aligns the context row decorations | the recursive transducer rewires the virtualized viewport | the recursive configurator broadcasts the summary cards",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00016",
+      "index": 16,
+      "label": "Punctuation sample 00016",
+      "message": "punctuation entry 00016 - the contiguous trajectory coalesces the context row decorations | the incandescent channel aligns the minimap preview | the ephemeral bookkeeper partitions the inline highlight fragments | the filigreed channel pivots the pinned bottom scrollbar | the ephemeral accumulator shepherds the pinned bottom scrollbar",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00017",
+      "index": 17,
+      "label": "Punctuation sample 00017",
+      "message": "punctuation entry 00017 - the filigreed channel renumbers the collapsed tree branches | the reticulated observer renumbers the too-large status banner | the declarative observer shepherds the virtualized viewport | the bespoke bookkeeper coalesces the filter chips | the iridescent resonator partitions the summary cards",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00018",
+      "index": 18,
+      "label": "Punctuation sample 00018",
+      "message": "punctuation entry 00018 - the chromatic bookkeeper shepherds the workspace filter pills | the recursive trajectory recomposes the virtualized viewport | the recursive inventory fans out the context row decorations | the bespoke collator fans out the gutter line numbers | the persistent transducer hydrates the sidebar entries",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00019",
+      "index": 19,
+      "label": "Punctuation sample 00019",
+      "message": "punctuation entry 00019 - the filigreed scheduler normalizes the summary cards | the bespoke navigator broadcasts the sidebar entries | the collated telemetry materializes the workspace filter pills | the chromatic pipeline harmonizes the sidebar entries | the collated cartographer synthesizes the context row decorations",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00020",
+      "index": 20,
+      "label": "Punctuation sample 00020",
+      "message": "punctuation entry 00020 - the incandescent partition hydrates the summary cards | the polyphonic chronicle ingests the too-large status banner | the cascading telemetry coalesces the throttled wheel events | the crystalline accumulator rebalances the changed blocks | the ephemeral scheduler materializes the virtualized viewport",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00021",
+      "index": 21,
+      "label": "Punctuation sample 00021",
+      "message": "punctuation entry 00021 - the frictionless pipeline pivots the horizontal scroll sync | the contiguous envelope pivots the context row decorations | the flattened projection fans out the too-large status banner | the interstellar transducer materializes the context row decorations | the collated workspace fans out the binary hex rows",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00022",
+      "index": 22,
+      "label": "Punctuation sample 00022",
+      "message": "punctuation entry 00022 - the asynchronous cartographer hydrates the sidebar entries | the reticulated dispatcher collates the changed blocks | the declarative navigator pivots the wrapped line-text spans | the luminous dispatcher materializes the image diff overlay | the antiquated chronicle partitions the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00023",
+      "index": 23,
+      "label": "Punctuation sample 00023",
+      "message": "punctuation entry 00023 - the marshalled preamble ingests the gutter line numbers | the meandering snapshot renumbers the pinned bottom scrollbar | the ephemeral snapshot harmonizes the sidebar entries | the orbital anthology renumbers the binary hex rows | the declarative archivist synthesizes the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00024",
+      "index": 24,
+      "label": "Punctuation sample 00024",
+      "message": "punctuation entry 00024 - the filigreed accumulator aligns the image diff overlay | the asynchronous buffer aligns the gutter line numbers | the crystalline partition synthesizes the horizontal scroll sync | the bespoke collator synthesizes the minimap preview | the quiescent archivist normalizes the wrapped line-text spans",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00025",
+      "index": 25,
+      "label": "Punctuation sample 00025",
+      "message": "punctuation entry 00025 - the antiquated cartographer hydrates the image diff overlay | the synchronous transducer ingests the horizontal scroll sync | the reticulated scheduler iterates the horizontal scroll sync | the iridescent envelope recomposes the side-by-side rows | the frictionless resonator coalesces the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00026",
+      "index": 26,
+      "label": "Punctuation sample 00026",
+      "message": "punctuation entry 00026 - the synchronous snapshot hydrates the throttled wheel events | the collated chronicle rewires the workspace filter pills | the marshalled projection materializes the unified hunks | the imperative transducer recomposes the context row decorations | the asynchronous scheduler iterates the throttled wheel events",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00027",
+      "index": 27,
+      "label": "Punctuation sample 00027",
+      "message": "punctuation entry 00027 - the filigreed telemetry coalesces the summary cards | the synchronous inventory rebalances the sidebar entries | the quiescent collator pivots the virtualized viewport | the imperative partition fans out the wrapped line-text spans | the marshalled resonator renumbers the minimap preview",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00028",
+      "index": 28,
+      "label": "Punctuation sample 00028",
+      "message": "punctuation entry 00028 - the chromatic partition materializes the changed blocks | the persistent transducer partitions the too-large status banner | the marshalled bookkeeper shepherds the collapsed tree branches | the cascading chronicle harmonizes the filter chips | the synchronous collator coalesces the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00029",
+      "index": 29,
+      "label": "Punctuation sample 00029",
+      "message": "punctuation entry 00029 - the contiguous preamble recomposes the gutter line numbers | the synchronous anthology renumbers the filter chips | the persistent buffer hydrates the side-by-side rows | the marshalled scheduler recomposes the pinned bottom scrollbar | the collated accumulator synthesizes the gutter line numbers",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00030",
+      "index": 30,
+      "label": "Punctuation sample 00030",
+      "message": "punctuation entry 00030 - the cascading envelope hydrates the too-large status banner | the collated archivist partitions the unified hunks | the meandering observer hydrates the minimap preview | the contiguous transducer shepherds the side-by-side rows | the granular pipeline harmonizes the throttled wheel events",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00031",
+      "index": 31,
+      "label": "Punctuation sample 00031",
+      "message": "punctuation entry 00031 - the persistent trajectory mediates the context row decorations | the persistent buffer fans out the image diff overlay | the bespoke aggregator hydrates the minimap preview | the imperative accumulator coalesces the context row decorations | the bespoke workspace harmonizes the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00032",
+      "index": 32,
+      "label": "Punctuation sample 00032",
+      "message": "punctuation entry 00032 - the flattened envelope pivots the unified hunks | the flattened observer rebalances the wrapped line-text spans | the tessellated scheduler rewires the horizontal scroll sync | the luminous inventory normalizes the wrapped line-text spans | the polyphonic accumulator ingests the side-by-side rows",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00033",
+      "index": 33,
+      "label": "Punctuation sample 00033",
+      "message": "punctuation entry 00033 - the polyphonic cartographer harmonizes the wrapped line-text spans | the declarative configurator renumbers the sidebar entries | the meandering snapshot rebalances the side-by-side rows | the persistent inventory recomposes the image diff overlay | the crystalline collator synthesizes the collapsed tree branches",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00034",
+      "index": 34,
+      "label": "Punctuation sample 00034",
+      "message": "punctuation entry 00034 - the truncated resonator shepherds the sidebar entries | the tessellated accumulator mediates the changed blocks | the ephemeral observer coalesces the workspace filter pills | the recursive bookkeeper materializes the minimap preview | the orbital workspace fans out the sidebar entries | the collated hydration renumbers the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00035",
+      "index": 35,
+      "label": "Punctuation sample 00035",
+      "message": "punctuation entry 00035 - the declarative channel synthesizes the image diff overlay | the orbital partition recomposes the unified hunks | the declarative accumulator recomposes the context row decorations | the granular chronicle fans out the too-large status banner | the quiescent trajectory renumbers the sidebar entries",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00036",
+      "index": 36,
+      "label": "Punctuation sample 00036",
+      "message": "punctuation entry 00036 - the truncated resonator materializes the changed blocks | the recursive compositor broadcasts the context row decorations | the declarative trajectory broadcasts the summary cards | the contiguous bookkeeper hydrates the gutter line numbers | the contiguous preamble materializes the changed blocks",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00037",
+      "index": 37,
+      "label": "Punctuation sample 00037",
+      "message": "punctuation entry 00037 - the quiescent channel harmonizes the changed blocks | the marshalled hydration coalesces the sidebar entries | the iridescent telemetry materializes the summary cards | the frictionless inventory coalesces the minimap preview | the marshalled observer shepherds the inline highlight fragments",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00038",
+      "index": 38,
+      "label": "Punctuation sample 00038",
+      "message": "punctuation entry 00038 - the persistent buffer ingests the virtualized viewport | the marshalled telemetry renumbers the workspace filter pills | the marshalled trajectory rewires the changed blocks | the truncated archivist synthesizes the sidebar entries | the flattened trajectory aligns the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00039",
+      "index": 39,
+      "label": "Punctuation sample 00039",
+      "message": "punctuation entry 00039 - the tessellated collator synthesizes the virtualized viewport | the flattened transducer renumbers the unified hunks | the luminous resonator recomposes the inline highlight fragments | the persistent scheduler normalizes the minimap preview | the declarative transducer coalesces the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00040",
+      "index": 40,
+      "label": "Punctuation sample 00040",
+      "message": "punctuation entry 00040 - the cascading projection broadcasts the filter chips | the antiquated cartographer rebalances the pinned bottom scrollbar | the meandering preamble iterates the pinned bottom scrollbar | the marshalled workspace materializes the too-large status banner | the quiescent dispatcher aligns the minimap preview",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00041",
+      "index": 41,
+      "label": "Punctuation sample 00041",
+      "message": "punctuation entry 00041 - the luminous navigator fans out the image diff overlay | the ephemeral compositor aligns the collapsed tree branches | the interstellar scheduler ingests the wrapped line-text spans | the recursive configurator harmonizes the image diff overlay | the bespoke aggregator coalesces the gutter line numbers",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00042",
+      "index": 42,
+      "label": "Punctuation sample 00042",
+      "message": "punctuation entry 00042 - the collated bookkeeper materializes the workspace filter pills | the granular envelope harmonizes the unified hunks | the crystalline navigator hydrates the image diff overlay | the incandescent navigator aligns the inline highlight fragments | the ephemeral accumulator mediates the unified hunks",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00043",
+      "index": 43,
+      "label": "Punctuation sample 00043",
+      "message": "punctuation entry 00043 - the bespoke hydration iterates the throttled wheel events | the asynchronous hydration harmonizes the inline highlight fragments | the declarative resonator normalizes the sidebar entries | the flattened resonator broadcasts the minimap preview | the synchronous telemetry coalesces the minimap preview",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00044",
+      "index": 44,
+      "label": "Punctuation sample 00044",
+      "message": "punctuation entry 00044 - the antiquated preamble synthesizes the filter chips | the tessellated projection harmonizes the inline highlight fragments | the luminous transducer renumbers the side-by-side rows | the polyphonic configurator coalesces the inline highlight fragments | the asynchronous snapshot hydrates the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00045",
+      "index": 45,
+      "label": "Punctuation sample 00045",
+      "message": "punctuation entry 00045 - the filigreed observer synthesizes the changed blocks | the asynchronous workspace coalesces the unified hunks | the incandescent anthology pivots the wrapped line-text spans | the frictionless resonator recomposes the filter chips | the flattened cartographer renumbers the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00046",
+      "index": 46,
+      "label": "Punctuation sample 00046",
+      "message": "punctuation entry 00046 - the recursive inventory broadcasts the too-large status banner | the imperative inventory synthesizes the filter chips | the ephemeral dispatcher mediates the wrapped line-text spans | the collated compositor synthesizes the collapsed tree branches | the crystalline collator ingests the summary cards",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00047",
+      "index": 47,
+      "label": "Punctuation sample 00047",
+      "message": "punctuation entry 00047 - the imperative cartographer fans out the gutter line numbers | the iridescent collator pivots the context row decorations | the interstellar resonator aligns the collapsed tree branches | the flattened aggregator ingests the changed blocks | the flattened pipeline iterates the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00048",
+      "index": 48,
+      "label": "Punctuation sample 00048",
+      "message": "punctuation entry 00048 - the synchronous collator hydrates the minimap preview | the persistent partition broadcasts the workspace filter pills | the asynchronous scheduler collates the workspace filter pills | the granular projection ingests the pinned bottom scrollbar | the marshalled collator hydrates the sidebar entries",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00049",
+      "index": 49,
+      "label": "Punctuation sample 00049",
+      "message": "punctuation entry 00049 - the persistent bookkeeper synthesizes the wrapped line-text spans | the tessellated trajectory ingests the image diff overlay | the luminous trajectory aligns the pinned bottom scrollbar | the filigreed channel pivots the collapsed tree branches | the incandescent snapshot hydrates the changed blocks",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00050",
+      "index": 50,
+      "label": "Punctuation sample 00050",
+      "message": "punctuation entry 00050 - the orbital cartographer mediates the pinned bottom scrollbar | the marshalled archivist partitions the unified hunks | the granular projection recomposes the gutter line numbers | the meandering telemetry aligns the unified hunks | the persistent preamble iterates the context row decorations",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00051",
+      "index": 51,
+      "label": "Punctuation sample 00051",
+      "message": "punctuation entry 00051 - the asynchronous trajectory coalesces the sidebar entries | the incandescent configurator hydrates the virtualized viewport | the frictionless collator shepherds the gutter line numbers | the reticulated preamble coalesces the too-large status banner | the chromatic observer shepherds the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00052",
+      "index": 52,
+      "label": "Punctuation sample 00052",
+      "message": "punctuation entry 00052 - the flattened aggregator renumbers the changed blocks | the luminous anthology synthesizes the binary hex rows | the luminous compositor aligns the filter chips | the interstellar configurator hydrates the filter chips | the imperative channel pivots the pinned bottom scrollbar | the asynchronous pipeline fans out the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00053",
+      "index": 53,
+      "label": "Punctuation sample 00053",
+      "message": "punctuation entry 00053 - the collated observer iterates the throttled wheel events | the recursive preamble materializes the collapsed tree branches | the truncated snapshot partitions the image diff overlay | the marshalled resonator aligns the changed blocks | the synchronous preamble partitions the side-by-side rows",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00054",
+      "index": 54,
+      "label": "Punctuation sample 00054",
+      "message": "punctuation entry 00054 - the reticulated scheduler collates the virtualized viewport | the contiguous scheduler hydrates the wrapped line-text spans | the polyphonic telemetry shepherds the unified hunks | the bespoke envelope pivots the binary hex rows | the ephemeral manifest shepherds the filter chips | the collated hydration broadcasts the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00055",
+      "index": 55,
+      "label": "Punctuation sample 00055",
+      "message": "punctuation entry 00055 - the marshalled observer hydrates the pinned bottom scrollbar | the luminous telemetry mediates the summary cards | the bespoke buffer fans out the too-large status banner | the cascading workspace synthesizes the throttled wheel events | the reticulated workspace renumbers the sidebar entries",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00056",
+      "index": 56,
+      "label": "Punctuation sample 00056",
+      "message": "punctuation entry 00056 - the collated buffer partitions the minimap preview | the cascading partition fans out the binary hex rows | the antiquated bookkeeper iterates the changed blocks | the synchronous transducer normalizes the summary cards | the quiescent resonator renumbers the image diff overlay | the antiquated cartographer rebalances the image diff overlay",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00057",
+      "index": 57,
+      "label": "Punctuation sample 00057",
+      "message": "punctuation entry 00057 - the quiescent workspace normalizes the inline highlight fragments | the tessellated buffer aligns the wrapped line-text spans | the persistent telemetry coalesces the throttled wheel events | the incandescent configurator pivots the collapsed tree branches | the luminous anthology partitions the throttled wheel events",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00058",
+      "index": 58,
+      "label": "Punctuation sample 00058",
+      "message": "punctuation entry 00058 - the polyphonic trajectory iterates the pinned bottom scrollbar | the interstellar dispatcher coalesces the wrapped line-text spans | the ephemeral telemetry broadcasts the binary hex rows | the marshalled hydration harmonizes the too-large status banner | the chromatic transducer synthesizes the virtualized viewport",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00059",
+      "index": 59,
+      "label": "Punctuation sample 00059",
+      "message": "punctuation entry 00059 - the crystalline scheduler collates the changed blocks | the frictionless trajectory fans out the context row decorations | the quiescent anthology recomposes the collapsed tree branches | the reticulated resonator broadcasts the binary hex rows | the cascading transducer iterates the gutter line numbers",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00060",
+      "index": 60,
+      "label": "Punctuation sample 00060",
+      "message": "punctuation entry 00060 - the declarative telemetry ingests the side-by-side rows | the iridescent partition fans out the pinned bottom scrollbar | the tessellated inventory partitions the workspace filter pills | the ephemeral archivist recomposes the wrapped line-text spans | the flattened workspace materializes the too-large status banner",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00061",
+      "index": 61,
+      "label": "Punctuation sample 00061",
+      "message": "punctuation entry 00061 - the antiquated buffer recomposes the minimap preview | the truncated chronicle recomposes the sidebar entries | the marshalled preamble normalizes the changed blocks | the recursive bookkeeper synthesizes the virtualized viewport | the meandering chronicle pivots the sidebar entries | the collated inventory aligns the pinned bottom scrollbar",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00062",
+      "index": 62,
+      "label": "Punctuation sample 00062",
+      "message": "punctuation entry 00062 - the incandescent observer normalizes the binary hex rows | the flattened preamble collates the filter chips | the recursive anthology harmonizes the unified hunks | the interstellar pipeline pivots the binary hex rows | the meandering transducer normalizes the too-large status banner | the recursive dispatcher materializes the virtualized viewport",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
+    },
+    {
+      "id": "entry-00063",
+      "index": 63,
+      "label": "Punctuation sample 00063",
+      "message": "punctuation entry 00063 - the persistent configurator pivots the sidebar entries | the marshalled configurator broadcasts the sidebar entries | the recursive projection fans out the horizontal scroll sync | the granular compositor renumbers the summary cards | the recursive chronicle harmonizes the workspace filter pills",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-0"
+      ]
+    },
+    {
+      "id": "entry-00064",
+      "index": 64,
+      "label": "Punctuation sample 00064",
+      "message": "punctuation entry 00064 - the asynchronous navigator normalizes the too-large status banner | the flattened configurator collates the inline highlight fragments | the tessellated compositor normalizes the collapsed tree branches | the frictionless projection synthesizes the side-by-side rows | the antiquated channel materializes the summary cards",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-1"
+      ]
+    },
+    {
+      "id": "entry-00065",
+      "index": 65,
+      "label": "Punctuation sample 00065",
+      "message": "punctuation entry 00065 - the bespoke partition pivots the sidebar entries | the quiescent navigator synthesizes the context row decorations | the synchronous manifest mediates the changed blocks | the incandescent observer ingests the virtualized viewport | the antiquated archivist materializes the filter chips | the incandescent projection shepherds the inline highlight fragments",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-2"
+      ]
+    },
+    {
+      "id": "entry-00066",
+      "index": 66,
+      "label": "Punctuation sample 00066",
+      "message": "punctuation entry 00066 - the flattened snapshot shepherds the summary cards | the meandering configurator partitions the inline highlight fragments | the iridescent inventory coalesces the pinned bottom scrollbar | the frictionless anthology materializes the horizontal scroll sync | the truncated envelope hydrates the throttled wheel events",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-3"
+      ]
+    },
+    {
+      "id": "entry-00067",
+      "index": 67,
+      "label": "Punctuation sample 00067",
+      "message": "punctuation entry 00067 - the synchronous snapshot rewires the changed blocks | the contiguous preamble pivots the filter chips | the contiguous workspace shepherds the side-by-side rows | the chromatic snapshot rebalances the throttled wheel events | the asynchronous anthology materializes the gutter line numbers",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-4"
+      ]
+    },
+    {
+      "id": "entry-00068",
+      "index": 68,
+      "label": "Punctuation sample 00068",
+      "message": "punctuation entry 00068 - the antiquated archivist iterates the image diff overlay | the incandescent dispatcher collates the changed blocks | the interstellar compositor iterates the unified hunks | the declarative aggregator synthesizes the unified hunks | the granular chronicle rebalances the inline highlight fragments",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-5"
+      ]
+    },
+    {
+      "id": "entry-00069",
+      "index": 69,
+      "label": "Punctuation sample 00069",
+      "message": "punctuation entry 00069 - the incandescent inventory collates the unified hunks | the cascading navigator partitions the changed blocks | the ephemeral scheduler coalesces the binary hex rows | the truncated trajectory recomposes the pinned bottom scrollbar | the declarative collator mediates the minimap preview | the iridescent compositor fans out the minimap preview",
+      "tags": [
+        "fixture",
+        "punctuation",
+        "left",
+        "bucket-6"
+      ]
     }
-  }
+  ]
 }

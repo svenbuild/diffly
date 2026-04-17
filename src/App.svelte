@@ -27,6 +27,13 @@
     buildUnifiedHunkRanges,
     buildUnifiedRenderItems,
   } from './lib/diff-render'
+  import {
+    sideBySideMinimapRows,
+    sideBySideItemMinimapRows,
+    unifiedMinimapRows,
+    unifiedItemMinimapRows,
+    type MinimapRow,
+  } from './lib/minimap-render'
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
     clampScrollOffset,
@@ -227,6 +234,9 @@
   let unifiedHunkRanges: DiffHunkRange[] = []
   let sideBySideRenderItems: SideBySideRenderItem[] = []
   let unifiedRenderItems: UnifiedRenderItem[] = []
+  let sideBySideMinimapData: MinimapRow[] = []
+  let unifiedMinimapData: MinimapRow[] = []
+  let maxLineNumber = 0
   let visibleDiffHunkCount = 0
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
@@ -258,6 +268,10 @@
     buildUnifiedHunkRanges,
     buildSideBySideRenderItems,
     buildUnifiedRenderItems,
+    sideBySideMinimapRows,
+    unifiedMinimapRows,
+    sideBySideItemMinimapRows,
+    unifiedItemMinimapRows,
     openCompareItem,
   })
   const updateController = createUpdateController({
@@ -619,7 +633,23 @@
   }
 
   async function runUpdateCheck() {
-    const result = await updateController.runUpdateCheck(updateIndicatorState, updateChannel)
+    if (
+      updateIndicatorState.status === 'checking' ||
+      updateIndicatorState.status === 'downloading'
+    ) {
+      return
+    }
+
+    updateIndicatorState = {
+      ...updateIndicatorState,
+      status: 'checking',
+      message: 'Checking for updates...',
+    }
+
+    const [result] = await Promise.all([
+      updateController.runUpdateCheck(updateIndicatorState, updateChannel),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ])
     updateIndicatorState = result.updateIndicatorState
 
     if (result.lastUpdateCheckAt) {
@@ -668,6 +698,21 @@
 
   function cancelBackgroundDiffPreload() {
     diffCache.cancelBackgroundPreload()
+  }
+
+  function clearDirectoryComparePollTimer() {
+    if (directoryComparePollTimer !== null) {
+      window.clearTimeout(directoryComparePollTimer)
+      directoryComparePollTimer = null
+    }
+  }
+
+  function stopDirectoryComparePolling(clearEntries = false) {
+    clearDirectoryComparePollTimer()
+    activeDirectoryCompareJobId = ''
+    if (clearEntries) {
+      directoryCompareEntrySlots = []
+    }
   }
 
   function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
@@ -758,21 +803,6 @@
       preloadConcurrency: BACKGROUND_DIFF_PRELOAD_CONCURRENCY,
       preloadDelayMs: BACKGROUND_DIFF_PRELOAD_DELAY_MS,
     })
-  }
-
-  function clearDirectoryComparePollTimer() {
-    if (directoryComparePollTimer !== null) {
-      window.clearTimeout(directoryComparePollTimer)
-      directoryComparePollTimer = null
-    }
-  }
-
-  function stopDirectoryComparePolling(clearEntries = false) {
-    clearDirectoryComparePollTimer()
-    activeDirectoryCompareJobId = ''
-    if (clearEntries) {
-      directoryCompareEntrySlots = []
-    }
   }
 
   function applyDirectoryCompareUpdates(updates: Array<{ index: number; entry: DirectoryEntryResult | null }>) {
@@ -1462,9 +1492,7 @@
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
     } finally {
-      if (!activeDirectoryCompareJobId) {
-        loading = false
-      }
+      loading = false
     }
   }
 
@@ -2368,6 +2396,7 @@
   }
 
   $: if (activeDiff?.contentKind === 'text') {
+    maxLineNumber = diffCache.getCachedMaxLineNumber(activeDiff)
     if (viewMode === 'sideBySide') {
       sideBySideHunkRanges = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
       sideBySideRenderItems = shouldDeferFullFileRenderItems()
@@ -2377,8 +2406,16 @@
             showFullFile,
             contextLines,
           )
+      sideBySideMinimapData = showFullFile
+        ? diffCache.getCachedSideBySideFullMinimapRows(activeDiff)
+        : diffCache.getCachedSideBySideItemMinimapRows(
+            activeDiff,
+            showFullFile,
+            contextLines,
+          )
       unifiedHunkRanges = []
       unifiedRenderItems = []
+      unifiedMinimapData = []
     } else {
       unifiedHunkRanges = diffCache.getCachedUnifiedHunks(activeDiff, contextLines)
       unifiedRenderItems = shouldDeferFullFileRenderItems()
@@ -2388,14 +2425,25 @@
             showFullFile,
             contextLines,
           )
+      unifiedMinimapData = showFullFile
+        ? diffCache.getCachedUnifiedFullMinimapRows(activeDiff)
+        : diffCache.getCachedUnifiedItemMinimapRows(
+            activeDiff,
+            showFullFile,
+            contextLines,
+          )
       sideBySideHunkRanges = []
       sideBySideRenderItems = []
+      sideBySideMinimapData = []
     }
   } else {
+    maxLineNumber = 0
     sideBySideHunkRanges = []
     unifiedHunkRanges = []
     sideBySideRenderItems = []
     unifiedRenderItems = []
+    sideBySideMinimapData = []
+    unifiedMinimapData = []
   }
 
   $: visibleDiffHunkCount =
@@ -2880,6 +2928,9 @@
         {unifiedRenderItems}
         {sideBySideHunkRanges}
         {unifiedHunkRanges}
+        {sideBySideMinimapData}
+        {unifiedMinimapData}
+        {maxLineNumber}
         {diffHeaderContext}
         {diffFontSize}
         {diffRowLineHeight}

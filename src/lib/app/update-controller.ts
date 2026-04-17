@@ -158,10 +158,7 @@ export function createUpdateController(dependencies: UpdateControllerDependencie
       updateIndicatorState: UpdateIndicatorState,
       updateChannel: UpdateChannel,
     ) {
-      if (
-        updateIndicatorState.status === 'checking' ||
-        updateIndicatorState.status === 'downloading'
-      ) {
+      if (updateIndicatorState.status === 'downloading') {
         return {
           updateIndicatorState,
           lastUpdateCheckAt: null as string | null,

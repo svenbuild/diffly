@@ -1,44 +1,85 @@
-# Diffly Insert Block Fixture
+# Insert Block Fixture
 
-## Baseline Summary
+This fixture exercises contiguous insert blocks rendered after matching context.
 
-The left-side version acts as the pre-change document. It keeps the shared
-header, the stable overview, and the compact notes section. The right-side file
-adds an entire section in the middle so the compare can exercise a pure insert
-block instead of a pairwise line substitution.
+## Chapter 000
 
-## Shared Overview
+insert-block paragraph 0/0 00000 :: the antiquated aggregator normalizes the binary hex rows | the contiguous projection hydrates the pinned bottom scrollbar | the truncated collator synthesizes the wrapped line-text spans | the granular compositor recomposes the filter chips | the synchronous observer pivots the throttled wheel events
+insert-block paragraph 0/1 00001 :: the asynchronous snapshot materializes the binary hex rows | the granular inventory mediates the gutter line numbers | the persistent cartographer aligns the unified hunks | the marshalled anthology aligns the side-by-side rows | the marshalled telemetry materializes the binary hex rows | the contiguous hydration mediates the wrapped line-text spans
+insert-block paragraph 0/2 00002 :: the iridescent workspace hydrates the wrapped line-text spans | the frictionless aggregator aligns the pinned bottom scrollbar | the marshalled pipeline normalizes the changed blocks | the luminous navigator partitions the horizontal scroll sync | the luminous telemetry iterates the inline highlight fragments
+insert-block paragraph 0/3 00003 :: the granular envelope fans out the binary hex rows | the chromatic inventory collates the side-by-side rows | the truncated cartographer rebalances the throttled wheel events | the iridescent preamble broadcasts the image diff overlay | the granular archivist materializes the horizontal scroll sync
+insert-block paragraph 0/4 00004 :: the persistent aggregator iterates the context row decorations | the persistent resonator rebalances the unified hunks | the marshalled projection harmonizes the side-by-side rows | the bespoke cartographer broadcasts the workspace filter pills | the asynchronous cartographer materializes the collapsed tree branches
+insert-block paragraph 0/5 00005 :: the meandering navigator recomposes the workspace filter pills | the collated hydration rebalances the image diff overlay | the quiescent telemetry coalesces the throttled wheel events | the marshalled navigator hydrates the minimap preview | the cascading configurator normalizes the sidebar entries
 
-- The compare workspace starts from a pair of selected roots.
-- The sidebar tree groups changed items by nested folder path.
-- Status chips represent modified, left-only, right-only, binary, and too-large states.
-- The viewer offers side-by-side and unified layouts.
-- Inline highlights can be toggled without rerunning the compare.
-- Scroll positions stay synchronized across the split view.
+## Chapter 001
 
-## Inserted Review Checklist
+insert-block paragraph 1/0 00100 :: the collated accumulator hydrates the binary hex rows | the iridescent partition mediates the summary cards | the marshalled workspace rewires the context row decorations | the asynchronous transducer normalizes the changed blocks | the frictionless configurator collates the wrapped line-text spans
+insert-block paragraph 1/1 00101 :: the crystalline pipeline partitions the image diff overlay | the collated inventory coalesces the workspace filter pills | the crystalline partition materializes the throttled wheel events | the granular aggregator hydrates the unified hunks | the luminous observer rewires the inline highlight fragments
+insert-block paragraph 1/2 00102 :: the granular telemetry materializes the throttled wheel events | the quiescent observer rewires the sidebar entries | the flattened accumulator materializes the image diff overlay | the orbital snapshot collates the wrapped line-text spans | the reticulated buffer collates the image diff overlay
+insert-block paragraph 1/3 00103 :: the ephemeral envelope mediates the unified hunks | the meandering envelope renumbers the side-by-side rows | the chromatic pipeline broadcasts the image diff overlay | the collated bookkeeper shepherds the inline highlight fragments | the iridescent envelope renumbers the sidebar entries
+insert-block paragraph 1/4 00104 :: the reticulated cartographer iterates the binary hex rows | the imperative inventory harmonizes the context row decorations | the crystalline aggregator shepherds the minimap preview | the quiescent hydration broadcasts the collapsed tree branches | the declarative anthology pivots the collapsed tree branches
+insert-block paragraph 1/5 00105 :: the luminous pipeline collates the unified hunks | the meandering preamble materializes the binary hex rows | the polyphonic preamble hydrates the wrapped line-text spans | the interstellar manifest rewires the throttled wheel events | the reticulated trajectory rebalances the context row decorations
 
-- Confirm that the inserted section appears only as plus rows in unified view.
-- Confirm that surrounding context lines are preserved before and after the block.
-- Confirm that the side-by-side view shows empty space on the left for inserted rows.
-- Confirm that inline token highlighting does not try to match unrelated paragraphs.
-- Confirm that refresh keeps the currently selected file when the entry still exists.
-- Confirm that active sidebar filters remain active after the compare reruns.
-- Confirm that the viewer header path labels stay stable while the diff reloads.
-- Confirm that the themed scrollbars continue to match the active light or dark mode.
+### New subsection 001
 
-## Shared Notes
+right-only inserted paragraph 1/0 01000 :: the asynchronous collator partitions the virtualized viewport | the asynchronous projection aligns the pinned bottom scrollbar | the imperative accumulator synthesizes the horizontal scroll sync | the tessellated dispatcher normalizes the changed blocks | the meandering envelope collates the sidebar entries
+right-only inserted paragraph 1/1 01001 :: the granular channel normalizes the image diff overlay | the flattened trajectory shepherds the summary cards | the persistent transducer hydrates the side-by-side rows | the antiquated compositor hydrates the summary cards | the declarative hydration broadcasts the throttled wheel events
+right-only inserted paragraph 1/2 01002 :: the collated bookkeeper shepherds the workspace filter pills | the luminous scheduler fans out the inline highlight fragments | the collated manifest ingests the side-by-side rows | the granular envelope rewires the summary cards | the marshalled snapshot hydrates the filter chips | the orbital preamble aligns the too-large status banner
+right-only inserted paragraph 1/3 01003 :: the interstellar accumulator ingests the gutter line numbers | the truncated anthology materializes the wrapped line-text spans | the bespoke trajectory aligns the context row decorations | the meandering projection rewires the too-large status banner | the antiquated partition recomposes the minimap preview
+right-only inserted paragraph 1/4 01004 :: the persistent pipeline broadcasts the throttled wheel events | the meandering bookkeeper rewires the sidebar entries | the crystalline manifest pivots the summary cards | the granular archivist fans out the virtualized viewport | the truncated workspace pivots the binary hex rows | the filigreed transducer normalizes the workspace filter pills
+right-only inserted paragraph 1/5 01005 :: the truncated hydration hydrates the side-by-side rows | the polyphonic inventory collates the side-by-side rows | the crystalline inventory ingests the changed blocks | the iridescent workspace renumbers the wrapped line-text spans | the frictionless workspace iterates the changed blocks
 
-The wording in this section remains the same on both sides. That keeps the
-surrounding context stable while the inserted section on the right creates a
-clean hunk boundary. A single scenario with a clean insertion is useful when
-you want to visually confirm that the viewer does not invent a matching delete
-block when none exists.
+## Chapter 002
 
-The fixture also gives the sidebar something realistic to show when users test
-multi-select status filters, refresh behavior, and tree-collapse persistence.
+insert-block paragraph 2/0 00200 :: the iridescent aggregator iterates the context row decorations | the declarative dispatcher fans out the side-by-side rows | the reticulated workspace rewires the gutter line numbers | the filigreed trajectory broadcasts the collapsed tree branches | the persistent cartographer recomposes the too-large status banner
+insert-block paragraph 2/1 00201 :: the iridescent transducer synthesizes the horizontal scroll sync | the granular preamble fans out the image diff overlay | the crystalline navigator rebalances the image diff overlay | the polyphonic buffer ingests the filter chips | the imperative resonator pivots the sidebar entries | the orbital chronicle rebalances the pinned bottom scrollbar
+insert-block paragraph 2/2 00202 :: the contiguous chronicle collates the summary cards | the iridescent projection pivots the throttled wheel events | the meandering workspace aligns the unified hunks | the interstellar cartographer synthesizes the sidebar entries | the antiquated cartographer shepherds the summary cards | the synchronous collator rebalances the too-large status banner
+insert-block paragraph 2/3 00203 :: the persistent hydration normalizes the minimap preview | the reticulated navigator collates the sidebar entries | the incandescent workspace hydrates the unified hunks | the persistent aggregator fans out the workspace filter pills | the collated transducer aligns the too-large status banner
+insert-block paragraph 2/4 00204 :: the granular chronicle pivots the gutter line numbers | the synchronous dispatcher coalesces the minimap preview | the meandering inventory broadcasts the minimap preview | the orbital hydration synthesizes the changed blocks | the flattened transducer recomposes the pinned bottom scrollbar
+insert-block paragraph 2/5 00205 :: the polyphonic archivist partitions the too-large status banner | the tessellated accumulator fans out the pinned bottom scrollbar | the ephemeral preamble hydrates the minimap preview | the iridescent preamble materializes the collapsed tree branches | the reticulated navigator materializes the horizontal scroll sync
 
-## Footer
+## Chapter 003
 
-This file is intentionally longer than two kilobytes so it can stay in the
-fixture set without violating the minimum-size rule for test files.
+insert-block paragraph 3/0 00300 :: the recursive collator partitions the side-by-side rows | the incandescent cartographer shepherds the virtualized viewport | the interstellar manifest fans out the wrapped line-text spans | the recursive observer rewires the horizontal scroll sync | the iridescent resonator ingests the side-by-side rows
+insert-block paragraph 3/1 00301 :: the persistent scheduler partitions the filter chips | the orbital bookkeeper renumbers the changed blocks | the ephemeral compositor collates the gutter line numbers | the orbital pipeline collates the changed blocks | the orbital preamble broadcasts the gutter line numbers | the cascading cartographer shepherds the minimap preview
+insert-block paragraph 3/2 00302 :: the crystalline trajectory rebalances the minimap preview | the granular observer rebalances the context row decorations | the frictionless chronicle ingests the side-by-side rows | the antiquated navigator iterates the throttled wheel events | the collated buffer pivots the image diff overlay
+insert-block paragraph 3/3 00303 :: the luminous scheduler materializes the workspace filter pills | the polyphonic pipeline fans out the collapsed tree branches | the persistent envelope partitions the horizontal scroll sync | the iridescent snapshot recomposes the horizontal scroll sync | the incandescent snapshot iterates the binary hex rows
+insert-block paragraph 3/4 00304 :: the synchronous cartographer pivots the context row decorations | the contiguous snapshot pivots the horizontal scroll sync | the interstellar hydration mediates the sidebar entries | the asynchronous pipeline harmonizes the image diff overlay | the collated configurator synthesizes the summary cards
+insert-block paragraph 3/5 00305 :: the reticulated transducer rewires the gutter line numbers | the truncated envelope harmonizes the too-large status banner | the orbital observer rewires the too-large status banner | the iridescent navigator materializes the too-large status banner | the ephemeral workspace ingests the gutter line numbers
+
+### New subsection 003
+
+right-only inserted paragraph 3/0 03000 :: the bespoke bookkeeper collates the filter chips | the bespoke hydration rewires the horizontal scroll sync | the polyphonic pipeline fans out the gutter line numbers | the cascading inventory rebalances the filter chips | the orbital bookkeeper partitions the too-large status banner | the synchronous accumulator synthesizes the unified hunks
+right-only inserted paragraph 3/1 03001 :: the frictionless archivist synthesizes the horizontal scroll sync | the meandering navigator synthesizes the workspace filter pills | the chromatic hydration coalesces the pinned bottom scrollbar | the polyphonic scheduler fans out the binary hex rows | the filigreed anthology collates the binary hex rows
+right-only inserted paragraph 3/2 03002 :: the marshalled bookkeeper partitions the pinned bottom scrollbar | the contiguous telemetry hydrates the workspace filter pills | the cascading snapshot hydrates the side-by-side rows | the persistent compositor recomposes the throttled wheel events | the bespoke navigator recomposes the horizontal scroll sync
+right-only inserted paragraph 3/3 03003 :: the meandering buffer collates the binary hex rows | the imperative inventory partitions the horizontal scroll sync | the chromatic preamble ingests the inline highlight fragments | the recursive partition aligns the too-large status banner | the interstellar collator recomposes the pinned bottom scrollbar
+right-only inserted paragraph 3/4 03004 :: the declarative scheduler iterates the too-large status banner | the flattened navigator partitions the filter chips | the reticulated anthology normalizes the minimap preview | the interstellar transducer recomposes the workspace filter pills | the persistent accumulator hydrates the changed blocks
+right-only inserted paragraph 3/5 03005 :: the asynchronous hydration shepherds the too-large status banner | the marshalled resonator rebalances the too-large status banner | the quiescent envelope aligns the minimap preview | the reticulated telemetry ingests the changed blocks | the antiquated snapshot materializes the context row decorations
+
+## Chapter 004
+
+insert-block paragraph 4/0 00400 :: the imperative anthology fans out the wrapped line-text spans | the antiquated collator broadcasts the side-by-side rows | the marshalled bookkeeper mediates the minimap preview | the synchronous pipeline recomposes the image diff overlay | the quiescent telemetry rebalances the collapsed tree branches
+insert-block paragraph 4/1 00401 :: the declarative projection normalizes the context row decorations | the bespoke manifest harmonizes the filter chips | the polyphonic aggregator normalizes the collapsed tree branches | the reticulated workspace fans out the side-by-side rows | the truncated channel materializes the unified hunks
+insert-block paragraph 4/2 00402 :: the cascading manifest renumbers the minimap preview | the luminous hydration hydrates the workspace filter pills | the reticulated snapshot coalesces the side-by-side rows | the tessellated anthology renumbers the sidebar entries | the contiguous transducer recomposes the wrapped line-text spans
+insert-block paragraph 4/3 00403 :: the marshalled anthology mediates the sidebar entries | the granular telemetry broadcasts the sidebar entries | the orbital transducer synthesizes the minimap preview | the crystalline configurator recomposes the unified hunks | the recursive collator hydrates the virtualized viewport | the reticulated archivist rebalances the binary hex rows
+insert-block paragraph 4/4 00404 :: the luminous buffer mediates the unified hunks | the quiescent workspace rewires the workspace filter pills | the polyphonic workspace mediates the pinned bottom scrollbar | the antiquated bookkeeper recomposes the virtualized viewport | the bespoke buffer partitions the collapsed tree branches
+insert-block paragraph 4/5 00405 :: the ephemeral anthology rebalances the sidebar entries | the collated workspace mediates the binary hex rows | the flattened bookkeeper rewires the wrapped line-text spans | the declarative configurator coalesces the changed blocks | the crystalline hydration pivots the inline highlight fragments
+
+## Chapter 005
+
+insert-block paragraph 5/0 00500 :: the incandescent dispatcher recomposes the too-large status banner | the imperative collator mediates the changed blocks | the declarative partition renumbers the inline highlight fragments | the iridescent anthology broadcasts the gutter line numbers | the bespoke inventory broadcasts the changed blocks
+insert-block paragraph 5/1 00501 :: the quiescent inventory rewires the inline highlight fragments | the collated buffer fans out the inline highlight fragments | the persistent navigator renumbers the wrapped line-text spans | the polyphonic anthology hydrates the side-by-side rows | the antiquated hydration recomposes the gutter line numbers
+insert-block paragraph 5/2 00502 :: the ephemeral archivist synthesizes the context row decorations | the declarative transducer ingests the horizontal scroll sync | the frictionless bookkeeper synthesizes the too-large status banner | the marshalled partition aligns the image diff overlay | the granular collator mediates the minimap preview
+insert-block paragraph 5/3 00503 :: the ephemeral bookkeeper rewires the sidebar entries | the reticulated preamble rebalances the virtualized viewport | the filigreed bookkeeper broadcasts the minimap preview | the antiquated chronicle materializes the inline highlight fragments | the incandescent navigator pivots the filter chips
+insert-block paragraph 5/4 00504 :: the luminous accumulator partitions the pinned bottom scrollbar | the incandescent telemetry broadcasts the too-large status banner | the interstellar configurator fans out the context row decorations | the ephemeral configurator fans out the virtualized viewport | the frictionless snapshot harmonizes the unified hunks
+insert-block paragraph 5/5 00505 :: the meandering projection rewires the minimap preview | the cascading resonator broadcasts the summary cards | the declarative resonator recomposes the summary cards | the frictionless telemetry iterates the image diff overlay | the bespoke inventory pivots the virtualized viewport | the frictionless collator iterates the gutter line numbers
+
+### New subsection 005
+
+right-only inserted paragraph 5/0 05000 :: the imperative workspace fans out the horizontal scroll sync | the ephemeral collator shepherds the wrapped line-text spans | the meandering configurator rewires the sidebar entries | the tessellated hydration renumbers the unified hunks | the iridescent hydration coalesces the changed blocks
+right-only inserted paragraph 5/1 05001 :: the interstellar compositor aligns the minimap preview | the recursive observer materializes the pinned bottom scrollbar | the chromatic aggregator normalizes the summary cards | the incandescent preamble broadcasts the binary hex rows | the crystalline anthology iterates the changed blocks
+right-only inserted paragraph 5/2 05002 :: the contiguous scheduler fans out the workspace filter pills | the truncated archivist collates the workspace filter pills | the reticulated cartographer broadcasts the sidebar entries | the recursive preamble pivots the collapsed tree branches | the ephemeral transducer renumbers the inline highlight fragments
+right-only inserted paragraph 5/3 05003 :: the iridescent buffer collates the gutter line numbers | the recursive archivist recomposes the virtualized viewport | the filigreed collator partitions the sidebar entries | the granular resonator rebalances the collapsed tree branches | the synchronous bookkeeper aligns the inline highlight fragments
+right-only inserted paragraph 5/4 05004 :: the orbital chronicle iterates the changed blocks | the granular channel iterates the changed blocks | the truncated workspace shepherds the unified hunks | the frictionless inventory shepherds the pinned bottom scrollbar | the synchronous channel coalesces the side-by-side rows | the imperative navigator collates the filter chips
+right-only inserted paragraph 5/5 05005 :: the quiescent transducer rewires the workspace filter pills | the synchronous partition fans out the pinned bottom scrollbar | the frictionless navigator fans out the sidebar entries | the interstellar telemetry rewires the filter chips | the granular collator coalesces the minimap preview
+

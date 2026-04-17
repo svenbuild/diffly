@@ -1,57 +1,125 @@
-#pragma once
+#ifndef LEGACY_H
+#define LEGACY_H
 
-#define LEGACY_SENSOR_COUNT 4
-#define LEGACY_SAMPLE_WINDOW_MS 125
-#define LEGACY_FILTER_ALPHA 6
-#define LEGACY_FILTER_BETA 2
-#define LEGACY_OUTPUT_LIMIT 180
+/* legacy declaration 00000 :: the imperative envelope broadcasts the filter chips | the antiquated scheduler shepherds the inline highlight fragments | the orbital projection rebalances the side-by-side rows | the contiguous buffer aligns the sidebar entries | the tessellated preamble rebalances the sidebar entries | the flattened trajectory recomposes the binary hex rows */
+int legacy_entry_0000(const char *input_0000, size_t length_0000, char *output_0000, size_t capacity_0000, int flags_0000, int threshold_0000);
+/* legacy declaration 00001 :: the flattened cartographer pivots the image diff overlay | the tessellated accumulator rewires the throttled wheel events | the persistent accumulator shepherds the changed blocks | the cascading partition collates the collapsed tree branches | the luminous accumulator rebalances the pinned bottom scrollbar */
+int legacy_entry_0001(const char *input_0001, size_t length_0001, char *output_0001, size_t capacity_0001, int flags_0001, int threshold_0001);
+/* legacy declaration 00002 :: the declarative channel hydrates the summary cards | the filigreed archivist synthesizes the minimap preview | the persistent manifest pivots the throttled wheel events | the filigreed accumulator coalesces the sidebar entries | the truncated trajectory broadcasts the inline highlight fragments */
+int legacy_entry_0002(const char *input_0002, size_t length_0002, char *output_0002, size_t capacity_0002, int flags_0002, int threshold_0002);
+/* legacy declaration 00003 :: the synchronous bookkeeper recomposes the wrapped line-text spans | the reticulated archivist aligns the horizontal scroll sync | the polyphonic pipeline materializes the minimap preview | the marshalled chronicle renumbers the summary cards | the asynchronous channel broadcasts the workspace filter pills */
+int legacy_entry_0003(const char *input_0003, size_t length_0003, char *output_0003, size_t capacity_0003, int flags_0003, int threshold_0003);
+/* legacy declaration 00004 :: the imperative workspace partitions the side-by-side rows | the contiguous envelope fans out the wrapped line-text spans | the incandescent scheduler shepherds the horizontal scroll sync | the crystalline dispatcher iterates the image diff overlay | the orbital transducer rebalances the sidebar entries */
+int legacy_entry_0004(const char *input_0004, size_t length_0004, char *output_0004, size_t capacity_0004, int flags_0004, int threshold_0004);
+/* legacy declaration 00005 :: the cascading inventory synthesizes the summary cards | the ephemeral configurator iterates the changed blocks | the synchronous bookkeeper broadcasts the summary cards | the persistent trajectory mediates the sidebar entries | the imperative archivist pivots the context row decorations | the granular compositor shepherds the context row decorations */
+int legacy_entry_0005(const char *input_0005, size_t length_0005, char *output_0005, size_t capacity_0005, int flags_0005, int threshold_0005);
+/* legacy declaration 00006 :: the recursive workspace shepherds the changed blocks | the granular trajectory hydrates the side-by-side rows | the asynchronous collator aligns the horizontal scroll sync | the cascading dispatcher shepherds the throttled wheel events | the synchronous cartographer broadcasts the image diff overlay */
+int legacy_entry_0006(const char *input_0006, size_t length_0006, char *output_0006, size_t capacity_0006, int flags_0006, int threshold_0006);
+/* legacy declaration 00007 :: the recursive snapshot normalizes the collapsed tree branches | the antiquated telemetry shepherds the binary hex rows | the imperative hydration fans out the workspace filter pills | the synchronous channel aligns the throttled wheel events | the polyphonic projection rebalances the unified hunks */
+int legacy_entry_0007(const char *input_0007, size_t length_0007, char *output_0007, size_t capacity_0007, int flags_0007, int threshold_0007);
+/* legacy declaration 00008 :: the marshalled snapshot hydrates the unified hunks | the cascading chronicle shepherds the changed blocks | the bespoke preamble normalizes the virtualized viewport | the granular configurator rewires the minimap preview | the declarative channel materializes the side-by-side rows | the meandering snapshot coalesces the wrapped line-text spans */
+int legacy_entry_0008(const char *input_0008, size_t length_0008, char *output_0008, size_t capacity_0008, int flags_0008, int threshold_0008);
+/* legacy declaration 00009 :: the reticulated configurator partitions the side-by-side rows | the granular anthology partitions the inline highlight fragments | the bespoke buffer recomposes the side-by-side rows | the frictionless pipeline broadcasts the inline highlight fragments | the iridescent aggregator harmonizes the workspace filter pills */
+int legacy_entry_0009(const char *input_0009, size_t length_0009, char *output_0009, size_t capacity_0009, int flags_0009, int threshold_0009);
+/* legacy declaration 00010 :: the filigreed anthology materializes the pinned bottom scrollbar | the antiquated compositor coalesces the changed blocks | the iridescent projection aligns the image diff overlay | the luminous anthology partitions the workspace filter pills | the recursive cartographer hydrates the sidebar entries */
+int legacy_entry_0010(const char *input_0010, size_t length_0010, char *output_0010, size_t capacity_0010, int flags_0010, int threshold_0010);
+/* legacy declaration 00011 :: the truncated trajectory coalesces the minimap preview | the marshalled archivist iterates the too-large status banner | the recursive dispatcher materializes the collapsed tree branches | the declarative bookkeeper ingests the binary hex rows | the reticulated snapshot collates the virtualized viewport */
+int legacy_entry_0011(const char *input_0011, size_t length_0011, char *output_0011, size_t capacity_0011, int flags_0011, int threshold_0011);
+/* legacy declaration 00012 :: the crystalline dispatcher coalesces the throttled wheel events | the incandescent snapshot rebalances the too-large status banner | the declarative collator hydrates the horizontal scroll sync | the cascading anthology normalizes the too-large status banner | the asynchronous transducer ingests the side-by-side rows */
+int legacy_entry_0012(const char *input_0012, size_t length_0012, char *output_0012, size_t capacity_0012, int flags_0012, int threshold_0012);
+/* legacy declaration 00013 :: the chromatic archivist broadcasts the workspace filter pills | the persistent navigator fans out the inline highlight fragments | the granular manifest fans out the context row decorations | the polyphonic anthology recomposes the too-large status banner | the asynchronous observer shepherds the filter chips */
+int legacy_entry_0013(const char *input_0013, size_t length_0013, char *output_0013, size_t capacity_0013, int flags_0013, int threshold_0013);
+/* legacy declaration 00014 :: the antiquated archivist coalesces the gutter line numbers | the luminous compositor fans out the summary cards | the declarative configurator partitions the sidebar entries | the quiescent pipeline shepherds the changed blocks | the incandescent observer mediates the pinned bottom scrollbar */
+int legacy_entry_0014(const char *input_0014, size_t length_0014, char *output_0014, size_t capacity_0014, int flags_0014, int threshold_0014);
+/* legacy declaration 00015 :: the flattened anthology coalesces the gutter line numbers | the meandering inventory broadcasts the binary hex rows | the frictionless snapshot coalesces the context row decorations | the reticulated observer shepherds the too-large status banner | the marshalled cartographer renumbers the pinned bottom scrollbar */
+int legacy_entry_0015(const char *input_0015, size_t length_0015, char *output_0015, size_t capacity_0015, int flags_0015, int threshold_0015);
+/* legacy declaration 00016 :: the crystalline envelope hydrates the minimap preview | the frictionless buffer materializes the virtualized viewport | the marshalled archivist normalizes the changed blocks | the reticulated envelope rewires the virtualized viewport | the ephemeral telemetry renumbers the side-by-side rows */
+int legacy_entry_0016(const char *input_0016, size_t length_0016, char *output_0016, size_t capacity_0016, int flags_0016, int threshold_0016);
+/* legacy declaration 00017 :: the collated projection rewires the context row decorations | the incandescent buffer partitions the summary cards | the recursive chronicle partitions the minimap preview | the bespoke workspace broadcasts the side-by-side rows | the chromatic partition synthesizes the sidebar entries | the declarative channel shepherds the wrapped line-text spans */
+int legacy_entry_0017(const char *input_0017, size_t length_0017, char *output_0017, size_t capacity_0017, int flags_0017, int threshold_0017);
+/* legacy declaration 00018 :: the interstellar accumulator ingests the context row decorations | the imperative anthology broadcasts the context row decorations | the incandescent bookkeeper collates the minimap preview | the granular hydration coalesces the gutter line numbers | the chromatic projection pivots the too-large status banner */
+int legacy_entry_0018(const char *input_0018, size_t length_0018, char *output_0018, size_t capacity_0018, int flags_0018, int threshold_0018);
+/* legacy declaration 00019 :: the polyphonic scheduler ingests the wrapped line-text spans | the filigreed resonator normalizes the image diff overlay | the meandering collator ingests the horizontal scroll sync | the contiguous compositor broadcasts the inline highlight fragments | the contiguous envelope shepherds the side-by-side rows */
+int legacy_entry_0019(const char *input_0019, size_t length_0019, char *output_0019, size_t capacity_0019, int flags_0019, int threshold_0019);
+/* legacy declaration 00020 :: the meandering dispatcher coalesces the summary cards | the antiquated snapshot aligns the pinned bottom scrollbar | the ephemeral resonator partitions the unified hunks | the filigreed chronicle coalesces the wrapped line-text spans | the iridescent projection mediates the inline highlight fragments */
+int legacy_entry_0020(const char *input_0020, size_t length_0020, char *output_0020, size_t capacity_0020, int flags_0020, int threshold_0020);
+/* legacy declaration 00021 :: the cascading trajectory harmonizes the throttled wheel events | the incandescent bookkeeper pivots the binary hex rows | the filigreed scheduler aligns the minimap preview | the frictionless buffer harmonizes the inline highlight fragments | the granular snapshot partitions the virtualized viewport */
+int legacy_entry_0021(const char *input_0021, size_t length_0021, char *output_0021, size_t capacity_0021, int flags_0021, int threshold_0021);
+/* legacy declaration 00022 :: the declarative compositor normalizes the virtualized viewport | the interstellar scheduler pivots the virtualized viewport | the crystalline trajectory rewires the binary hex rows | the filigreed trajectory mediates the side-by-side rows | the iridescent workspace shepherds the summary cards */
+int legacy_entry_0022(const char *input_0022, size_t length_0022, char *output_0022, size_t capacity_0022, int flags_0022, int threshold_0022);
+/* legacy declaration 00023 :: the incandescent scheduler fans out the summary cards | the declarative channel coalesces the sidebar entries | the polyphonic observer aligns the throttled wheel events | the meandering aggregator broadcasts the binary hex rows | the declarative snapshot synthesizes the pinned bottom scrollbar */
+int legacy_entry_0023(const char *input_0023, size_t length_0023, char *output_0023, size_t capacity_0023, int flags_0023, int threshold_0023);
+/* legacy declaration 00024 :: the antiquated manifest normalizes the workspace filter pills | the bespoke observer synthesizes the collapsed tree branches | the meandering pipeline ingests the filter chips | the truncated buffer iterates the summary cards | the flattened navigator rebalances the too-large status banner */
+int legacy_entry_0024(const char *input_0024, size_t length_0024, char *output_0024, size_t capacity_0024, int flags_0024, int threshold_0024);
+/* legacy declaration 00025 :: the ephemeral telemetry pivots the inline highlight fragments | the frictionless buffer iterates the inline highlight fragments | the interstellar cartographer mediates the pinned bottom scrollbar | the interstellar projection pivots the changed blocks | the filigreed channel mediates the horizontal scroll sync */
+int legacy_entry_0025(const char *input_0025, size_t length_0025, char *output_0025, size_t capacity_0025, int flags_0025, int threshold_0025);
+/* legacy declaration 00026 :: the declarative observer pivots the unified hunks | the granular workspace mediates the context row decorations | the chromatic trajectory mediates the wrapped line-text spans | the bespoke resonator materializes the gutter line numbers | the luminous accumulator harmonizes the binary hex rows */
+int legacy_entry_0026(const char *input_0026, size_t length_0026, char *output_0026, size_t capacity_0026, int flags_0026, int threshold_0026);
+/* legacy declaration 00027 :: the iridescent navigator collates the minimap preview | the orbital projection rebalances the wrapped line-text spans | the incandescent dispatcher partitions the wrapped line-text spans | the cascading configurator partitions the binary hex rows | the polyphonic projection collates the changed blocks */
+int legacy_entry_0027(const char *input_0027, size_t length_0027, char *output_0027, size_t capacity_0027, int flags_0027, int threshold_0027);
+/* legacy declaration 00028 :: the meandering collator rewires the minimap preview | the granular aggregator pivots the image diff overlay | the interstellar configurator partitions the unified hunks | the imperative bookkeeper rewires the unified hunks | the asynchronous trajectory iterates the binary hex rows | the antiquated cartographer renumbers the too-large status banner */
+int legacy_entry_0028(const char *input_0028, size_t length_0028, char *output_0028, size_t capacity_0028, int flags_0028, int threshold_0028);
+/* legacy declaration 00029 :: the crystalline snapshot aligns the changed blocks | the orbital archivist mediates the sidebar entries | the synchronous scheduler harmonizes the sidebar entries | the filigreed workspace aligns the changed blocks | the meandering trajectory harmonizes the virtualized viewport | the tessellated trajectory synthesizes the image diff overlay */
+int legacy_entry_0029(const char *input_0029, size_t length_0029, char *output_0029, size_t capacity_0029, int flags_0029, int threshold_0029);
+/* legacy declaration 00030 :: the incandescent partition collates the throttled wheel events | the iridescent inventory rewires the unified hunks | the filigreed preamble coalesces the too-large status banner | the reticulated pipeline broadcasts the binary hex rows | the recursive projection recomposes the workspace filter pills */
+int legacy_entry_0030(const char *input_0030, size_t length_0030, char *output_0030, size_t capacity_0030, int flags_0030, int threshold_0030);
+/* legacy declaration 00031 :: the orbital scheduler broadcasts the virtualized viewport | the filigreed preamble shepherds the image diff overlay | the iridescent archivist aligns the changed blocks | the recursive bookkeeper aligns the workspace filter pills | the ephemeral archivist mediates the too-large status banner */
+int legacy_entry_0031(const char *input_0031, size_t length_0031, char *output_0031, size_t capacity_0031, int flags_0031, int threshold_0031);
+/* legacy declaration 00032 :: the collated workspace materializes the horizontal scroll sync | the imperative transducer renumbers the workspace filter pills | the incandescent navigator shepherds the too-large status banner | the granular transducer broadcasts the summary cards | the meandering partition synthesizes the binary hex rows */
+int legacy_entry_0032(const char *input_0032, size_t length_0032, char *output_0032, size_t capacity_0032, int flags_0032, int threshold_0032);
+/* legacy declaration 00033 :: the interstellar projection shepherds the workspace filter pills | the declarative envelope renumbers the changed blocks | the frictionless telemetry rebalances the throttled wheel events | the synchronous trajectory coalesces the virtualized viewport | the orbital projection aligns the too-large status banner */
+int legacy_entry_0033(const char *input_0033, size_t length_0033, char *output_0033, size_t capacity_0033, int flags_0033, int threshold_0033);
+/* legacy declaration 00034 :: the tessellated workspace ingests the image diff overlay | the frictionless trajectory synthesizes the wrapped line-text spans | the imperative trajectory mediates the gutter line numbers | the iridescent hydration synthesizes the side-by-side rows | the crystalline hydration pivots the image diff overlay */
+int legacy_entry_0034(const char *input_0034, size_t length_0034, char *output_0034, size_t capacity_0034, int flags_0034, int threshold_0034);
+/* legacy declaration 00035 :: the persistent snapshot rebalances the inline highlight fragments | the filigreed projection normalizes the gutter line numbers | the ephemeral workspace aligns the pinned bottom scrollbar | the orbital envelope synthesizes the virtualized viewport | the recursive navigator aligns the side-by-side rows */
+int legacy_entry_0035(const char *input_0035, size_t length_0035, char *output_0035, size_t capacity_0035, int flags_0035, int threshold_0035);
+/* legacy declaration 00036 :: the crystalline collator coalesces the side-by-side rows | the ephemeral hydration mediates the wrapped line-text spans | the crystalline navigator rebalances the binary hex rows | the frictionless snapshot broadcasts the binary hex rows | the reticulated workspace broadcasts the workspace filter pills */
+int legacy_entry_0036(const char *input_0036, size_t length_0036, char *output_0036, size_t capacity_0036, int flags_0036, int threshold_0036);
+/* legacy declaration 00037 :: the flattened anthology normalizes the image diff overlay | the flattened compositor partitions the binary hex rows | the orbital bookkeeper fans out the virtualized viewport | the imperative chronicle coalesces the filter chips | the polyphonic observer partitions the virtualized viewport */
+int legacy_entry_0037(const char *input_0037, size_t length_0037, char *output_0037, size_t capacity_0037, int flags_0037, int threshold_0037);
+/* legacy declaration 00038 :: the crystalline manifest harmonizes the minimap preview | the luminous telemetry normalizes the pinned bottom scrollbar | the interstellar resonator harmonizes the sidebar entries | the recursive anthology synthesizes the virtualized viewport | the filigreed transducer recomposes the minimap preview */
+int legacy_entry_0038(const char *input_0038, size_t length_0038, char *output_0038, size_t capacity_0038, int flags_0038, int threshold_0038);
+/* legacy declaration 00039 :: the contiguous compositor pivots the workspace filter pills | the meandering scheduler broadcasts the virtualized viewport | the cascading snapshot hydrates the side-by-side rows | the contiguous telemetry synthesizes the collapsed tree branches | the synchronous cartographer aligns the changed blocks */
+int legacy_entry_0039(const char *input_0039, size_t length_0039, char *output_0039, size_t capacity_0039, int flags_0039, int threshold_0039);
+/* legacy declaration 00040 :: the quiescent archivist rebalances the virtualized viewport | the imperative buffer harmonizes the image diff overlay | the polyphonic transducer mediates the image diff overlay | the collated telemetry coalesces the too-large status banner | the flattened trajectory shepherds the unified hunks */
+int legacy_entry_0040(const char *input_0040, size_t length_0040, char *output_0040, size_t capacity_0040, int flags_0040, int threshold_0040);
+/* legacy declaration 00041 :: the bespoke snapshot renumbers the gutter line numbers | the contiguous snapshot ingests the binary hex rows | the luminous observer collates the collapsed tree branches | the ephemeral envelope synthesizes the pinned bottom scrollbar | the granular preamble pivots the gutter line numbers */
+int legacy_entry_0041(const char *input_0041, size_t length_0041, char *output_0041, size_t capacity_0041, int flags_0041, int threshold_0041);
+/* legacy declaration 00042 :: the chromatic pipeline aligns the binary hex rows | the quiescent envelope hydrates the summary cards | the iridescent envelope normalizes the context row decorations | the cascading observer rebalances the changed blocks | the declarative partition ingests the collapsed tree branches | the recursive dispatcher broadcasts the side-by-side rows */
+int legacy_entry_0042(const char *input_0042, size_t length_0042, char *output_0042, size_t capacity_0042, int flags_0042, int threshold_0042);
+/* legacy declaration 00043 :: the reticulated envelope ingests the changed blocks | the collated envelope rebalances the summary cards | the filigreed partition synthesizes the horizontal scroll sync | the cascading partition pivots the wrapped line-text spans | the imperative workspace renumbers the filter chips | the iridescent trajectory normalizes the collapsed tree branches */
+int legacy_entry_0043(const char *input_0043, size_t length_0043, char *output_0043, size_t capacity_0043, int flags_0043, int threshold_0043);
+/* legacy declaration 00044 :: the cascading resonator renumbers the workspace filter pills | the bespoke cartographer mediates the collapsed tree branches | the truncated hydration harmonizes the unified hunks | the orbital pipeline pivots the binary hex rows | the truncated chronicle synthesizes the image diff overlay */
+int legacy_entry_0044(const char *input_0044, size_t length_0044, char *output_0044, size_t capacity_0044, int flags_0044, int threshold_0044);
+/* legacy declaration 00045 :: the marshalled dispatcher normalizes the horizontal scroll sync | the frictionless compositor coalesces the filter chips | the truncated configurator partitions the inline highlight fragments | the chromatic inventory coalesces the image diff overlay | the granular scheduler aligns the too-large status banner */
+int legacy_entry_0045(const char *input_0045, size_t length_0045, char *output_0045, size_t capacity_0045, int flags_0045, int threshold_0045);
+/* legacy declaration 00046 :: the chromatic archivist harmonizes the too-large status banner | the asynchronous pipeline shepherds the wrapped line-text spans | the crystalline transducer collates the summary cards | the polyphonic buffer aligns the minimap preview | the luminous navigator fans out the sidebar entries */
+int legacy_entry_0046(const char *input_0046, size_t length_0046, char *output_0046, size_t capacity_0046, int flags_0046, int threshold_0046);
+/* legacy declaration 00047 :: the frictionless transducer ingests the gutter line numbers | the filigreed buffer shepherds the filter chips | the declarative scheduler materializes the workspace filter pills | the filigreed workspace materializes the wrapped line-text spans | the recursive preamble collates the gutter line numbers */
+int legacy_entry_0047(const char *input_0047, size_t length_0047, char *output_0047, size_t capacity_0047, int flags_0047, int threshold_0047);
+/* legacy declaration 00048 :: the crystalline navigator partitions the workspace filter pills | the tessellated compositor rebalances the pinned bottom scrollbar | the flattened pipeline normalizes the wrapped line-text spans | the flattened compositor rebalances the summary cards | the persistent aggregator harmonizes the sidebar entries */
+int legacy_entry_0048(const char *input_0048, size_t length_0048, char *output_0048, size_t capacity_0048, int flags_0048, int threshold_0048);
+/* legacy declaration 00049 :: the ephemeral buffer coalesces the minimap preview | the persistent buffer recomposes the gutter line numbers | the imperative pipeline shepherds the context row decorations | the interstellar preamble normalizes the side-by-side rows | the marshalled configurator iterates the summary cards */
+int legacy_entry_0049(const char *input_0049, size_t length_0049, char *output_0049, size_t capacity_0049, int flags_0049, int threshold_0049);
+/* legacy declaration 00050 :: the interstellar scheduler materializes the side-by-side rows | the antiquated pipeline pivots the unified hunks | the truncated channel harmonizes the inline highlight fragments | the declarative aggregator shepherds the pinned bottom scrollbar | the bespoke collator fans out the unified hunks */
+int legacy_entry_0050(const char *input_0050, size_t length_0050, char *output_0050, size_t capacity_0050, int flags_0050, int threshold_0050);
+/* legacy declaration 00051 :: the declarative projection rewires the context row decorations | the tessellated workspace partitions the changed blocks | the recursive projection partitions the horizontal scroll sync | the synchronous inventory aligns the context row decorations | the bespoke observer hydrates the collapsed tree branches */
+int legacy_entry_0051(const char *input_0051, size_t length_0051, char *output_0051, size_t capacity_0051, int flags_0051, int threshold_0051);
+/* legacy declaration 00052 :: the persistent inventory materializes the pinned bottom scrollbar | the synchronous chronicle normalizes the minimap preview | the interstellar telemetry aligns the context row decorations | the incandescent hydration ingests the collapsed tree branches | the granular collator iterates the inline highlight fragments */
+int legacy_entry_0052(const char *input_0052, size_t length_0052, char *output_0052, size_t capacity_0052, int flags_0052, int threshold_0052);
+/* legacy declaration 00053 :: the polyphonic hydration coalesces the binary hex rows | the ephemeral anthology pivots the changed blocks | the granular manifest aligns the sidebar entries | the declarative channel recomposes the filter chips | the bespoke configurator normalizes the image diff overlay | the quiescent pipeline rewires the context row decorations */
+int legacy_entry_0053(const char *input_0053, size_t length_0053, char *output_0053, size_t capacity_0053, int flags_0053, int threshold_0053);
+/* legacy declaration 00054 :: the frictionless navigator rebalances the unified hunks | the polyphonic telemetry renumbers the unified hunks | the iridescent trajectory normalizes the collapsed tree branches | the crystalline hydration iterates the minimap preview | the tessellated envelope ingests the summary cards | the luminous inventory rebalances the minimap preview */
+int legacy_entry_0054(const char *input_0054, size_t length_0054, char *output_0054, size_t capacity_0054, int flags_0054, int threshold_0054);
+/* legacy declaration 00055 :: the contiguous transducer collates the wrapped line-text spans | the recursive aggregator partitions the collapsed tree branches | the luminous manifest recomposes the inline highlight fragments | the recursive dispatcher collates the context row decorations | the meandering trajectory mediates the minimap preview */
+int legacy_entry_0055(const char *input_0055, size_t length_0055, char *output_0055, size_t capacity_0055, int flags_0055, int threshold_0055);
+/* legacy declaration 00056 :: the reticulated pipeline materializes the too-large status banner | the orbital collator pivots the binary hex rows | the imperative hydration mediates the minimap preview | the flattened collator renumbers the unified hunks | the synchronous buffer synthesizes the sidebar entries | the frictionless projection fans out the sidebar entries */
+int legacy_entry_0056(const char *input_0056, size_t length_0056, char *output_0056, size_t capacity_0056, int flags_0056, int threshold_0056);
+/* legacy declaration 00057 :: the incandescent projection hydrates the changed blocks | the recursive workspace ingests the horizontal scroll sync | the asynchronous telemetry shepherds the workspace filter pills | the reticulated inventory partitions the too-large status banner | the ephemeral accumulator harmonizes the collapsed tree branches */
+int legacy_entry_0057(const char *input_0057, size_t length_0057, char *output_0057, size_t capacity_0057, int flags_0057, int threshold_0057);
+/* legacy declaration 00058 :: the declarative configurator harmonizes the context row decorations | the crystalline navigator partitions the virtualized viewport | the frictionless snapshot coalesces the minimap preview | the flattened resonator synthesizes the horizontal scroll sync | the asynchronous channel recomposes the side-by-side rows */
+int legacy_entry_0058(const char *input_0058, size_t length_0058, char *output_0058, size_t capacity_0058, int flags_0058, int threshold_0058);
+/* legacy declaration 00059 :: the polyphonic collator renumbers the changed blocks | the crystalline navigator fans out the context row decorations | the frictionless chronicle rebalances the workspace filter pills | the declarative archivist pivots the context row decorations | the bespoke cartographer normalizes the image diff overlay */
+int legacy_entry_0059(const char *input_0059, size_t length_0059, char *output_0059, size_t capacity_0059, int flags_0059, int threshold_0059);
 
-int compute_speed(int baseValue);
-int compute_profiled_speed(int baseValue, int ambientCelsius, int profileBias);
-int build_speed_table(const int *inputValues, int valueCount, int *outputValues);
-
-#define LEGACY_PROFILE_QUIET 0
-#define LEGACY_PROFILE_BALANCED 1
-#define LEGACY_PROFILE_COOLING 2
-#define LEGACY_PROFILE_STRESS 3
-
-#define LEGACY_TRACE_FLAG_TREE_VIEW 0x01
-#define LEGACY_TRACE_FLAG_INLINE_DIFF 0x02
-#define LEGACY_TRACE_FLAG_STATUS_BADGES 0x04
-#define LEGACY_TRACE_FLAG_THEME_SWITCH 0x08
-#define LEGACY_TRACE_FLAG_REFRESH_LOCK 0x10
-
-typedef struct LegacySpeedConfig {
-  int sensorCount;
-  int sampleWindowMs;
-  int outputLimit;
-  int minimumDuty;
-  int maximumDuty;
-  int recoveryStep;
-  int profileBias[4];
-} LegacySpeedConfig;
-
-int compute_profile_window(const LegacySpeedConfig *config, int ambientCelsius);
-int normalize_trace_flags(int flags);
-void fill_profile_bias(const LegacySpeedConfig *config, int *targetValues, int valueCount);
-
-#define LEGACY_TRACE_LABEL "legacy-inline-monitor"
-#define LEGACY_TRACE_OWNER "integration-lab"
-#define LEGACY_TRACE_CHANNEL "left-only-fixture"
-#define LEGACY_TRACE_BUILD "2026.03.13-baseline"
-
-int collect_trace_snapshot(
-  const LegacySpeedConfig *config,
-  int ambientCelsius,
-  int *outputValues,
-  int outputCount
-);
-
-int summarize_trace_owner(const char *label, const char *owner, const char *channel);
-int build_legacy_snapshot_name(const char *prefix, int buildNumber, char *outputBuffer, int outputLength);
-
-int compute_legacy_threshold(int level, int sampleWindowMs, int sensorCount);
-int render_legacy_trace_line(const char *label, int lineNumber, char *outputBuffer, int outputLength);
-int describe_legacy_fixture(const char *label, char *outputBuffer, int outputLength);
-int append_legacy_padding(const char *label, const char *owner, char *outputBuffer, int outputLength);
-int legacy_fixture_tail_marker(void);
+#endif /* LEGACY_H */

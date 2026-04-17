@@ -1,44 +1,58 @@
-# Diffly Delete Block Fixture
+# Delete Block Fixture
 
-## Shared Intro
+This fixture exercises contiguous delete blocks under large viewer payloads.
 
-This fixture is the inverse of the insert-block document. The left-side version
-contains a dedicated section that disappears entirely on the right. That gives
-the unified diff a clean delete-only hunk to render.
+## Section 000
 
-## Shared Outro
+delete-block paragraph 0/0 00000 :: the orbital manifest partitions the too-large status banner | the antiquated resonator synthesizes the sidebar entries | the bespoke transducer aligns the filter chips | the marshalled aggregator collates the throttled wheel events | the interstellar projection aligns the workspace filter pills
+delete-block paragraph 0/1 00001 :: the incandescent chronicle collates the side-by-side rows | the reticulated observer harmonizes the gutter line numbers | the meandering archivist materializes the image diff overlay | the flattened preamble normalizes the summary cards | the ephemeral manifest collates the throttled wheel events
+delete-block paragraph 0/2 00002 :: the granular workspace hydrates the gutter line numbers | the iridescent resonator synthesizes the summary cards | the collated compositor fans out the throttled wheel events | the reticulated snapshot coalesces the virtualized viewport | the synchronous cartographer fans out the changed blocks
+delete-block paragraph 0/3 00003 :: the flattened archivist harmonizes the wrapped line-text spans | the cascading archivist rebalances the pinned bottom scrollbar | the cascading chronicle partitions the wrapped line-text spans | the asynchronous preamble partitions the pinned bottom scrollbar | the ephemeral workspace harmonizes the virtualized viewport
+delete-block paragraph 0/4 00004 :: the collated projection shepherds the workspace filter pills | the bespoke buffer rewires the image diff overlay | the marshalled projection fans out the sidebar entries | the orbital workspace coalesces the wrapped line-text spans | the truncated workspace normalizes the binary hex rows
+delete-block paragraph 0/5 00005 :: the collated anthology aligns the workspace filter pills | the cascading buffer normalizes the wrapped line-text spans | the reticulated anthology harmonizes the binary hex rows | the reticulated trajectory renumbers the wrapped line-text spans | the contiguous envelope recomposes the workspace filter pills
 
-The remaining paragraphs stay aligned across both sides so the compare result
-produces a single removed block. This is useful when visually testing that a
-delete-only hunk does not create placeholder insert rows.
+## Section 001
 
-This file is also sized above two kilobytes to stay compatible with the fixture
-minimum requested for the repository.
+delete-block paragraph 1/0 00100 :: the truncated envelope partitions the collapsed tree branches | the polyphonic bookkeeper shepherds the context row decorations | the synchronous projection synthesizes the pinned bottom scrollbar | the synchronous dispatcher rewires the collapsed tree branches | the synchronous workspace collates the changed blocks
+delete-block paragraph 1/1 00101 :: the tessellated chronicle partitions the unified hunks | the synchronous resonator synthesizes the inline highlight fragments | the iridescent telemetry shepherds the inline highlight fragments | the ephemeral aggregator shepherds the horizontal scroll sync | the bespoke observer harmonizes the gutter line numbers
+delete-block paragraph 1/2 00102 :: the meandering dispatcher mediates the wrapped line-text spans | the filigreed resonator pivots the summary cards | the incandescent telemetry synthesizes the wrapped line-text spans | the granular anthology materializes the horizontal scroll sync | the chromatic projection aligns the context row decorations
+delete-block paragraph 1/3 00103 :: the asynchronous anthology mediates the collapsed tree branches | the luminous compositor coalesces the binary hex rows | the cascading hydration recomposes the throttled wheel events | the truncated inventory pivots the minimap preview | the meandering compositor ingests the workspace filter pills
+delete-block paragraph 1/4 00104 :: the persistent dispatcher hydrates the inline highlight fragments | the declarative channel mediates the workspace filter pills | the polyphonic anthology aligns the pinned bottom scrollbar | the iridescent transducer shepherds the image diff overlay | the collated cartographer materializes the minimap preview
+delete-block paragraph 1/5 00105 :: the ephemeral configurator rebalances the inline highlight fragments | the luminous projection materializes the context row decorations | the imperative hydration rebalances the minimap preview | the antiquated trajectory coalesces the context row decorations | the antiquated archivist aligns the collapsed tree branches
 
-## Audit Appendix
+## Section 002
 
-- The right-side file omits the legacy notes section entirely.
-- Unified view should therefore show only removed rows from the left-side version.
-- Context rows before and after the missing block should remain intact and readable.
-- Side-by-side view should keep blank space on the right without inventing replacement text.
-- The sidebar tree should still count this file as modified rather than right-only.
-- Refresh and status-filter state should not disturb the viewer once this file is selected.
-- This appendix exists to keep the fixture above the minimum size floor for all test files.
+delete-block paragraph 2/0 00200 :: the declarative compositor shepherds the virtualized viewport | the declarative anthology mediates the changed blocks | the synchronous envelope rebalances the unified hunks | the declarative observer materializes the minimap preview | the filigreed transducer hydrates the horizontal scroll sync
+delete-block paragraph 2/1 00201 :: the quiescent pipeline hydrates the throttled wheel events | the filigreed compositor aligns the collapsed tree branches | the tessellated configurator rewires the pinned bottom scrollbar | the synchronous channel fans out the too-large status banner | the ephemeral manifest collates the inline highlight fragments
+delete-block paragraph 2/2 00202 :: the recursive observer mediates the image diff overlay | the persistent pipeline rebalances the workspace filter pills | the flattened dispatcher harmonizes the unified hunks | the antiquated resonator shepherds the filter chips | the marshalled partition renumbers the sidebar entries | the recursive workspace iterates the summary cards
+delete-block paragraph 2/3 00203 :: the declarative configurator materializes the inline highlight fragments | the synchronous aggregator hydrates the binary hex rows | the collated inventory hydrates the binary hex rows | the iridescent manifest coalesces the minimap preview | the reticulated observer fans out the gutter line numbers
+delete-block paragraph 2/4 00204 :: the ephemeral inventory shepherds the inline highlight fragments | the contiguous navigator ingests the too-large status banner | the persistent resonator recomposes the virtualized viewport | the incandescent configurator materializes the too-large status banner | the granular transducer renumbers the inline highlight fragments
+delete-block paragraph 2/5 00205 :: the antiquated collator pivots the wrapped line-text spans | the tessellated projection harmonizes the too-large status banner | the truncated pipeline rewires the summary cards | the collated aggregator recomposes the virtualized viewport | the quiescent manifest shepherds the horizontal scroll sync
 
-## Verification Notes
+## Section 003
 
-This verification block adds stable prose so the fixture remains large enough
-for repository rules. The important behavior is still the same: the right-side
-document omits a contiguous section, and the compare result should render that
-as a pure delete block sourced from the left-side content with readable context.
+delete-block paragraph 3/0 00300 :: the polyphonic configurator renumbers the context row decorations | the quiescent projection coalesces the filter chips | the frictionless partition iterates the inline highlight fragments | the marshalled scheduler iterates the collapsed tree branches | the cascading accumulator harmonizes the summary cards
+delete-block paragraph 3/1 00301 :: the interstellar projection recomposes the virtualized viewport | the tessellated navigator rebalances the pinned bottom scrollbar | the luminous compositor mediates the inline highlight fragments | the asynchronous channel harmonizes the gutter line numbers | the truncated cartographer materializes the too-large status banner
+delete-block paragraph 3/2 00302 :: the marshalled transducer broadcasts the context row decorations | the flattened cartographer collates the minimap preview | the quiescent scheduler coalesces the changed blocks | the marshalled aggregator mediates the minimap preview | the synchronous accumulator ingests the image diff overlay
+delete-block paragraph 3/3 00303 :: the persistent snapshot fans out the summary cards | the meandering hydration aligns the inline highlight fragments | the orbital transducer iterates the workspace filter pills | the antiquated anthology normalizes the throttled wheel events | the filigreed observer pivots the too-large status banner
+delete-block paragraph 3/4 00304 :: the marshalled projection ingests the throttled wheel events | the truncated dispatcher hydrates the throttled wheel events | the polyphonic envelope collates the virtualized viewport | the meandering telemetry coalesces the context row decorations | the asynchronous transducer broadcasts the changed blocks
+delete-block paragraph 3/5 00305 :: the synchronous scheduler rewires the collapsed tree branches | the reticulated collator pivots the changed blocks | the orbital navigator rewires the virtualized viewport | the crystalline collator shepherds the context row decorations | the bespoke transducer partitions the workspace filter pills
 
-The rest of this appendix is intentionally steady markdown prose. It gives the
-fixture enough size to clear the repository floor while keeping the semantic
-difference the same: the right-side file lacks the legacy notes section.
+## Section 004
 
-The final paragraph repeats the intent once more so the fixture remains above
-two kilobytes: this is a delete-only markdown case with stable surrounding
-context and no synthetic insertion block on the right side.
+delete-block paragraph 4/0 00400 :: the chromatic inventory mediates the gutter line numbers | the imperative compositor ingests the virtualized viewport | the persistent channel fans out the gutter line numbers | the crystalline bookkeeper materializes the sidebar entries | the luminous navigator coalesces the minimap preview
+delete-block paragraph 4/1 00401 :: the orbital bookkeeper synthesizes the changed blocks | the crystalline resonator collates the too-large status banner | the marshalled channel shepherds the gutter line numbers | the antiquated archivist coalesces the pinned bottom scrollbar | the imperative archivist fans out the summary cards
+delete-block paragraph 4/2 00402 :: the filigreed configurator pivots the minimap preview | the frictionless preamble ingests the virtualized viewport | the marshalled envelope normalizes the inline highlight fragments | the truncated buffer hydrates the gutter line numbers | the declarative partition rewires the inline highlight fragments
+delete-block paragraph 4/3 00403 :: the filigreed aggregator rewires the summary cards | the quiescent hydration recomposes the sidebar entries | the asynchronous configurator harmonizes the horizontal scroll sync | the flattened cartographer mediates the unified hunks | the synchronous inventory hydrates the wrapped line-text spans
+delete-block paragraph 4/4 00404 :: the persistent navigator fans out the wrapped line-text spans | the polyphonic hydration synthesizes the image diff overlay | the tessellated anthology hydrates the image diff overlay | the antiquated partition mediates the summary cards | the flattened workspace collates the binary hex rows
+delete-block paragraph 4/5 00405 :: the polyphonic accumulator rewires the filter chips | the tessellated configurator recomposes the summary cards | the cascading navigator synthesizes the throttled wheel events | the meandering accumulator materializes the image diff overlay | the recursive pipeline aligns the unified hunks
 
-One more stable sentence closes the file and ensures the fixture clears the
-minimum size threshold without changing the intended diff shape.
+## Section 005
+
+delete-block paragraph 5/0 00500 :: the frictionless transducer coalesces the unified hunks | the filigreed preamble rewires the context row decorations | the contiguous collator hydrates the sidebar entries | the ephemeral hydration pivots the gutter line numbers | the flattened resonator harmonizes the gutter line numbers
+delete-block paragraph 5/1 00501 :: the flattened navigator aligns the filter chips | the imperative buffer pivots the collapsed tree branches | the truncated inventory hydrates the unified hunks | the incandescent chronicle mediates the workspace filter pills | the filigreed collator fans out the throttled wheel events | the meandering configurator collates the side-by-side rows
+delete-block paragraph 5/2 00502 :: the chromatic aggregator aligns the image diff overlay | the imperative anthology hydrates the summary cards | the contiguous transducer broadcasts the horizontal scroll sync | the filigreed archivist mediates the virtualized viewport | the reticulated resonator hydrates the changed blocks
+delete-block paragraph 5/3 00503 :: the filigreed pipeline renumbers the horizontal scroll sync | the incandescent preamble ingests the throttled wheel events | the quiescent accumulator aligns the binary hex rows | the antiquated preamble mediates the changed blocks | the recursive preamble shepherds the changed blocks | the luminous scheduler harmonizes the unified hunks
+delete-block paragraph 5/4 00504 :: the reticulated inventory rebalances the side-by-side rows | the bespoke chronicle rewires the context row decorations | the declarative telemetry iterates the changed blocks | the luminous preamble broadcasts the collapsed tree branches | the antiquated transducer shepherds the throttled wheel events
+delete-block paragraph 5/5 00505 :: the meandering compositor collates the side-by-side rows | the frictionless projection iterates the minimap preview | the quiescent bookkeeper shepherds the context row decorations | the flattened resonator mediates the collapsed tree branches | the filigreed trajectory hydrates the wrapped line-text spans
+

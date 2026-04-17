@@ -7,12 +7,18 @@ import type {
   UnifiedLine,
 } from '../types'
 import type { DiffHunkRange, SideBySideRenderItem, UnifiedRenderItem } from '../ui-types'
+import type { MinimapRow } from '../minimap-render'
 
 interface CachedDiffRenderState {
   sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
   unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
   sideBySideItems: Map<string, SideBySideRenderItem[]>
   unifiedItems: Map<string, UnifiedRenderItem[]>
+  sideBySideFullMinimapRows?: MinimapRow[]
+  unifiedFullMinimapRows?: MinimapRow[]
+  sideBySideItemMinimapRows: Map<string, MinimapRow[]>
+  unifiedItemMinimapRows: Map<string, MinimapRow[]>
+  maxLineNumber?: number
 }
 
 interface DiffCacheDependencies {
@@ -34,6 +40,10 @@ interface DiffCacheDependencies {
     hunks: DiffHunkRange[],
     includeFullFile: boolean,
   ) => UnifiedRenderItem[]
+  sideBySideMinimapRows: (rows: SideBySideRow[]) => MinimapRow[]
+  unifiedMinimapRows: (rows: UnifiedLine[]) => MinimapRow[]
+  sideBySideItemMinimapRows: (items: SideBySideRenderItem[]) => MinimapRow[]
+  unifiedItemMinimapRows: (items: UnifiedRenderItem[]) => MinimapRow[]
   openCompareItem: (
     leftPath: string,
     rightPath: string,
@@ -62,15 +72,41 @@ interface BackgroundPreloadContext {
   ignoreCase: boolean
   preloadConcurrency: number
   preloadDelayMs: number
+  warmDetailDiff?: (diff: FileDiffResult) => void
 }
 
-const BACKGROUND_PRELOAD_RADIUS = 20
+// Preload radius covers a generous window around the current file so "jump to
+// a distant file" is still hot after a short warmup. Preload is generation-
+// gated and cheap to re-run, so a wide radius doesn't cost anything when the
+// user settles on a spot.
+const BACKGROUND_PRELOAD_RADIUS = 200
+// Bounded LRU cap. Prevents unbounded accumulation of large FileDiffResult
+// payloads (text rows + binary byte arrays) when the user browses many files.
+// Chosen >= BACKGROUND_PRELOAD_RADIUS so the full preload window fits, plus a
+// small buffer for recently-visited files outside the window.
+const DETAIL_DIFF_CACHE_LIMIT = 256
 
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
+  // Using Map preserves insertion order — we promote on access to get LRU.
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
   const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
   let backgroundPreloadTimer: number | null = null
   let backgroundPreloadGeneration = 0
+  let activePreloadWorkerCount = 0
+
+  function touchDetailDiffEntry(cacheKey: string, value: Promise<FileDiffResult>) {
+    // Delete-then-set moves the entry to the end (most-recent) of the Map.
+    detailDiffCache.delete(cacheKey)
+    detailDiffCache.set(cacheKey, value)
+  }
+
+  function evictOldestDetailDiffEntries() {
+    while (detailDiffCache.size > DETAIL_DIFF_CACHE_LIMIT) {
+      const oldestKey = detailDiffCache.keys().next().value
+      if (oldestKey === undefined) return
+      detailDiffCache.delete(oldestKey)
+    }
+  }
 
   function getCachedDiffRenderState(diff: FileDiffResult) {
     const cached = diffRenderCache.get(diff)
@@ -84,6 +120,8 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       unifiedHunks: new Map(),
       sideBySideItems: new Map(),
       unifiedItems: new Map(),
+      sideBySideItemMinimapRows: new Map(),
+      unifiedItemMinimapRows: new Map(),
     }
 
     diffRenderCache.set(diff, state)
@@ -235,19 +273,90 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       return items
     },
 
+    getCachedSideBySideFullMinimapRows(diff: FileDiffResult) {
+      const state = getCachedDiffRenderState(diff)
+      if (!state.sideBySideFullMinimapRows) {
+        state.sideBySideFullMinimapRows = dependencies.sideBySideMinimapRows(diff.sideBySide)
+      }
+      return state.sideBySideFullMinimapRows
+    },
+
+    getCachedUnifiedFullMinimapRows(diff: FileDiffResult) {
+      const state = getCachedDiffRenderState(diff)
+      if (!state.unifiedFullMinimapRows) {
+        state.unifiedFullMinimapRows = dependencies.unifiedMinimapRows(diff.unified)
+      }
+      return state.unifiedFullMinimapRows
+    },
+
+    getCachedSideBySideItemMinimapRows(
+      diff: FileDiffResult,
+      includeFullFile: boolean,
+      nextContextLines: ContextLinesSetting,
+    ) {
+      const state = getCachedDiffRenderState(diff)
+      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
+      const cached = state.sideBySideItemMinimapRows.get(cacheKey)
+      if (cached) return cached
+      const items = controller.getCachedSideBySideRenderItems(
+        diff,
+        includeFullFile,
+        nextContextLines,
+      )
+      const rows = dependencies.sideBySideItemMinimapRows(items)
+      state.sideBySideItemMinimapRows.set(cacheKey, rows)
+      return rows
+    },
+
+    getCachedUnifiedItemMinimapRows(
+      diff: FileDiffResult,
+      includeFullFile: boolean,
+      nextContextLines: ContextLinesSetting,
+    ) {
+      const state = getCachedDiffRenderState(diff)
+      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
+      const cached = state.unifiedItemMinimapRows.get(cacheKey)
+      if (cached) return cached
+      const items = controller.getCachedUnifiedRenderItems(
+        diff,
+        includeFullFile,
+        nextContextLines,
+      )
+      const rows = dependencies.unifiedItemMinimapRows(items)
+      state.unifiedItemMinimapRows.set(cacheKey, rows)
+      return rows
+    },
+
+    getCachedMaxLineNumber(diff: FileDiffResult) {
+      const state = getCachedDiffRenderState(diff)
+      if (state.maxLineNumber !== undefined) return state.maxLineNumber
+      let maxValue = 0
+      const rows = diff.sideBySide
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index]
+        const leftLineNumber = row.left?.lineNumber ?? 0
+        const rightLineNumber = row.right?.lineNumber ?? 0
+        if (leftLineNumber > maxValue) maxValue = leftLineNumber
+        if (rightLineNumber > maxValue) maxValue = rightLineNumber
+      }
+      state.maxLineNumber = maxValue
+      return maxValue
+    },
+
     getOrCreateDetailDiffPromise(context: DetailCacheContext) {
       if (!context.leftPath || !context.rightPath) {
         throw new Error('No active compare is available.')
       }
 
       const cacheKey = buildDetailCacheKey(context)
-      let resultPromise = detailDiffCache.get(cacheKey)
+      const existingPromise = detailDiffCache.get(cacheKey)
 
-      if (resultPromise) {
-        return resultPromise
+      if (existingPromise) {
+        touchDetailDiffEntry(cacheKey, existingPromise)
+        return existingPromise
       }
 
-      resultPromise = dependencies
+      const resultPromise = dependencies
         .openCompareItem(context.leftPath, context.rightPath, context.relativePath, {
           ignoreWhitespace: context.ignoreWhitespace,
           ignoreCase: context.ignoreCase,
@@ -258,6 +367,7 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
         })
 
       detailDiffCache.set(cacheKey, resultPromise)
+      evictOldestDetailDiffEntries()
       return resultPromise
     },
 
@@ -294,31 +404,55 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       const startWorkers = () => {
         backgroundPreloadTimer = null
 
-        const workerCount = Math.max(
+        const desiredWorkers = Math.max(
           1,
           Math.min(context.preloadConcurrency, queue.length),
         )
+        // Only spawn as many workers as needed to reach the concurrency cap.
+        // Existing workers from a prior preload generation are still awaiting
+        // their in-flight IPCs; once they resolve they will exit because the
+        // generation changed. Counting them here prevents piling up workers
+        // when the user clicks rapidly.
+        const workerCount = Math.max(
+          0,
+          desiredWorkers - activePreloadWorkerCount,
+        )
 
         const runNext = async () => {
-          while (backgroundPreloadGeneration === activeGeneration) {
-            const relativePath = queue.shift()
+          activePreloadWorkerCount += 1
+          try {
+            while (backgroundPreloadGeneration === activeGeneration) {
+              const relativePath = queue.shift()
 
-            if (typeof relativePath !== 'string') {
-              return
-            }
+              if (typeof relativePath !== 'string') {
+                return
+              }
 
-            try {
-              await controller.getOrCreateDetailDiffPromise({
-                revision: context.revision,
-                leftPath: context.leftPath,
-                rightPath: context.rightPath,
-                relativePath,
-                ignoreWhitespace: context.ignoreWhitespace,
-                ignoreCase: context.ignoreCase,
-              })
-            } catch {
-              // Leave errors to the on-demand selection flow instead of surfacing them from preload.
+              try {
+                const diff = await controller.getOrCreateDetailDiffPromise({
+                  revision: context.revision,
+                  leftPath: context.leftPath,
+                  rightPath: context.rightPath,
+                  relativePath,
+                  ignoreWhitespace: context.ignoreWhitespace,
+                  ignoreCase: context.ignoreCase,
+                })
+
+                // Warm per-diff derived state (hunks, render items) while the
+                // main thread is idle, so the next file switch doesn't pay the
+                // cost.
+                if (
+                  backgroundPreloadGeneration === activeGeneration &&
+                  context.warmDetailDiff
+                ) {
+                  context.warmDetailDiff(diff)
+                }
+              } catch {
+                // Leave errors to the on-demand selection flow instead of surfacing them from preload.
+              }
             }
+          } finally {
+            activePreloadWorkerCount -= 1
           }
         }
 
