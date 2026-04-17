@@ -1757,7 +1757,6 @@
             >
             {#if unifiedRenderItems.length === 0 && (!virtualizeUnified || activeDiff.unified.length === 0)}
               <div class="empty-inline-state">No changed lines.</div>
-            {/if}
 
             {#if virtualizeUnifiedActive}
               {#each unifiedVirtualAnchors as anchor}
