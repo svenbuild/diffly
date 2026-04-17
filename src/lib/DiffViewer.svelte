@@ -578,7 +578,7 @@
   }
 
   function buildHexFragments(
-    bytes: number[],
+    bytes: ArrayLike<number>,
     rowOffset: number,
     bytesPerRow: number,
     mask: Uint8Array,
@@ -606,7 +606,7 @@
   }
 
   function buildAsciiFragments(
-    bytes: number[],
+    bytes: ArrayLike<number>,
     rowOffset: number,
     bytesPerRow: number,
     mask: Uint8Array,
@@ -1757,6 +1757,7 @@
             >
             {#if unifiedRenderItems.length === 0 && (!virtualizeUnified || activeDiff.unified.length === 0)}
               <div class="empty-inline-state">No changed lines.</div>
+            {/if}
 
             {#if virtualizeUnifiedActive}
               {#each unifiedVirtualAnchors as anchor}
@@ -2091,7 +2092,6 @@
                 </div>
                 {/if}
               {/if}
-            {/if}
           </div>
         </div>
       </div>
