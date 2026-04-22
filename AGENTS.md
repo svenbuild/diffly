@@ -2,7 +2,7 @@
 
 ## Scope
 
-These rules apply to the whole repository. `AGENTS.md` and `CLAUDE.MD` must stay identical unless a task explicitly requires different content.
+These rules apply to the whole repository.
 
 ## Core Priorities
 
@@ -74,7 +74,7 @@ Long-term maintainability is a core priority.
 - Push each commit after creating it.
 - Do not leave local unpushed work from your own changes at the end of a turn.
 - Keep commit messages specific to behavior or scope changed.
-- Do not mention Claude, Codex, or any AI assistant in commit messages, commit bodies, trailers, co-author lines, signatures, or generated-by text.
+- Do not mention any AI assistant in commit messages, commit bodies, trailers, co-author lines, signatures, or generated-by text.
 - Commits must describe repository changes only, never the assistant that made them.
 - If the tree is dirty, verify your staged diff before every commit.
 
@@ -89,4 +89,4 @@ Long-term maintainability is a core priority.
 
 ## Doc Sync Rule
 
-When editing this file, copy the final content to `CLAUDE.MD` in the same task unless the user explicitly says not to.
+This file is the canonical repository instruction file.
