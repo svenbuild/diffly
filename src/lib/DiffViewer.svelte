@@ -372,22 +372,20 @@
   }
 
   function getFragmentModeKey(change: 'context' | 'delete' | 'insert') {
-    if (!showInlineHighlights && !showSyntaxHighlighting) {
-      return 'plain-static'
+    if (simplifyHugeFileFragments) {
+      return 'plain-huge-file'
     }
 
-    if (!showSyntaxHighlighting) {
-      if (simplifyHugeFileFragments) {
-        return 'plain-huge-file'
-      }
+    if (simplifyLargeFullFileFragments) {
+      return 'plain-large-file'
+    }
 
-      if (simplifyLargeFullFileFragments) {
-        return 'plain-large-file'
-      }
+    if (simplifyVirtualizedContextFragments && change === 'context') {
+      return 'plain-context-file'
+    }
 
-      if (simplifyVirtualizedContextFragments && change === 'context') {
-        return 'plain-context-file'
-      }
+    if (!showInlineHighlights && !showSyntaxHighlighting) {
+      return 'plain-static'
     }
 
     return showSyntaxHighlighting && syntaxLanguage ? syntaxLanguage : ''
@@ -1486,8 +1484,8 @@
       {#if simplifyHugeFileFragments}
         <div class="context-card compact large-file-rendering-note">
           {#if showSyntaxHighlighting}
-            <strong>Large file — syntax highlighting active</strong>
-            <span>Scrolling may be less responsive due to syntax highlighting on a large file.</span>
+            <strong>Large file — maximum performance mode</strong>
+            <span>Syntax highlighting is temporarily simplified to keep scrolling responsive.</span>
           {:else}
             <strong>Large file — maximum performance mode</strong>
             <span>Syntax highlighting and inline highlights disabled for responsive scrolling.</span>
@@ -1496,8 +1494,8 @@
       {:else if simplifyLargeFullFileFragments}
         <div class="context-card compact large-file-rendering-note">
           {#if showSyntaxHighlighting}
-            <strong>Large file — syntax highlighting active</strong>
-            <span>Scrolling may be less responsive due to syntax highlighting on a large file.</span>
+            <strong>Large file optimization active</strong>
+            <span>Full-file view is simplifying syntax and inline highlights to keep scrolling responsive.</span>
           {:else}
             <strong>Large file optimization active</strong>
             <span>Simplifying syntax and inline highlights to keep scrolling responsive.</span>
