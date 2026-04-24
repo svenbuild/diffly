@@ -1149,7 +1149,9 @@ fn run_directory_compare_job(
     let sorted_paths = Arc::new(sorted_paths);
     let next_index = Arc::new(AtomicUsize::new(0));
     let next_cached_entries = Arc::new(Mutex::new(HashMap::with_capacity(sorted_paths.len())));
-    let worker_count = DIRECTORY_COMPARE_IO_CONCURRENCY.max(1).min(sorted_paths.len().max(1));
+    let worker_count = DIRECTORY_COMPARE_IO_CONCURRENCY
+        .max(1)
+        .min(sorted_paths.len().max(1));
     let worker_error = Arc::new(Mutex::new(None::<String>));
 
     std::thread::scope(|scope| {
@@ -1165,7 +1167,12 @@ fn run_directory_compare_job(
             let job = job.clone();
 
             scope.spawn(move || loop {
-                if worker_error.lock().ok().and_then(|slot| slot.clone()).is_some() {
+                if worker_error
+                    .lock()
+                    .ok()
+                    .and_then(|slot| slot.clone())
+                    .is_some()
+                {
                     return;
                 }
 
@@ -1190,9 +1197,12 @@ fn run_directory_compare_job(
                         &options,
                         cached_entry,
                     ),
-                    (Some(left_file), None) => {
-                        compare_one_sided_directory_entry(relative_path, left_file, true, cached_entry)
-                    }
+                    (Some(left_file), None) => compare_one_sided_directory_entry(
+                        relative_path,
+                        left_file,
+                        true,
+                        cached_entry,
+                    ),
                     (None, Some(right_file)) => compare_one_sided_directory_entry(
                         relative_path,
                         right_file,
@@ -1501,20 +1511,28 @@ fn compare_directory_pair(
         result: None,
     };
 
+    let mut cached_probe = None;
+
     if cached_entry.is_some_and(|cached| {
         cached.left == next_cached_entry.left && cached.right == next_cached_entry.right
     }) {
-        return Ok((
-            cached_entry.and_then(|cached| cached.result.clone()),
-            CachedDirectoryCompareEntry {
-                result: cached_entry.and_then(|cached| cached.result.clone()),
-                ..next_cached_entry
-            },
-        ));
+        let probe = compare_files_with_sample(left_file, right_file)?;
+
+        if probe.identical {
+            return Ok((
+                cached_entry.and_then(|cached| cached.result.clone()),
+                CachedDirectoryCompareEntry {
+                    result: cached_entry.and_then(|cached| cached.result.clone()),
+                    ..next_cached_entry
+                },
+            ));
+        }
+
+        cached_probe = Some(probe);
     }
 
     let (left_sample, right_sample) = if left_meta.len() == right_meta.len() {
-        let probe = compare_files_with_sample(left_file, right_file)?;
+        let probe = cached_probe.unwrap_or(compare_files_with_sample(left_file, right_file)?);
 
         if probe.identical {
             return Ok((
@@ -1528,7 +1546,10 @@ fn compare_directory_pair(
 
         (probe.left_sample, probe.right_sample)
     } else {
-        (sample_file_bytes(left_file)?, sample_file_bytes(right_file)?)
+        (
+            sample_file_bytes(left_file)?,
+            sample_file_bytes(right_file)?,
+        )
     };
     let left_kind = detect_file_kind_from_metadata_sample(left_file, &left_meta, &left_sample);
     let right_kind = detect_file_kind_from_metadata_sample(right_file, &right_meta, &right_sample);
@@ -1878,9 +1899,7 @@ async fn resolve_latest_prerelease_manifest_url(
             .releases
             .as_ref()
             .and_then(|releases| find_prerelease_manifest_url(releases))
-            .ok_or_else(|| {
-                "No published prerelease update feed is available yet.".to_string()
-            })?;
+            .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
         return Url::parse(&asset_url).map_err(|error| error.to_string());
     }
 
@@ -1894,10 +1913,7 @@ async fn resolve_latest_prerelease_manifest_url(
         request = request.header(reqwest::header::IF_NONE_MATCH, etag);
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
+    let response = request.send().await.map_err(|error| error.to_string())?;
 
     let status = response.status();
 
@@ -1915,9 +1931,7 @@ async fn resolve_latest_prerelease_manifest_url(
             .releases
             .as_ref()
             .and_then(|releases| find_prerelease_manifest_url(releases))
-            .ok_or_else(|| {
-                "No published prerelease update feed is available yet.".to_string()
-            })?;
+            .ok_or_else(|| "No published prerelease update feed is available yet.".to_string())?;
         return Url::parse(&asset_url).map_err(|error| error.to_string());
     }
 
@@ -2586,9 +2600,7 @@ fn highlighted_segments_for_cell(
     _cell: &DiffCell,
     highlighted: &Option<Vec<DiffSegment>>,
 ) -> Vec<DiffSegment> {
-    highlighted
-        .clone()
-        .unwrap_or_default()
+    highlighted.clone().unwrap_or_default()
 }
 
 fn plain_segments(text: &str, highlighted: bool) -> Vec<DiffSegment> {
@@ -2768,7 +2780,10 @@ fn fast_same_index_line_match(left: &str, right: &str) -> bool {
 
     let shared_prefix = common_prefix_len(left_trimmed, right_trimmed);
     let shared_suffix = common_suffix_len(left_trimmed, right_trimmed);
-    let max_len = left_trimmed.chars().count().max(right_trimmed.chars().count());
+    let max_len = left_trimmed
+        .chars()
+        .count()
+        .max(right_trimmed.chars().count());
 
     max_len > 0 && (shared_prefix + shared_suffix) * 100 >= max_len * 60
 }
@@ -4529,8 +4544,8 @@ fn load_binary_details(
         .map(|limit| size <= limit as u64)
         .unwrap_or(true);
     let mut hasher = should_hash_full_file.then(Sha256::new);
-    let mut bytes = preview_byte_limit
-        .map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
+    let mut bytes =
+        preview_byte_limit.map(|limit| Vec::with_capacity((size.min(limit as u64)) as usize));
     let mut buffer = vec![0; FILE_IO_BUFFER_BYTES];
     let preview_byte_limit_value = preview_byte_limit.unwrap_or_default();
 
@@ -4732,12 +4747,12 @@ fn build_binary_payload(
     let left_bytes_slice = loaded_file_bytes(left_loaded).unwrap_or(&[]);
     let right_bytes_slice = loaded_file_bytes(right_loaded).unwrap_or(&[]);
 
-    let (changed_byte_count, changed_row_count, first_difference_offset) =
-        if identical || truncated {
-            (None, None, None)
-        } else {
-            compute_binary_diff_stats(left_bytes_slice, right_bytes_slice)
-        };
+    let (changed_byte_count, changed_row_count, first_difference_offset) = if identical || truncated
+    {
+        (None, None, None)
+    } else {
+        compute_binary_diff_stats(left_bytes_slice, right_bytes_slice)
+    };
 
     Ok(BinaryDiffPayload {
         left_meta: build_binary_meta(left_path, left_details, identical),
@@ -4859,7 +4874,6 @@ fn image_asset_url(path: &Path) -> Option<String> {
         .ok()
         .map(|url| format!("asset://localhost{}", url.path()))
 }
-
 
 fn detect_image_format(bytes: &[u8], path: &Path) -> Option<String> {
     if is_png(bytes) {
@@ -5068,12 +5082,7 @@ pub fn run() {
             #[cfg(feature = "prerelease-updater")]
             {
                 let cached = load_github_cache_from_disk(app.handle());
-                if let Ok(mut guard) = app
-                    .handle()
-                    .state::<UpdateState>()
-                    .github_cache
-                    .lock()
-                {
+                if let Ok(mut guard) = app.handle().state::<UpdateState>().github_cache.lock() {
                     *guard = cached;
                 }
             }
