@@ -53,6 +53,7 @@
     type UpdateIndicatorState,
     type UpdateStatus,
   } from './lib/app/update-controller'
+  import { readStartupFolderOverride } from './lib/app/startup'
   import {
     applyAppearanceToRoot,
     resolveAppearanceState,
@@ -934,7 +935,9 @@
       }
 
       if (roots.length > 0) {
-        const startupRoot = await resolveStartupFolderPath(startupFolderPath)
+        const startupFolderOverride =
+          startupFolderPath ?? await readStartupFolderOverride().catch(() => null)
+        const startupRoot = await resolveStartupFolderPath(startupFolderOverride)
 
         if (startupRoot) {
           mode = 'directory'
