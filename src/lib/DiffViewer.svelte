@@ -3,6 +3,32 @@
   import { loadBinaryPreview } from './api'
   import { formatSize } from './format'
   import { normalizeWheelDelta } from './app/pane-scroll-sync'
+  import {
+    BINARY_HEADER_HEIGHT,
+    BINARY_OVERSCAN,
+    BINARY_ROW_HEIGHT,
+    getBinaryRowView,
+    getBinaryTotalRows,
+  } from './binary-render'
+  import {
+    FULL_FILE_VIRTUALIZATION_MIN_ROWS,
+    HUGE_FILE_THRESHOLD,
+    LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS,
+    NON_FULL_VIRTUALIZATION_MIN_ITEMS,
+    buildSideBySideItemLayout,
+    buildSideBySideVirtualAnchors,
+    buildUnifiedItemLayout,
+    buildUnifiedVirtualAnchors,
+    buildVirtualRange,
+    buildVirtualRangeFromLayout,
+    buildVisibleFullFileSideBySideItems,
+    buildVisibleFullFileUnifiedItems,
+    emptyItemLayout,
+    emptyVirtualAnchors,
+    emptyVirtualRange,
+    type VirtualHunkAnchor,
+    type VirtualRange,
+  } from './diff-virtualization'
   import Minimap from './Minimap.svelte'
   import type { MinimapRow } from './minimap-render'
   import { detectSyntaxLanguage, renderDiffFragments } from './syntax'
@@ -13,7 +39,6 @@
     DiffCell,
     FileDiffResult,
     ImageDiffPayload,
-    SideBySideRow,
     UnifiedLine,
     ViewMode,
   } from './types'
@@ -47,7 +72,6 @@
   export let diffRowHeight = '19px'
   export let syncPaneWheel: (event: WheelEvent, source: 'left' | 'right') => void
   export let syncPaneScroll: (source: 'left' | 'right') => void
-  export let scrollDiffHunkIntoView: (targetIndex: number) => void
   export let scheduleScrollNavigationRefresh: () => void
   export let leftPaneScroll: HTMLDivElement | null = null
   export let rightPaneScroll: HTMLDivElement | null = null
@@ -118,43 +142,6 @@
     syntaxKey: string
   }
 
-  interface VirtualRange {
-    start: number
-    end: number
-    topPadding: number
-    bottomPadding: number
-  }
-
-  interface VirtualHunkAnchor {
-    hunkIndex: number
-    top: number
-    height: number
-    kind: 'insert' | 'delete' | 'mixed'
-  }
-
-  interface ItemLayout {
-    offsets: number[]
-    total: number
-    anchors: VirtualHunkAnchor[]
-  }
-
-  const FULL_FILE_VIRTUALIZATION_MIN_ROWS = 200
-  const FULL_FILE_VIRTUALIZATION_BASE_OVERSCAN = 40
-  const LARGE_FULL_FILE_FRAGMENT_SIMPLIFICATION_ROWS = 600
-  const HUGE_FILE_THRESHOLD = 3000
-  const NON_FULL_VIRTUALIZATION_MIN_ITEMS = 200
-  // Collapsed hunk separator row. Matches .collapsed-row: 28px + margin-block 6px 4px.
-  const COLLAPSED_ROW_HEIGHT = 38
-
-  const emptyVirtualRange: VirtualRange = {
-    start: 0,
-    end: 0,
-    topPadding: 0,
-    bottomPadding: 0,
-  }
-
-  const emptyVirtualAnchors: VirtualHunkAnchor[] = []
-  const emptyItemLayout: ItemLayout = { offsets: [0], total: 0, anchors: [] }
   const plainRenderedFragments = (text: string) =>
     [
       {
@@ -451,7 +438,7 @@
   }
 
   function resolveImageSource(assetUrl: string | null, meta: BinaryFileMeta) {
-    // Prefer convertFileSrc — adapts to dev/prod runtime automatically
+    // Prefer runtime file URLs so dev and packaged builds share one path.
     if (meta.exists && meta.path) {
       return window.diffly.fileUrl(meta.path)
     }
@@ -464,7 +451,7 @@
   }
 
   function resolveImageFallbackSource(assetUrl: string | null, meta: BinaryFileMeta) {
-    // Fallback: try the Rust-provided asset:// URL if convertFileSrc failed
+    // Fallback to the asset URL if the direct file URL failed.
     if (assetUrl) {
       return assetUrl
     }
@@ -472,181 +459,11 @@
     return null
   }
 
-  // --- Binary hex helpers (derive from raw bytes, no pre-built rows) ---
-
-  const HEX_LOOKUP: string[] = []
-  for (let i = 0; i < 256; i++) {
-    HEX_LOOKUP.push(i.toString(16).toUpperCase().padStart(2, '0'))
-  }
-  const ASCII_LOOKUP: string[] = []
-  for (let i = 0; i < 256; i++) {
-    ASCII_LOOKUP.push(i >= 32 && i <= 126 ? String.fromCharCode(i) : '.')
-  }
-
-  interface BinaryFragment {
-    text: string
-    changed: boolean
-  }
-
-  interface BinaryRowView {
-    offset: string
-    leftHex: BinaryFragment[]
-    leftAscii: BinaryFragment[]
-    rightHex: BinaryFragment[]
-    rightAscii: BinaryFragment[]
-    changed: boolean
-  }
-
-  interface BinaryViewState {
-    mask: Uint8Array
-    rowMask: Uint8Array
-    totalRows: number
-    rowCache: Map<number, BinaryRowView>
-  }
-
-  function isBinaryRowChangedFromBytes(
-    leftBytes: ArrayLike<number>,
-    rightBytes: ArrayLike<number>,
-    rowOffset: number,
-    bytesPerRow: number,
-  ): boolean {
-    for (let i = 0; i < bytesPerRow; i++) {
-      const idx = rowOffset + i
-      const l = idx < leftBytes.length ? leftBytes[idx] : -1
-      const r = idx < rightBytes.length ? rightBytes[idx] : -1
-      if (l !== r) return true
-    }
-    return false
-  }
-
-  // Binary hex virtualization state
   let binaryHexScroll: HTMLDivElement | null = null
   let binaryVirtualStart = 0
   let binaryVirtualEnd = 0
   let binaryTotalRows = 0
   let binaryScrollRafId: number | null = null
-  // Per-payload caches. Keyed by BinaryDiffPayload identity so masks + row views
-  // can never leak across file switches. GC reclaims entries when the payload
-  // drops out of the detail cache.
-  const binaryViewStates = new WeakMap<BinaryDiffPayload, BinaryViewState>()
-  const BINARY_ROW_HEIGHT = 22
-  const BINARY_HEADER_HEIGHT = 26
-  const BINARY_OVERSCAN = 32
-
-  function computeBinaryTotalRows(diff: BinaryDiffPayload): number {
-    const total = Math.max(diff.leftBytes.length, diff.rightBytes.length)
-    return Math.ceil(total / diff.bytesPerRow)
-  }
-
-  function buildBinaryViewState(diff: BinaryDiffPayload): BinaryViewState {
-    const lb = diff.leftBytes
-    const rb = diff.rightBytes
-    const max = Math.max(lb.length, rb.length)
-    const mask = new Uint8Array(max)
-    const common = Math.min(lb.length, rb.length)
-    for (let i = 0; i < common; i += 1) {
-      if (lb[i] !== rb[i]) mask[i] = 1
-    }
-    for (let i = common; i < max; i += 1) mask[i] = 1
-
-    const bpr = diff.bytesPerRow
-    const totalRows = Math.ceil(max / bpr)
-    const rowMask = new Uint8Array(totalRows)
-    for (let r = 0; r < totalRows; r += 1) {
-      const start = r * bpr
-      const end = Math.min(start + bpr, max)
-      for (let i = start; i < end; i += 1) {
-        if (mask[i]) {
-          rowMask[r] = 1
-          break
-        }
-      }
-    }
-
-    return { mask, rowMask, totalRows, rowCache: new Map() }
-  }
-
-  function getBinaryViewState(diff: BinaryDiffPayload): BinaryViewState {
-    const cached = binaryViewStates.get(diff)
-    if (cached) return cached
-    const state = buildBinaryViewState(diff)
-    binaryViewStates.set(diff, state)
-    return state
-  }
-
-  function buildHexFragments(
-    bytes: ArrayLike<number>,
-    rowOffset: number,
-    bytesPerRow: number,
-    mask: Uint8Array,
-  ): BinaryFragment[] {
-    const fragments: BinaryFragment[] = []
-    let cur: BinaryFragment | null = null
-    for (let i = 0; i < bytesPerRow; i += 1) {
-      const idx = rowOffset + i
-      const inRange = idx < bytes.length
-      const changed = inRange && mask[idx] === 1
-      const byteText = inRange ? HEX_LOOKUP[bytes[idx]] : '  '
-      const sep = i === 0 ? '' : i === bytesPerRow / 2 ? '  ' : ' '
-      if (!cur) {
-        cur = { text: sep + byteText, changed }
-      } else if (cur.changed === changed) {
-        cur.text += sep + byteText
-      } else {
-        if (sep) cur.text += sep
-        fragments.push(cur)
-        cur = { text: byteText, changed }
-      }
-    }
-    if (cur) fragments.push(cur)
-    return fragments
-  }
-
-  function buildAsciiFragments(
-    bytes: ArrayLike<number>,
-    rowOffset: number,
-    bytesPerRow: number,
-    mask: Uint8Array,
-  ): BinaryFragment[] {
-    const fragments: BinaryFragment[] = []
-    let cur: BinaryFragment | null = null
-    for (let i = 0; i < bytesPerRow; i += 1) {
-      const idx = rowOffset + i
-      const inRange = idx < bytes.length
-      const changed = inRange && mask[idx] === 1
-      const char = inRange ? ASCII_LOOKUP[bytes[idx]] : ' '
-      if (!cur) {
-        cur = { text: char, changed }
-      } else if (cur.changed === changed) {
-        cur.text += char
-      } else {
-        fragments.push(cur)
-        cur = { text: char, changed }
-      }
-    }
-    if (cur) fragments.push(cur)
-    return fragments
-  }
-
-  function getBinaryRowView(rowIndex: number): BinaryRowView | null {
-    if (!binaryDiff) return null
-    const state = getBinaryViewState(binaryDiff)
-    const cached = state.rowCache.get(rowIndex)
-    if (cached) return cached
-
-    const bpr = binaryDiff.bytesPerRow
-    const rowOffset = rowIndex * bpr
-    const view: BinaryRowView = {
-      offset: formatBinaryOffset(rowOffset),
-      leftHex: buildHexFragments(binaryDiff.leftBytes, rowOffset, bpr, state.mask),
-      leftAscii: buildAsciiFragments(binaryDiff.leftBytes, rowOffset, bpr, state.mask),
-      rightHex: buildHexFragments(binaryDiff.rightBytes, rowOffset, bpr, state.mask),
-      rightAscii: buildAsciiFragments(binaryDiff.rightBytes, rowOffset, bpr, state.mask),
-      changed: state.rowMask[rowIndex] === 1,
-    }
-    state.rowCache.set(rowIndex, view)
-    return view
-  }
 
   function updateBinaryVirtualRange() {
     if (!binaryHexScroll || !binaryDiff?.previewLoaded) return
@@ -671,8 +488,7 @@
   // Prime the view state for the current payload (reuses WeakMap entry if
   // already warmed by preload) and reset the virtual range to the top.
   $: if (binaryDiff?.previewLoaded) {
-    const state = getBinaryViewState(binaryDiff)
-    binaryTotalRows = state.totalRows
+    binaryTotalRows = getBinaryTotalRows(binaryDiff)
     binaryVirtualStart = 0
     binaryVirtualEnd = Math.min(binaryTotalRows, 100)
     void tick().then(() => {
@@ -767,345 +583,6 @@
     }
 
     return chips
-  }
-
-  function findIntersectingHunkIndex(hunks: DiffHunkRange[], rowIndex: number) {
-    let low = 0
-    let high = hunks.length - 1
-
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2)
-      const hunk = hunks[middle]
-
-      if (rowIndex < hunk.start) {
-        high = middle - 1
-        continue
-      }
-
-      if (rowIndex > hunk.end) {
-        low = middle + 1
-        continue
-      }
-
-      return middle
-    }
-
-    return low
-  }
-
-  function buildVisibleFullFileSideBySideItems(
-    rows: SideBySideRow[],
-    hunks: DiffHunkRange[],
-    start: number,
-    end: number,
-  ) {
-    const items: SideBySideRenderItem[] = []
-    let hunkIndex = findIntersectingHunkIndex(hunks, start)
-
-    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
-      const row = rows[rowIndex]
-
-      while (hunkIndex < hunks.length && hunks[hunkIndex].end < rowIndex) {
-        hunkIndex += 1
-      }
-
-      const activeHunk = hunks[hunkIndex]
-      const rowHunkIndex =
-        activeHunk && activeHunk.start <= rowIndex && activeHunk.end >= rowIndex
-          ? hunkIndex
-          : undefined
-
-      items.push({
-        type: 'row',
-        row,
-        hunkIndex: rowHunkIndex,
-        isAnchor: rowHunkIndex !== undefined && activeHunk?.start === rowIndex,
-      })
-    }
-
-    return items
-  }
-
-  function buildVisibleFullFileUnifiedItems(
-    rows: UnifiedLine[],
-    hunks: DiffHunkRange[],
-    start: number,
-    end: number,
-  ) {
-    const items: UnifiedRenderItem[] = []
-    let hunkIndex = findIntersectingHunkIndex(hunks, start)
-
-    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
-      const row = rows[rowIndex]
-
-      while (hunkIndex < hunks.length && hunks[hunkIndex].end < rowIndex) {
-        hunkIndex += 1
-      }
-
-      const activeHunk = hunks[hunkIndex]
-      const rowHunkIndex =
-        activeHunk && activeHunk.start <= rowIndex && activeHunk.end >= rowIndex
-          ? hunkIndex
-          : undefined
-
-      items.push({
-        type: 'row',
-        row,
-        hunkIndex: rowHunkIndex,
-        isAnchor: rowHunkIndex !== undefined && activeHunk?.start === rowIndex,
-      })
-    }
-
-    return items
-  }
-
-  function getEffectiveOverscan(itemCount: number): number {
-    if (itemCount > 5000) return 12
-    if (itemCount > HUGE_FILE_THRESHOLD) return 20
-    if (itemCount > 1000) return 30
-    return FULL_FILE_VIRTUALIZATION_BASE_OVERSCAN
-  }
-
-  function buildVirtualRange(
-    itemCount: number,
-    scrollTop: number,
-    viewportHeight: number,
-    rowHeight: number,
-  ): VirtualRange {
-    if (itemCount === 0) {
-      return emptyVirtualRange
-    }
-
-    const overscan = getEffectiveOverscan(itemCount)
-    const snappedRow = Math.floor(scrollTop / rowHeight)
-    const visibleRows = Math.max(1, Math.ceil(viewportHeight / rowHeight))
-    const start = Math.max(0, snappedRow - overscan)
-    const end = Math.min(itemCount, snappedRow + visibleRows + overscan)
-
-    return {
-      start,
-      end,
-      topPadding: start * rowHeight,
-      bottomPadding: Math.max(0, (itemCount - end) * rowHeight),
-    }
-  }
-
-  function buildItemOffsets(
-    itemTypes: ReadonlyArray<{ type: 'row' | 'hunk' }>,
-    rowHeight: number,
-  ): { offsets: number[]; total: number } {
-    const offsets = new Array<number>(itemTypes.length + 1)
-    offsets[0] = 0
-    let cursor = 0
-    for (let index = 0; index < itemTypes.length; index += 1) {
-      cursor += itemTypes[index].type === 'row' ? rowHeight : COLLAPSED_ROW_HEIGHT
-      offsets[index + 1] = cursor
-    }
-    return { offsets, total: cursor }
-  }
-
-  function collectAnchorRanges(
-    items: ReadonlyArray<{ hunkIndex?: number }>,
-  ): Map<number, { firstIndex: number; pastLastIndex: number }> {
-    const ranges = new Map<number, { firstIndex: number; pastLastIndex: number }>()
-    for (let index = 0; index < items.length; index += 1) {
-      const hunkIndex = items[index].hunkIndex
-      if (hunkIndex === undefined) {
-        continue
-      }
-      const existing = ranges.get(hunkIndex)
-      if (existing) {
-        existing.pastLastIndex = index + 1
-      } else {
-        ranges.set(hunkIndex, { firstIndex: index, pastLastIndex: index + 1 })
-      }
-    }
-    return ranges
-  }
-
-  function buildSideBySideItemLayout(
-    rows: FileDiffResult['sideBySide'],
-    items: SideBySideRenderItem[],
-    hunks: DiffHunkRange[],
-    rowHeight: number,
-  ): ItemLayout {
-    const { offsets, total } = buildItemOffsets(items, rowHeight)
-    const anchorRanges = collectAnchorRanges(items)
-    const anchors: VirtualHunkAnchor[] = []
-    for (const [hunkIndex, range] of anchorRanges) {
-      const hunk = hunks[hunkIndex]
-      if (!hunk) continue
-      anchors.push({
-        hunkIndex,
-        top: offsets[range.firstIndex],
-        height: offsets[range.pastLastIndex] - offsets[range.firstIndex],
-        kind: classifySideBySideHunk(rows, hunk),
-      })
-    }
-    return { offsets, total, anchors }
-  }
-
-  function buildUnifiedItemLayout(
-    rows: FileDiffResult['unified'],
-    items: UnifiedRenderItem[],
-    hunks: DiffHunkRange[],
-    rowHeight: number,
-  ): ItemLayout {
-    const { offsets, total } = buildItemOffsets(items, rowHeight)
-    const anchorRanges = collectAnchorRanges(items)
-    const anchors: VirtualHunkAnchor[] = []
-    for (const [hunkIndex, range] of anchorRanges) {
-      const hunk = hunks[hunkIndex]
-      if (!hunk) continue
-      anchors.push({
-        hunkIndex,
-        top: offsets[range.firstIndex],
-        height: offsets[range.pastLastIndex] - offsets[range.firstIndex],
-        kind: classifyUnifiedHunk(rows, hunk),
-      })
-    }
-    return { offsets, total, anchors }
-  }
-
-  function buildVirtualRangeFromLayout(
-    layout: ItemLayout,
-    scrollTop: number,
-    viewportHeight: number,
-    rowHeight: number,
-  ): VirtualRange {
-    const offsets = layout.offsets
-    const itemCount = offsets.length - 1
-    if (itemCount === 0) {
-      return emptyVirtualRange
-    }
-
-    const overscan = getEffectiveOverscan(itemCount)
-    const overscanPx = overscan * rowHeight
-    const rangeTop = Math.max(0, scrollTop - overscanPx)
-    const rangeBottom = scrollTop + viewportHeight + overscanPx
-
-    // largest index with offsets[index] <= rangeTop
-    let lo = 0
-    let hi = itemCount
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >>> 1
-      if (offsets[mid] <= rangeTop) lo = mid
-      else hi = mid - 1
-    }
-    const start = lo
-
-    // smallest index with offsets[index] >= rangeBottom
-    lo = start
-    hi = itemCount
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (offsets[mid] >= rangeBottom) hi = mid
-      else lo = mid + 1
-    }
-    const end = Math.min(itemCount, hi)
-
-    return {
-      start,
-      end,
-      topPadding: offsets[start],
-      bottomPadding: Math.max(0, layout.total - offsets[end]),
-    }
-  }
-
-  function buildSideBySideVirtualAnchors(
-    rows: FileDiffResult['sideBySide'],
-    hunks: DiffHunkRange[],
-    rowHeight: number,
-  ): VirtualHunkAnchor[] {
-    return hunks.map((hunk, hunkIndex) => ({
-      hunkIndex,
-      top: hunk.start * rowHeight,
-      height: Math.max(rowHeight, (hunk.end - hunk.start + 1) * rowHeight),
-      kind: classifySideBySideHunk(rows, hunk),
-    }))
-  }
-
-  function buildUnifiedVirtualAnchors(
-    rows: FileDiffResult['unified'],
-    hunks: DiffHunkRange[],
-    rowHeight: number,
-  ): VirtualHunkAnchor[] {
-    return hunks.map((hunk, hunkIndex) => ({
-      hunkIndex,
-      top: hunk.start * rowHeight,
-      height: Math.max(rowHeight, (hunk.end - hunk.start + 1) * rowHeight),
-      kind: classifyUnifiedHunk(rows, hunk),
-    }))
-  }
-
-  function classifySideBySideHunk(rows: FileDiffResult['sideBySide'], hunk: DiffHunkRange) {
-    let sawInsert = false
-    let sawDelete = false
-
-    for (let index = hunk.start; index <= hunk.end; index += 1) {
-      const row = rows[index]
-
-      if (!row) {
-        continue
-      }
-
-      if (row.left?.change === 'delete' || row.right?.change === 'delete') {
-        sawDelete = true
-      }
-
-      if (row.left?.change === 'insert' || row.right?.change === 'insert') {
-        sawInsert = true
-      }
-
-      if (sawInsert && sawDelete) {
-        return 'mixed' satisfies VirtualHunkAnchor['kind']
-      }
-    }
-
-    if (sawInsert) {
-      return 'insert' satisfies VirtualHunkAnchor['kind']
-    }
-
-    if (sawDelete) {
-      return 'delete' satisfies VirtualHunkAnchor['kind']
-    }
-
-    return 'mixed' satisfies VirtualHunkAnchor['kind']
-  }
-
-  function classifyUnifiedHunk(rows: FileDiffResult['unified'], hunk: DiffHunkRange) {
-    let sawInsert = false
-    let sawDelete = false
-
-    for (let index = hunk.start; index <= hunk.end; index += 1) {
-      const row = rows[index]
-
-      if (!row) {
-        continue
-      }
-
-      if (row.change === 'delete') {
-        sawDelete = true
-      }
-
-      if (row.change === 'insert') {
-        sawInsert = true
-      }
-
-      if (sawInsert && sawDelete) {
-        return 'mixed' satisfies VirtualHunkAnchor['kind']
-      }
-    }
-
-    if (sawInsert) {
-      return 'insert' satisfies VirtualHunkAnchor['kind']
-    }
-
-    if (sawDelete) {
-      return 'delete' satisfies VirtualHunkAnchor['kind']
-    }
-
-    return 'mixed' satisfies VirtualHunkAnchor['kind']
   }
 
   let virtualSyncRafId: number | null = null
@@ -1228,7 +705,6 @@
     element.scrollLeft = nextScrollLeft
   }
 
-  // ─── Smooth wheel scrolling ──────────────────────────────────────────────
   // RAF-driven scroll animator keyed per element. Each wheel tick adds to the
   // target offset; a single frame loop eases the element toward it.
   type SmoothScrollState = {
@@ -2062,7 +1538,7 @@
                     style:top={`${BINARY_HEADER_HEIGHT + binaryVirtualStart * BINARY_ROW_HEIGHT}px`}
                   >
                     {#each { length: binaryVirtualEnd - binaryVirtualStart } as _, i (binaryVirtualStart + i)}
-                      {@const view = getBinaryRowView(binaryVirtualStart + i)}
+                      {@const view = binaryDiff ? getBinaryRowView(binaryDiff, binaryVirtualStart + i) : null}
                       {#if view}
                         <div
                           class:changed={view.changed}
