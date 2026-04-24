@@ -3,7 +3,7 @@
 <hr />
 
 <p align="center">
-  <img alt="Core stack" src="https://skillicons.dev/icons?i=rust,tauri,ts,js,svelte,html,css,vite,nodejs,npm,git,github,vscode&perline=7" />
+  <img alt="Core stack" src="https://skillicons.dev/icons?i=electron,ts,js,svelte,html,css,vite,nodejs,npm,git,github,vscode&perline=6" />
 </p>
 
 <h2 align="center">Platforms</h2>
@@ -19,7 +19,7 @@
 <hr />
 
 <p align="center">
-  <img alt="Current interest" src="https://skillicons.dev/icons?i=rust,svelte,tauri,sqlite,vitest&perline=5" />
+  <img alt="Current interest" src="https://skillicons.dev/icons?i=electron,svelte,sqlite,vitest&perline=4" />
 </p>
 
 <p align="center">

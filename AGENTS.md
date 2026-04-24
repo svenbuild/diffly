@@ -16,7 +16,7 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 
 ## Product Context
 
-Diffly is a desktop local file and directory diff tool built with Svelte, TypeScript, and Tauri. Optimize for:
+Diffly is a desktop local file and directory diff tool built with Svelte, TypeScript, and Electron. Optimize for:
 
 - fast navigation across large directory trees
 - stable rendering for large diffs and binary previews
@@ -54,7 +54,7 @@ Long-term maintainability is a core priority.
 - Preserve existing UX patterns unless there is a clear product reason to change them.
 - Keep loading, empty, error, and cancellation states explicit.
 - Do not silently discard user context such as selected file, expanded tree state, scroll position, or merge intent unless required for correctness.
-- When wiring frontend to Tauri commands, handle timeout, cancellation, malformed payloads, and stale responses deliberately.
+- When wiring frontend to Electron IPC commands, handle timeout, cancellation, malformed payloads, and stale responses deliberately.
 - Keep desktop-specific behavior predictable across restart, update, and offline use.
 
 ## Git Workflow

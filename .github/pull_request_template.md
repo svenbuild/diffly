@@ -6,7 +6,7 @@
 
 - [ ] `npm run check`
 - [ ] `npm test`
-- [ ] `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+- [ ] `npm run electron:package`
 
 ## Notes
 

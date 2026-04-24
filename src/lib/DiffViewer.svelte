@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { convertFileSrc } from '@tauri-apps/api/core'
   import { onDestroy, tick } from 'svelte'
   import { loadBinaryPreview } from './api'
   import { formatSize } from './format'
@@ -454,7 +453,7 @@
   function resolveImageSource(assetUrl: string | null, meta: BinaryFileMeta) {
     // Prefer convertFileSrc — adapts to dev/prod runtime automatically
     if (meta.exists && meta.path) {
-      return convertFileSrc(meta.path)
+      return window.diffly.fileUrl(meta.path)
     }
 
     if (assetUrl) {

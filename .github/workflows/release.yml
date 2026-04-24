@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, for example v0.1.1
+        description: Release tag to publish, for example v0.1.6
         required: true
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -16,6 +16,7 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,36 +24,16 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Validate updater signing configuration
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
-            Write-Error "TAURI_SIGNING_PRIVATE_KEY is required for release builds because updater artifacts must be signed."
-            exit 1
-          }
+      - name: Build
+        run: npm run build
 
-      - name: Build and publish release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build and publish Windows installer
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: Diffly ${{ github.event.inputs.tag || github.ref_name }}
-          releaseDraft: false
-          prerelease: ${{ contains(github.event.inputs.tag, '-') || contains(github.ref_name, '-') }}
-          args: --features prerelease-updater --bundles nsis --config src-tauri/tauri.release.conf.json
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win nsis --publish always

@@ -5,7 +5,7 @@
     <img alt="Projects" src="https://img.shields.io/badge/PROJECTS-0d1117?style=for-the-badge&logo=github&logoColor=white&labelColor=000000" />
   </a>
   <a href="https://github.com/svenbuild/diffly">
-    <img alt="Diffly" src="https://img.shields.io/badge/DIFFLY-0d1117?style=for-the-badge&logo=tauri&logoColor=white&labelColor=000000" />
+    <img alt="Diffly" src="https://img.shields.io/badge/DIFFLY-0d1117?style=for-the-badge&logo=electron&logoColor=white&labelColor=000000" />
   </a>
   <a href="./pages/skills.md">
     <img alt="Skills" src="https://img.shields.io/badge/SKILLS-0d1117?style=for-the-badge&logo=github&logoColor=white&labelColor=000000" />
@@ -21,7 +21,7 @@
 
 ## Focus
 
-- Desktop apps with Tauri, Rust, and TypeScript
+- Desktop apps with Electron, Svelte, and TypeScript
 - Frontend work with Svelte
 - Tooling, release pipelines, and practical developer UX
 

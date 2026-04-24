@@ -15,5 +15,4 @@ Run the validation path before opening or updating a pull request:
 ```bash
 npm run check
 npm test
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```

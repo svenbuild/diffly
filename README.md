@@ -1,6 +1,6 @@
 # Diffly
 
-Diffly is a desktop diff tool for local file and folder comparisons. It is built with Svelte, TypeScript, and Tauri, with a focus on fast navigation, readable diffs, and a straightforward desktop workflow.
+Diffly is a desktop diff tool for local file and folder comparisons. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and a straightforward desktop workflow.
 
 ## Features
 
@@ -23,7 +23,7 @@ npm install
 Run the desktop app in development mode:
 
 ```bash
-npm run tauri:dev
+npm run electron:dev
 ```
 
 ## Validation
@@ -33,7 +33,6 @@ Run the standard validation path before pushing changes:
 ```bash
 npm run check
 npm test
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
 ## Build
@@ -41,19 +40,19 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 Build a fast local desktop binary:
 
 ```bash
-npm run tauri:build
-```
-
-Build a release binary without packaging:
-
-```bash
-npm run tauri:build:release
+npm run electron:build
 ```
 
 Build the Windows installer:
 
 ```bash
-npm run tauri:package
+npm run electron:package
+```
+
+Build installers for all supported local targets:
+
+```bash
+npm run electron:package:all
 ```
 
 Tagged releases are published through GitHub Actions and provide the updater artifacts used by the app.

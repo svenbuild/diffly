@@ -2,38 +2,71 @@
   "name": "diffly",
   "private": true,
   "version": "0.1.6-rc.8",
-  "description": "Desktop file and directory diff tool built with Svelte and Tauri.",
+  "description": "Desktop file and directory diff tool built with Svelte and Electron.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
     "build:debug": "vite build --minify false --outDir dist-debug",
     "build:ensure": "node scripts/ensure-frontend-build.mjs",
     "build:ensure:debug": "node scripts/ensure-frontend-build.mjs --debug",
-    "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "tauri": "npx tauri",
-    "tauri:dev": "npx tauri dev --config src-tauri/tauri.build.conf.json -- --no-default-features --features window-state,debug-log",
-    "tauri:build": "node scripts/run-tauri-debug-build.mjs",
-    "tauri:build:full": "npm run build:ensure && npx tauri build --debug --no-bundle --config src-tauri/tauri.release.conf.json --features prerelease-updater",
-    "tauri:build:release": "npm run build && npx tauri build --features prerelease-updater --no-bundle --config src-tauri/tauri.release.conf.json",
-    "tauri:package": "npx tauri build --features prerelease-updater --bundles nsis --config src-tauri/tauri.release.conf.json",
-    "tauri:package:all": "npx tauri build --features prerelease-updater --config src-tauri/tauri.release.conf.json"
+    "preview": "electron-vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.electron.json --noEmit",
+    "test": "npm run check",
+    "electron:dev": "electron-vite dev",
+    "electron:build": "electron-vite build",
+    "electron:package": "npm run build && electron-builder --win nsis",
+    "electron:package:all": "npm run build && electron-builder"
   },
+  "main": "out/main/main.cjs",
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
+    "electron-updater": "^6.6.2",
     "prismjs": "^1.30.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "@tauri-apps/cli": "^2.10.1",
     "@tsconfig/svelte": "^5.0.6",
     "@types/node": "^24.10.1",
     "@types/prismjs": "^1.26.6",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.1",
+    "rcedit": "^5.0.2",
     "svelte": "^5.45.2",
     "svelte-check": "^4.3.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
+  },
+  "build": {
+    "appId": "com.diffly.desktop",
+    "productName": "Diffly",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icons/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "installerIcon": "build/icons/icon.ico",
+      "uninstallerIcon": "build/icons/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icons/icon.icns"
+    },
+    "linux": {
+      "icon": "build/icons/icon.png"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "svenbuild",
+      "repo": "diffly"
+    },
+    "afterPack": "scripts/set-windows-icon.cjs"
   }
 }
