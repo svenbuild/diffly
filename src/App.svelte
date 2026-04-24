@@ -2940,7 +2940,6 @@
         {diffRowHeight}
         {syncPaneWheel}
         {syncPaneScroll}
-        {scrollDiffHunkIntoView}
         {scheduleScrollNavigationRefresh}
         bind:leftPaneScroll
         bind:rightPaneScroll
