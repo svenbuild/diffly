@@ -7,14 +7,19 @@ if (-not (Test-Path -LiteralPath $releaseDir)) {
 
 $portableFiles = Get-ChildItem -LiteralPath $releaseDir -File -Filter 'Diffly *.exe' |
   Where-Object { $_.Name -notlike 'Diffly Setup *' -and $_.Name -notlike 'Diffly-Debug *' }
+$installerFiles = Get-ChildItem -LiteralPath $releaseDir -File -Filter 'Diffly Setup *.exe'
 
 if ($portableFiles.Count -ne 1) {
   throw "Expected exactly one portable Diffly exe in $releaseDir, found $($portableFiles.Count)."
 }
 
-$keepPath = $portableFiles[0].FullName
+if ($installerFiles.Count -ne 1) {
+  throw "Expected exactly one Diffly installer exe in $releaseDir, found $($installerFiles.Count)."
+}
+
+$keepPaths = @($portableFiles[0].FullName, $installerFiles[0].FullName)
 $itemsToRemove = Get-ChildItem -LiteralPath $releaseDir |
-  Where-Object { $_.FullName -ne $keepPath }
+  Where-Object { $keepPaths -notcontains $_.FullName }
 
 foreach ($item in $itemsToRemove) {
   for ($attempt = 1; $attempt -le 5; $attempt += 1) {
