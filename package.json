@@ -15,7 +15,7 @@
     "test": "npm run check",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
-    "electron:package": "npm run build && electron-builder --win nsis",
+    "electron:package": "npm run build && electron-builder --win nsis portable",
     "electron:package:all": "npm run build && electron-builder"
   },
   "main": "out/main/main.cjs",
@@ -48,7 +48,10 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "build/icons/icon.ico",
       "signAndEditExecutable": false
     },
