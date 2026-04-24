@@ -1,7 +1,7 @@
 {
   "name": "diffly",
   "private": true,
-  "version": "0.1.6-rc.8",
+  "version": "0.1.6-rc.9",
   "description": "Desktop file and directory diff tool built with Svelte and Electron.",
   "type": "module",
   "scripts": {
