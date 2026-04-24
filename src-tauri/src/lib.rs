@@ -33,6 +33,7 @@ const BINARY_SAMPLE_BYTES: usize = 8192;
 const FILE_IO_BUFFER_BYTES: usize = 256 * 1024;
 const DIRECTORY_COMPARE_IO_CONCURRENCY: usize = 1;
 const DIRECTORY_COMPARE_PRIORITY_SLEEP_MS: u64 = 8;
+const DIRECTORY_COMPARE_FINISHED_JOB_RETENTION_MS: u64 = 30_000;
 const HEX_BYTES_PER_ROW: usize = 16;
 const LINE_PAIR_MIN_SIMILARITY: i32 = 60;
 const LINE_PAIR_GAP_PENALTY: i32 = 35;
@@ -159,6 +160,7 @@ struct DirectoryCompareJob {
     total_known: Arc<AtomicBool>,
     completed_count: Arc<AtomicUsize>,
     done: Arc<AtomicBool>,
+    finished_at_ms: Arc<AtomicU64>,
     error: Arc<Mutex<Option<String>>>,
     updates: Arc<Mutex<Vec<DirectoryCompareUpdate>>>,
 }
@@ -1037,6 +1039,7 @@ async fn start_directory_compare(
     compare_job_state: tauri::State<'_, DirectoryCompareJobState>,
     compare_priority_state: tauri::State<'_, CompareIoPriorityState>,
 ) -> Result<StartDirectoryCompareResponse, String> {
+    purge_expired_directory_compare_jobs(compare_job_state.inner())?;
     let job_id = next_directory_compare_job_id(compare_job_state.inner());
     let job = Arc::new(DirectoryCompareJob::new());
     insert_directory_compare_job(compare_job_state.inner(), job_id.clone(), job.clone())?;
@@ -1065,6 +1068,7 @@ fn poll_directory_compare(
     job_id: String,
     compare_job_state: tauri::State<'_, DirectoryCompareJobState>,
 ) -> Result<PollDirectoryCompareResponse, String> {
+    purge_expired_directory_compare_jobs(compare_job_state.inner())?;
     let job = get_directory_compare_job(compare_job_state.inner(), &job_id)?
         .ok_or_else(|| "Directory compare job not found.".to_string())?;
     let response = job.poll();
@@ -2083,6 +2087,24 @@ fn remove_directory_compare_job(
     Ok(())
 }
 
+fn current_unix_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn purge_expired_directory_compare_jobs(state: &DirectoryCompareJobState) -> Result<(), String> {
+    let now_ms = current_unix_timestamp_ms();
+    let mut jobs = state.jobs.lock().map_err(|error| error.to_string())?;
+    jobs.retain(|_, job| {
+        let finished_at_ms = job.finished_at_ms.load(Ordering::Acquire);
+        finished_at_ms == 0
+            || now_ms.saturating_sub(finished_at_ms) < DIRECTORY_COMPARE_FINISHED_JOB_RETENTION_MS
+    });
+    Ok(())
+}
+
 fn begin_detail_open(priority_state: &CompareIoPriorityState) {
     priority_state
         .active_detail_opens
@@ -2108,6 +2130,7 @@ impl DirectoryCompareJob {
             total_known: Arc::new(AtomicBool::new(false)),
             completed_count: Arc::new(AtomicUsize::new(0)),
             done: Arc::new(AtomicBool::new(false)),
+            finished_at_ms: Arc::new(AtomicU64::new(0)),
             error: Arc::new(Mutex::new(None)),
             updates: Arc::new(Mutex::new(Vec::new())),
         }
@@ -2130,10 +2153,22 @@ impl DirectoryCompareJob {
             *slot = Some(error);
         }
         self.done.store(true, Ordering::Release);
+        self.mark_finished();
     }
 
     fn finish(&self) {
         self.done.store(true, Ordering::Release);
+        self.mark_finished();
+    }
+
+    fn mark_finished(&self) {
+        let finished_at_ms = current_unix_timestamp_ms();
+        let _ = self.finished_at_ms.compare_exchange(
+            0,
+            finished_at_ms,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
     }
 
     fn poll(&self) -> PollDirectoryCompareResponse {
@@ -5223,6 +5258,26 @@ mod tests {
         assert!(context.is_none());
 
         fs::remove_dir_all(temp_root).expect("temporary directory should be removed");
+    }
+
+    #[test]
+    fn purge_expired_directory_compare_jobs_removes_done_jobs_after_retention() {
+        let state = create_directory_compare_job_state();
+        let job = Arc::new(DirectoryCompareJob::new());
+        job.finish();
+        job.finished_at_ms.store(
+            current_unix_timestamp_ms()
+                .saturating_sub(DIRECTORY_COMPARE_FINISHED_JOB_RETENTION_MS + 1),
+            Ordering::Release,
+        );
+
+        insert_directory_compare_job(&state, "expired".to_string(), job)
+            .expect("job should be inserted");
+        purge_expired_directory_compare_jobs(&state).expect("cleanup should succeed");
+
+        let lookup =
+            get_directory_compare_job(&state, "expired").expect("job lookup should succeed");
+        assert!(lookup.is_none(), "expired completed jobs should be removed");
     }
 
     fn test_png_bytes(seed: u8) -> Vec<u8> {
