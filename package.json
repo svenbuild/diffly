@@ -15,7 +15,7 @@
     "test": "npm run check",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
-    "electron:package": "npm run build && electron-builder --win nsis portable",
+    "electron:package": "npm run build && electron-builder --win portable && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
     "electron:package:all": "npm run build && electron-builder"
   },
   "main": "out/main/main.cjs",
@@ -49,7 +49,6 @@
     ],
     "win": {
       "target": [
-        "nsis",
         "portable"
       ],
       "icon": "build/icons/icon.ico",
