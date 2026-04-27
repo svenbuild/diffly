@@ -302,8 +302,8 @@ button {
 button:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px color-mix(in srgb, var(--app-bar-shadow-strong) 30%, transparent);
+  transform: translateY(-0.5px);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--app-bar-shadow-strong) 22%, transparent);
 }
 
 button:active:not(:disabled) {
@@ -352,7 +352,7 @@ select:focus-visible {
 }
 
 button:focus-visible:not(:active) {
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
 }
 
 #app {
@@ -554,7 +554,7 @@ h2 {
 }
 
 .nav-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
 }
 
 .nav-button:active:not(:disabled) {
@@ -2091,7 +2091,7 @@ h2 {
 
 .icon-button:hover:not(:disabled) {
   color: var(--strong-text);
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
 }
 
 .icon-button:active:not(:disabled) {
@@ -2480,7 +2480,7 @@ h2 {
 button.filter-chip:hover:not(:disabled),
 button.filter-chip:focus-visible {
   background: inherit;
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
 }
 
 button.filter-chip:active:not(:disabled) {
@@ -2720,7 +2720,9 @@ button.filter-chip.tooLarge:focus-visible {
 
 .viewer-root-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, calc((100% - var(--minimap-width)) / 2))
+    minmax(0, calc((100% + var(--minimap-width)) / 2));
   gap: 0;
   padding: 4px 0 0;
   border-bottom: 1px solid var(--border);
@@ -3925,7 +3927,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .theme-toggle:hover:not(:disabled) {
-  transform: rotate(15deg) scale(1.1);
+  transform: rotate(6deg) scale(1.04);
 }
 
 .theme-icon {
@@ -4041,7 +4043,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button:hover:not(:disabled) {
-  transform: rotate(15deg);
+  transform: rotate(6deg);
 }
 
 .refresh-button.pending-refresh {
@@ -4051,7 +4053,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .refresh-button.pending-refresh:hover:not(:disabled) {
-  transform: rotate(30deg);
+  transform: rotate(10deg);
 }
 
 .refresh-icon-slot {
@@ -4214,7 +4216,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .swap-button:hover:not(:disabled) {
-  transform: rotate(180deg);
+  transform: rotate(12deg);
 }
 
 @keyframes spin {
