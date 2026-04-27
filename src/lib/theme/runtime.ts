@@ -192,12 +192,12 @@ export function createThemeCssVariables(
   const diffInsertBg = mixHex(
     theme.surface,
     theme.semanticColors.diffAdded,
-    isDark ? scaleByContrast(contrastScale, 0.16, 0.34) : scaleByContrast(contrastScale, 0.12, 0.24)
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
   )
   const diffDeleteBg = mixHex(
     theme.surface,
     theme.semanticColors.diffRemoved,
-    isDark ? scaleByContrast(contrastScale, 0.15, 0.32) : scaleByContrast(contrastScale, 0.11, 0.22)
+    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
   )
   const successBg = mixHex(
     theme.surface,
@@ -506,8 +506,8 @@ export function createThemeCssVariables(
       theme.ink,
       syntaxMutedContrastTarget
     ),
-    '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.45 : 0.28),
-    '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.4 : 0.24),
+    '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.34 : 0.24),
+    '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.34 : 0.22),
     '--line-divider': rgbaFromHex(
       theme.ink,
       isDark ? scaleByContrast(contrastScale, 0.06, 0.14) : scaleByContrast(contrastScale, 0.08, 0.16)

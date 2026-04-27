@@ -140,7 +140,7 @@
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const IMMEDIATE_DETAIL_PRIME_COUNT = 2
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
-  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 252
+  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 280
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
   const PANE_WHEEL_SMOOTHING = 0.18
@@ -355,7 +355,7 @@
   }
 
   function clampCompareSidebarWidth(value: number) {
-    return Math.min(420, Math.max(216, Math.round(value)))
+    return Math.min(420, Math.max(240, Math.round(value)))
   }
 
   function stopCompareSidebarResize() {
@@ -2643,7 +2643,7 @@
 
 {#if screen === 'setup'}
   <main class="screen setup-screen">
-    <AppTopBar context="Choose compare targets">
+    <AppTopBar context="Setup">
       {#snippet status()}
         {#if shouldShowUpdateIndicator()}
           <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
@@ -2654,23 +2654,7 @@
 
       {#snippet middle()}
       <div class="setup-bar-center">
-        <div class="setup-selection-summary" aria-label="Selected targets">
-          <div
-            class="setup-selection-segment"
-            title={leftExplorer.selectedTargetPath || 'Left target not selected'}
-          >
-            <strong class="setup-selection-side">Left</strong>
-            <span class="setup-selection-value">{leftSetupTargetLabel}</span>
-          </div>
-          <span aria-hidden="true" class="setup-selection-divider"></span>
-          <div
-            class="setup-selection-segment"
-            title={rightExplorer.selectedTargetPath || 'Right target not selected'}
-          >
-            <strong class="setup-selection-side">Right</strong>
-            <span class="setup-selection-value">{rightSetupTargetLabel}</span>
-          </div>
-        </div>
+        <strong>Choose compare targets</strong>
       </div>
       {/snippet}
 
@@ -2678,21 +2662,6 @@
       <div class="setup-bar-actions">
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
           Settings
-        </button>
-        <button
-          class="secondary icon-button swap-button"
-          aria-label="Switch left and right sides"
-          disabled={loading || detailLoading || pickerLoading}
-          title="Switch left and right sides"
-          type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
         </button>
       </div>
       {/snippet}
@@ -2733,65 +2702,33 @@
           </div>
         </div>
 
-        <div class="setup-target-grid">
-          <article class:ready={leftPickerReady} class="setup-target-card">
-            <div class="setup-target-card-header">
-              <strong>Left target</strong>
-              <span>{mode === 'directory' ? 'Folder' : 'File'}</span>
-            </div>
-            <code title={leftExplorer.selectedTargetPath || setupHintMessage}>
-              {leftSetupTargetLabel}
-            </code>
-            <div class="setup-target-actions">
-              <button class="secondary" type="button" on:click={() => browseSystem('left')}>
-                Browse
-              </button>
-              {#if mode === 'directory'}
-                <button
-                  class:active={isCurrentFolderSelected(leftExplorer)}
-                  class={isCurrentFolderSelected(leftExplorer) ? 'secondary' : 'primary'}
-                  disabled={!leftExplorer.currentPath || isCurrentFolderSelected(leftExplorer)}
-                  type="button"
-                  on:click={() => useCurrentFolder('left')}
-                >
-                  {isCurrentFolderSelected(leftExplorer) ? 'Selected' : 'Use open folder'}
-                </button>
-              {/if}
-            </div>
-            <span class="setup-target-summary">
-              {leftPickerReady ? 'Ready' : `Select left ${mode === 'directory' ? 'folder' : 'file'}`}
-            </span>
-          </article>
-
-          <article class:ready={rightPickerReady} class="setup-target-card">
-            <div class="setup-target-card-header">
-              <strong>Right target</strong>
-              <span>{mode === 'directory' ? 'Folder' : 'File'}</span>
-            </div>
-            <code title={rightExplorer.selectedTargetPath || setupHintMessage}>
-              {rightSetupTargetLabel}
-            </code>
-            <div class="setup-target-actions">
-              <button class="secondary" type="button" on:click={() => browseSystem('right')}>
-                Browse
-              </button>
-              {#if mode === 'directory'}
-                <button
-                  class:active={isCurrentFolderSelected(rightExplorer)}
-                  class={isCurrentFolderSelected(rightExplorer) ? 'secondary' : 'primary'}
-                  disabled={!rightExplorer.currentPath || isCurrentFolderSelected(rightExplorer)}
-                  type="button"
-                  on:click={() => useCurrentFolder('right')}
-                >
-                  {isCurrentFolderSelected(rightExplorer) ? 'Selected' : 'Use open folder'}
-                </button>
-              {/if}
-            </div>
-            <span class="setup-target-summary">
-              {rightPickerReady ? 'Ready' : `Select right ${mode === 'directory' ? 'folder' : 'file'}`}
-            </span>
-          </article>
-        </div>
+        <section class="picker-workspace">
+          {#each pickerSides as item}
+            <PickerPane
+              side={item.side}
+              pane={item.pane}
+              {mode}
+              {pickerLoading}
+              {canGoBack}
+              {canGoForward}
+              {currentDrive}
+              {formatModified}
+              {formatSize}
+              {entryTypeLabel}
+              {changeDrive}
+              {navigateHistory}
+              {navigateTo}
+              {updatePathInput}
+              {submitPathInput}
+              {browseSystem}
+              setCurrentFolderAsTarget={useCurrentFolder}
+              {isCurrentFolderSelected}
+              {selectListEntry}
+              {activateListEntry}
+              {isTargetSelected}
+            />
+          {/each}
+        </section>
 
         <div class="setup-launcher-footer">
           {#if sameSelectionWarning}
@@ -2814,38 +2751,13 @@
           </button>
         </div>
       </section>
-
-      <section class="picker-workspace">
-        {#each pickerSides as item}
-          <PickerPane
-            side={item.side}
-            pane={item.pane}
-            {mode}
-            {pickerLoading}
-            {canGoBack}
-            {canGoForward}
-            {currentDrive}
-            {formatModified}
-            {formatSize}
-            {entryTypeLabel}
-            {changeDrive}
-            {navigateHistory}
-            {navigateTo}
-            {updatePathInput}
-            {submitPathInput}
-            {browseSystem}
-            setCurrentFolderAsTarget={useCurrentFolder}
-            {isCurrentFolderSelected}
-            {selectListEntry}
-            {activateListEntry}
-            {isTargetSelected}
-          />
-        {/each}
-      </section>
     </section>
   </main>
 {:else if screen === 'compare'}
-  <main class="screen compare-screen">
+  <main
+    class="screen compare-screen"
+    style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
+  >
     <AppTopBar context="Compare">
       {#snippet status()}
         {#if shouldShowUpdateIndicator()}
@@ -2856,22 +2768,13 @@
       {/snippet}
 
       {#snippet middle()}
-      <div class="setup-selection-summary compare-selection-summary" aria-label="Selected targets">
-        <div
-          class="setup-selection-segment"
-          title={leftExplorer.selectedTargetPath || 'Left target not selected'}
-        >
-          <strong class="setup-selection-side">Left</strong>
-          <span class="setup-selection-value">{leftSetupTargetLabel}</span>
-        </div>
-        <span aria-hidden="true" class="setup-selection-divider"></span>
-        <div
-          class="setup-selection-segment"
-          title={rightExplorer.selectedTargetPath || 'Right target not selected'}
-        >
-          <strong class="setup-selection-side">Right</strong>
-          <span class="setup-selection-value">{rightSetupTargetLabel}</span>
-        </div>
+      <div class="compare-editor-context" aria-label="Compare context">
+        <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
+          {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
+        </strong>
+        <span title={`${leftExplorer.selectedTargetPath || 'Left target not selected'} / ${rightExplorer.selectedTargetPath || 'Right target not selected'}`}>
+          {leftSetupTargetLabel} ↔ {rightSetupTargetLabel}
+        </span>
       </div>
       {/snippet}
 
@@ -2963,9 +2866,6 @@
               <span class="view-mode-label">Unified</span>
             </span>
           </button>
-          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
-            Settings
-          </button>
         </div>
 
         <div class="compare-action-group utility-actions">
@@ -3035,6 +2935,12 @@
                 </svg>
               {/if}
             </span>
+          </button>
+        </div>
+
+        <div class="compare-action-group global-actions">
+          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
+            Settings
           </button>
           <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
             Setup

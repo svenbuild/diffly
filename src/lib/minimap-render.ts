@@ -30,6 +30,7 @@ const MAX_CHARS = 55
 const GUTTER_WIDTH = 4
 const TEXT_ALPHA = 0.38
 const CHANGED_TEXT_ALPHA = 0.5
+const MARKER_ALPHA = 0.55
 
 export function sideBySideMinimapRows(rows: SideBySideRow[]): MinimapRow[] {
   return rows.map((row) => ({
@@ -187,7 +188,9 @@ export function renderMinimap(
           ? colors.markerDelete
           : colors.markerMixed
 
+    ctx.globalAlpha = MARKER_ALPHA
     ctx.fillRect(textWidth + 1, y, GUTTER_WIDTH - 1, h)
+    ctx.globalAlpha = 1
   }
 }
 

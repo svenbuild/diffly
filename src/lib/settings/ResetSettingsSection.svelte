@@ -41,7 +41,7 @@
 
 <svelte:window on:keydown={handleWindowKeydown} />
 
-<section class="settings-page">
+<section class="settings-page settings-reset-page">
   <div class="settings-page-heading">
     <h2>Reset</h2>
     <p>Clear saved state when you need a clean slate.</p>

@@ -99,10 +99,10 @@ export interface ThemeTokens {
 }
 
 export const DEFAULT_UI_FONT =
-  '"Segoe UI Variable", "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+  'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif'
 
 export const DEFAULT_CODE_FONT =
-  'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace'
+  '"Cascadia Code", "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace'
 
 export const THEME_REGISTRY: ThemeDefinition[] = [
   {
@@ -115,7 +115,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -153,7 +153,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -172,7 +172,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -210,7 +210,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -248,7 +248,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -267,7 +267,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -305,7 +305,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -343,7 +343,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -495,7 +495,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -514,7 +514,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -533,7 +533,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {
@@ -552,7 +552,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
     contrast: 60,
     opaqueWindows: true,
     fonts: {
-      ui: 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      ui: null,
       code: null,
     },
     semanticColors: {

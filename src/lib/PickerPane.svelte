@@ -26,6 +26,11 @@
   export let selectListEntry: (side: Side, entry: ExplorerEntry) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
+
+  $: targetKindLabel = pane.selectedTargetKind === 'file' ? 'File' : mode === 'directory' ? 'Folder' : 'File'
+  $: targetKindName = mode === 'directory' ? 'folder' : 'file'
+  $: selectedTargetText = pane.selectedTargetPath || `No ${targetKindName} selected`
+  $: targetReady = Boolean(pane.selectedTargetPath)
 </script>
 
 <section
@@ -34,26 +39,38 @@
   class="picker-pane"
 >
   <header class="picker-pane-header">
-    <div class="picker-pane-topbar">
-      <strong>{pane.title}</strong>
-      <div class="picker-action-row">
-        <button class="secondary" type="button" on:click={() => browseSystem(side)}>
-          Browse
-        </button>
-
-        {#if mode === 'directory'}
-          <button
-            class:active={isCurrentFolderSelected(pane)}
-            class:is-complete={isCurrentFolderSelected(pane)}
-            class={isCurrentFolderSelected(pane) ? 'secondary' : 'primary'}
-            disabled={!pane.currentPath || isCurrentFolderSelected(pane)}
-            type="button"
-            on:click={() => setCurrentFolderAsTarget(side)}
-          >
-            {isCurrentFolderSelected(pane) ? 'Target selected' : 'Use open folder'}
-          </button>
-        {/if}
+    <div class="picker-target-heading">
+      <div class="picker-target-title">
+        <strong>{pane.title} target</strong>
+        <span>{targetKindLabel}</span>
       </div>
+      <span class:ready={targetReady} class="picker-target-state">
+        {targetReady ? 'Ready' : `Select ${targetKindName}`}
+      </span>
+    </div>
+
+    <div class="picker-selected-target">
+      <span>Selected {targetKindName}</span>
+      <code title={pane.selectedTargetPath || selectedTargetText}>{selectedTargetText}</code>
+    </div>
+
+    <div class="picker-action-row">
+      <button class="secondary" type="button" on:click={() => browseSystem(side)}>
+        Browse
+      </button>
+
+      {#if mode === 'directory'}
+        <button
+          class:active={isCurrentFolderSelected(pane)}
+          class:is-complete={isCurrentFolderSelected(pane)}
+          class={isCurrentFolderSelected(pane) ? 'secondary' : 'primary'}
+          disabled={!pane.currentPath || isCurrentFolderSelected(pane)}
+          type="button"
+          on:click={() => setCurrentFolderAsTarget(side)}
+        >
+          {isCurrentFolderSelected(pane) ? 'Target selected' : 'Use open folder'}
+        </button>
+      {/if}
     </div>
   </header>
 
@@ -114,14 +131,18 @@
       {/each}
     </select>
 
-    <input
-      class="path-input"
-      placeholder="Enter a file or folder path"
-      type="text"
-      value={pane.pathInput}
-      on:input={(event) => updatePathInput(side, event.currentTarget.value)}
-      on:keydown={(event) => event.key === 'Enter' && submitPathInput(side)}
-    />
+    <label class="picker-open-path">
+      <span>Open folder</span>
+      <input
+        class="path-input"
+        placeholder="Enter a file or folder path"
+        title={pane.currentPath || pane.pathInput}
+        type="text"
+        value={pane.pathInput}
+        on:input={(event) => updatePathInput(side, event.currentTarget.value)}
+        on:keydown={(event) => event.key === 'Enter' && submitPathInput(side)}
+      />
+    </label>
   </div>
 
   <section class="list-pane explorer-list-pane">

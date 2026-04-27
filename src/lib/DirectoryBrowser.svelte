@@ -132,7 +132,8 @@
             type="button"
             on:click={clearStatusFilters}
           >
-            All {directoryEntries.length}
+            <span aria-hidden="true" class="status-dot all"></span>
+            <span>All {directoryEntries.length}</span>
           </button>
           {#each directoryStatusSummary as item}
             <button
@@ -142,7 +143,8 @@
               type="button"
               on:click={() => toggleStatusFilter(item.status)}
             >
-              {displayStatusLabel(item.status)} {item.count}
+              <span aria-hidden="true" class={`status-dot ${item.status}`}></span>
+              <span>{displayStatusLabel(item.status)} {item.count}</span>
             </button>
           {/each}
         </div>

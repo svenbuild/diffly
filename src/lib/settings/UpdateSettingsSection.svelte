@@ -45,7 +45,7 @@
     }
 
     if (status === 'unavailable') {
-      return 'Updates unavailable'
+      return 'Release status'
     }
 
     if (status === 'checking') {
@@ -65,7 +65,7 @@
     }
 
     if (status === 'failed' || status === 'unavailable') {
-      return 'danger'
+      return 'warning'
     }
 
     return 'neutral'
