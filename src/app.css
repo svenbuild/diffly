@@ -3124,6 +3124,99 @@ button.filter-chip.tooLarge:focus-visible {
   text-align: center;
 }
 
+.too-large-view {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 100%;
+  padding: 24px;
+  background: var(--diff-context-bg);
+}
+
+.too-large-card {
+  display: grid;
+  gap: 16px;
+  width: min(620px, 100%);
+  padding: 22px;
+  border: 1px solid var(--diff-divider);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--pane-header-bg) 72%, transparent);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--app-bar-shadow-strong) 16%, transparent);
+}
+
+.too-large-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.too-large-kicker {
+  width: fit-content;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 52%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger-bg) 66%, transparent);
+  color: var(--danger-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.too-large-copy h2 {
+  color: var(--panel-title);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.too-large-copy p {
+  color: var(--panel-meta);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.too-large-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.too-large-meta-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--diff-divider);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 56%, transparent);
+}
+
+.too-large-meta-item small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.too-large-meta-item strong,
+.too-large-meta-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.too-large-meta-item strong {
+  color: var(--panel-title);
+  font-size: 0.82rem;
+}
+
+.too-large-meta-item span {
+  color: var(--panel-meta);
+  font-family: var(--code);
+  font-size: 0.76rem;
+}
+
 .binary-meta-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -336,6 +336,7 @@
   $: imageDiff = activeDiff?.contentKind === 'image' ? activeDiff.image ?? null : null
   $: if (activeDiff) { leftImageError = false; rightImageError = false; leftImageRetried = false; rightImageRetried = false }
   $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
+  $: tooLargeDiff = activeDiff?.contentKind === 'tooLarge' ? activeDiff.binary ?? null : null
   $: if (activeDiff?.contentKind !== 'binary') {
     activeBinaryPreviewRequestId += 1
     binaryPreviewLoading = false
@@ -1567,6 +1568,41 @@
               {/if}
           </div>
         </div>
+      </div>
+    {:else if activeDiff.contentKind === 'tooLarge'}
+      <div class="too-large-view">
+        <section class="too-large-card">
+          <div class="too-large-copy">
+            <span class="too-large-kicker">Too large</span>
+            <h2>File skipped for interactive diff</h2>
+            <p>{activeDiff.summary}</p>
+          </div>
+
+          {#if tooLargeDiff}
+            <div class="too-large-meta-grid">
+              <div class="too-large-meta-item">
+                <small>Left</small>
+                <strong title={tooLargeDiff.leftMeta.path}>{activeDiff.leftLabel}</strong>
+                <span>{formatBinarySizeValue(tooLargeDiff.leftMeta.size)}</span>
+              </div>
+              <div class="too-large-meta-item">
+                <small>Right</small>
+                <strong title={tooLargeDiff.rightMeta.path}>{activeDiff.rightLabel}</strong>
+                <span>{formatBinarySizeValue(tooLargeDiff.rightMeta.size)}</span>
+              </div>
+            </div>
+            <div class="binary-summary-chips">
+              {#each getBinarySummaryChips(
+                'binary',
+                tooLargeDiff.leftMeta,
+                tooLargeDiff.rightMeta,
+                tooLargeDiff,
+              ) as chip}
+                <span class="binary-summary-chip">{chip}</span>
+              {/each}
+            </div>
+          {/if}
+        </section>
       </div>
     {:else}
       <div class="message-card">{activeDiff.summary}</div>

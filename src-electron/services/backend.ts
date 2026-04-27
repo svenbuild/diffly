@@ -707,7 +707,10 @@ async function buildFileDiff(
   }
 
   if (leftLoaded.kind === 'tooLarge' || rightLoaded.kind === 'tooLarge') {
-    return emptyNonTextResult('tooLarge', summary, leftLabel, rightLabel)
+    return {
+      ...emptyNonTextResult('tooLarge', summary, leftLabel, rightLabel),
+      binary: buildBinaryPayload(leftPath, rightPath, leftLoaded, rightLoaded, false),
+    }
   }
 
   if (leftLoaded.kind === 'text' || rightLoaded.kind === 'text') {
@@ -1381,7 +1384,7 @@ function buildBinaryPayload(
 }
 
 function buildBinaryMeta(pathValue: string, file: LoadedFile, identicalToOtherSide: boolean): BinaryFileMeta {
-  const exists = file.kind !== 'missing' && file.kind !== 'text' && file.kind !== 'tooLarge'
+  const exists = file.kind !== 'missing' && file.kind !== 'text'
   return {
     exists,
     path: pathValue,
