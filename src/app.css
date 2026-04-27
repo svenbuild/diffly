@@ -1782,8 +1782,81 @@ h2 {
   gap: 10px;
 }
 
-.settings-theme-select select {
+.settings-theme-select {
+  position: relative;
   min-width: 172px;
+}
+
+.settings-theme-select-button {
+  width: 100%;
+  height: var(--control-height-md);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-color: var(--border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--surface) 86%, var(--panel-bg));
+  color: var(--text);
+  text-align: left;
+}
+
+.settings-theme-select-button:hover,
+.settings-theme-select-button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-strong) 22%, var(--surface));
+}
+
+.settings-theme-select-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-theme-select-button svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.settings-theme-select-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(220px, 72vw);
+  max-height: 300px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--app-bar-shadow-strong) 34%, transparent);
+}
+
+.settings-theme-select-menu button {
+  width: 100%;
+  min-height: 28px;
+  justify-content: flex-start;
+  padding: 0 9px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.settings-theme-select-menu button:hover,
+.settings-theme-select-menu button:focus-visible {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent-soft) 48%, transparent);
+}
+
+.settings-theme-select-menu button.active {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  color: var(--active-text);
 }
 
 .settings-theme-editor-row {
@@ -3006,7 +3079,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .viewer {
-  --minimap-width: 18px;
+  --minimap-width: 26px;
   overflow: hidden;
   background: var(--editor-bg);
   grid-template-rows: minmax(0, 1fr);
@@ -3718,7 +3791,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .split-view {
-  --compare-pane-separator-width: 2px;
+  --compare-pane-separator-width: 1px;
   display: grid;
   grid-template-columns:
     minmax(0, calc((100% - var(--minimap-width) - var(--compare-pane-separator-width)) / 2))
@@ -3736,7 +3809,10 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .diff-pane + .diff-pane {
-  border-left: var(--compare-pane-separator-width) solid color-mix(in srgb, var(--accent) 36%, var(--border-strong));
+  border-left: var(--compare-pane-separator-width) solid color-mix(in srgb, var(--border-strong) 88%, transparent);
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--text) 5%, transparent),
+    -1px 0 0 color-mix(in srgb, var(--editor-bg) 92%, transparent);
 }
 
 .pane-header,
@@ -4182,17 +4258,18 @@ button.filter-chip.tooLarge:focus-visible {
   position: relative;
   grid-column: 2;
   grid-row: 1;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
-  background: var(--editor-bg);
+  border-left: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
+  background: color-mix(in srgb, var(--surface) 36%, var(--editor-bg));
   cursor: pointer;
   user-select: none;
-  opacity: 0.82;
-  transition: width 140ms ease, opacity 140ms ease;
+  opacity: 0.96;
+  transition: opacity 140ms ease, background-color 140ms ease;
 }
 
 .minimap:hover {
-  width: 22px;
-  opacity: 0.9;
+  width: var(--minimap-width);
+  opacity: 1;
+  background: color-mix(in srgb, var(--surface) 48%, var(--editor-bg));
 }
 
 .minimap-canvas {
@@ -4203,23 +4280,28 @@ button.filter-chip.tooLarge:focus-visible {
 
 .minimap-viewport {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 3px;
+  right: 3px;
   background: transparent;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 82%, transparent);
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--editor-bg) 72%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
   cursor: grab;
-  transition: background 120ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
   pointer-events: auto;
 }
 
 .minimap-viewport:hover {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  background: transparent;
+  border-color: var(--accent-strong);
 }
 
 .minimap-viewport.dragging {
   cursor: grabbing;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--accent-strong);
 }
 
 .line-fragment.highlighted {
