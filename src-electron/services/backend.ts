@@ -1,8 +1,9 @@
 import { app, dialog, ipcMain } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import {
   mkdir,
+  open,
   readdir,
   readFile,
   stat,
@@ -43,6 +44,9 @@ const BINARY_SAMPLE_BYTES = 8192
 const HEX_BYTES_PER_ROW = 16
 const LCS_MAX_MATRIX_CELLS = 1_000_000
 const ALIGN_LOOKAHEAD_WINDOW = 32
+const STREAM_CHUNK_BYTES = 1024 * 1024
+const HASH_FILE_SIZE_LIMIT = 256 * 1024 * 1024
+const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
 
 type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary'
 
@@ -607,15 +611,36 @@ async function computeDirectoryEntry(
   }
 
   const [leftInfo, rightInfo] = await Promise.all([stat(leftPath), stat(rightPath)])
-  const leftSample = await sampleFile(leftPath)
-  const rightSample = await sampleFile(rightPath)
+
+  // Skip equal-content fast path for trivially differing sizes.
+  if (
+    leftInfo.size !== rightInfo.size &&
+    !(options.ignoreWhitespace || options.ignoreCase)
+  ) {
+    // Sizes differ and we are not normalising — definitely not equal. Fall
+    // through to classification using a small partial sample so we never
+    // touch the whole file just to decide kind.
+  }
+
+  const [leftSample, rightSample] = await Promise.all([
+    sampleFile(leftPath),
+    sampleFile(rightPath),
+  ])
   const leftKind = detectFileKind(leftPath, leftInfo.size, leftSample)
   const rightKind = detectFileKind(rightPath, rightInfo.size, rightSample)
 
   if (leftKind === 'text' && rightKind === 'text' && (options.ignoreWhitespace || options.ignoreCase)) {
-    const [leftText, rightText] = await Promise.all([readFile(leftPath, 'utf8'), readFile(rightPath, 'utf8')])
-    if (normalizeCompareText(leftText, options) === normalizeCompareText(rightText, options)) {
-      return null
+    if (
+      leftInfo.size <= MAX_TEXT_BYTES &&
+      rightInfo.size <= MAX_TEXT_BYTES
+    ) {
+      const [leftText, rightText] = await Promise.all([
+        readFile(leftPath, 'utf8'),
+        readFile(rightPath, 'utf8'),
+      ])
+      if (normalizeCompareText(leftText, options) === normalizeCompareText(rightText, options)) {
+        return null
+      }
     }
   } else if (leftInfo.size === rightInfo.size && await filesEqual(leftPath, rightPath)) {
     return null
@@ -806,8 +831,10 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     }
   }
 
-  const bytes = includeBinaryPreview ? await readBinaryPreview(pathValue) : new Uint8Array(0)
-  const hash = await hashFile(pathValue)
+  const [bytes, hash] = await Promise.all([
+    includeBinaryPreview ? readBinaryPreview(pathValue) : Promise.resolve(new Uint8Array(0)),
+    hashFile(pathValue, info.size),
+  ])
   return {
     kind,
     path: pathValue,
@@ -815,18 +842,35 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     format: detectImageFormat(sample, pathValue),
     truncated: includeBinaryPreview && info.size > MAX_BINARY_RENDER_BYTES,
     bytes,
-    sha256: hash,
+    sha256: hash ?? undefined,
+  }
+}
+
+async function readPartial(pathValue: string, length: number): Promise<Uint8Array> {
+  if (length <= 0) {
+    return new Uint8Array(0)
+  }
+
+  const handle = await open(pathValue, 'r')
+  try {
+    const buffer = Buffer.alloc(length)
+    const { bytesRead } = await handle.read(buffer, 0, length, 0)
+    if (bytesRead === 0) {
+      return new Uint8Array(0)
+    }
+    // Copy out so the returned slice does not pin the larger buffer.
+    return Uint8Array.prototype.slice.call(buffer, 0, bytesRead)
+  } finally {
+    await handle.close().catch(() => undefined)
   }
 }
 
 async function sampleFile(pathValue: string) {
-  const buffer = await readFile(pathValue)
-  return buffer.subarray(0, BINARY_SAMPLE_BYTES)
+  return readPartial(pathValue, BINARY_SAMPLE_BYTES)
 }
 
 async function readBinaryPreview(pathValue: string) {
-  const buffer = await readFile(pathValue)
-  return buffer.subarray(0, MAX_BINARY_RENDER_BYTES)
+  return readPartial(pathValue, MAX_BINARY_RENDER_BYTES)
 }
 
 function detectFileKind(pathValue: string, size: number, sample: Uint8Array): FileKind {
@@ -1420,12 +1464,69 @@ function binaryStats(left: Uint8Array, right: Uint8Array) {
 }
 
 async function filesEqual(leftPath: string, rightPath: string) {
-  const [left, right] = await Promise.all([readFile(leftPath), readFile(rightPath)])
-  return left.equals(right)
+  const [leftHandle, rightHandle] = await Promise.all([
+    open(leftPath, 'r'),
+    open(rightPath, 'r'),
+  ])
+
+  const leftBuffer = Buffer.alloc(FILES_EQUAL_CHUNK_BYTES)
+  const rightBuffer = Buffer.alloc(FILES_EQUAL_CHUNK_BYTES)
+  let offset = 0
+
+  try {
+    while (true) {
+      const [leftRead, rightRead] = await Promise.all([
+        leftHandle.read(leftBuffer, 0, FILES_EQUAL_CHUNK_BYTES, offset),
+        rightHandle.read(rightBuffer, 0, FILES_EQUAL_CHUNK_BYTES, offset),
+      ])
+
+      if (leftRead.bytesRead !== rightRead.bytesRead) {
+        return false
+      }
+
+      if (leftRead.bytesRead === 0) {
+        return true
+      }
+
+      // Compare only the populated prefix; bail on first mismatch.
+      if (
+        leftBuffer.compare(rightBuffer, 0, leftRead.bytesRead, 0, leftRead.bytesRead) !== 0
+      ) {
+        return false
+      }
+
+      offset += leftRead.bytesRead
+    }
+  } finally {
+    await Promise.all([
+      leftHandle.close().catch(() => undefined),
+      rightHandle.close().catch(() => undefined),
+    ])
+  }
 }
 
-async function hashFile(pathValue: string) {
-  return sha256(await readFile(pathValue))
+async function hashFile(pathValue: string, sizeHint?: number): Promise<string | null> {
+  // Skip hashing files larger than the cap to avoid sequential reads of
+  // arbitrarily large files. Identity for those is reported via filesEqual.
+  if (sizeHint !== undefined && sizeHint > HASH_FILE_SIZE_LIMIT) {
+    return null
+  }
+
+  return new Promise<string>((resolveHash, rejectHash) => {
+    const hasher = createHash('sha256')
+    const stream = createReadStream(pathValue, { highWaterMark: STREAM_CHUNK_BYTES })
+
+    stream.on('data', (chunk) => {
+      hasher.update(chunk as Buffer)
+    })
+    stream.once('end', () => {
+      resolveHash(hasher.digest('hex'))
+    })
+    stream.once('error', (error) => {
+      stream.destroy()
+      rejectHash(error)
+    })
+  })
 }
 
 function sha256(bytes: Uint8Array) {
