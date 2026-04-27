@@ -24,7 +24,7 @@
   export let getFileName: (path: string) => string
 
   let fileFilter = ''
-  let hideCollapsedFoldersWithoutMatches = true
+  let hideCollapsedFoldersWithoutMatches = false
   let filterInput: HTMLInputElement | null = null
 
   $: normalizedFileFilter = fileFilter.trim().toLowerCase()

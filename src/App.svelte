@@ -156,6 +156,13 @@
     fullPath: string
   }
 
+  interface DiffScrollSnapshot {
+    viewMode: ViewMode
+    leftTop: number
+    rightTop: number
+    unifiedTop: number
+  }
+
   export let initialSession: PersistedSession | null = null
   export let startupFolderPath: string | null = null
 
@@ -749,6 +756,42 @@
     })
   }
 
+  function captureDiffScrollSnapshot(): DiffScrollSnapshot | null {
+    if (!activeDiff || activeDiff.contentKind !== 'text') {
+      return null
+    }
+
+    return {
+      viewMode,
+      leftTop: leftPaneScroll?.scrollTop ?? 0,
+      rightTop: rightPaneScroll?.scrollTop ?? 0,
+      unifiedTop: unifiedScroll?.scrollTop ?? 0,
+    }
+  }
+
+  async function restoreDiffScrollSnapshot(snapshot: DiffScrollSnapshot | null) {
+    if (!snapshot || !activeDiff || activeDiff.contentKind !== 'text') {
+      return
+    }
+
+    await tick()
+
+    if (snapshot.viewMode === 'sideBySide') {
+      if (leftPaneScroll) {
+        leftPaneScroll.scrollTop = clampScrollOffset(snapshot.leftTop, getMaxScrollTop(leftPaneScroll))
+      }
+
+      if (rightPaneScroll) {
+        rightPaneScroll.scrollTop = clampScrollOffset(snapshot.rightTop, getMaxScrollTop(rightPaneScroll))
+      }
+      return
+    }
+
+    if (unifiedScroll) {
+      unifiedScroll.scrollTop = clampScrollOffset(snapshot.unifiedTop, getMaxScrollTop(unifiedScroll))
+    }
+  }
+
   function isImmediatePrimeCandidate(entry: DirectoryEntryResult, centerRelativePath: string) {
     return (
       entry.relativePath !== centerRelativePath &&
@@ -849,10 +892,11 @@
     jobId: string,
     previousSelectedPath: string,
     revision: number,
+    restoreScroll: DiffScrollSnapshot | null,
   ) {
     clearDirectoryComparePollTimer()
     directoryComparePollTimer = window.setTimeout(() => {
-      void pollDirectoryCompareJob(jobId, previousSelectedPath, revision)
+      void pollDirectoryCompareJob(jobId, previousSelectedPath, revision, restoreScroll)
     }, DIRECTORY_COMPARE_POLL_INTERVAL_MS)
   }
 
@@ -860,6 +904,7 @@
     jobId: string,
     previousSelectedPath: string,
     revision: number,
+    restoreScroll: DiffScrollSnapshot | null,
   ) {
     try {
       const response = await pollDirectoryCompare(jobId)
@@ -880,7 +925,11 @@
 
         if (nextEntry) {
           primeAdjacentDetailDiffs(nextEntry.relativePath, revision)
-          void selectEntry(nextEntry, revision)
+          void selectEntry(
+            nextEntry,
+            revision,
+            nextEntry.relativePath === previousSelectedPath ? restoreScroll : null,
+          )
         }
       }
 
@@ -902,7 +951,7 @@
         return
       }
 
-      queueDirectoryComparePoll(jobId, previousSelectedPath, revision)
+      queueDirectoryComparePoll(jobId, previousSelectedPath, revision, restoreScroll)
     } catch (error) {
       if (jobId !== activeDirectoryCompareJobId || revision !== compareRevision) {
         return
@@ -1444,6 +1493,7 @@
     const nextRightPath = rightExplorer.selectedTargetPath
     const nextCompareOptions = getPendingCompareOptions()
     const previousSelectedPath = selectedRelativePath
+    const restoreScroll = captureDiffScrollSnapshot()
 
     loading = true
     detailLoading = false
@@ -1473,7 +1523,7 @@
         )
 
         activeDirectoryCompareJobId = response.jobId
-        void pollDirectoryCompareJob(response.jobId, previousSelectedPath, compareRevision)
+        void pollDirectoryCompareJob(response.jobId, previousSelectedPath, compareRevision, restoreScroll)
         return
       }
 
@@ -1499,7 +1549,7 @@
 
         if (preservedEntry) {
           primeAdjacentDetailDiffs(preservedEntry.relativePath, compareRevision)
-          void selectEntry(preservedEntry, compareRevision)
+          void selectEntry(preservedEntry, compareRevision, restoreScroll)
         } else if (filteredDirectoryEntries.length > 0) {
           const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
           primeAdjacentDetailDiffs(nextEntry.relativePath, compareRevision)
@@ -1521,7 +1571,11 @@
     }
   }
 
-  async function selectEntry(entry: DirectoryEntryResult, revision = compareRevision) {
+  async function selectEntry(
+    entry: DirectoryEntryResult,
+    revision = compareRevision,
+    restoreScroll: DiffScrollSnapshot | null = null,
+  ) {
     if (!leftPath || !rightPath) {
       return
     }
@@ -1558,6 +1612,7 @@
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
+        await restoreDiffScrollSnapshot(restoreScroll)
         if (result.contentKind === 'text') {
           startBackgroundDiffPreload(entry.relativePath, revision)
         } else {
