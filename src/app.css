@@ -452,23 +452,23 @@ h2 {
 
 .app-bar {
   display: grid;
-  grid-template-columns: var(--left-rail-width) minmax(0, 1fr) auto;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--content-gap);
+  gap: 18px;
   height: var(--topbar-height);
   min-height: var(--topbar-height);
-  padding: 0 12px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--app-bar-bg);
   box-shadow: none;
 }
 
 .compare-screen .app-bar {
-  grid-template-columns: var(--compare-sidebar-width, 280px) minmax(0, 1fr) auto;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
 }
 
 .settings-view .app-bar {
-  grid-template-columns: var(--left-rail-width) minmax(0, 1fr) auto;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
   justify-content: stretch;
 }
 
@@ -490,7 +490,7 @@ h2 {
 .app-bar-actions,
 .compare-actions {
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .app-bar-context {
@@ -501,6 +501,7 @@ h2 {
 
 .app-top-bar > .app-bar-actions {
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .compare-actions {
@@ -540,22 +541,6 @@ h2 {
   min-width: 0;
 }
 
-.setup-bar-center {
-  min-width: 0;
-  color: var(--secondary-text);
-  font-size: 13px;
-}
-
-.setup-bar-center strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 .compare-editor-context {
   display: grid;
   gap: 2px;
@@ -579,22 +564,6 @@ h2 {
 .compare-editor-context span {
   color: var(--muted);
   font-size: 12px;
-}
-
-.settings-bar-context {
-  min-width: 0;
-  color: var(--secondary-text);
-  font-size: 13px;
-}
-
-.settings-bar-context strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--title);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .setup-bar-actions {
@@ -652,31 +621,6 @@ h2 {
 
 .settings-view {
   grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.settings-bar-main {
-  gap: 10px;
-}
-
-.settings-back-button {
-  min-width: 70px;
-}
-
-.compare-bar-main {
-  flex: 1 1 auto;
-  justify-content: flex-start;
-  gap: 10px;
-}
-
-.compare-bar-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.compare-bar-brand h1 {
-  color: var(--title);
 }
 
 .nav-button {
@@ -991,15 +935,15 @@ h2 {
   height: 100%;
   align-self: stretch;
   overflow: hidden;
-  padding: var(--page-padding-y) var(--page-padding-x);
+  padding: 16px 20px 18px;
   background: var(--pane-bg);
 }
 
 .setup-launcher {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 16px;
-  width: min(100%, 1440px);
+  gap: 12px;
+  width: 100%;
   min-height: 0;
   height: 100%;
   margin: 0 auto;
@@ -1018,14 +962,14 @@ h2 {
 .setup-launcher-header {
   justify-content: space-between;
   gap: 18px;
-  min-height: 48px;
-  padding-bottom: 2px;
+  min-height: 36px;
+  padding-bottom: 0;
 }
 
 .setup-launcher-header h2 {
   margin: 0;
   color: var(--title);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -1039,7 +983,7 @@ h2 {
 .setup-launcher-footer {
   justify-content: space-between;
   gap: 16px;
-  min-height: 48px;
+  min-height: 40px;
   padding-top: 0;
   border-top: 1px solid var(--border-subtle);
 }
@@ -1051,7 +995,7 @@ h2 {
 .settings-shell,
 .settings-screen-body {
   display: grid;
-  grid-template-columns: var(--left-rail-width) minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   grid-row: 3;
   gap: 0;
   justify-content: stretch;
@@ -1072,7 +1016,7 @@ h2 {
   top: 0;
   align-self: stretch;
   height: 100%;
-  padding: var(--page-padding-y) 20px;
+  padding: 20px 14px;
   border-right: 1px solid var(--border-subtle);
   background: var(--panel-bg);
   overflow: auto;
@@ -1163,14 +1107,14 @@ h2 {
   min-height: 0;
   height: 100%;
   overflow: auto;
-  padding: 32px 48px;
+  padding: 20px 28px 24px;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .settings-content-column,
 .settings-panel {
-  width: min(100%, 1120px);
+  width: 100%;
   margin: 0;
   display: grid;
   align-content: start;
@@ -1262,8 +1206,18 @@ h2 {
   gap: 24px;
 }
 
-.viewer-settings {
-  max-width: 980px;
+.viewer-settings,
+.update-settings,
+.settings-reset-page {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.viewer-settings > .settings-page-heading,
+.update-settings > .settings-page-heading,
+.settings-reset-page > .settings-page-heading {
+  grid-column: 1 / -1;
 }
 
 .settings-page-heading {
@@ -1277,6 +1231,21 @@ h2 {
   background: var(--surface);
   overflow: hidden;
   box-shadow: none;
+}
+
+.settings-page:not(.viewer-settings):not(.update-settings):not(.settings-reset-page) .settings-group {
+  min-width: 0;
+}
+
+.viewer-settings .settings-group,
+.update-settings .settings-group,
+.settings-reset-page .settings-group {
+  min-width: 0;
+}
+
+.update-settings .settings-group:first-of-type,
+.settings-reset-page .settings-group:first-of-type {
+  grid-column: span 2;
 }
 
 .settings-group-danger {
@@ -1295,7 +1264,7 @@ h2 {
 
 .settings-group-header {
   gap: 5px;
-  padding: 18px 20px 12px;
+  padding: 14px 16px 10px;
 }
 
 .settings-group-header-with-actions {
@@ -1339,9 +1308,9 @@ h2 {
 .settings-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 24px;
-  min-height: 58px;
-  padding: 12px 16px;
+  gap: 16px;
+  min-height: 50px;
+  padding: 10px 14px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -1377,7 +1346,7 @@ h2 {
 }
 
 .settings-control {
-  width: min(220px, 100%);
+  width: min(190px, 100%);
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1386,7 +1355,7 @@ h2 {
 }
 
 .settings-control-wide {
-  width: min(680px, 100%);
+  width: min(360px, 100%);
 }
 
 .settings-control select {
@@ -1641,7 +1610,7 @@ h2 {
 
 .settings-appearance-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.72fr) minmax(280px, 0.62fr);
   gap: 16px;
   padding: 0 20px 20px;
   align-items: start;
@@ -1768,7 +1737,7 @@ h2 {
 }
 
 .settings-theme-editor-global {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .settings-theme-editor {
@@ -1819,9 +1788,9 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 18px;
-  min-height: 46px;
-  padding: 10px 16px;
+  gap: 14px;
+  min-height: 42px;
+  padding: 8px 14px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -2208,7 +2177,7 @@ h2 {
 .picker-workspace {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -2234,7 +2203,7 @@ h2 {
   padding: 0;
   gap: 0;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
+  border-radius: 8px;
   background: var(--panel-bg);
   box-shadow: none;
 }
@@ -2255,7 +2224,7 @@ h2 {
 
 .picker-pane-header {
   align-items: stretch;
-  padding: 16px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -2326,7 +2295,15 @@ h2 {
 
 .picker-pane-header {
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+}
+
+.picker-pane-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 .target-summary,
@@ -2351,7 +2328,7 @@ h2 {
   display: grid;
   grid-template-columns: auto 72px minmax(0, 1fr);
   gap: 8px;
-  padding: 8px 14px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--panel-bg-raised) 72%, transparent);
 }
@@ -2479,20 +2456,9 @@ h2 {
   overflow: auto;
 }
 
-.target-pane-fill {
-  flex: 1 0 96px;
-  display: grid;
-  place-items: center;
-  min-height: 96px;
-  padding: 12px;
-  border-top: 1px solid var(--border-subtle);
-  color: color-mix(in srgb, var(--text-faint) 56%, transparent);
-  font-size: 12px;
-}
-
 .entry-row {
   width: 100%;
-  height: 32px;
+  height: 30px;
   padding: 0 10px;
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
@@ -4688,16 +4654,25 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 @media (max-width: 1280px) {
-  .setup-app-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .setup-bar-actions {
-    grid-column: 1 / -1;
-  }
-
   .setup-selection-summary {
     width: 100%;
+  }
+
+  .settings-appearance-shell,
+  .viewer-settings,
+  .update-settings,
+  .settings-reset-page {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-appearance-preview-column,
+  .settings-theme-editor-global,
+  .viewer-settings > .settings-page-heading,
+  .update-settings > .settings-page-heading,
+  .settings-reset-page > .settings-page-heading,
+  .update-settings .settings-group:first-of-type,
+  .settings-reset-page .settings-group:first-of-type {
+    grid-column: 1 / -1;
   }
 }
 
@@ -4771,11 +4746,20 @@ button.filter-chip.tooLarge:focus-visible {
     overflow: visible;
   }
 
-  .settings-appearance-shell {
+  .settings-appearance-shell,
+  .viewer-settings,
+  .update-settings,
+  .settings-reset-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-theme-editor-global {
+  .settings-appearance-preview-column,
+  .settings-theme-editor-global,
+  .viewer-settings > .settings-page-heading,
+  .update-settings > .settings-page-heading,
+  .settings-reset-page > .settings-page-heading,
+  .update-settings .settings-group:first-of-type,
+  .settings-reset-page .settings-group:first-of-type {
     grid-column: auto;
   }
 
@@ -4802,18 +4786,18 @@ button.filter-chip.tooLarge:focus-visible {
   .pane-header,
   .viewer-header,
   .compare-context {
-    flex-direction: column;
     align-items: stretch;
   }
 
-  .setup-app-bar {
-    display: flex;
-    gap: 8px;
+  .app-bar {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: var(--topbar-height);
+    padding-block: 8px;
   }
 
   .app-bar-main,
   .app-bar-actions,
-  .setup-bar-center,
   .setup-bar-actions,
   .compare-actions,
   .compare-action-group {
@@ -4829,10 +4813,6 @@ button.filter-chip.tooLarge:focus-visible {
   .compare-action-group {
     padding-left: 0;
     border-left: 0;
-  }
-
-  .settings-bar-main {
-    flex-wrap: wrap;
   }
 
   .compare-action-group + .compare-action-group {

@@ -2652,12 +2652,6 @@
         {/if}
       {/snippet}
 
-      {#snippet middle()}
-      <div class="setup-bar-center">
-        <strong>Choose compare targets</strong>
-      </div>
-      {/snippet}
-
       {#snippet actions()}
       <div class="setup-bar-actions">
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
@@ -3025,12 +3019,6 @@
             {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
           </button>
         {/if}
-      {/snippet}
-
-      {#snippet middle()}
-      <div class="settings-bar-context">
-        <strong>Settings</strong>
-      </div>
       {/snippet}
 
       {#snippet actions()}

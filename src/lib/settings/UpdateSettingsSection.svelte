@@ -84,7 +84,7 @@
   }
 </script>
 
-<section class="settings-page">
+<section class="settings-page update-settings">
   <div class="settings-page-heading">
     <h2>Updates</h2>
     <p>Current release status and automatic checks.</p>

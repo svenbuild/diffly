@@ -31,6 +31,8 @@
   $: targetKindName = mode === 'directory' ? 'folder' : 'file'
   $: selectedTargetText = pane.selectedTargetPath || `No ${targetKindName} selected`
   $: targetReady = Boolean(pane.selectedTargetPath)
+  $: currentDirectoryCount = pane.currentListing?.directories.length ?? 0
+  $: currentFileCount = pane.currentListing?.files.length ?? 0
 </script>
 
 <section
@@ -54,11 +56,12 @@
       <code title={pane.selectedTargetPath || selectedTargetText}>{selectedTargetText}</code>
     </div>
 
-    <div class="picker-action-row">
-      <button class="secondary" type="button" on:click={() => browseSystem(side)}>
-        Browse
-      </button>
+    <div class="picker-pane-meta-row">
+      <span>{currentDirectoryCount} folders</span>
+      <span>{currentFileCount} files</span>
+    </div>
 
+    <div class="picker-action-row">
       {#if mode === 'directory'}
         <button
           class:active={isCurrentFolderSelected(pane)}
@@ -71,6 +74,10 @@
           {isCurrentFolderSelected(pane) ? 'Target selected' : 'Use open folder'}
         </button>
       {/if}
+
+      <button class="secondary" type="button" on:click={() => browseSystem(side)}>
+        Browse
+      </button>
     </div>
   </header>
 
@@ -205,8 +212,6 @@
 
         {#if pane.currentListing.directories.length === 0 && pane.currentListing.files.length === 0}
           <div class="empty-state">Folder is empty.</div>
-        {:else}
-          <div aria-hidden="true" class="target-pane-fill">Target preview area</div>
         {/if}
       {:else}
         <div class="empty-state">No folder open.</div>

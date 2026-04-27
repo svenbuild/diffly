@@ -21,7 +21,6 @@
         <h1>Diffly</h1>
         <span>{context}</span>
       </div>
-      {@render status?.()}
     </div>
   </div>
 
@@ -30,6 +29,7 @@
   </div>
 
   <div class="app-bar-actions">
+    {@render status?.()}
     {@render actions?.()}
   </div>
 </header>
