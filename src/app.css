@@ -43,6 +43,10 @@
   --sidebar-row-height: 27px;
   --control-radius: 7px;
   --control-padding-x: 10px;
+  --control-width-sm: 148px;
+  --control-width-md: 190px;
+  --control-width-lg: 280px;
+  --control-width-xl: 360px;
   --radius-card: 10px;
   --radius-control: 7px;
   --radius-row: 6px;
@@ -1218,10 +1222,15 @@ h2 {
   gap: 14px;
 }
 
-.viewer-settings,
+.viewer-settings {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
 .update-settings,
 .settings-reset-page {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 16px;
 }
@@ -1255,23 +1264,9 @@ h2 {
   min-width: 0;
 }
 
-.update-settings .settings-group:first-of-type,
-.settings-reset-page .settings-group:first-of-type {
-  grid-column: span 2;
-}
-
 .settings-group-danger {
   border-color: color-mix(in srgb, var(--danger) 24%, var(--border-subtle));
   background: color-mix(in srgb, var(--danger-bg) 12%, var(--surface));
-  margin-top: 8px;
-}
-
-.settings-reset-page {
-  gap: 18px;
-}
-
-.settings-reset-page .settings-group-header {
-  padding-top: 14px;
 }
 
 .settings-group-header {
@@ -1326,13 +1321,12 @@ h2 {
   border-top: 1px solid var(--border-subtle);
 }
 
-.settings-group-grid > .settings-row:nth-child(2n) {
-  border-left: 0;
+.settings-group-grid > .settings-row:first-child {
+  border-top: 0;
 }
 
 .settings-row-span-full {
   grid-column: 1 / -1;
-  border-left: 0 !important;
 }
 
 .settings-row-interactive {
@@ -1364,7 +1358,7 @@ h2 {
 }
 
 .settings-control {
-  width: min(190px, 100%);
+  width: min(var(--control-width-md), 100%);
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1373,12 +1367,12 @@ h2 {
 }
 
 .settings-control-wide {
-  width: min(360px, 100%);
+  width: min(var(--control-width-xl), 100%);
 }
 
 .settings-control select {
   min-width: 112px;
-  max-width: 148px;
+  max-width: var(--control-width-sm);
   height: 30px;
 }
 
@@ -1629,7 +1623,7 @@ h2 {
 
 .settings-appearance-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.72fr) minmax(280px, 0.62fr);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.78fr);
   gap: 16px;
   padding: 0 20px 20px;
   align-items: start;
@@ -1654,7 +1648,7 @@ h2 {
 }
 
 .settings-theme-mode-control {
-  width: min(360px, 100%);
+  width: min(var(--control-width-xl), 100%);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2px;
@@ -1930,11 +1924,11 @@ h2 {
 }
 
 .settings-color-control input[type='color'] {
-  width: 16px;
-  min-width: 16px;
-  height: 16px;
-  min-height: 16px;
-  flex: 0 0 16px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
   appearance: none;
   padding: 0;
   border: 0;
@@ -1971,9 +1965,9 @@ h2 {
 }
 
 .settings-theme-text-input {
-  width: min(320px, 100%);
+  width: min(var(--control-width-lg), 100%);
   min-width: 180px;
-  max-width: 320px;
+  max-width: var(--control-width-lg);
   padding-inline: 10px;
   text-align: left;
 }
@@ -4781,12 +4775,9 @@ button.filter-chip.tooLarge:focus-visible {
   }
 
   .settings-appearance-preview-column,
-  .settings-theme-editor-global,
   .viewer-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
-  .settings-reset-page > .settings-page-heading,
-  .update-settings .settings-group:first-of-type,
-  .settings-reset-page .settings-group:first-of-type {
+  .settings-reset-page > .settings-page-heading {
     grid-column: 1 / -1;
   }
 }
@@ -4869,12 +4860,9 @@ button.filter-chip.tooLarge:focus-visible {
   }
 
   .settings-appearance-preview-column,
-  .settings-theme-editor-global,
   .viewer-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
-  .settings-reset-page > .settings-page-heading,
-  .update-settings .settings-group:first-of-type,
-  .settings-reset-page .settings-group:first-of-type {
+  .settings-reset-page > .settings-page-heading {
     grid-column: auto;
   }
 

@@ -308,80 +308,80 @@
             />
           {/key}
         {/each}
+
+        <section class="settings-theme-editor settings-theme-editor-global">
+          <header class="settings-theme-editor-header">
+            <div class="settings-theme-editor-title">
+              <strong>Global appearance</strong>
+              <span>These settings apply across both light and dark variants.</span>
+            </div>
+          </header>
+
+          <div class="settings-theme-editor-grid">
+            <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
+              <span>Use pointer cursors</span>
+              <span class="settings-switch">
+                <input
+                  checked={appearanceSettings.usePointerCursor}
+                  role="switch"
+                  type="checkbox"
+                  on:change={(event) =>
+                    onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)}
+                />
+                <span aria-hidden="true" class="settings-switch-ui"></span>
+              </span>
+            </label>
+
+            <div class="settings-theme-editor-row">
+              <span>UI font size</span>
+              <div class="settings-stepper">
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.uiFontSize <= minUiFontSize}
+                  type="button"
+                  on:click={() => onStepUiFontSize(-1)}
+                >
+                  -
+                </button>
+                <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
+                  type="button"
+                  on:click={() => onStepUiFontSize(1)}
+                >
+                  +
+                </button>
+                <small class="settings-stepper-unit">px</small>
+              </div>
+            </div>
+
+            <div class="settings-theme-editor-row">
+              <span>Code font size</span>
+              <div class="settings-stepper">
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
+                  type="button"
+                  on:click={() => onStepCodeFontSize(-1)}
+                >
+                  -
+                </button>
+                <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
+                  type="button"
+                  on:click={() => onStepCodeFontSize(1)}
+                >
+                  +
+                </button>
+                <small class="settings-stepper-unit">px</small>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
-
-      <section class="settings-theme-editor settings-theme-editor-global">
-        <header class="settings-theme-editor-header">
-          <div class="settings-theme-editor-title">
-            <strong>Global appearance</strong>
-            <span>These settings apply across both light and dark variants.</span>
-          </div>
-        </header>
-
-        <div class="settings-theme-editor-grid">
-          <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
-            <span>Use pointer cursors</span>
-            <span class="settings-switch">
-              <input
-                checked={appearanceSettings.usePointerCursor}
-                role="switch"
-                type="checkbox"
-                on:change={(event) =>
-                  onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)}
-              />
-              <span aria-hidden="true" class="settings-switch-ui"></span>
-            </span>
-          </label>
-
-          <div class="settings-theme-editor-row">
-            <span>UI font size</span>
-            <div class="settings-stepper">
-              <button
-                class="secondary settings-stepper-button"
-                disabled={appearanceSettings.uiFontSize <= minUiFontSize}
-                type="button"
-                on:click={() => onStepUiFontSize(-1)}
-              >
-                -
-              </button>
-              <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
-              <button
-                class="secondary settings-stepper-button"
-                disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
-                type="button"
-                on:click={() => onStepUiFontSize(1)}
-              >
-                +
-              </button>
-              <small class="settings-stepper-unit">px</small>
-            </div>
-          </div>
-
-          <div class="settings-theme-editor-row">
-            <span>Code font size</span>
-            <div class="settings-stepper">
-              <button
-                class="secondary settings-stepper-button"
-                disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
-                type="button"
-                on:click={() => onStepCodeFontSize(-1)}
-              >
-                -
-              </button>
-              <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
-              <button
-                class="secondary settings-stepper-button"
-                disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
-                type="button"
-                on:click={() => onStepCodeFontSize(1)}
-              >
-                +
-              </button>
-              <small class="settings-stepper-unit">px</small>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   </section>
 </section>
