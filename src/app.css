@@ -3079,7 +3079,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .viewer {
-  --minimap-width: 26px;
+  --minimap-width: 32px;
   overflow: hidden;
   background: var(--editor-bg);
   grid-template-rows: minmax(0, 1fr);
@@ -4280,28 +4280,28 @@ button.filter-chip.tooLarge:focus-visible {
 
 .minimap-viewport {
   position: absolute;
-  left: 3px;
-  right: 3px;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--accent-strong) 82%, transparent);
-  border-radius: 3px;
+  left: 4px;
+  right: 4px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 58%, var(--border-strong));
+  border-radius: 2px;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--editor-bg) 72%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--editor-bg) 78%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
   cursor: grab;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
   pointer-events: auto;
 }
 
 .minimap-viewport:hover {
-  background: transparent;
-  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-strong) 72%, var(--border-strong));
 }
 
 .minimap-viewport.dragging {
   cursor: grabbing;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-color: color-mix(in srgb, var(--accent-strong) 76%, var(--border-strong));
 }
 
 .line-fragment.highlighted {
