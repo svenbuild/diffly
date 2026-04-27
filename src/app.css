@@ -945,14 +945,14 @@ h2 {
   height: 100%;
   align-self: stretch;
   overflow: hidden;
-  padding: 16px 20px 18px;
+  padding: 10px 12px 12px;
   background: var(--pane-bg);
 }
 
 .setup-launcher {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 6px;
   width: 100%;
   min-height: 0;
   height: 100%;
@@ -970,22 +970,22 @@ h2 {
 
 .setup-launcher-header {
   justify-content: space-between;
-  gap: 18px;
-  min-height: 34px;
+  gap: 14px;
+  min-height: 28px;
   padding-bottom: 0;
 }
 
 .setup-launcher-header h2 {
   margin: 0;
   color: var(--title);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
 }
 
 .setup-launcher-header p {
   margin: 0;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .setup-launcher-actions {
@@ -2274,7 +2274,7 @@ h2 {
 .picker-workspace {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -2320,8 +2320,15 @@ h2 {
 }
 
 .picker-pane-header {
-  align-items: stretch;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "heading actions"
+    "path actions";
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 56px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -2334,15 +2341,16 @@ h2 {
 }
 
 .picker-target-heading {
+  grid-area: heading;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .picker-target-title {
   align-items: flex-start;
   flex-direction: row;
-  gap: 8px;
+  gap: 6px;
 }
 
 .picker-target-title strong,
@@ -2356,14 +2364,15 @@ h2 {
 .picker-target-title span {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
 .picker-target-state {
+  margin-left: auto;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .picker-target-state.ready {
@@ -2371,8 +2380,9 @@ h2 {
 }
 
 .picker-selected-target {
+  grid-area: path;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
 }
 
 .picker-selected-target span {
@@ -2387,16 +2397,11 @@ h2 {
   white-space: nowrap;
   color: var(--panel-meta);
   font-size: 12px;
-  line-height: 1.2;
-}
-
-.picker-pane-header {
-  flex-direction: column;
-  gap: 6px;
+  line-height: 1.15;
 }
 
 .picker-pane-meta-row {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 12px;
   color: var(--text-faint);
@@ -2424,8 +2429,8 @@ h2 {
 .picker-nav-row {
   display: grid;
   grid-template-columns: auto 72px minmax(0, 1fr);
-  gap: 8px;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--panel-bg-raised) 72%, transparent);
 }
@@ -2444,16 +2449,14 @@ h2 {
 
 .picker-open-path {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
 .picker-open-path > span {
-  color: var(--text-faint);
-  font-size: 11px;
-  white-space: nowrap;
+  display: none;
 }
 
 .picker-open-path .path-input {
@@ -2465,6 +2468,7 @@ h2 {
 }
 
 .picker-action-row {
+  grid-area: actions;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -2472,12 +2476,13 @@ h2 {
   min-width: 0;
 }
 
-.picker-action-row .primary {
-  min-width: 112px;
+.picker-action-row button {
+  min-height: 30px;
 }
 
+.picker-action-row .primary,
 .picker-action-row .is-complete {
-  min-width: 112px;
+  min-width: 104px;
 }
 
 .icon-button {
