@@ -2709,6 +2709,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .viewer {
+  --minimap-width: 60px;
   overflow: hidden;
   background: transparent;
   grid-template-rows: auto minmax(0, 1fr);
@@ -3332,7 +3333,9 @@ button.filter-chip.tooLarge:focus-visible {
 
 .split-view {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, calc((100% - var(--minimap-width)) / 2))
+    minmax(0, calc((100% + var(--minimap-width)) / 2));
   gap: 0;
   min-height: 0;
   height: 100%;
@@ -3733,7 +3736,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .minimap {
-  width: 60px;
+  width: var(--minimap-width);
   position: relative;
   grid-column: 2;
   grid-row: 1;
