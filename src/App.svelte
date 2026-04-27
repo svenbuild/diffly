@@ -777,9 +777,39 @@
     leftPaths: string[],
     rightPaths: string[],
   ): DirectoryComparePair[] {
+    // Selection order on left and right is independent (the user clicks in
+    // arbitrary order). Pair by basename first so e.g. CPU on the left gets
+    // matched with CPU on the right regardless of click order. Anything that
+    // does not have a same-named partner falls back to index pairing on the
+    // remaining items.
+    const remainingRight = [...rightPaths]
+    const matchedLeft: Array<{ leftBase: string; rightBase: string }> = []
+    const unmatchedLeft: string[] = []
+
+    for (const leftBase of leftPaths) {
+      const leftName = basenameOf(leftBase)
+      const matchIndex = remainingRight.findIndex(
+        (candidate) => basenameOf(candidate) === leftName,
+      )
+
+      if (matchIndex >= 0) {
+        const [rightBase] = remainingRight.splice(matchIndex, 1)
+        matchedLeft.push({ leftBase, rightBase })
+      } else {
+        unmatchedLeft.push(leftBase)
+      }
+    }
+
+    const fallbackPairs: Array<{ leftBase: string; rightBase: string }> = []
+    for (const [index, leftBase] of unmatchedLeft.entries()) {
+      const rightBase = remainingRight[index] ?? leftBase
+      fallbackPairs.push({ leftBase, rightBase })
+    }
+
+    const orderedPairs = [...matchedLeft, ...fallbackPairs]
     const labels: string[] = []
-    return leftPaths.map((leftBase, index) => {
-      const rightBase = rightPaths[index] ?? leftBase
+
+    return orderedPairs.map(({ leftBase, rightBase }, index) => {
       const leftName = basenameOf(leftBase)
       const rightName = basenameOf(rightBase)
       const baseLabel = leftName === rightName ? leftName : `${leftName} ↔ ${rightName}`
