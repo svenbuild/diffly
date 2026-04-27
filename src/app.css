@@ -581,8 +581,11 @@ h2 {
 }
 
 .setup-bar-actions {
+  display: flex;
+  align-items: center;
   justify-self: end;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .app-identity h1 {
@@ -1006,6 +1009,17 @@ h2 {
 
 .setup-warning {
   color: var(--warning);
+}
+
+.setup-warning-banner {
+  margin: 0 28px 12px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--border-subtle));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning-bg) 50%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .settings-shell,
@@ -2342,9 +2356,9 @@ h2 {
 }
 
 .picker-target-title {
-  align-items: flex-start;
+  align-items: center;
   flex-direction: row;
-  gap: 6px;
+  gap: 8px;
 }
 
 .picker-target-title strong,
@@ -2355,22 +2369,41 @@ h2 {
   line-height: 1.2;
 }
 
-.picker-target-title span {
+.picker-target-kind {
   flex: 0 0 auto;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.2;
 }
 
-.picker-target-state {
-  margin-left: auto;
+.picker-target-dot {
   flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  transition: background-color 140ms ease, box-shadow 140ms ease;
 }
 
-.picker-target-state.ready {
-  color: var(--success);
+.picker-target-dot.ready {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.picker-target-count {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.picker-target-state {
+  display: none;
 }
 
 .picker-selected-target {

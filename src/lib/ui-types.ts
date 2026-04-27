@@ -64,6 +64,7 @@ export interface ExplorerPaneState {
   historyIndex: number
   selectedTargetPath: string
   selectedTargetKind: 'file' | 'directory' | null
+  selectedTargetPaths: string[]
   loading: boolean
   error: string
 }

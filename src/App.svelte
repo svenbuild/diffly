@@ -1246,6 +1246,7 @@
       ...leftExplorer,
       selectedTargetPath: '',
       selectedTargetKind: null,
+      selectedTargetPaths: [],
       history: leftExplorer.currentPath ? [leftExplorer.currentPath] : [],
       historyIndex: leftExplorer.currentPath ? 0 : -1,
     }
@@ -1253,6 +1254,7 @@
       ...rightExplorer,
       selectedTargetPath: '',
       selectedTargetKind: null,
+      selectedTargetPaths: [],
       history: rightExplorer.currentPath ? [rightExplorer.currentPath] : [],
       historyIndex: rightExplorer.currentPath ? 0 : -1,
     }
@@ -1299,8 +1301,8 @@
     }
   }
 
-  async function browseSystem(side: Side) {
-    const selected = await choosePath(mode === 'file' ? 'file' : 'directory')
+  async function browseSystem(side: Side, kind: 'file' | 'directory' = 'file') {
+    const selected = await choosePath(kind)
 
     if (!selected) {
       return
@@ -1419,17 +1421,13 @@
 
     if (info.isDirectory) {
       await openDirectory(side, info.path)
-      if (mode === 'directory') {
-        selectTarget(side, info.path, 'directory')
-      }
+      selectTarget(side, info.path, 'directory')
       return
     }
 
     if (info.isFile && info.parentPath) {
       await openDirectory(side, info.parentPath)
-      if (mode === 'file') {
-        selectTarget(side, info.path, 'file')
-      }
+      selectTarget(side, info.path, 'file')
     }
   }
 
@@ -1438,7 +1436,32 @@
       ...pane,
       selectedTargetPath: path,
       selectedTargetKind: kind,
+      selectedTargetPaths: [path],
     }))
+
+    if (screen === 'setup' && mode !== kind) {
+      mode = kind
+    }
+  }
+
+  function toggleTarget(side: Side, path: string, kind: 'file' | 'directory') {
+    const pane = paneFor(side)
+    const existing = pane.selectedTargetPaths ?? []
+    const has = existing.includes(path)
+    const nextPaths = has ? existing.filter((entry) => entry !== path) : [...existing, path]
+    const primary = nextPaths.length > 0 ? nextPaths[nextPaths.length - 1] : ''
+    const primaryKind = primary === path ? kind : pane.selectedTargetKind
+
+    updatePane(side, (current) => ({
+      ...current,
+      selectedTargetPaths: nextPaths,
+      selectedTargetPath: primary,
+      selectedTargetKind: primary ? primaryKind : null,
+    }))
+
+    if (primary && screen === 'setup' && primaryKind && mode !== primaryKind) {
+      mode = primaryKind
+    }
   }
 
   function useCurrentFolder(side: Side) {
@@ -1449,15 +1472,20 @@
     }
   }
 
-  function selectListEntry(side: Side, entry: ExplorerEntry) {
-    if (mode === 'directory' && entry.kind !== 'file') {
-      selectTarget(side, entry.path, 'directory')
+  function selectListEntry(side: Side, entry: ExplorerEntry, event?: MouseEvent) {
+    if (entry.kind === 'drive') {
       return
     }
 
-    if (mode === 'file' && entry.kind === 'file') {
-      selectTarget(side, entry.path, 'file')
+    const kind: 'file' | 'directory' = entry.kind === 'file' ? 'file' : 'directory'
+    const isAdditive = Boolean(event && (event.ctrlKey || event.metaKey))
+
+    if (isAdditive) {
+      toggleTarget(side, entry.path, kind)
+      return
     }
+
+    selectTarget(side, entry.path, kind)
   }
 
   async function activateListEntry(side: Side, entry: ExplorerEntry) {
@@ -1466,13 +1494,13 @@
       return
     }
 
-    if (mode === 'file') {
+    if (entry.kind === 'file') {
       selectTarget(side, entry.path, 'file')
     }
   }
 
   function canComparePane(pane: ExplorerPaneState) {
-    return mode === 'file' ? pane.selectedTargetKind === 'file' : pane.selectedTargetKind === 'directory'
+    return Boolean(pane.selectedTargetPath) && pane.selectedTargetKind === mode
   }
 
   function formatPickerTargetLabel(path: string, emptyLabel: string) {
@@ -2389,6 +2417,10 @@
   }
 
   function isTargetSelected(pane: ExplorerPaneState, entry: ExplorerEntry) {
+    const paths = pane.selectedTargetPaths
+    if (paths && paths.length > 0) {
+      return paths.includes(entry.path)
+    }
     return pane.selectedTargetPath === entry.path
   }
 
@@ -2654,6 +2686,19 @@
 
       {#snippet actions()}
       <div class="setup-bar-actions">
+        <button
+          class="primary setup-compare-button"
+          disabled={!pickerCanCompare || loading}
+          title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
+          type="button"
+          on:click={runCompare}
+        >
+          {#if loading}
+            Comparing...
+          {:else}
+            Compare
+          {/if}
+        </button>
         <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
           Settings
         </button>
@@ -2665,66 +2710,17 @@
       <p class="error-banner">{errorMessage}</p>
     {/if}
 
+    {#if sameSelectionWarning}
+      <p class="setup-warning-banner">{sameSelectionWarning}</p>
+    {/if}
+
     <section class="setup-body">
       <section class="setup-launcher" aria-label="Compare setup">
-        <div class="setup-launcher-header">
-          <div>
-            <h2>{mode === 'directory' ? 'Folder compare' : 'File compare'}</h2>
-            <p>
-              {#if sameSelectionWarning}
-                <span class="setup-warning">{sameSelectionWarning}</span>
-              {:else}
-                {setupHintMessage || 'Targets ready.'}
-              {/if}
-            </p>
-          </div>
-
-          <div class="setup-launcher-actions">
-            <div
-              class="segmented-control toolbar-segmented-control setup-segmented-control"
-              aria-label="Compare mode"
-              role="group"
-            >
-              <button
-                aria-pressed={mode === 'file'}
-                class:active={mode === 'file'}
-                type="button"
-                on:click={() => setMode('file')}
-              >
-                Files
-              </button>
-              <button
-                aria-pressed={mode === 'directory'}
-                class:active={mode === 'directory'}
-                type="button"
-                on:click={() => setMode('directory')}
-              >
-                Folders
-              </button>
-            </div>
-
-            <button
-              class="primary setup-compare-button"
-              disabled={!pickerCanCompare || loading}
-              title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
-              type="button"
-              on:click={runCompare}
-            >
-              {#if loading}
-                Comparing...
-              {:else}
-                Compare
-              {/if}
-            </button>
-          </div>
-        </div>
-
         <section class="picker-workspace">
           {#each pickerSides as item}
             <PickerPane
               side={item.side}
               pane={item.pane}
-              {mode}
               {pickerLoading}
               {canGoBack}
               {canGoForward}

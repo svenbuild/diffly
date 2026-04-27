@@ -13,6 +13,7 @@ export function createExplorerPane(title: string): ExplorerPaneState {
     historyIndex: -1,
     selectedTargetPath: '',
     selectedTargetKind: null,
+    selectedTargetPaths: [],
     loading: false,
     error: '',
   }
@@ -68,6 +69,7 @@ export function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMo
       ...pane,
       selectedTargetPath: '',
       selectedTargetKind: null,
+      selectedTargetPaths: [],
     }
   }
 
@@ -76,6 +78,7 @@ export function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMo
       ...pane,
       selectedTargetPath: '',
       selectedTargetKind: null,
+      selectedTargetPaths: [],
     }
   }
 
