@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, Menu, screen, shell } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './services/backend'
@@ -30,6 +30,8 @@ function showMainWindow() {
 
 function createWindow() {
   const savedState = loadWindowState()
+  Menu.setApplicationMenu(null)
+
   mainWindow = new BrowserWindow({
     title: 'Diffly',
     width: savedState.width,
@@ -41,6 +43,7 @@ function createWindow() {
     show: false,
     backgroundColor: '#171717',
     resizable: true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -48,6 +51,7 @@ function createWindow() {
       sandbox: false,
     },
   })
+  mainWindow.setMenuBarVisibility(false)
 
   if (savedState.maximized) {
     mainWindow.maximize()
