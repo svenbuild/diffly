@@ -2193,7 +2193,6 @@ h2 {
 .entry-row.selected .entry-meta,
 .entry-row.selected .entry-icon,
 .file-row.selected .entry-icon,
-.file-row.selected .file-row-bottom,
 .file-row.selected .file-status-label {
   color: var(--secondary-text);
 }
@@ -2240,7 +2239,6 @@ h2 {
 .entry-type,
 .entry-date,
 .entry-meta,
-.file-row-bottom,
 .status-summary,
 .group-count,
 .chevron,
@@ -2356,12 +2354,12 @@ h2 {
 
 .browser-header {
   display: grid;
-  gap: 12px;
+  gap: 9px;
   min-height: 0;
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 13px 12px 11px;
+  padding: 10px 12px 9px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
   background: color-mix(in srgb, var(--pane-bg) 94%, var(--surface));
 }
@@ -2373,7 +2371,7 @@ h2 {
 
 .browser-identity h2 {
   color: var(--title);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1.2;
 }
 
@@ -2385,7 +2383,7 @@ h2 {
 
 .changes-summary {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .changes-heading {
@@ -2421,7 +2419,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 8px;
@@ -2436,7 +2434,7 @@ h2 {
 }
 
 .browser-filter-field input {
-  min-height: 28px;
+  min-height: 26px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2468,7 +2466,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 22px;
+  min-height: 20px;
   padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   border-radius: 6px;
@@ -2548,7 +2546,7 @@ button.filter-chip.tooLarge:focus-visible {
   background: transparent;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 8px 8px 10px;
+  padding: 6px 8px 8px;
 }
 
 .file-group {
@@ -2576,8 +2574,8 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: auto 14px minmax(0, 1fr) auto;
   align-items: center;
   gap: 5px;
-  min-height: 28px;
-  padding: 4px 7px;
+  min-height: 24px;
+  padding: 2px 7px;
   background: transparent;
   transition: background-color 120ms ease;
 }
@@ -2653,18 +2651,18 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-list {
   display: grid;
-  gap: 2px;
-  padding: 1px 0 4px;
+  gap: 1px;
+  padding: 1px 0 3px;
   border-top: 0;
 }
 
 .file-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 4px;
-  min-height: 38px;
-  padding: 5px 8px 5px 7px;
+  min-height: 25px;
+  padding: 2px 8px 2px 7px;
   background: transparent;
   border-bottom: 0;
   position: relative;
@@ -2676,6 +2674,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 .file-row-main {
   grid-template-columns: 7px 14px minmax(0, 1fr);
+  min-height: 21px;
   row-gap: 1px;
 }
 
@@ -2684,21 +2683,6 @@ button.filter-chip.tooLarge:focus-visible {
   box-shadow:
     inset 2px 0 0 var(--accent),
     inset 0 0 0 1px color-mix(in srgb, var(--active-border) 20%, transparent);
-}
-
-.file-row-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  grid-column: 3;
-  min-width: 0;
-  padding-left: 0;
-  color: var(--muted);
-}
-
-.file-browser .file-row-bottom {
-  font-size: 0.67rem;
 }
 
 .file-status-marker {

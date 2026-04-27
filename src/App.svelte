@@ -2906,7 +2906,6 @@
           {toggleGroup}
           {selectEntry}
           {getFileName}
-          {formatSize}
         />
         <button
           aria-label="Resize file list panel"

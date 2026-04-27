@@ -22,7 +22,6 @@
   export let toggleGroup: (groupKey: string) => void
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
   export let getFileName: (path: string) => string
-  export let formatSize: (size: number | null) => string
 
   let fileFilter = ''
   let hideCollapsedFoldersWithoutMatches = true
@@ -202,10 +201,6 @@
                     <span class={`file-status-marker ${entry.status}`}></span>
                     <EntryIcon kind="file" />
                     <span class="entry-text">{getFileName(entry.relativePath)}</span>
-                    <span class="file-row-bottom">
-                      <span class="file-status-label">{displayStatusLabel(entry.status)}</span>
-                      <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
-                    </span>
                   </span>
                 </button>
               {/each}
