@@ -455,6 +455,9 @@
   let binaryVisibleRows: number[] = []
   let binaryTopPadding = 0
   let binaryBottomPadding = 0
+  let binaryViewportTop = 0
+  let binaryViewportHeight = 100
+  let binaryMinimapMarkers: Array<{ top: number; height: number }> = []
   let previousBinaryDiff: BinaryDiffPayload | null = null
 
   $: if (binaryDiff?.previewLoaded) {
@@ -465,6 +468,7 @@
       }
     }
     binaryTotalRows = getBinaryTotalRows(binaryDiff)
+    binaryMinimapMarkers = buildBinaryMinimapMarkers(binaryDiff, binaryTotalRows)
     updateBinaryVisibleRows()
   } else {
     previousBinaryDiff = binaryDiff
@@ -472,6 +476,9 @@
     binaryVisibleRows = []
     binaryTopPadding = 0
     binaryBottomPadding = 0
+    binaryViewportTop = 0
+    binaryViewportHeight = 100
+    binaryMinimapMarkers = []
   }
 
   function updateBinaryVisibleRows() {
@@ -494,6 +501,54 @@
     )
     binaryTopPadding = start * BINARY_ROW_HEIGHT
     binaryBottomPadding = Math.max(0, (binaryTotalRows - end) * BINARY_ROW_HEIGHT)
+    binaryViewportTop = binaryTotalRows > 0 ? (scrollTop / (binaryTotalRows * BINARY_ROW_HEIGHT)) * 100 : 0
+    binaryViewportHeight = binaryTotalRows > 0
+      ? Math.max(4, Math.min(100, (viewportHeight / (binaryTotalRows * BINARY_ROW_HEIGHT)) * 100))
+      : 100
+  }
+
+  function buildBinaryMinimapMarkers(diff: BinaryDiffPayload, totalRows: number) {
+    if (totalRows <= 0) {
+      return []
+    }
+
+    const markers: Array<{ top: number; height: number }> = []
+    const bytesPerRow = diff.bytesPerRow
+    const maxBytes = Math.max(diff.leftBytes.length, diff.rightBytes.length)
+    let activeStart: number | null = null
+
+    for (let row = 0; row < totalRows; row += 1) {
+      const start = row * bytesPerRow
+      const end = Math.min(start + bytesPerRow, maxBytes)
+      let changed = false
+
+      for (let offset = start; offset < end; offset += 1) {
+        if (diff.leftBytes[offset] !== diff.rightBytes[offset]) {
+          changed = true
+          break
+        }
+      }
+
+      if (changed && activeStart === null) {
+        activeStart = row
+      } else if (!changed && activeStart !== null) {
+        markers.push(binaryMinimapMarker(activeStart, row, totalRows))
+        activeStart = null
+      }
+    }
+
+    if (activeStart !== null) {
+      markers.push(binaryMinimapMarker(activeStart, totalRows, totalRows))
+    }
+
+    return markers.slice(0, 512)
+  }
+
+  function binaryMinimapMarker(startRow: number, endRow: number, totalRows: number) {
+    return {
+      top: (startRow / totalRows) * 100,
+      height: Math.max(0.6, ((endRow - startRow) / totalRows) * 100),
+    }
   }
 
   function getBinarySummaryChips(
@@ -1491,9 +1546,25 @@
                     {/if}
                   </div>
                 </div>
-                {/if}
               {/if}
+            {/if}
           </div>
+          {#if binaryDiff?.previewLoaded}
+            <div class="binary-minimap" aria-hidden="true">
+              {#each binaryMinimapMarkers as marker}
+                <span
+                  class="binary-minimap-marker"
+                  style:top={`${marker.top}%`}
+                  style:height={`${marker.height}%`}
+                ></span>
+              {/each}
+              <span
+                class="binary-minimap-viewport"
+                style:top={`${binaryViewportTop}%`}
+                style:height={`${binaryViewportHeight}%`}
+              ></span>
+            </div>
+          {/if}
         </div>
       </div>
     {:else if activeDiff.contentKind === 'tooLarge'}

@@ -3683,6 +3683,8 @@ button.filter-chip.tooLarge:focus-visible {
 
 .binary-hex-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--minimap-width);
+  gap: 0;
   min-height: 0;
   padding: 0 8px 10px;
 }
@@ -3695,15 +3697,47 @@ button.filter-chip.tooLarge:focus-visible {
   scrollbar-gutter: stable;
   background: var(--diff-context-bg);
   border: 1px solid var(--diff-divider);
-  border-radius: 6px;
+  border-radius: 6px 0 0 6px;
 }
 
 .binary-hex-table {
   display: grid;
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
   font-family: var(--code);
   font-size: var(--diff-font-size);
   line-height: 1;
+}
+
+.binary-minimap {
+  position: relative;
+  width: var(--minimap-width);
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--diff-divider);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--pane-header-bg) 72%, var(--diff-context-bg));
+  overflow: hidden;
+}
+
+.binary-minimap-marker,
+.binary-minimap-viewport {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  border-radius: 999px;
+}
+
+.binary-minimap-marker {
+  background: var(--scroll-marker-mixed);
+  opacity: 0.8;
+}
+
+.binary-minimap-viewport {
+  border: 1px solid color-mix(in srgb, var(--strong-text) 45%, transparent);
+  background: color-mix(in srgb, var(--strong-text) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
 }
 
 .binary-hex-rows {
@@ -4666,7 +4700,8 @@ button.filter-chip.tooLarge:focus-visible {
 
 .list-rows,
 .file-browser,
-.browser-list {
+.browser-list,
+.binary-hex-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
@@ -4674,7 +4709,6 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-vertical-scroll,
 .unified-vertical-scroll,
 .pane-bottom-scrollbar,
-.binary-hex-scroll,
 .pane-scroll,
 .unified-grid,
 .binary-preview-shell,
@@ -4686,7 +4720,6 @@ button.filter-chip.tooLarge:focus-visible {
 .pane-vertical-scroll::-webkit-scrollbar,
 .unified-vertical-scroll::-webkit-scrollbar,
 .pane-bottom-scrollbar::-webkit-scrollbar,
-.binary-hex-scroll::-webkit-scrollbar,
 .pane-scroll::-webkit-scrollbar,
 .unified-grid::-webkit-scrollbar,
 .binary-preview-shell::-webkit-scrollbar,
@@ -4698,20 +4731,23 @@ button.filter-chip.tooLarge:focus-visible {
 
 .list-rows::-webkit-scrollbar,
 .file-browser::-webkit-scrollbar,
-.browser-list::-webkit-scrollbar {
+.browser-list::-webkit-scrollbar,
+.binary-hex-scroll::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 
 .list-rows::-webkit-scrollbar-track,
 .file-browser::-webkit-scrollbar-track,
-.browser-list::-webkit-scrollbar-track {
+.browser-list::-webkit-scrollbar-track,
+.binary-hex-scroll::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
 
 .list-rows::-webkit-scrollbar-thumb,
 .file-browser::-webkit-scrollbar-thumb,
-.browser-list::-webkit-scrollbar-thumb {
+.browser-list::-webkit-scrollbar-thumb,
+.binary-hex-scroll::-webkit-scrollbar-thumb {
   border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
   background: var(--scrollbar-thumb);
@@ -4720,13 +4756,15 @@ button.filter-chip.tooLarge:focus-visible {
 
 .list-rows::-webkit-scrollbar-thumb:hover,
 .file-browser::-webkit-scrollbar-thumb:hover,
-.browser-list::-webkit-scrollbar-thumb:hover {
+.browser-list::-webkit-scrollbar-thumb:hover,
+.binary-hex-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
 
 .list-rows::-webkit-scrollbar-corner,
 .file-browser::-webkit-scrollbar-corner,
-.browser-list::-webkit-scrollbar-corner {
+.browser-list::-webkit-scrollbar-corner,
+.binary-hex-scroll::-webkit-scrollbar-corner {
   background: var(--scrollbar-track);
 }
 
