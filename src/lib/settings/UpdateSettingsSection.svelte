@@ -112,49 +112,55 @@
       </div>
     </div>
 
-    <div class="settings-update-summary">
+    <dl class="settings-update-summary">
       <div class="settings-summary-item">
-        <span>Version</span>
-        <strong>{currentVersion || 'Unavailable'}</strong>
-        <small>{getUpdateStatusTitle(updateIndicatorState)}</small>
+        <dt>Current version</dt>
+        <dd>
+          <strong>{currentVersion || 'Unavailable'}</strong>
+          <small>{getUpdateStatusTitle(updateIndicatorState)}</small>
+        </dd>
       </div>
 
       <div class="settings-summary-item">
-        <span>Last checked</span>
-        <strong>{lastUpdateCheckLabel}</strong>
-        <small>{lastUpdateCheckRelativeLabel}</small>
+        <dt>Channel</dt>
+        <dd>
+          <strong>{updateChannelLabel}</strong>
+          <small>
+            {updateChannel === 'prerelease'
+              ? 'Includes beta and prerelease builds.'
+              : 'Only stable releases are offered.'}
+          </small>
+        </dd>
       </div>
 
       <div class="settings-summary-item">
-        <span>Channel</span>
-        <strong>{updateChannelLabel}</strong>
-        <small>
-          {updateChannel === 'prerelease'
-            ? 'Includes beta and prerelease builds.'
-            : 'Only stable releases are offered.'}
-        </small>
+        <dt>Auto-check</dt>
+        <dd>
+          <strong>{checkForUpdatesOnLaunch ? 'Enabled' : 'Disabled'}</strong>
+          <small>{checkForUpdatesOnLaunch ? 'Checks after launch.' : 'Manual checks only.'}</small>
+        </dd>
       </div>
 
       <div class="settings-summary-item">
-        <span>Auto-check</span>
-        <strong>{checkForUpdatesOnLaunch ? 'Enabled' : 'Disabled'}</strong>
-        <small>{checkForUpdatesOnLaunch ? 'Checks after launch.' : 'Manual checks only.'}</small>
+        <dt>Last checked</dt>
+        <dd>
+          <strong>{lastUpdateCheckLabel}</strong>
+          <small>{lastUpdateCheckRelativeLabel}</small>
+        </dd>
       </div>
 
-      {#if availableUpdate}
-        <div class="settings-summary-item">
-          <span>Latest version</span>
-          <strong>{availableUpdate.version}</strong>
-          <small>Ready to download from this screen.</small>
-        </div>
-      {:else}
-        <div class="settings-summary-item">
-          <span>Release notes</span>
-          <strong>Not published</strong>
-          <small>Release notes link will appear with a published update.</small>
-        </div>
-      {/if}
-    </div>
+      <div class="settings-summary-item">
+        <dt>{availableUpdate ? 'Latest version' : 'Release notes'}</dt>
+        <dd>
+          <strong>{availableUpdate ? availableUpdate.version : 'Not published'}</strong>
+          <small>
+            {availableUpdate
+              ? 'Ready to download from this screen.'
+              : 'Release notes link will appear with a published update.'}
+          </small>
+        </dd>
+      </div>
+    </dl>
 
     {#if shouldShowUpdateDetail(updateIndicatorState)}
       <div class="settings-update-status" data-tone={getUpdateStatusTone(updateIndicatorState)}>

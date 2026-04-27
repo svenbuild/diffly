@@ -72,7 +72,6 @@
   export let updateBusy: boolean
   export let comparisonRulesRequireRefresh: boolean
   export let compareNeedsRefresh: boolean
-  export let onBack: () => void
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (theme: ThemeMode) => void
   export let onSetThemePreset: (variant: ThemeVariant, themeId: string) => void
@@ -154,34 +153,6 @@
 
   <div class="settings-panel-shell">
     <div class="settings-panel">
-      <header class="settings-panel-header">
-        <div class="settings-panel-heading">
-          <h1>Settings</h1>
-          <p>
-            Most viewer changes apply instantly. Comparison rules require refresh during an
-            active folder compare.
-          </p>
-        </div>
-
-        <button
-          aria-label="Close settings"
-          class="secondary settings-close-button"
-          title="Close settings"
-          type="button"
-          on:click={onBack}
-        >
-          <svg aria-hidden="true" class="settings-close-icon" viewBox="0 0 16 16">
-            <path
-              d="M4 4l8 8M12 4 4 12"
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-width="1.6"
-            />
-          </svg>
-        </button>
-      </header>
-
       {#if activeSection === 'appearance'}
         <AppearanceSettingsSection
           {appearanceSettings}

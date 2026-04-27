@@ -938,24 +938,6 @@
   style:--diff-prefix-width={prefixColumnWidth}
 >
   {#if activeDiff}
-    <div class="viewer-root-row">
-      <div class="viewer-root" title={diffHeaderContext.leftRootFullPath}>
-        <span class="viewer-root-label">Left root:</span>
-        <span class="viewer-root-path">
-          <span class="viewer-root-path-compact">{diffHeaderContext.leftRootLabel}</span>
-          <span class="viewer-root-path-full">{diffHeaderContext.leftRootFullPath}</span>
-        </span>
-      </div>
-
-      <div class="viewer-root" title={diffHeaderContext.rightRootFullPath}>
-        <span class="viewer-root-label">Right root:</span>
-        <span class="viewer-root-path">
-          <span class="viewer-root-path-compact">{diffHeaderContext.rightRootLabel}</span>
-          <span class="viewer-root-path-full">{diffHeaderContext.rightRootFullPath}</span>
-        </span>
-      </div>
-    </div>
-
     {#if activeDiff.contentKind === 'text'}
       {#if simplifyHugeFileFragments}
         <div class="context-card compact large-file-rendering-note">
@@ -988,8 +970,10 @@
         <section class="diff-pane left-diff-pane">
           <div class="pane-header" title={diffHeaderContext.leftAbsolutePath}>
             <span class="pane-header-side">Left</span>
-            <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.leftPaneLabel}</strong>
+            <span class="pane-header-root" title={diffHeaderContext.leftRootFullPath}>
+              {diffHeaderContext.leftRootLabel}
+            </span>
           </div>
           <div bind:this={leftPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
@@ -1096,8 +1080,10 @@
         <section class="diff-pane right-diff-pane">
           <div class="pane-header" title={diffHeaderContext.rightAbsolutePath}>
             <span class="pane-header-side">Right</span>
-            <span aria-hidden="true" class="pane-header-separator">&middot;</span>
             <strong class="pane-header-label">{diffHeaderContext.rightPaneLabel}</strong>
+            <span class="pane-header-root" title={diffHeaderContext.rightRootFullPath}>
+              {diffHeaderContext.rightRootLabel}
+            </span>
           </div>
           <div bind:this={rightPaneScrollShell} class="pane-scroll-shell pinned-bottom-scrollbar">
             <div
@@ -1208,6 +1194,19 @@
       </div>
       {:else}
       <div bind:this={unifiedScrollShell} class="unified-grid-shell pinned-bottom-scrollbar">
+        <div
+          class="pane-header unified-pane-header"
+          title={`${diffHeaderContext.leftAbsolutePath} / ${diffHeaderContext.rightAbsolutePath}`}
+        >
+          <span class="pane-header-side">Unified</span>
+          <strong class="pane-header-label">{diffHeaderContext.currentFileLabel}</strong>
+          <span
+            class="pane-header-root"
+            title={`${diffHeaderContext.leftRootFullPath} / ${diffHeaderContext.rightRootFullPath}`}
+          >
+            {diffHeaderContext.leftRootLabel} / {diffHeaderContext.rightRootLabel}
+          </span>
+        </div>
         <div
           bind:this={unifiedScroll}
           class="pane-vertical-scroll unified-vertical-scroll"

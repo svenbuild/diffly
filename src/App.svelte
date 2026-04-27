@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import DirectoryBrowser from './lib/DirectoryBrowser.svelte'
   import DiffViewer from './lib/DiffViewer.svelte'
+  import AppTopBar from './lib/AppTopBar.svelte'
   import PickerPane from './lib/PickerPane.svelte'
   import SettingsScreen from './lib/SettingsScreen.svelte'
 
@@ -2642,21 +2643,16 @@
 
 {#if screen === 'setup'}
   <main class="screen setup-screen">
-    <header class="app-bar setup-app-bar">
-      <div class="app-bar-main">
-        <div class="app-brand-group">
-          <div class="app-identity">
-            <h1>Diffly</h1>
-            <span>Setup</span>
-          </div>
-          {#if shouldShowUpdateIndicator()}
-            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-            </button>
-          {/if}
-        </div>
-      </div>
+    <AppTopBar context="Choose compare targets">
+      {#snippet status()}
+        {#if shouldShowUpdateIndicator()}
+          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+          </button>
+        {/if}
+      {/snippet}
 
+      {#snippet middle()}
       <div class="setup-bar-center">
         <div class="setup-selection-summary" aria-label="Selected targets">
           <div
@@ -2676,9 +2672,43 @@
           </div>
         </div>
       </div>
+      {/snippet}
 
-      <div class="app-bar-actions setup-bar-actions">
-        <div class="setup-mode-switch">
+      {#snippet actions()}
+      <div class="setup-bar-actions">
+        <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
+          Settings
+        </button>
+        <button
+          class="secondary icon-button swap-button"
+          aria-label="Switch left and right sides"
+          disabled={loading || detailLoading || pickerLoading}
+          title="Switch left and right sides"
+          type="button"
+          on:click={swapComparedSides}
+        >
+          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
+        </button>
+      </div>
+      {/snippet}
+    </AppTopBar>
+
+    {#if errorMessage}
+      <p class="error-banner">{errorMessage}</p>
+    {/if}
+
+    <section class="setup-body">
+      <section class="setup-launcher" aria-label="Compare setup">
+        <div class="setup-launcher-header">
+          <div>
+            <h2>Choose compare targets</h2>
+            <p>Select two {mode === 'directory' ? 'folders' : 'files'} to compare.</p>
+          </div>
           <div
             class="segmented-control toolbar-segmented-control setup-segmented-control"
             aria-label="Compare mode"
@@ -2703,45 +2733,88 @@
           </div>
         </div>
 
-        <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
-          Settings
-        </button>
-        <button
-          class="secondary icon-button swap-button"
-          aria-label="Switch left and right sides"
-          disabled={loading || detailLoading || pickerLoading}
-          title="Switch left and right sides"
-          type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
-        </button>
-        <button
-          class="primary"
-          disabled={!pickerCanCompare || loading}
-          title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
-          type="button"
-          on:click={runCompare}
-        >
-          {#if loading}
-            Comparing...
+        <div class="setup-target-grid">
+          <article class:ready={leftPickerReady} class="setup-target-card">
+            <div class="setup-target-card-header">
+              <strong>Left target</strong>
+              <span>{mode === 'directory' ? 'Folder' : 'File'}</span>
+            </div>
+            <code title={leftExplorer.selectedTargetPath || setupHintMessage}>
+              {leftSetupTargetLabel}
+            </code>
+            <div class="setup-target-actions">
+              <button class="secondary" type="button" on:click={() => browseSystem('left')}>
+                Browse
+              </button>
+              {#if mode === 'directory'}
+                <button
+                  class:active={isCurrentFolderSelected(leftExplorer)}
+                  class={isCurrentFolderSelected(leftExplorer) ? 'secondary' : 'primary'}
+                  disabled={!leftExplorer.currentPath || isCurrentFolderSelected(leftExplorer)}
+                  type="button"
+                  on:click={() => useCurrentFolder('left')}
+                >
+                  {isCurrentFolderSelected(leftExplorer) ? 'Selected' : 'Use open folder'}
+                </button>
+              {/if}
+            </div>
+            <span class="setup-target-summary">
+              {leftPickerReady ? 'Ready' : `Select left ${mode === 'directory' ? 'folder' : 'file'}`}
+            </span>
+          </article>
+
+          <article class:ready={rightPickerReady} class="setup-target-card">
+            <div class="setup-target-card-header">
+              <strong>Right target</strong>
+              <span>{mode === 'directory' ? 'Folder' : 'File'}</span>
+            </div>
+            <code title={rightExplorer.selectedTargetPath || setupHintMessage}>
+              {rightSetupTargetLabel}
+            </code>
+            <div class="setup-target-actions">
+              <button class="secondary" type="button" on:click={() => browseSystem('right')}>
+                Browse
+              </button>
+              {#if mode === 'directory'}
+                <button
+                  class:active={isCurrentFolderSelected(rightExplorer)}
+                  class={isCurrentFolderSelected(rightExplorer) ? 'secondary' : 'primary'}
+                  disabled={!rightExplorer.currentPath || isCurrentFolderSelected(rightExplorer)}
+                  type="button"
+                  on:click={() => useCurrentFolder('right')}
+                >
+                  {isCurrentFolderSelected(rightExplorer) ? 'Selected' : 'Use open folder'}
+                </button>
+              {/if}
+            </div>
+            <span class="setup-target-summary">
+              {rightPickerReady ? 'Ready' : `Select right ${mode === 'directory' ? 'folder' : 'file'}`}
+            </span>
+          </article>
+        </div>
+
+        <div class="setup-launcher-footer">
+          {#if sameSelectionWarning}
+            <span class="setup-warning">{sameSelectionWarning}</span>
           {:else}
-            Compare
+            <span>{setupHintMessage || 'Targets ready.'}</span>
           {/if}
-        </button>
-      </div>
-    </header>
+          <button
+            class="primary"
+            disabled={!pickerCanCompare || loading}
+            title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
+            type="button"
+            on:click={runCompare}
+          >
+            {#if loading}
+              Comparing...
+            {:else}
+              Compare
+            {/if}
+          </button>
+        </div>
+      </section>
 
-    {#if errorMessage}
-      <p class="error-banner">{errorMessage}</p>
-    {/if}
-
-    <section class="setup-body">
       <section class="picker-workspace">
         {#each pickerSides as item}
           <PickerPane
@@ -2773,24 +2846,37 @@
   </main>
 {:else if screen === 'compare'}
   <main class="screen compare-screen">
-    <header class="app-bar compare-bar">
-      <div class="app-bar-main compare-bar-main">
-        <div class="compare-bar-brand">
-          <div class="app-brand-group">
-            <div class="app-identity">
-              <h1>Diffly</h1>
-              <span>Compare</span>
-            </div>
-            {#if shouldShowUpdateIndicator()}
-              <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-                {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-              </button>
-            {/if}
-          </div>
+    <AppTopBar context="Compare">
+      {#snippet status()}
+        {#if shouldShowUpdateIndicator()}
+          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+          </button>
+        {/if}
+      {/snippet}
+
+      {#snippet middle()}
+      <div class="setup-selection-summary compare-selection-summary" aria-label="Selected targets">
+        <div
+          class="setup-selection-segment"
+          title={leftExplorer.selectedTargetPath || 'Left target not selected'}
+        >
+          <strong class="setup-selection-side">Left</strong>
+          <span class="setup-selection-value">{leftSetupTargetLabel}</span>
+        </div>
+        <span aria-hidden="true" class="setup-selection-divider"></span>
+        <div
+          class="setup-selection-segment"
+          title={rightExplorer.selectedTargetPath || 'Right target not selected'}
+        >
+          <strong class="setup-selection-side">Right</strong>
+          <span class="setup-selection-value">{rightSetupTargetLabel}</span>
         </div>
       </div>
+      {/snippet}
 
-      <div class="app-bar-actions compare-actions">
+      {#snippet actions()}
+      <div class="compare-actions">
         <div class="compare-action-group diff-nav-actions">
           <div
             class="nav-button-group segmented-control toolbar-segmented-control"
@@ -2838,7 +2924,6 @@
               </svg>
             </button>
           </div>
-
         </div>
 
         <div class="compare-action-group display-actions">
@@ -2956,7 +3041,8 @@
           </button>
         </div>
       </div>
-    </header>
+      {/snippet}
+    </AppTopBar>
 
     {#if errorMessage}
       <p class="error-banner">{errorMessage}</p>
@@ -3026,21 +3112,35 @@
   </main>
 {:else}
   <main class="screen settings-view">
-    <header class="app-bar settings-app-bar">
-      <div class="app-bar-main settings-bar-main">
-        <div class="app-brand-group">
-          <div class="app-identity">
-            <h1>Diffly</h1>
-            <span>Settings</span>
-          </div>
-          {#if shouldShowUpdateIndicator()}
-            <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-              {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </header>
+    <AppTopBar context="Settings">
+      {#snippet status()}
+        {#if shouldShowUpdateIndicator()}
+          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
+            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
+          </button>
+        {/if}
+      {/snippet}
+
+      {#snippet actions()}
+      <button
+        aria-label="Close settings"
+        class="secondary toolbar-button settings-close-button"
+        title="Close settings"
+        type="button"
+        on:click={goBackFromSettings}
+      >
+        <svg aria-hidden="true" class="settings-close-icon" viewBox="0 0 16 16">
+          <path
+            d="M4 4l8 8M12 4 4 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-width="1.6"
+          />
+        </svg>
+      </button>
+      {/snippet}
+    </AppTopBar>
 
     {#if errorMessage}
       <p class="error-banner">{errorMessage}</p>
@@ -3080,7 +3180,6 @@
       updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
       comparisonRulesRequireRefresh={hasActiveCompareSession() && mode === 'directory'}
       {compareNeedsRefresh}
-      onBack={goBackFromSettings}
       onSelectSection={(section) => (activeSettingsSection = section)}
       onSetThemeMode={setThemeMode}
       onSetThemePreset={setThemePreset}
