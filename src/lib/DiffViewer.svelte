@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { loadBinaryPreview } from './api'
   import { formatSize } from './format'
   import { normalizeWheelDelta } from './app/pane-scroll-sync'
   import {
@@ -102,9 +101,6 @@
   let unifiedHorizontalScrollSyncLocked = false
   let imageDiff: ImageDiffPayload | null = null
   let binaryDiff: BinaryDiffPayload | null = null
-  let binaryPreviewLoading = false
-  let binaryPreviewError = ''
-  let activeBinaryPreviewRequestId = 0
   let leftImageError = false
   let rightImageError = false
   let leftImageRetried = false
@@ -337,11 +333,6 @@
   $: if (activeDiff) { leftImageError = false; rightImageError = false; leftImageRetried = false; rightImageRetried = false }
   $: binaryDiff = activeDiff?.contentKind === 'binary' ? activeDiff.binary ?? null : null
   $: tooLargeDiff = activeDiff?.contentKind === 'tooLarge' ? activeDiff.binary ?? null : null
-  $: if (activeDiff?.contentKind !== 'binary') {
-    activeBinaryPreviewRequestId += 1
-    binaryPreviewLoading = false
-    binaryPreviewError = ''
-  }
 
   $: {
     leftPaneScroll
@@ -502,59 +493,6 @@
     binaryTotalRows = 0
     binaryVirtualStart = 0
     binaryVirtualEnd = 0
-  }
-
-  $: if (
-    activeDiff?.contentKind === 'binary' &&
-    binaryDiff &&
-    !binaryDiff.previewLoaded &&
-    !binaryPreviewLoading &&
-    !binaryPreviewError
-  ) {
-    const requestId = activeBinaryPreviewRequestId + 1
-    activeBinaryPreviewRequestId = requestId
-    binaryPreviewLoading = true
-    binaryPreviewError = ''
-
-    const leftPath = binaryDiff.leftMeta.path || activeDiff.leftLabel
-    const rightPath = binaryDiff.rightMeta.path || activeDiff.rightLabel
-
-    const requestPromise = loadBinaryPreview(leftPath, rightPath, {
-      ignoreWhitespace: false,
-      ignoreCase: false,
-    })
-
-    // Belt-and-braces guard so the renderer never sits on an indefinite
-    // "Loading binary preview…" state if the IPC stalls.
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      window.setTimeout(() => {
-        reject(new Error('Binary preview timed out. The file may be very large or unavailable.'))
-      }, 75_000)
-    })
-
-    void tick().then(() =>
-      Promise.race([requestPromise, timeoutPromise])
-        .then((preview) => {
-          if (requestId !== activeBinaryPreviewRequestId || activeDiff?.contentKind !== 'binary') {
-            return
-          }
-
-          binaryDiff = preview
-        })
-        .catch((error) => {
-          if (requestId !== activeBinaryPreviewRequestId) {
-            return
-          }
-
-          binaryPreviewError =
-            error instanceof Error ? error.message : 'Binary preview could not be loaded.'
-        })
-        .finally(() => {
-          if (requestId === activeBinaryPreviewRequestId) {
-            binaryPreviewLoading = false
-          }
-        }),
-    )
   }
 
   function getBinarySummaryChips(
@@ -1519,10 +1457,7 @@
             {#if binaryDiff}
               {#if !binaryDiff.previewLoaded}
                 <div class="empty-inline-state binary-empty-state">
-                  {binaryPreviewError ||
-                    (binaryPreviewLoading
-                      ? 'Loading binary preview...'
-                      : 'Binary preview is not available yet.')}
+                  Binary preview is unavailable for this file.
                 </div>
               {:else if binaryTotalRows === 0}
                 <div class="empty-inline-state binary-empty-state">
