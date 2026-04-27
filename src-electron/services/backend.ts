@@ -713,8 +713,8 @@ async function buildFileDiff(
   options: CompareOptions,
 ): Promise<FileDiffResult> {
   const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath, false),
-    loadFile(rightPath, false),
+    loadFile(leftPath, true),
+    loadFile(rightPath, true),
   ])
   const summary = buildSummary(leftLoaded, rightLoaded)
 
