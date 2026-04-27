@@ -47,6 +47,7 @@ const ALIGN_LOOKAHEAD_WINDOW = 32
 const STREAM_CHUNK_BYTES = 1024 * 1024
 const HASH_FILE_SIZE_LIMIT = 256 * 1024 * 1024
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
+const FILE_READ_TIMEOUT_MS = 60_000
 
 type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary'
 
@@ -804,7 +805,50 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     }
   }
 
-  const sample = await sampleFile(pathValue)
+  // Small-file fast path: if the file fits in the preview cap, a single
+  // partial read gives us everything (sample, preview, full bytes for hash).
+  // No streaming, no second open.
+  if (info.size <= MAX_BINARY_RENDER_BYTES) {
+    const buffer = info.size === 0
+      ? new Uint8Array(0)
+      : await readPartial(pathValue, info.size)
+    const sample =
+      buffer.length > BINARY_SAMPLE_BYTES ? buffer.subarray(0, BINARY_SAMPLE_BYTES) : buffer
+    const kind = detectFileKind(pathValue, info.size, sample)
+
+    if (kind === 'tooLarge') {
+      return { kind, path: pathValue, size: info.size, format: null, truncated: true }
+    }
+
+    if (kind === 'text') {
+      const bytes = Buffer.from(buffer)
+      return {
+        kind,
+        path: pathValue,
+        size: info.size,
+        format: null,
+        truncated: false,
+        text: bytes.toString('utf8'),
+        sha256: sha256(bytes),
+        lineEnding: bytes.includes(Buffer.from('\r\n')) ? 'crlf' : 'lf',
+        hasTrailingNewline: bytes[bytes.length - 1] === 10,
+      }
+    }
+
+    return {
+      kind,
+      path: pathValue,
+      size: info.size,
+      format: detectImageFormat(sample, pathValue),
+      truncated: false,
+      bytes: includeBinaryPreview ? buffer : new Uint8Array(0),
+      sha256: sha256(buffer),
+    }
+  }
+
+  // Larger file: classify with a cheap 8 KB sample before deciding what to
+  // do next. tooLarge files stop here without any further reads.
+  const sample = await readPartial(pathValue, BINARY_SAMPLE_BYTES)
   const kind = detectFileKind(pathValue, info.size, sample)
   if (kind === 'tooLarge') {
     return {
@@ -817,6 +861,7 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
   }
 
   if (kind === 'text') {
+    // Text means size <= MAX_TEXT_BYTES, bounded.
     const bytes = await readFile(pathValue)
     return {
       kind,
@@ -831,17 +876,16 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     }
   }
 
-  const [bytes, hash] = await Promise.all([
-    includeBinaryPreview ? readBinaryPreview(pathValue) : Promise.resolve(new Uint8Array(0)),
-    hashFile(pathValue, info.size),
-  ])
+  // Binary or image larger than 256 KB: single streaming pass that
+  // captures the preview window and computes the hash simultaneously.
+  const { preview, sha256: hash } = await readBinaryPreviewAndHash(pathValue, info.size)
   return {
     kind,
     path: pathValue,
     size: info.size,
     format: detectImageFormat(sample, pathValue),
     truncated: includeBinaryPreview && info.size > MAX_BINARY_RENDER_BYTES,
-    bytes,
+    bytes: includeBinaryPreview ? preview : new Uint8Array(0),
     sha256: hash ?? undefined,
   }
 }
@@ -869,8 +913,65 @@ async function sampleFile(pathValue: string) {
   return readPartial(pathValue, BINARY_SAMPLE_BYTES)
 }
 
-async function readBinaryPreview(pathValue: string) {
-  return readPartial(pathValue, MAX_BINARY_RENDER_BYTES)
+async function readBinaryPreviewAndHash(
+  pathValue: string,
+  sizeHint: number,
+): Promise<{ preview: Uint8Array; sha256: string | null }> {
+  if (sizeHint > HASH_FILE_SIZE_LIMIT) {
+    // Files too large to hash: just capture the preview window.
+    return {
+      preview: await readPartial(pathValue, MAX_BINARY_RENDER_BYTES),
+      sha256: null,
+    }
+  }
+
+  return new Promise((resolveResult, rejectResult) => {
+    const hasher = createHash('sha256')
+    const previewCap = Math.min(sizeHint, MAX_BINARY_RENDER_BYTES)
+    const previewBuffer = previewCap > 0 ? Buffer.alloc(previewCap) : Buffer.alloc(0)
+    let previewWritten = 0
+    let settled = false
+
+    const stream = createReadStream(pathValue, { highWaterMark: STREAM_CHUNK_BYTES })
+
+    const timeout = setTimeout(() => {
+      if (settled) return
+      settled = true
+      stream.destroy()
+      rejectResult(new Error(`Reading file timed out after ${FILE_READ_TIMEOUT_MS / 1000}s: ${pathValue}`))
+    }, FILE_READ_TIMEOUT_MS)
+    timeout.unref?.()
+
+    stream.on('data', (chunk) => {
+      const buffer = chunk as Buffer
+      hasher.update(buffer)
+
+      if (previewWritten < previewBuffer.length) {
+        const remaining = previewBuffer.length - previewWritten
+        const copyLength = buffer.length < remaining ? buffer.length : remaining
+        buffer.copy(previewBuffer, previewWritten, 0, copyLength)
+        previewWritten += copyLength
+      }
+    })
+
+    stream.once('end', () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolveResult({
+        preview: Uint8Array.prototype.slice.call(previewBuffer, 0, previewWritten),
+        sha256: hasher.digest('hex'),
+      })
+    })
+
+    stream.once('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      stream.destroy()
+      rejectResult(error)
+    })
+  })
 }
 
 function detectFileKind(pathValue: string, size: number, sample: Uint8Array): FileKind {
@@ -1503,30 +1604,6 @@ async function filesEqual(leftPath: string, rightPath: string) {
       rightHandle.close().catch(() => undefined),
     ])
   }
-}
-
-async function hashFile(pathValue: string, sizeHint?: number): Promise<string | null> {
-  // Skip hashing files larger than the cap to avoid sequential reads of
-  // arbitrarily large files. Identity for those is reported via filesEqual.
-  if (sizeHint !== undefined && sizeHint > HASH_FILE_SIZE_LIMIT) {
-    return null
-  }
-
-  return new Promise<string>((resolveHash, rejectHash) => {
-    const hasher = createHash('sha256')
-    const stream = createReadStream(pathValue, { highWaterMark: STREAM_CHUNK_BYTES })
-
-    stream.on('data', (chunk) => {
-      hasher.update(chunk as Buffer)
-    })
-    stream.once('end', () => {
-      resolveHash(hasher.digest('hex'))
-    })
-    stream.once('error', (error) => {
-      stream.destroy()
-      rejectHash(error)
-    })
-  })
 }
 
 function sha256(bytes: Uint8Array) {

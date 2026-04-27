@@ -519,11 +519,21 @@
     const leftPath = binaryDiff.leftMeta.path || activeDiff.leftLabel
     const rightPath = binaryDiff.rightMeta.path || activeDiff.rightLabel
 
+    const requestPromise = loadBinaryPreview(leftPath, rightPath, {
+      ignoreWhitespace: false,
+      ignoreCase: false,
+    })
+
+    // Belt-and-braces guard so the renderer never sits on an indefinite
+    // "Loading binary preview…" state if the IPC stalls.
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        reject(new Error('Binary preview timed out. The file may be very large or unavailable.'))
+      }, 75_000)
+    })
+
     void tick().then(() =>
-      loadBinaryPreview(leftPath, rightPath, {
-        ignoreWhitespace: false,
-        ignoreCase: false,
-      })
+      Promise.race([requestPromise, timeoutPromise])
         .then((preview) => {
           if (requestId !== activeBinaryPreviewRequestId || activeDiff?.contentKind !== 'binary') {
             return
