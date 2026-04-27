@@ -1931,7 +1931,11 @@ h2 {
 
 .settings-color-control input[type='color'] {
   width: 16px;
+  min-width: 16px;
   height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  appearance: none;
   padding: 0;
   border: 0;
   border-radius: 50%;
