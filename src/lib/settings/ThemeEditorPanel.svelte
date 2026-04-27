@@ -189,7 +189,27 @@
     </div>
 
     <div class="settings-theme-editor-row">
-      <span>Added changes</span>
+      <span>Syntax accent</span>
+      <label class="settings-color-control">
+        <input
+          aria-label={`${title} syntax accent`}
+          type="color"
+          value={themeState.theme.semanticColors.skill}
+          on:input={(event) =>
+            onSetThemeSemanticColor(
+              variant,
+              'skill',
+              (event.currentTarget as HTMLInputElement).value,
+            )}
+        />
+        <span class="settings-color-value" style={getColorValueStyle(themeState.theme.semanticColors.skill)}>
+          {themeState.theme.semanticColors.skill.toUpperCase()}
+        </span>
+      </label>
+    </div>
+
+    <div class="settings-theme-editor-row">
+      <span>Added</span>
       <label class="settings-color-control">
         <input
           aria-label={`${title} added changes`}
@@ -212,7 +232,7 @@
     </div>
 
     <div class="settings-theme-editor-row">
-      <span>Removed changes</span>
+      <span>Removed</span>
       <label class="settings-color-control">
         <input
           aria-label={`${title} removed changes`}
@@ -230,26 +250,6 @@
           style={getColorValueStyle(themeState.theme.semanticColors.diffRemoved)}
         >
           {themeState.theme.semanticColors.diffRemoved.toUpperCase()}
-        </span>
-      </label>
-    </div>
-
-    <div class="settings-theme-editor-row">
-      <span>Syntax accent</span>
-      <label class="settings-color-control">
-        <input
-          aria-label={`${title} syntax accent`}
-          type="color"
-          value={themeState.theme.semanticColors.skill}
-          on:input={(event) =>
-            onSetThemeSemanticColor(
-              variant,
-              'skill',
-              (event.currentTarget as HTMLInputElement).value,
-            )}
-        />
-        <span class="settings-color-value" style={getColorValueStyle(themeState.theme.semanticColors.skill)}>
-          {themeState.theme.semanticColors.skill.toUpperCase()}
         </span>
       </label>
     </div>
@@ -280,7 +280,7 @@
       />
     </div>
 
-    <div class="settings-theme-editor-row settings-theme-editor-row-slider">
+    <div class="settings-theme-editor-row settings-theme-editor-row-full settings-theme-editor-row-slider">
       <span>Contrast</span>
       <div class="settings-theme-slider">
         <input

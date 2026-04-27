@@ -90,18 +90,17 @@
     <p>Current release status and automatic checks.</p>
   </div>
 
-  <section class="settings-group">
-    <div class="settings-group-header settings-group-header-with-actions">
-      <div class="settings-group-header-copy">
-        <h3>Overview</h3>
-        <p>Version, channel, and the latest update check.</p>
+  {#if shouldShowUpdateDetail(updateIndicatorState)}
+    <div
+      class="settings-update-status settings-update-status-banner"
+      data-tone={getUpdateStatusTone(updateIndicatorState)}
+    >
+      <div class="settings-update-copy">
+        <strong>{getUpdateStatusTitle(updateIndicatorState)}</strong>
+        <p>{updateStatusMessage}</p>
       </div>
 
-      <div class="settings-group-header-actions">
-        <button class="secondary" disabled={updateBusy} type="button" on:click={onCheckForUpdates}>
-          Check now
-        </button>
-
+      <div class="settings-update-status-actions">
         {#if updateIndicatorState === 'available'}
           <button class="primary" type="button" on:click={onDownloadUpdate}>
             Download update
@@ -113,6 +112,21 @@
             Install and restart
           </button>
         {/if}
+      </div>
+    </div>
+  {/if}
+
+  <section class="settings-group">
+    <div class="settings-group-header settings-group-header-with-actions">
+      <div class="settings-group-header-copy">
+        <h3>Overview</h3>
+        <p>Version, channel, and the latest update check.</p>
+      </div>
+
+      <div class="settings-group-header-actions">
+        <button class="secondary" disabled={updateBusy} type="button" on:click={onCheckForUpdates}>
+          Check now
+        </button>
       </div>
     </div>
 
@@ -165,15 +179,6 @@
         </dd>
       </div>
     </dl>
-
-    {#if shouldShowUpdateDetail(updateIndicatorState)}
-      <div class="settings-update-status" data-tone={getUpdateStatusTone(updateIndicatorState)}>
-        <div class="settings-update-copy">
-          <strong>{getUpdateStatusTitle(updateIndicatorState)}</strong>
-          <p>{updateStatusMessage}</p>
-        </div>
-      </div>
-    {/if}
   </section>
 
   <section class="settings-group">
