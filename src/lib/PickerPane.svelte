@@ -30,9 +30,23 @@
   $: targetKindLabel = pane.selectedTargetKind === 'file' ? 'File' : mode === 'directory' ? 'Folder' : 'File'
   $: targetKindName = mode === 'directory' ? 'folder' : 'file'
   $: selectedTargetText = pane.selectedTargetPath || `No ${targetKindName} selected`
+  $: selectedTargetDisplayText = pane.selectedTargetPath
+    ? compactPath(pane.selectedTargetPath)
+    : selectedTargetText
   $: targetReady = Boolean(pane.selectedTargetPath)
   $: currentDirectoryCount = pane.currentListing?.directories.length ?? 0
   $: currentFileCount = pane.currentListing?.files.length ?? 0
+
+  function compactPath(path: string) {
+    const parts = path.split(/[\\/]+/).filter(Boolean)
+
+    if (parts.length <= 4) {
+      return path
+    }
+
+    const root = /^[A-Za-z]:$/.test(parts[0]) ? `${parts[0]}\\` : ''
+    return `${root}...\\${parts.slice(-3).join('\\')}`
+  }
 </script>
 
 <section
@@ -53,7 +67,7 @@
 
     <div class="picker-selected-target">
       <span>Selected {targetKindName}</span>
-      <code title={pane.selectedTargetPath || selectedTargetText}>{selectedTargetText}</code>
+      <code title={pane.selectedTargetPath || selectedTargetText}>{selectedTargetDisplayText}</code>
     </div>
 
     <div class="picker-pane-meta-row">
