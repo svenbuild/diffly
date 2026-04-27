@@ -97,11 +97,6 @@
 
 <aside class:refreshing={loading} class="file-browser">
   <header class="browser-header">
-    <div class="browser-identity">
-      <h2>Diffly</h2>
-      <span>Compare</span>
-    </div>
-
     <div class="browser-tools">
       <label class="browser-filter-field">
         <span class="sr-only">Filter files</span>
@@ -167,23 +162,21 @@
         <section class="file-group">
           <button
             aria-expanded={!collapsedGroups[group.key]}
-            class="group-toggle"
+            class="group-toggle tree-row"
             style={`--tree-depth: ${group.depth}`}
             type="button"
             on:click={() => toggleGroup(group.key)}
           >
-            <span aria-hidden="true" class="tree-indent"></span>
-            <span class="chevron">
+            <span class="tree-row-lead">
               <svg aria-hidden="true" class:collapsed={collapsedGroups[group.key]} class="chevron-icon" viewBox="0 0 16 16">
                 <path d="m5.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
               </svg>
             </span>
-            <span class="group-heading">
-              <span aria-hidden="true" class="group-status-spacer"></span>
+            <span class="tree-row-icon">
               <EntryIcon kind="directory" open={!collapsedGroups[group.key]} />
-              <span class="group-label">{group.label}</span>
             </span>
-            <span class="group-count">{formatGroupCount(group)}</span>
+            <span class="tree-row-name group-label">{group.label}</span>
+            <span class="tree-row-meta group-count">{formatGroupCount(group)}</span>
           </button>
 
           {#if !collapsedGroups[group.key] && group.entries.length > 0}
@@ -191,17 +184,19 @@
               {#each group.entries as entry}
                 <button
                   class:selected={selectedRelativePath === entry.relativePath}
-                  class="file-row"
+                  class="file-row tree-row"
                   style={`--tree-depth: ${group.depth + 1}`}
                   type="button"
                   on:click={() => selectEntry(entry)}
                 >
-                  <span aria-hidden="true" class="tree-indent"></span>
-                  <span class="file-row-main">
+                  <span class="tree-row-lead">
                     <span class={`file-status-marker ${entry.status}`}></span>
-                    <EntryIcon kind="file" />
-                    <span class="entry-text">{getFileName(entry.relativePath)}</span>
                   </span>
+                  <span class="tree-row-icon">
+                    <EntryIcon kind="file" />
+                  </span>
+                  <span class="tree-row-name entry-text">{getFileName(entry.relativePath)}</span>
+                  <span aria-hidden="true" class="tree-row-meta"></span>
                 </button>
               {/each}
             </div>

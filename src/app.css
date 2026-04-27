@@ -2349,31 +2349,14 @@ h2 {
 
 .browser-header {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   min-height: 0;
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px 10px 7px;
+  padding: 12px 10px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
   background: color-mix(in srgb, var(--pane-bg) 94%, var(--surface));
-}
-
-.browser-identity {
-  display: grid;
-  gap: 1px;
-}
-
-.browser-identity h2 {
-  color: var(--title);
-  font-size: 0.88rem;
-  line-height: 1.2;
-}
-
-.browser-identity span {
-  color: var(--subtitle);
-  font-size: 0.82rem;
-  line-height: 1.2;
 }
 
 .changes-summary {
@@ -2402,12 +2385,12 @@ h2 {
 .status-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
 }
 
 .browser-tools {
   display: grid;
-  gap: 5px;
+  gap: 8px;
 }
 
 .browser-filter-field {
@@ -2461,12 +2444,12 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 21px;
+  height: 22px;
   padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--surface-alt) 74%, transparent);
-  color: var(--secondary-text);
+  background: color-mix(in srgb, var(--surface-alt) 52%, transparent);
+  color: color-mix(in srgb, var(--secondary-text) 88%, transparent);
   font-size: 0.75rem;
   line-height: 1;
   transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
@@ -2487,22 +2470,22 @@ button.filter-chip:active:not(:disabled) {
 }
 
 .status-chip.modified {
-  background: color-mix(in srgb, var(--status-modified-bg) 58%, transparent);
-  border-color: color-mix(in srgb, var(--status-modified-border) 72%, var(--border));
+  background: color-mix(in srgb, var(--status-modified-bg) 34%, transparent);
+  border-color: color-mix(in srgb, var(--status-modified-border) 48%, var(--border));
   color: var(--status-modified-text);
 }
 
 .status-chip.rightOnly {
-  background: color-mix(in srgb, var(--success-bg) 52%, transparent);
-  border-color: color-mix(in srgb, var(--status-success-border) 72%, var(--border));
+  background: color-mix(in srgb, var(--success-bg) 34%, transparent);
+  border-color: color-mix(in srgb, var(--status-success-border) 48%, var(--border));
   color: var(--status-success-text);
 }
 
 .status-chip.leftOnly,
 .status-chip.binary,
 .status-chip.tooLarge {
-  background: color-mix(in srgb, var(--danger-bg) 52%, transparent);
-  border-color: color-mix(in srgb, var(--status-danger-border) 72%, var(--border));
+  background: color-mix(in srgb, var(--danger-bg) 34%, transparent);
+  border-color: color-mix(in srgb, var(--status-danger-border) 48%, var(--border));
   color: var(--status-danger-text);
 }
 
@@ -2541,7 +2524,7 @@ button.filter-chip.tooLarge:focus-visible {
   background: transparent;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 6px 8px 8px;
+  padding: 10px 8px 8px;
 }
 
 .file-group {
@@ -2560,76 +2543,75 @@ button.filter-chip.tooLarge:focus-visible {
 .file-row {
   width: 100%;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   text-align: left;
 }
 
-.group-toggle {
+.tree-row {
   display: grid;
-  grid-template-columns: auto 14px minmax(0, 1fr) auto;
+  grid-template-columns: 12px 16px minmax(0, 1fr) minmax(28px, auto);
   align-items: center;
-  gap: 5px;
-  min-height: 26px;
-  padding: 2px 7px;
+  column-gap: 7px;
+  height: 28px;
+  padding: 0 8px 0 calc(8px + var(--tree-depth, 0) * 16px);
   background: transparent;
   transition: background-color 120ms ease;
 }
 
 .group-toggle:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--surface-strong) 42%, transparent);
-}
-
-.tree-indent {
-  width: calc(var(--tree-depth, 0) * 12px);
-  min-width: calc(var(--tree-depth, 0) * 12px);
-  height: 1px;
+  background: color-mix(in srgb, var(--surface-strong) 34%, transparent);
 }
 
 .file-browser .entry-icon {
   width: 14px;
   height: 14px;
+  opacity: 0.74;
 }
 
-.group-heading,
-.file-row-main {
-  display: grid;
+.tree-row-lead,
+.tree-row-icon {
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-width: 0;
-  column-gap: 6px;
 }
 
-.group-heading {
-  grid-template-columns: 6px 14px minmax(0, 1fr);
+.tree-row-lead {
+  width: 12px;
 }
 
-.group-status-spacer {
-  width: 6px;
-  height: 6px;
+.tree-row-icon {
+  width: 16px;
 }
 
-.group-label {
+.tree-row-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.group-label {
   color: var(--secondary-text);
   font-size: 0.82rem;
   font-weight: 600;
 }
 
-.group-count {
+.tree-row-meta {
   justify-self: end;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-count {
   color: color-mix(in srgb, var(--muted) 78%, transparent);
   font-size: 0.75rem;
 }
 
-.chevron {
-  display: inline-grid;
-  place-items: center;
-}
-
 .chevron-icon {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   color: var(--muted);
   transform: rotate(90deg);
   transition: transform 160ms ease, color 160ms ease;
@@ -2647,30 +2629,18 @@ button.filter-chip.tooLarge:focus-visible {
 .file-list {
   display: grid;
   gap: 1px;
-  padding: 1px 0 3px;
+  padding: 0 0 3px;
   border-top: 0;
 }
 
 .file-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 2px 8px 2px 7px;
-  background: transparent;
   border-bottom: 0;
   position: relative;
   transition: background-color 100ms ease, box-shadow 100ms ease;
 }
 
 .file-row:hover:not(.selected) {
-  background: color-mix(in srgb, var(--surface-strong) 44%, transparent);
-}
-.file-row-main {
-  grid-template-columns: 7px 14px minmax(0, 1fr);
-  min-height: 24px;
-  row-gap: 1px;
+  background: color-mix(in srgb, var(--surface-strong) 34%, transparent);
 }
 
 .file-row.selected {
@@ -2683,8 +2653,9 @@ button.filter-chip.tooLarge:focus-visible {
   height: 7px;
   border-radius: 999px;
   flex: 0 0 auto;
+  opacity: 0.9;
   background: var(--muted);
-  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+  box-shadow: none;
 }
 
 .file-status-marker.modified {
@@ -2696,9 +2667,13 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .file-status-marker.leftOnly,
-.file-status-marker.binary,
 .file-status-marker.tooLarge {
   background: var(--scroll-marker-delete);
+}
+
+.file-status-marker.binary,
+.file-status-marker.tooLarge {
+  background: var(--warning);
 }
 
 .file-status-label {
