@@ -228,158 +228,159 @@
   }
 </script>
 
-<section class="settings-page settings-appearance">
-  <div class="settings-page-heading settings-appearance-heading">
-    <div>
-      <h2>Appearance</h2>
-      <p>Choose how Diffly should look across the app.</p>
-    </div>
-
-    <div
-      class="segmented-control toolbar-segmented-control settings-theme-mode-control"
-      role="group"
-      aria-label="Theme mode"
-    >
-      <button
-        aria-pressed={appearanceSettings.mode === 'light'}
-        class:active={appearanceSettings.mode === 'light'}
-        type="button"
-        on:click={() => onSetThemeMode('light')}
-      >
-        <span>Light</span>
-      </button>
-      <button
-        aria-pressed={appearanceSettings.mode === 'dark'}
-        class:active={appearanceSettings.mode === 'dark'}
-        type="button"
-        on:click={() => onSetThemeMode('dark')}
-      >
-        <span>Dark</span>
-      </button>
-      <button
-        aria-pressed={appearanceSettings.mode === 'system'}
-        class:active={appearanceSettings.mode === 'system'}
-        type="button"
-        on:click={() => onSetThemeMode('system')}
-      >
-        <span>System</span>
-      </button>
-    </div>
+<section class="settings-page">
+  <div class="settings-page-heading">
+    <h2>Appearance</h2>
+    <p>Choose how Diffly should look across the app.</p>
   </div>
 
-  <div class="settings-appearance-shell">
-    <div class="settings-appearance-preview-column">
-      <div class="settings-appearance-preview-grid" data-count={visibleThemeVariants.length}>
+  <section class="settings-group settings-appearance-group">
+    <div class="settings-group-header">
+      <h3>Color scheme</h3>
+      <p>Presets control the full theme. The fields below override only what the UI exposes.</p>
+    </div>
+
+    <div class="settings-appearance-shell">
+      <div class="settings-appearance-preview-column">
+        <div class="settings-appearance-mode-bar">
+          <span>Theme</span>
+          <div
+            class="segmented-control toolbar-segmented-control settings-theme-mode-control"
+            role="group"
+            aria-label="Theme mode"
+          >
+            <button
+              aria-pressed={appearanceSettings.mode === 'light'}
+              class:active={appearanceSettings.mode === 'light'}
+              type="button"
+              on:click={() => onSetThemeMode('light')}
+            >
+              <span>Light</span>
+            </button>
+            <button
+              aria-pressed={appearanceSettings.mode === 'dark'}
+              class:active={appearanceSettings.mode === 'dark'}
+              type="button"
+              on:click={() => onSetThemeMode('dark')}
+            >
+              <span>Dark</span>
+            </button>
+            <button
+              aria-pressed={appearanceSettings.mode === 'system'}
+              class:active={appearanceSettings.mode === 'system'}
+              type="button"
+              on:click={() => onSetThemeMode('system')}
+            >
+              <span>System</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-appearance-preview-grid" data-count={visibleThemeVariants.length}>
+          {#each visibleThemeVariants as variant}
+            {@const themeState = resolvedThemeState[variant]}
+            <ThemePreviewCard
+              title={getPreviewTitle(variant)}
+              themeLabel={formatThemeLabel(themeState.theme.id)}
+              previewStyle={themeState.previewStyle}
+              basePreviewLines={themeState.basePreviewLines}
+              viewerPreviewLines={themeState.viewerPreviewLines}
+            />
+          {/each}
+        </div>
+      </div>
+
+      <div class="settings-theme-editor-stack">
         {#each visibleThemeVariants as variant}
           {@const themeState = resolvedThemeState[variant]}
-          <ThemePreviewCard
-            title={getPreviewTitle(variant)}
-            themeLabel={formatThemeLabel(themeState.theme.id)}
-            previewStyle={themeState.previewStyle}
-            basePreviewLines={themeState.basePreviewLines}
-            viewerPreviewLines={themeState.viewerPreviewLines}
-          />
+          {#key `${variant}:${themeState.presetId}`}
+            <ThemeEditorPanel
+              title={getThemeTitle(variant)}
+              subtitle="Preset changes stay in sync here. Manual edits become overrides."
+              {variant}
+              {themeState}
+              {formatThemeLabel}
+              {onSetThemePreset}
+              {onSetThemeColor}
+              {onSetThemeSemanticColor}
+              {onSetThemeFont}
+              {onSetThemeContrast}
+            />
+          {/key}
         {/each}
-      </div>
-    </div>
 
-    <div class="settings-theme-editor-stack">
-      {#each visibleThemeVariants as variant}
-        {@const themeState = resolvedThemeState[variant]}
-        {#key `${variant}:${themeState.presetId}`}
-          <ThemeEditorPanel
-            title={getThemeTitle(variant)}
-            subtitle="Preset changes stay in sync here. Manual edits become overrides."
-            {variant}
-            {themeState}
-            {formatThemeLabel}
-            {onSetThemePreset}
-            {onSetThemeColor}
-            {onSetThemeSemanticColor}
-            {onSetThemeFont}
-            {onSetThemeContrast}
-          />
-        {/key}
-      {/each}
-    </div>
-  </div>
+        <section class="settings-theme-editor settings-theme-editor-global">
+          <header class="settings-theme-editor-header">
+            <div class="settings-theme-editor-title">
+              <strong>Global appearance</strong>
+              <span>These settings apply across both light and dark variants.</span>
+            </div>
+          </header>
 
-  <section class="settings-group settings-global-appearance">
-    <div class="settings-group-header">
-      <h3>Global appearance</h3>
-      <p>These settings apply across both light and dark variants.</p>
-    </div>
+          <div class="settings-theme-editor-grid">
+            <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
+              <span>Use pointer cursors</span>
+              <span class="settings-switch">
+                <input
+                  checked={appearanceSettings.usePointerCursor}
+                  role="switch"
+                  type="checkbox"
+                  on:change={(event) =>
+                    onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)}
+                />
+                <span aria-hidden="true" class="settings-switch-ui"></span>
+              </span>
+            </label>
 
-    <div class="settings-global-appearance-row">
-      <label class="settings-global-appearance-cell settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>Use pointer cursors</strong>
-          <p>Show a hand cursor on interactive controls.</p>
-        </div>
-        <span class="settings-switch">
-          <input
-            checked={appearanceSettings.usePointerCursor}
-            role="switch"
-            type="checkbox"
-            on:change={(event) =>
-              onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)}
-          />
-          <span aria-hidden="true" class="settings-switch-ui"></span>
-        </span>
-      </label>
+            <div class="settings-theme-editor-row">
+              <span>UI font size</span>
+              <div class="settings-stepper">
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.uiFontSize <= minUiFontSize}
+                  type="button"
+                  on:click={() => onStepUiFontSize(-1)}
+                >
+                  -
+                </button>
+                <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
+                  type="button"
+                  on:click={() => onStepUiFontSize(1)}
+                >
+                  +
+                </button>
+                <small class="settings-stepper-unit">px</small>
+              </div>
+            </div>
 
-      <div class="settings-global-appearance-cell">
-        <div class="settings-row-copy">
-          <strong>UI font size</strong>
-          <p>Scales menus, sidebars, and headings.</p>
-        </div>
-        <div class="settings-stepper">
-          <button
-            class="secondary settings-stepper-button"
-            disabled={appearanceSettings.uiFontSize <= minUiFontSize}
-            type="button"
-            on:click={() => onStepUiFontSize(-1)}
-          >
-            -
-          </button>
-          <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
-          <button
-            class="secondary settings-stepper-button"
-            disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
-            type="button"
-            on:click={() => onStepUiFontSize(1)}
-          >
-            +
-          </button>
-          <small class="settings-stepper-unit">px</small>
-        </div>
-      </div>
-
-      <div class="settings-global-appearance-cell">
-        <div class="settings-row-copy">
-          <strong>Code font size</strong>
-          <p>Scales source code rendered inside the diff viewer.</p>
-        </div>
-        <div class="settings-stepper">
-          <button
-            class="secondary settings-stepper-button"
-            disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
-            type="button"
-            on:click={() => onStepCodeFontSize(-1)}
-          >
-            -
-          </button>
-          <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
-          <button
-            class="secondary settings-stepper-button"
-            disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
-            type="button"
-            on:click={() => onStepCodeFontSize(1)}
-          >
-            +
-          </button>
-          <small class="settings-stepper-unit">px</small>
-        </div>
+            <div class="settings-theme-editor-row">
+              <span>Code font size</span>
+              <div class="settings-stepper">
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
+                  type="button"
+                  on:click={() => onStepCodeFontSize(-1)}
+                >
+                  -
+                </button>
+                <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
+                <button
+                  class="secondary settings-stepper-button"
+                  disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
+                  type="button"
+                  on:click={() => onStepCodeFontSize(1)}
+                >
+                  +
+                </button>
+                <small class="settings-stepper-unit">px</small>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </section>
