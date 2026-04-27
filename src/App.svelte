@@ -1859,6 +1859,14 @@
         selectedRelativePath = ''
         activeDiff = response.result
         cancelBackgroundDiffPreload()
+        if (response.result.contentKind === 'binary') {
+          void loadActiveBinaryPreview(
+            nextLeftPath,
+            nextRightPath,
+            activeDetailRequestId,
+            compareRevision,
+          ).catch(() => undefined)
+        }
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
@@ -1904,7 +1912,7 @@
         return
       }
 
-      const result = await loadEntryDiff(entry, revision)
+      const result = await getOrCreateDetailDiffPromise(entry.relativePath, revision)
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
@@ -1913,6 +1921,9 @@
           startBackgroundDiffPreload(entry.relativePath, revision)
         } else {
           cancelBackgroundDiffPreload()
+          if (result.contentKind === 'binary') {
+            void loadSelectedBinaryPreview(entry, requestId, revision)
+          }
         }
       }
     } catch (error) {
@@ -1926,24 +1937,53 @@
     }
   }
 
-  async function loadEntryDiff(entry: DirectoryEntryResult, revision: number) {
-    const result = await getOrCreateDetailDiffPromise(entry.relativePath, revision)
-
+  async function loadSelectedBinaryPreview(
+    entry: DirectoryEntryResult,
+    requestId: number,
+    revision: number,
+  ) {
     if (
-      result.contentKind !== 'binary' ||
-      result.binary?.previewLoaded ||
       !entry.leftPath ||
       !entry.rightPath
     ) {
-      return result
+      return
     }
 
-    return {
-      ...result,
-      binary: await loadBinaryPreview(entry.leftPath, entry.rightPath, {
-        ignoreWhitespace: false,
-        ignoreCase: false,
-      }),
+    try {
+      await loadActiveBinaryPreview(
+        entry.leftPath,
+        entry.rightPath,
+        requestId,
+        revision,
+        entry.relativePath,
+      )
+    } catch {
+      // Keep the placeholder binary state visible; the user can keep navigating.
+    }
+  }
+
+  async function loadActiveBinaryPreview(
+    leftFilePath: string,
+    rightFilePath: string,
+    requestId: number,
+    revision: number,
+    relativePath = '',
+  ) {
+    const preview = await loadBinaryPreview(leftFilePath, rightFilePath, {
+      ignoreWhitespace: false,
+      ignoreCase: false,
+    })
+
+    if (
+      revision === compareRevision &&
+      requestId === activeDetailRequestId &&
+      (relativePath === '' || selectedRelativePath === relativePath) &&
+      activeDiff?.contentKind === 'binary'
+    ) {
+      activeDiff = {
+        ...activeDiff,
+        binary: preview,
+      }
     }
   }
 

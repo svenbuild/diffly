@@ -699,8 +699,8 @@ function resolveChildPath(base: string, relativePathValue: string) {
 
 async function loadBinaryPreview(leftPath: string, rightPath: string, _options: CompareOptions) {
   const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath, true),
-    loadFile(rightPath, true),
+    loadBinaryPreviewFile(leftPath),
+    loadBinaryPreviewFile(rightPath),
   ])
   return buildBinaryPayload(leftPath, rightPath, leftLoaded, rightLoaded)
 }
@@ -713,8 +713,8 @@ async function buildFileDiff(
   options: CompareOptions,
 ): Promise<FileDiffResult> {
   const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath, true),
-    loadFile(rightPath, true),
+    loadFile(leftPath, false),
+    loadFile(rightPath, false),
   ])
   const summary = buildSummary(leftLoaded, rightLoaded)
 
@@ -887,6 +887,40 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     truncated: includeBinaryPreview && info.size > MAX_BINARY_RENDER_BYTES,
     bytes: includeBinaryPreview ? preview : new Uint8Array(0),
     sha256: hash ?? undefined,
+  }
+}
+
+async function loadBinaryPreviewFile(pathValue: string): Promise<LoadedFile> {
+  let info
+  try {
+    info = await stat(pathValue)
+  } catch {
+    return {
+      kind: 'missing',
+      path: pathValue,
+      size: null,
+      format: null,
+      truncated: false,
+    }
+  }
+
+  const previewLength = Math.min(info.size, MAX_BINARY_RENDER_BYTES)
+  const preview = previewLength === 0
+    ? new Uint8Array(0)
+    : await readPartial(pathValue, previewLength)
+  const sample =
+    preview.length > BINARY_SAMPLE_BYTES ? preview.subarray(0, BINARY_SAMPLE_BYTES) : preview
+  const detectedKind = detectFileKind(pathValue, info.size, sample)
+  const kind: FileKind = detectedKind === 'text' ? 'binary' : detectedKind
+
+  return {
+    kind,
+    path: pathValue,
+    size: info.size,
+    format: detectImageFormat(sample, pathValue),
+    truncated: info.size > preview.length,
+    bytes: preview,
+    sha256: undefined,
   }
 }
 
