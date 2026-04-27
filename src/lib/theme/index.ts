@@ -99,7 +99,7 @@ export interface ThemeTokens {
 }
 
 export const DEFAULT_UI_FONT =
-  'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+  '"Segoe UI Variable", "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
 
 export const DEFAULT_CODE_FONT =
   'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace'
@@ -967,7 +967,7 @@ export function getDefaultAppearanceSettings(): AppearanceSettings {
     lightOverrides: {},
     darkOverrides: {},
     usePointerCursor: true,
-    uiFontSize: 12,
+    uiFontSize: 13,
     codeFontSize: 11,
   }
 }

@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
   font-size: var(--ui-font-size);
-  font-family: var(--ui-font, 'IBM Plex Sans', 'Aptos', 'Noto Sans', sans-serif);
+  font-family: var(--ui-font, 'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif);
   color: var(--text);
   background: var(--canvas);
   line-height: 1.45;
@@ -10,7 +10,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --ui-font: 'IBM Plex Sans', 'Aptos', 'Noto Sans', sans-serif;
+  --ui-font: 'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif;
   --ui-font-size: 13px;
   --canvas: #171717;
   --canvas-alt: #1b1b1b;
@@ -2446,7 +2446,7 @@ h2 {
 
 .browser-filter-shortcut {
   color: color-mix(in srgb, var(--muted) 72%, transparent);
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   line-height: 1;
 }
 
@@ -2461,13 +2461,13 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 20px;
-  padding: 0 7px;
+  min-height: 21px;
+  padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--surface-alt) 74%, transparent);
   color: var(--secondary-text);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   line-height: 1;
   transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
@@ -2569,7 +2569,7 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: auto 14px minmax(0, 1fr) auto;
   align-items: center;
   gap: 5px;
-  min-height: 24px;
+  min-height: 26px;
   padding: 2px 7px;
   background: transparent;
   transition: background-color 120ms ease;
@@ -2612,14 +2612,14 @@ button.filter-chip.tooLarge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--secondary-text);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
 .group-count {
   justify-self: end;
   color: color-mix(in srgb, var(--muted) 78%, transparent);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
 }
 
 .chevron {
@@ -2656,7 +2656,7 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 4px;
-  min-height: 25px;
+  min-height: 28px;
   padding: 2px 8px 2px 7px;
   background: transparent;
   border-bottom: 0;
@@ -2669,7 +2669,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 .file-row-main {
   grid-template-columns: 7px 14px minmax(0, 1fr);
-  min-height: 21px;
+  min-height: 24px;
   row-gap: 1px;
 }
 
@@ -2703,6 +2703,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-status-label {
   color: var(--panel-meta);
+  font-size: 0.84rem;
 }
 
 .viewer {
