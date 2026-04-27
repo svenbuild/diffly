@@ -218,6 +218,16 @@
   let activeDirectoryCompareJobId = ''
   let directoryComparePollTimer: number | null = null
   let directoryCompareEntrySlots: Array<DirectoryEntryResult | null | undefined> = []
+  type DirectoryComparePair = {
+    id: string
+    leftBase: string
+    rightBase: string
+    label: string
+  }
+  let directoryComparePairs: DirectoryComparePair[] = []
+  let directoryComparePairSlots: Array<Array<DirectoryEntryResult | null | undefined>> = []
+  let directoryComparePairJobs: Array<{ jobId: string; pairIndex: number; done: boolean }> = []
+  let directoryComparePairTimers: Array<number | null> = []
   let scrollEchoTarget: 'left' | 'right' | null = null
   let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
@@ -736,22 +746,124 @@
       window.clearTimeout(directoryComparePollTimer)
       directoryComparePollTimer = null
     }
+
+    for (const [index, timer] of directoryComparePairTimers.entries()) {
+      if (timer !== null) {
+        window.clearTimeout(timer)
+        directoryComparePairTimers[index] = null
+      }
+    }
   }
 
   function stopDirectoryComparePolling(clearEntries = false) {
     clearDirectoryComparePollTimer()
     activeDirectoryCompareJobId = ''
+    directoryComparePairJobs = []
+    directoryComparePairTimers = []
     if (clearEntries) {
       directoryCompareEntrySlots = []
+      directoryComparePairs = []
+      directoryComparePairSlots = []
+    }
+  }
+
+  function basenameOf(path: string) {
+    const parts = path.split(/[\\/]+/).filter(Boolean)
+    const last = parts[parts.length - 1] ?? path
+    return /^[A-Za-z]:$/.test(last) ? `${last}\\` : last
+  }
+
+  function buildDirectoryComparePairs(
+    leftPaths: string[],
+    rightPaths: string[],
+  ): DirectoryComparePair[] {
+    const labels: string[] = []
+    return leftPaths.map((leftBase, index) => {
+      const rightBase = rightPaths[index] ?? leftBase
+      const leftName = basenameOf(leftBase)
+      const rightName = basenameOf(rightBase)
+      const baseLabel = leftName === rightName ? leftName : `${leftName} ↔ ${rightName}`
+
+      let label = baseLabel
+      let suffix = 2
+      while (labels.includes(label)) {
+        label = `${baseLabel} (${suffix})`
+        suffix += 1
+      }
+      labels.push(label)
+
+      return {
+        id: `${index}-${leftBase}-${rightBase}`,
+        leftBase,
+        rightBase,
+        label,
+      }
+    })
+  }
+
+  function isMultiPairCompare() {
+    return directoryComparePairs.length > 1
+  }
+
+  function findDirectoryComparePairForPath(prefixedPath: string) {
+    if (directoryComparePairs.length === 0) {
+      return null
+    }
+
+    if (directoryComparePairs.length === 1) {
+      return { pair: directoryComparePairs[0], relativePath: prefixedPath }
+    }
+
+    for (const pair of directoryComparePairs) {
+      const prefix = `${pair.label}/`
+      if (prefixedPath === pair.label) {
+        return { pair, relativePath: '' }
+      }
+
+      if (prefixedPath.startsWith(prefix)) {
+        return { pair, relativePath: prefixedPath.slice(prefix.length) }
+      }
+    }
+
+    return null
+  }
+
+  function prefixedRelativePathFor(pair: DirectoryComparePair, relativePath: string) {
+    if (!isMultiPairCompare()) {
+      return relativePath
+    }
+
+    return relativePath ? `${pair.label}/${relativePath}` : pair.label
+  }
+
+  function getDetailBasesForPath(prefixedPath: string): {
+    leftBase: string
+    rightBase: string
+    relativePath: string
+  } {
+    const lookup = findDirectoryComparePairForPath(prefixedPath)
+    if (lookup) {
+      return {
+        leftBase: lookup.pair.leftBase,
+        rightBase: lookup.pair.rightBase,
+        relativePath: lookup.relativePath,
+      }
+    }
+
+    return {
+      leftBase: leftPath,
+      rightBase: rightPath,
+      relativePath: prefixedPath,
     }
   }
 
   function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
+    const bases = getDetailBasesForPath(relativePath)
     return diffCache.getOrCreateDetailDiffPromise({
       revision,
-      leftPath,
-      rightPath,
-      relativePath,
+      leftPath: bases.leftBase,
+      rightPath: bases.rightBase,
+      relativePath: bases.relativePath,
       ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
       ignoreCase: activeCompareOptions.ignoreCase,
     })
@@ -858,6 +970,13 @@
     centerRelativePath: string,
     revision = compareRevision,
   ) {
+    // Background preload assumes a single (leftPath, rightPath) pair. With
+    // multi-folder compares the entries span multiple base pairs, so skip
+    // preloading until the cache layer is taught to look up bases per entry.
+    if (isMultiPairCompare()) {
+      return
+    }
+
     diffCache.startBackgroundPreload({
       centerRelativePath,
       revision,
@@ -872,49 +991,107 @@
     })
   }
 
-  function applyDirectoryCompareUpdates(updates: Array<{ index: number; entry: DirectoryEntryResult | null }>) {
+  function applyDirectoryCompareUpdatesForPair(
+    pairIndex: number,
+    updates: Array<{ index: number; entry: DirectoryEntryResult | null }>,
+  ) {
     if (updates.length === 0) {
       return
     }
 
-    for (const update of updates) {
-      if (update.index >= directoryCompareEntrySlots.length) {
-        directoryCompareEntrySlots.length = update.index + 1
-      }
-
-      directoryCompareEntrySlots[update.index] = update.entry
+    const slots = directoryComparePairSlots[pairIndex]
+    if (!slots) {
+      return
     }
 
-    directoryEntries = directoryCompareEntrySlots.flatMap((entry) => (entry ? [entry] : []))
-    syncFilteredDirectoryState(directoryEntries)
+    for (const update of updates) {
+      if (update.index >= slots.length) {
+        slots.length = update.index + 1
+      }
+
+      slots[update.index] = update.entry
+    }
+
+    rebuildDirectoryEntriesFromPairs()
   }
 
-  function queueDirectoryComparePoll(
+  function rebuildDirectoryEntriesFromPairs() {
+    const isMulti = isMultiPairCompare()
+    const aggregated: DirectoryEntryResult[] = []
+
+    for (const [pairIndex, slots] of directoryComparePairSlots.entries()) {
+      const pair = directoryComparePairs[pairIndex]
+      if (!pair) {
+        continue
+      }
+
+      for (const entry of slots) {
+        if (!entry) {
+          continue
+        }
+
+        if (isMulti) {
+          aggregated.push({
+            ...entry,
+            relativePath: prefixedRelativePathFor(pair, entry.relativePath),
+          })
+        } else {
+          aggregated.push(entry)
+        }
+      }
+    }
+
+    directoryEntries = aggregated
+    syncFilteredDirectoryState(aggregated)
+  }
+
+  function queuePairPoll(
+    pairIndex: number,
     jobId: string,
     previousSelectedPath: string,
     revision: number,
     restoreScroll: DiffScrollSnapshot | null,
   ) {
-    clearDirectoryComparePollTimer()
-    directoryComparePollTimer = window.setTimeout(() => {
-      void pollDirectoryCompareJob(jobId, previousSelectedPath, revision, restoreScroll)
+    const existing = directoryComparePairTimers[pairIndex]
+    if (existing !== null && existing !== undefined) {
+      window.clearTimeout(existing)
+    }
+
+    directoryComparePairTimers[pairIndex] = window.setTimeout(() => {
+      directoryComparePairTimers[pairIndex] = null
+      void pollDirectoryCompareJob(jobId, pairIndex, previousSelectedPath, revision, restoreScroll)
     }, DIRECTORY_COMPARE_POLL_INTERVAL_MS)
   }
 
   async function pollDirectoryCompareJob(
     jobId: string,
+    pairIndex: number,
     previousSelectedPath: string,
     revision: number,
     restoreScroll: DiffScrollSnapshot | null,
   ) {
+    if (revision !== compareRevision) {
+      return
+    }
+
+    const job = directoryComparePairJobs[pairIndex]
+    if (!job || job.jobId !== jobId) {
+      return
+    }
+
     try {
       const response = await pollDirectoryCompare(jobId)
 
-      if (jobId !== activeDirectoryCompareJobId || revision !== compareRevision) {
+      if (revision !== compareRevision) {
         return
       }
 
-      applyDirectoryCompareUpdates(response.updates)
+      const stillTracking = directoryComparePairJobs[pairIndex]
+      if (!stillTracking || stillTracking.jobId !== jobId) {
+        return
+      }
+
+      applyDirectoryCompareUpdatesForPair(pairIndex, response.updates)
 
       if (!detailLoading && !activeDiff) {
         const preservedEntry = previousSelectedPath
@@ -935,26 +1112,30 @@
       }
 
       if (response.done) {
-        stopDirectoryComparePolling()
-        loading = false
+        stillTracking.done = true
 
         if (response.error) {
           errorMessage = response.error
-          return
         }
 
-        if (directoryEntries.length === 0) {
-          selectedRelativePath = ''
-          activeDiff = null
-          cancelBackgroundDiffPreload()
+        const allDone = directoryComparePairJobs.every((entry) => entry.done)
+        if (allDone) {
+          stopDirectoryComparePolling()
+          loading = false
+
+          if (directoryEntries.length === 0) {
+            selectedRelativePath = ''
+            activeDiff = null
+            cancelBackgroundDiffPreload()
+          }
         }
 
         return
       }
 
-      queueDirectoryComparePoll(jobId, previousSelectedPath, revision, restoreScroll)
+      queuePairPoll(pairIndex, jobId, previousSelectedPath, revision, restoreScroll)
     } catch (error) {
-      if (jobId !== activeDirectoryCompareJobId || revision !== compareRevision) {
+      if (revision !== compareRevision) {
         return
       }
 
@@ -1518,8 +1699,31 @@
       return
     }
 
-    const nextLeftPath = leftExplorer.selectedTargetPath
-    const nextRightPath = rightExplorer.selectedTargetPath
+    const leftSelected =
+      leftExplorer.selectedTargetPaths.length > 0
+        ? leftExplorer.selectedTargetPaths
+        : leftExplorer.selectedTargetPath
+          ? [leftExplorer.selectedTargetPath]
+          : []
+    const rightSelected =
+      rightExplorer.selectedTargetPaths.length > 0
+        ? rightExplorer.selectedTargetPaths
+        : rightExplorer.selectedTargetPath
+          ? [rightExplorer.selectedTargetPath]
+          : []
+
+    if (leftSelected.length === 0 || rightSelected.length === 0) {
+      errorMessage = 'Select valid targets on both sides first.'
+      return
+    }
+
+    if (mode === 'directory' && leftSelected.length !== rightSelected.length) {
+      errorMessage = `Select the same number of folders on both sides (left has ${leftSelected.length}, right has ${rightSelected.length}).`
+      return
+    }
+
+    const nextLeftPath = leftSelected[0]
+    const nextRightPath = rightSelected[0]
     const nextCompareOptions = getPendingCompareOptions()
     const previousSelectedPath = selectedRelativePath
     const restoreScroll = captureDiffScrollSnapshot()
@@ -1536,6 +1740,7 @@
     try {
       if (mode === 'directory') {
         compareRevision += 1
+        const revision = compareRevision
         diffCache.clearDetailDiffs()
         activeCompareOptions = { ...nextCompareOptions }
         compareDirtyReason = null
@@ -1545,14 +1750,45 @@
         selectedRelativePath = ''
         activeDiff = null
 
-        const response = await startDirectoryCompare(
-          nextLeftPath,
-          nextRightPath,
-          nextCompareOptions,
+        const pairs = buildDirectoryComparePairs(leftSelected, rightSelected)
+        directoryComparePairs = pairs
+        directoryComparePairSlots = pairs.map(() => [])
+        directoryComparePairTimers = pairs.map(() => null)
+        directoryComparePairJobs = pairs.map((_, pairIndex) => ({
+          jobId: '',
+          pairIndex,
+          done: false,
+        }))
+
+        const startResults = await Promise.all(
+          pairs.map((pair) =>
+            startDirectoryCompare(pair.leftBase, pair.rightBase, nextCompareOptions),
+          ),
         )
 
-        activeDirectoryCompareJobId = response.jobId
-        void pollDirectoryCompareJob(response.jobId, previousSelectedPath, compareRevision, restoreScroll)
+        if (revision !== compareRevision) {
+          return
+        }
+
+        for (const [pairIndex, response] of startResults.entries()) {
+          directoryComparePairJobs[pairIndex] = {
+            jobId: response.jobId,
+            pairIndex,
+            done: false,
+          }
+        }
+
+        activeDirectoryCompareJobId = startResults[0]?.jobId ?? ''
+
+        for (const [pairIndex, response] of startResults.entries()) {
+          void pollDirectoryCompareJob(
+            response.jobId,
+            pairIndex,
+            previousSelectedPath,
+            revision,
+            restoreScroll,
+          )
+        }
         return
       }
 
@@ -2660,6 +2896,23 @@
         : `Select the right ${mode === 'directory' ? 'folder' : 'file'}.`
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
+  $: comparePairsLabel = (() => {
+    const count = directoryComparePairs.length
+    if (count > 1) {
+      return `${count} folder pairs`
+    }
+    return `${leftSetupTargetLabel} ↔ ${rightSetupTargetLabel}`
+  })()
+  $: comparePairsTooltip = (() => {
+    if (directoryComparePairs.length > 1) {
+      return directoryComparePairs
+        .map((pair) => `${pair.leftBase}\n  ↔ ${pair.rightBase}`)
+        .join('\n')
+    }
+    const left = leftExplorer.selectedTargetPath || 'Left target not selected'
+    const right = rightExplorer.selectedTargetPath || 'Right target not selected'
+    return `${left}\n  ↔ ${right}`
+  })()
   $: directoryStatusSummary = statusOrder
     .map((status) => ({
       status,
@@ -2765,8 +3018,8 @@
         <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
           {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
         </strong>
-        <span title={`${leftExplorer.selectedTargetPath || 'Left target not selected'} / ${rightExplorer.selectedTargetPath || 'Right target not selected'}`}>
-          {leftSetupTargetLabel} ↔ {rightSetupTargetLabel}
+        <span title={comparePairsTooltip}>
+          {comparePairsLabel}
         </span>
       </div>
       {/snippet}
