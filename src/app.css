@@ -3699,7 +3699,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .binary-hex-table {
-  position: relative;
+  display: grid;
   min-width: max-content;
   font-family: var(--code);
   font-size: var(--diff-font-size);
@@ -3707,9 +3707,7 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .binary-hex-rows {
-  position: absolute;
-  left: 0;
-  right: 0;
+  display: grid;
 }
 
 .binary-hex-header,
@@ -3791,6 +3789,16 @@ button.filter-chip.tooLarge:focus-visible {
 .binary-hex-row.changed {
   background: color-mix(in srgb, var(--highlight-bg) 16%, transparent);
   box-shadow: inset 2px 0 0 var(--scroll-marker-mixed);
+}
+
+.binary-hex-truncated {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-family: var(--ui-font, var(--font-ui));
+  border-top: 1px solid var(--diff-divider);
 }
 
 .binary-hex-row.changed .binary-col-offset {

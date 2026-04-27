@@ -3,8 +3,6 @@
   import { formatSize } from './format'
   import { normalizeWheelDelta } from './app/pane-scroll-sync'
   import {
-    BINARY_HEADER_HEIGHT,
-    BINARY_OVERSCAN,
     BINARY_ROW_HEIGHT,
     getBinaryRowView,
     getBinaryTotalRows,
@@ -451,48 +449,16 @@
     return null
   }
 
-  let binaryHexScroll: HTMLDivElement | null = null
-  let binaryVirtualStart = 0
-  let binaryVirtualEnd = 0
+  const BINARY_PREVIEW_ROW_LIMIT = 64
   let binaryTotalRows = 0
-  let binaryScrollRafId: number | null = null
+  let binaryVisibleRows = 0
 
-  function updateBinaryVirtualRange() {
-    if (!binaryHexScroll || !binaryDiff?.previewLoaded) return
-    const scrollTop = binaryHexScroll.scrollTop
-    const viewportHeight = binaryHexScroll.clientHeight || 800
-    const visibleCount = Math.ceil(viewportHeight / BINARY_ROW_HEIGHT)
-    const rawStart = Math.floor(scrollTop / BINARY_ROW_HEIGHT) - BINARY_OVERSCAN
-    const start = Math.max(0, Math.min(binaryTotalRows, rawStart))
-    const end = Math.min(binaryTotalRows, start + visibleCount + BINARY_OVERSCAN * 2)
-    binaryVirtualStart = start
-    binaryVirtualEnd = end
-  }
-
-  function onBinaryHexScroll() {
-    if (binaryScrollRafId !== null) return
-    binaryScrollRafId = requestAnimationFrame(() => {
-      binaryScrollRafId = null
-      updateBinaryVirtualRange()
-    })
-  }
-
-  // Prime the view state for the current payload (reuses WeakMap entry if
-  // already warmed by preload) and reset the virtual range to the top.
   $: if (binaryDiff?.previewLoaded) {
     binaryTotalRows = getBinaryTotalRows(binaryDiff)
-    binaryVirtualStart = 0
-    binaryVirtualEnd = Math.min(binaryTotalRows, 100)
-    void tick().then(() => {
-      if (binaryHexScroll) {
-        binaryHexScroll.scrollTop = 0
-      }
-      updateBinaryVirtualRange()
-    })
+    binaryVisibleRows = Math.min(binaryTotalRows, BINARY_PREVIEW_ROW_LIMIT)
   } else {
     binaryTotalRows = 0
-    binaryVirtualStart = 0
-    binaryVirtualEnd = 0
+    binaryVisibleRows = 0
   }
 
   function getBinarySummaryChips(
@@ -776,24 +742,6 @@
     event.preventDefault()
     const dy = normalizeWheelDelta(event.deltaY, event.deltaMode)
     scheduleSmoothScroll(unifiedScroll, 0, dy)
-  }
-
-  function handleBinaryWheel(event: WheelEvent) {
-    if (event.ctrlKey || !binaryHexScroll) return
-    const wantsHorizontal = event.shiftKey || isHorizontalWheelIntent(event)
-    if (wantsHorizontal) {
-      const maxLeft = Math.max(0, binaryHexScroll.scrollWidth - binaryHexScroll.clientWidth)
-      if (maxLeft > 0.5) {
-        event.preventDefault()
-        const dx = getHorizontalWheelDelta(event)
-        scheduleSmoothScroll(binaryHexScroll, dx, 0)
-        return
-      }
-    }
-    if (Math.abs(event.deltaY) < 0.1) return
-    event.preventDefault()
-    const dy = normalizeWheelDelta(event.deltaY, event.deltaMode)
-    scheduleSmoothScroll(binaryHexScroll, 0, dy)
   }
 
   function getBottomScrollbarFootprint(...elements: Array<HTMLDivElement | null>) {
@@ -1448,12 +1396,7 @@
         </div>
 
         <div class="binary-hex-shell">
-          <div
-            class="binary-hex-scroll"
-            bind:this={binaryHexScroll}
-            on:scroll={onBinaryHexScroll}
-            on:wheel={handleBinaryWheel}
-          >
+          <div class="binary-hex-scroll">
             {#if binaryDiff}
               {#if !binaryDiff.previewLoaded}
                 <div class="empty-inline-state binary-empty-state">
@@ -1466,11 +1409,8 @@
                     : 'No byte differences.'}
                 </div>
               {:else}
-                <div
-                  class="binary-hex-table"
-                  style:height={`${BINARY_HEADER_HEIGHT + binaryTotalRows * BINARY_ROW_HEIGHT}px`}
-                >
-                  <div class="binary-hex-header" style:height={`${BINARY_HEADER_HEIGHT}px`}>
+                <div class="binary-hex-table">
+                  <div class="binary-hex-header">
                     <span class="binary-hex-cell binary-col-offset">Offset</span>
                     <span class="binary-hex-cell binary-col-hex">Left hex</span>
                     <span class="binary-hex-cell binary-col-ascii">Left ascii</span>
@@ -1478,12 +1418,9 @@
                     <span class="binary-hex-cell binary-col-ascii">Right ascii</span>
                   </div>
 
-                  <div
-                    class="binary-hex-rows"
-                    style:top={`${BINARY_HEADER_HEIGHT + binaryVirtualStart * BINARY_ROW_HEIGHT}px`}
-                  >
-                    {#each { length: binaryVirtualEnd - binaryVirtualStart } as _, i (binaryVirtualStart + i)}
-                      {@const view = binaryDiff ? getBinaryRowView(binaryDiff, binaryVirtualStart + i) : null}
+                  <div class="binary-hex-rows">
+                    {#each Array.from({ length: binaryVisibleRows }, (_, index) => index) as rowIndex (rowIndex)}
+                      {@const view = binaryDiff ? getBinaryRowView(binaryDiff, rowIndex) : null}
                       {#if view}
                         <div
                           class:changed={view.changed}
@@ -1506,6 +1443,11 @@
                         </div>
                       {/if}
                     {/each}
+                    {#if binaryTotalRows > binaryVisibleRows}
+                      <div class="binary-hex-row binary-hex-truncated">
+                        Showing first {binaryVisibleRows} rows.
+                      </div>
+                    {/if}
                   </div>
                 </div>
                 {/if}
