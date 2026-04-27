@@ -13,11 +13,14 @@ if ($portableFiles.Count -ne 1) {
   throw "Expected exactly one portable Diffly exe in $releaseDir, found $($portableFiles.Count)."
 }
 
-if ($installerFiles.Count -ne 1) {
-  throw "Expected exactly one Diffly installer exe in $releaseDir, found $($installerFiles.Count)."
+if ($installerFiles.Count -gt 1) {
+  throw "Expected at most one Diffly installer exe in $releaseDir, found $($installerFiles.Count)."
 }
 
-$keepPaths = @($portableFiles[0].FullName, $installerFiles[0].FullName)
+$keepPaths = @($portableFiles[0].FullName)
+if ($installerFiles.Count -eq 1) {
+  $keepPaths += $installerFiles[0].FullName
+}
 $itemsToRemove = Get-ChildItem -LiteralPath $releaseDir |
   Where-Object { $keepPaths -notcontains $_.FullName }
 
