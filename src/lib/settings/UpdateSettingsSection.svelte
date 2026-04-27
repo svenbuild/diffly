@@ -64,7 +64,11 @@
       return 'accent'
     }
 
-    if (status === 'failed' || status === 'unavailable') {
+    if (status === 'failed') {
+      return 'danger'
+    }
+
+    if (status === 'unavailable') {
       return 'warning'
     }
 

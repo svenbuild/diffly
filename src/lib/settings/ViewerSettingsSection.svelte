@@ -24,7 +24,7 @@
   export let onToggleIgnoreCase: () => void
 </script>
 
-<section class="settings-page">
+<section class="settings-page viewer-settings">
   <div class="settings-page-heading">
     <h2>Viewer</h2>
     <p>Defaults for reading and navigating diffs.</p>

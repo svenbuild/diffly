@@ -192,12 +192,12 @@ export function createThemeCssVariables(
   const diffInsertBg = mixHex(
     theme.surface,
     theme.semanticColors.diffAdded,
-    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
+    isDark ? scaleByContrast(contrastScale, 0.08, 0.14) : scaleByContrast(contrastScale, 0.07, 0.12)
   )
   const diffDeleteBg = mixHex(
     theme.surface,
     theme.semanticColors.diffRemoved,
-    isDark ? scaleByContrast(contrastScale, 0.1, 0.22) : scaleByContrast(contrastScale, 0.08, 0.18)
+    isDark ? scaleByContrast(contrastScale, 0.08, 0.14) : scaleByContrast(contrastScale, 0.07, 0.12)
   )
   const successBg = mixHex(
     theme.surface,
@@ -476,7 +476,7 @@ export function createThemeCssVariables(
     ),
     '--collapsed-row-bg': collapsedBg,
     '--collapsed-row-line': rgbaFromHex(theme.ink, isDark ? 0.26 : 0.22),
-    '--collapsed-chip-bg': elevatedBg,
+    '--collapsed-chip-bg': rgbaFromHex(theme.ink, isDark ? 0.045 : 0.035),
     '--collapsed-chip-border': border,
     '--collapsed-chip-text': collapsedChipText,
     '--scroll-marker-insert': theme.semanticColors.diffAdded,
@@ -506,8 +506,8 @@ export function createThemeCssVariables(
       theme.ink,
       syntaxMutedContrastTarget
     ),
-    '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.34 : 0.24),
-    '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.34 : 0.22),
+    '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.28 : 0.22),
+    '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.28 : 0.22),
     '--line-divider': rgbaFromHex(
       theme.ink,
       isDark ? scaleByContrast(contrastScale, 0.06, 0.14) : scaleByContrast(contrastScale, 0.08, 0.16)

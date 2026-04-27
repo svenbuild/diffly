@@ -205,6 +205,8 @@
 
         {#if pane.currentListing.directories.length === 0 && pane.currentListing.files.length === 0}
           <div class="empty-state">Folder is empty.</div>
+        {:else}
+          <div aria-hidden="true" class="target-pane-fill">Target preview area</div>
         {/if}
       {:else}
         <div class="empty-state">No folder open.</div>

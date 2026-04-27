@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import EntryIcon from './EntryIcon.svelte'
+  import { ROOT_GROUP } from './path-utils'
 
   import type { DirectoryEntryResult, EntryStatus } from './types'
   import type { FolderSection } from './ui-types'
@@ -53,9 +54,41 @@
     : `${directoryEntries.length} changed files`
 
   function formatGroupCount(group: FolderSection) {
-    return group.entries.length === group.totalCount
-      ? String(group.totalCount)
-      : `${group.entries.length}/${group.totalCount}`
+    const visibleGroupTotal = getVisibleGroupTotal(group)
+
+    if (!hasActiveFilters || visibleGroupTotal === group.totalCount) {
+      return String(group.totalCount)
+    }
+
+    return `${visibleGroupTotal} shown`
+  }
+
+  function formatChangedFilesLabel(count: number) {
+    return `${count} changed ${count === 1 ? 'file' : 'files'}`
+  }
+
+  function getGroupCountTitle(group: FolderSection) {
+    const visibleGroupTotal = getVisibleGroupTotal(group)
+
+    if (!hasActiveFilters || visibleGroupTotal === group.totalCount) {
+      return formatChangedFilesLabel(group.totalCount)
+    }
+
+    return `${visibleGroupTotal} visible of ${formatChangedFilesLabel(group.totalCount)}`
+  }
+
+  function getVisibleGroupTotal(group: FolderSection) {
+    return filteredFolderSections.reduce((total, section) => {
+      if (
+        group.key === ROOT_GROUP ||
+        section.key === group.key ||
+        section.key.startsWith(`${group.key}/`)
+      ) {
+        return total + section.entries.length
+      }
+
+      return total
+    }, 0)
   }
 
   function displayStatusLabel(status: EntryStatus) {
@@ -163,9 +196,11 @@
       {#each filteredFolderSections as group}
         <section class="file-group">
           <button
+            aria-label={`${group.label}, ${getGroupCountTitle(group)}`}
             aria-expanded={!collapsedGroups[group.key]}
             class="group-toggle tree-row"
             style={`--tree-depth: ${group.depth}`}
+            title={getGroupCountTitle(group)}
             type="button"
             on:click={() => toggleGroup(group.key)}
           >

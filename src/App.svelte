@@ -2675,8 +2675,8 @@
       <section class="setup-launcher" aria-label="Compare setup">
         <div class="setup-launcher-header">
           <div>
-            <h2>Choose compare targets</h2>
-            <p>Select two {mode === 'directory' ? 'folders' : 'files'} to compare.</p>
+            <h2>{mode === 'directory' ? 'Folder compare' : 'File compare'}</h2>
+            <p>{pickerCanCompare ? 'Targets ready.' : setupHintMessage}</p>
           </div>
           <div
             class="segmented-control toolbar-segmented-control setup-segmented-control"
@@ -3027,6 +3027,12 @@
         {/if}
       {/snippet}
 
+      {#snippet middle()}
+      <div class="settings-bar-context">
+        <strong>Settings</strong>
+      </div>
+      {/snippet}
+
       {#snippet actions()}
       <button
         aria-label="Close settings"
@@ -3044,6 +3050,7 @@
             stroke-width="1.6"
           />
         </svg>
+        <span>Close</span>
       </button>
       {/snippet}
     </AppTopBar>
