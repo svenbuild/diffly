@@ -2177,7 +2177,6 @@ h2 {
   color: var(--strong-text);
   background: var(--selection-bg);
   box-shadow:
-    inset 3px 0 0 var(--active-border),
     inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent),
     0 1px 3px color-mix(in srgb, var(--active-border) 8%, transparent);
 }
@@ -2185,7 +2184,7 @@ h2 {
 .entry-row:hover:not(.selected),
 .file-row:hover:not(.selected) {
   background: color-mix(in srgb, var(--accent-soft) 22%, var(--surface-alt));
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: none;
 }
 
 .entry-row.selected .entry-type,
@@ -2676,9 +2675,7 @@ button.filter-chip.tooLarge:focus-visible {
 
 .file-row.selected {
   background: color-mix(in srgb, var(--selection-bg) 82%, var(--surface-alt));
-  box-shadow:
-    inset 2px 0 0 var(--accent),
-    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 20%, transparent);
 }
 
 .file-status-marker {

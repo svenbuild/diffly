@@ -96,6 +96,7 @@ interface AnchorPair {
 let launchContext: LaunchContext | null | undefined
 let directoryCache: DirectoryCacheSession | null = null
 const directoryJobs = new Map<string, DirectoryJob>()
+let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
 
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
@@ -301,7 +302,7 @@ async function checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResul
 
   try {
     const autoUpdater = await getAutoUpdater()
-    autoUpdater.allowPrerelease = channel === 'prerelease'
+    configureAutoUpdater(autoUpdater, channel)
     const result = await autoUpdater.checkForUpdates()
     const info = result?.updateInfo
     if (!info) {
@@ -337,7 +338,7 @@ async function downloadUpdate(channel: UpdateChannel): Promise<UpdateActionResul
 
   try {
     const autoUpdater = await getAutoUpdater()
-    autoUpdater.allowPrerelease = channel === 'prerelease'
+    configureAutoUpdater(autoUpdater, channel)
     await autoUpdater.downloadUpdate()
     return { kind: 'downloaded', message: null }
   } catch (error) {
@@ -350,14 +351,35 @@ async function installUpdate(_channel: UpdateChannel): Promise<UpdateActionResul
     return unavailableAction('Updates are not available in development builds.')
   }
 
-  const autoUpdater = await getAutoUpdater()
-  autoUpdater.quitAndInstall(false, true)
-  return { kind: 'installed', message: null }
+  try {
+    const autoUpdater = await getAutoUpdater()
+    autoUpdater.quitAndInstall(false, true)
+    return { kind: 'installed', message: null }
+  } catch (error) {
+    return { kind: 'error', message: errorMessage(error) }
+  }
 }
 
 async function getAutoUpdater() {
+  if (!autoUpdaterInstance) {
+    autoUpdaterInstance = await loadAutoUpdater()
+    autoUpdaterInstance.autoDownload = false
+    autoUpdaterInstance.autoInstallOnAppQuit = false
+  }
+
+  return autoUpdaterInstance
+}
+
+async function loadAutoUpdater() {
   const updaterModule = await import('electron-updater')
   return updaterModule.default?.autoUpdater ?? updaterModule.autoUpdater
+}
+
+function configureAutoUpdater(
+  autoUpdater: Awaited<ReturnType<typeof loadAutoUpdater>>,
+  channel: UpdateChannel,
+) {
+  autoUpdater.allowPrerelease = channel === 'prerelease'
 }
 
 function unavailableUpdate(message: string): UpdateCheckResult {
