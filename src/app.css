@@ -32,6 +32,9 @@
   --del-text: #ffa198;
   --control-height-sm: 28px;
   --control-height-md: 32px;
+  --t-panel-distance: 10px;
+  --t-panel-duration: 180ms;
+  --t-panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --topbar-height: 52px;
   --left-rail-width: 280px;
   --page-padding-x: 32px;
@@ -4720,6 +4723,14 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .settings-view .app-bar {
+    animation: t-settings-bar-reveal var(--t-panel-duration) var(--t-panel-ease) both;
+  }
+
+  .settings-screen-body {
+    animation: t-settings-panel-reveal var(--t-panel-duration) var(--t-panel-ease) both;
+  }
+
   body,
   button,
   input,
@@ -4772,6 +4783,30 @@ button.filter-chip.tooLarge:focus-visible {
 
   .refresh-spinner.visible {
     animation: spin 700ms linear infinite;
+  }
+}
+
+@keyframes t-settings-bar-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--t-panel-distance) * -0.5));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes t-settings-panel-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--t-panel-distance));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
