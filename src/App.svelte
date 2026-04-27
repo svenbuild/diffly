@@ -139,6 +139,7 @@
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const IMMEDIATE_DETAIL_PRIME_COUNT = 2
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
+  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 252
   const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
   const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
   const PANE_WHEEL_SMOOTHING = 0.18
@@ -225,7 +226,7 @@
   let initialSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
-  let compareSidebarWidth = 252
+  let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareSidebarResizeActive = false
   let compareDirtyReason: CompareDirtyReason | null = null
   let compareNeedsRefresh = false
@@ -359,6 +360,11 @@
     }
 
     compareSidebarWidth = clampCompareSidebarWidth(clientX)
+  }
+
+  function resetCompareSidebarWidth() {
+    compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
+    stopCompareSidebarResize()
   }
 
   function startCompareSidebarResize(event: PointerEvent) {
@@ -2911,6 +2917,7 @@
           aria-label="Resize file list panel"
           class="compare-sidebar-resizer"
           type="button"
+          on:dblclick={resetCompareSidebarWidth}
           on:pointerdown={startCompareSidebarResize}
         ></button>
       {/if}
