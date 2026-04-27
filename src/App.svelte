@@ -621,6 +621,7 @@
   }
 
   async function initializeAppStartup() {
+    await waitForInitialPaint()
     await initializePickers()
     await initializeUpdateVersion()
     startStartupUpdateCheck()
@@ -632,7 +633,22 @@
     }
 
     startupUpdateCheckStarted = true
-    void runUpdateCheck()
+
+    window.setTimeout(() => {
+      void runUpdateCheck()
+    }, 3000)
+  }
+
+  function waitForInitialPaint() {
+    if (typeof window === 'undefined') {
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(resolve, 0)
+      })
+    })
   }
 
   async function initializeUpdateVersion() {
