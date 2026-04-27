@@ -13,6 +13,7 @@ dist-debug
 dist-ssr
 out
 release
+src-tauri/
 *.local
 app-icon-clean.png
 themes.txt
