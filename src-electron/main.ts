@@ -20,6 +20,14 @@ const DEFAULT_WINDOW_STATE: WindowState = {
 
 let mainWindow: Electron.BrowserWindow | null = null
 
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isVisible()) {
+    return
+  }
+
+  mainWindow.show()
+}
+
 function createWindow() {
   const savedState = loadWindowState()
   mainWindow = new BrowserWindow({
@@ -31,6 +39,7 @@ function createWindow() {
     minWidth: 1120,
     minHeight: 680,
     show: false,
+    backgroundColor: '#171717',
     resizable: true,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.cjs'),
@@ -44,9 +53,8 @@ function createWindow() {
     mainWindow.maximize()
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
-  })
+  mainWindow.webContents.once('dom-ready', showMainWindow)
+  mainWindow.once('ready-to-show', showMainWindow)
 
   mainWindow.on('close', () => {
     if (mainWindow) {

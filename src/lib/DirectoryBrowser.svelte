@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import EntryIcon from './EntryIcon.svelte'
 
   import type { DirectoryEntryResult, EntryStatus } from './types'
@@ -21,10 +22,10 @@
   export let toggleGroup: (groupKey: string) => void
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
   export let getFileName: (path: string) => string
-  export let formatSize: (size: number | null) => string
 
   let fileFilter = ''
   let hideCollapsedFoldersWithoutMatches = true
+  let filterInput: HTMLInputElement | null = null
 
   $: normalizedFileFilter = fileFilter.trim().toLowerCase()
   $: filteredFolderSections = visibleFolderSections
@@ -47,53 +48,72 @@
   )
   $: hasVisibleEntries = filteredFolderSections.some((group) => group.entries.length > 0)
   $: hasActiveFilters = activeStatusFilters.length > 0 || normalizedFileFilter !== ''
+  $: changeSummary = hasActiveFilters
+    ? `${visibleEntryCount} of ${directoryEntries.length} changed files`
+    : `${directoryEntries.length} changed files`
 
   function formatGroupCount(group: FolderSection) {
     return group.entries.length === group.totalCount
       ? String(group.totalCount)
       : `${group.entries.length}/${group.totalCount}`
   }
+
+  function displayStatusLabel(status: EntryStatus) {
+    if (status === 'rightOnly') {
+      return 'Added'
+    }
+
+    if (status === 'leftOnly') {
+      return 'Deleted'
+    }
+
+    return statusLabel[status]
+  }
+
+  async function clearStatusFilters() {
+    const filtersToClear = [...activeStatusFilters]
+
+    for (const status of filtersToClear) {
+      await toggleStatusFilter(status)
+    }
+  }
+
+  onMount(() => {
+    const handleKeydown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        filterInput?.focus()
+        filterInput?.select()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeydown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+    }
+  })
 </script>
 
 <aside class:refreshing={loading} class="file-browser">
   <header class="browser-header">
-    <div class="browser-title">
-      <h2>Files</h2>
-      <span>
-        {#if hasActiveFilters}
-          {visibleEntryCount} of {directoryEntries.length} changed files
-        {:else}
-          {directoryEntries.length} changed files
-        {/if}
-      </span>
+    <div class="browser-identity">
+      <h2>Diffly</h2>
+      <span>Compare</span>
     </div>
-
-    {#if directoryStatusSummary.length > 0}
-      <div class="status-summary">
-        {#each directoryStatusSummary as item}
-          <button
-            aria-pressed={isStatusFilterActive(item.status)}
-            class:active-filter={isStatusFilterActive(item.status)}
-            class={`status-chip filter-chip ${item.status}`}
-            type="button"
-            on:click={() => toggleStatusFilter(item.status)}
-          >
-            {item.label} {item.count}
-          </button>
-        {/each}
-      </div>
-    {/if}
 
     <div class="browser-tools">
       <label class="browser-filter-field">
         <span class="sr-only">Filter files</span>
         <input
+          bind:this={filterInput}
           bind:value={fileFilter}
           autocomplete="off"
           placeholder="Filter files"
           spellcheck="false"
           type="text"
         />
+        <span aria-hidden="true" class="browser-filter-shortcut">Ctrl+K</span>
       </label>
 
       <label class="browser-toggle">
@@ -101,6 +121,38 @@
         <span>Hide empty folders</span>
       </label>
     </div>
+
+    <section class="changes-summary" aria-label="Changed files">
+      <div class="changes-heading">
+        <span>CHANGES</span>
+        <strong>{changeSummary}</strong>
+      </div>
+
+      {#if directoryStatusSummary.length > 0}
+        <div class="status-summary">
+          <button
+            aria-pressed={activeStatusFilters.length === 0}
+            class:active-filter={activeStatusFilters.length === 0}
+            class="status-chip filter-chip all"
+            type="button"
+            on:click={clearStatusFilters}
+          >
+            All {directoryEntries.length}
+          </button>
+          {#each directoryStatusSummary as item}
+            <button
+              aria-pressed={isStatusFilterActive(item.status)}
+              class:active-filter={isStatusFilterActive(item.status)}
+              class={`status-chip filter-chip ${item.status}`}
+              type="button"
+              on:click={() => toggleStatusFilter(item.status)}
+            >
+              {displayStatusLabel(item.status)} {item.count}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </section>
   </header>
 
   {#if filteredFolderSections.length === 0 || !hasVisibleEntries}
@@ -149,10 +201,6 @@
                     <span class={`file-status-marker ${entry.status}`}></span>
                     <EntryIcon kind="file" />
                     <span class="entry-text">{getFileName(entry.relativePath)}</span>
-                    <span class="file-row-bottom">
-                      <span class="file-status-label">{statusLabel[entry.status]}</span>
-                      <span>{formatSize(entry.leftSize)} / {formatSize(entry.rightSize)}</span>
-                    </span>
                   </span>
                 </button>
               {/each}
