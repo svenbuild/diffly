@@ -18,6 +18,7 @@ import type {
   ContentKind,
   DiffCell,
   DiffChange,
+  DiffSegment,
   DirectoryEntryResult,
   DirectoryListing,
   ExplorerEntry,
