@@ -2670,28 +2670,51 @@
         <div class="setup-launcher-header">
           <div>
             <h2>{mode === 'directory' ? 'Folder compare' : 'File compare'}</h2>
-            <p>{pickerCanCompare ? 'Targets ready.' : setupHintMessage}</p>
+            <p>
+              {#if sameSelectionWarning}
+                <span class="setup-warning">{sameSelectionWarning}</span>
+              {:else}
+                {setupHintMessage || 'Targets ready.'}
+              {/if}
+            </p>
           </div>
-          <div
-            class="segmented-control toolbar-segmented-control setup-segmented-control"
-            aria-label="Compare mode"
-            role="group"
-          >
-            <button
-              aria-pressed={mode === 'file'}
-              class:active={mode === 'file'}
-              type="button"
-              on:click={() => setMode('file')}
+
+          <div class="setup-launcher-actions">
+            <div
+              class="segmented-control toolbar-segmented-control setup-segmented-control"
+              aria-label="Compare mode"
+              role="group"
             >
-              Files
-            </button>
+              <button
+                aria-pressed={mode === 'file'}
+                class:active={mode === 'file'}
+                type="button"
+                on:click={() => setMode('file')}
+              >
+                Files
+              </button>
+              <button
+                aria-pressed={mode === 'directory'}
+                class:active={mode === 'directory'}
+                type="button"
+                on:click={() => setMode('directory')}
+              >
+                Folders
+              </button>
+            </div>
+
             <button
-              aria-pressed={mode === 'directory'}
-              class:active={mode === 'directory'}
+              class="primary setup-compare-button"
+              disabled={!pickerCanCompare || loading}
+              title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
               type="button"
-              on:click={() => setMode('directory')}
+              on:click={runCompare}
             >
-              Folders
+              {#if loading}
+                Comparing...
+              {:else}
+                Compare
+              {/if}
             </button>
           </div>
         </div>
@@ -2724,26 +2747,6 @@
           {/each}
         </section>
 
-        <div class="setup-launcher-footer">
-          {#if sameSelectionWarning}
-            <span class="setup-warning">{sameSelectionWarning}</span>
-          {:else}
-            <span>{setupHintMessage || 'Targets ready.'}</span>
-          {/if}
-          <button
-            class="primary"
-            disabled={!pickerCanCompare || loading}
-            title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
-            type="button"
-            on:click={runCompare}
-          >
-            {#if loading}
-              Comparing...
-            {:else}
-              Compare
-            {/if}
-          </button>
-        </div>
       </section>
     </section>
   </main>
