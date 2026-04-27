@@ -15,6 +15,7 @@
     installUpdate,
     listDirectory,
     listRoots,
+    loadBinaryPreview,
     loadSessionState,
     openCompareItem,
     pollDirectoryCompare,
@@ -1903,7 +1904,7 @@
         return
       }
 
-      const result = await getOrCreateDetailDiffPromise(entry.relativePath, revision)
+      const result = await loadEntryDiff(entry, revision)
 
       if (revision === compareRevision && requestId === activeDetailRequestId) {
         activeDiff = result
@@ -1922,6 +1923,27 @@
       if (requestId === activeDetailRequestId) {
         detailLoading = false
       }
+    }
+  }
+
+  async function loadEntryDiff(entry: DirectoryEntryResult, revision: number) {
+    const result = await getOrCreateDetailDiffPromise(entry.relativePath, revision)
+
+    if (
+      result.contentKind !== 'binary' ||
+      result.binary?.previewLoaded ||
+      !entry.leftPath ||
+      !entry.rightPath
+    ) {
+      return result
+    }
+
+    return {
+      ...result,
+      binary: await loadBinaryPreview(entry.leftPath, entry.rightPath, {
+        ignoreWhitespace: false,
+        ignoreCase: false,
+      }),
     }
   }
 
