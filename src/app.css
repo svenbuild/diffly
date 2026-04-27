@@ -388,10 +388,20 @@ button:disabled {
 input:not([type='checkbox']),
 select {
   width: 100%;
-  padding: 4px 6px;
+  min-height: var(--control-height-md);
+  padding: 0 28px 0 10px;
   background: var(--surface);
   color: var(--text);
   transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+select {
+  appearance: none;
+  border-radius: var(--radius-control);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 14px) 50% / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 9px) 50% / 5px 5px no-repeat,
+    color-mix(in srgb, var(--surface) 88%, var(--panel-bg));
 }
 
 input:not([type='checkbox']):hover:not(:disabled),
@@ -1109,7 +1119,7 @@ h2 {
   min-height: 0;
   height: 100%;
   overflow: auto;
-  padding: 20px 28px 24px;
+  padding: 16px 28px 22px;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
@@ -1120,7 +1130,7 @@ h2 {
   margin: 0;
   display: grid;
   align-content: start;
-  gap: 20px;
+  gap: 14px;
   min-height: 0;
   padding-right: 0;
 }
@@ -1205,7 +1215,7 @@ h2 {
 }
 
 .settings-page {
-  gap: 24px;
+  gap: 14px;
 }
 
 .viewer-settings,
@@ -1223,13 +1233,13 @@ h2 {
 }
 
 .settings-page-heading {
-  gap: 6px;
-  padding-top: 4px;
+  gap: 4px;
+  padding-top: 0;
 }
 
 .settings-group {
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
   box-shadow: none;
@@ -1266,7 +1276,7 @@ h2 {
 
 .settings-group-header {
   gap: 5px;
-  padding: 14px 16px 10px;
+  padding: 12px 14px 9px;
 }
 
 .settings-group-header-with-actions {
@@ -1310,9 +1320,9 @@ h2 {
 .settings-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  min-height: 50px;
-  padding: 10px 14px;
+  gap: 14px;
+  min-height: 44px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -1339,8 +1349,14 @@ h2 {
 }
 
 .settings-row-copy {
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+}
+
+.settings-row-copy p,
+.settings-group-header p {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .settings-row-disabled {
@@ -1363,6 +1379,7 @@ h2 {
 .settings-control select {
   min-width: 112px;
   max-width: 148px;
+  height: 30px;
 }
 
 .settings-theme-grid {
@@ -1795,9 +1812,9 @@ h2 {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border-color: var(--border);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--surface) 86%, var(--panel-bg));
+  border-color: var(--border-subtle);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--panel-bg));
   color: var(--text);
   text-align: left;
 }
@@ -1826,13 +1843,13 @@ h2 {
   top: calc(100% + 4px);
   right: 0;
   width: min(220px, 72vw);
-  max-height: 300px;
+  max-height: 248px;
   overflow: auto;
   padding: 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--panel-bg);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--app-bar-shadow-strong) 34%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
 }
 
 .settings-theme-select-menu button {
@@ -1850,12 +1867,12 @@ h2 {
 .settings-theme-select-menu button:hover,
 .settings-theme-select-menu button:focus-visible {
   border-color: transparent;
-  background: color-mix(in srgb, var(--accent-soft) 48%, transparent);
+  background: var(--surface-alt);
 }
 
 .settings-theme-select-menu button.active {
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-alt));
   color: var(--active-text);
 }
 
@@ -2019,19 +2036,19 @@ h2 {
 }
 
 .settings-update-summary {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   margin: 0;
-  padding: 0 16px 14px;
+  padding: 0 14px 12px;
+  column-gap: 22px;
 }
 
 .settings-summary-item {
   display: grid;
-  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
-  grid-column: 1 / -1;
+  grid-template-columns: minmax(108px, 0.42fr) minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
-  min-height: 42px;
+  gap: 12px;
+  min-height: 38px;
   padding: 8px 0;
   border-top: 1px solid var(--border-subtle);
   background: transparent;
@@ -2064,7 +2081,8 @@ h2 {
 
 .settings-update-status {
   gap: 6px;
-  padding: 14px 20px 16px;
+  grid-column: 1 / -1;
+  padding: 12px 14px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
