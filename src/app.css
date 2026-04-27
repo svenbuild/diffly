@@ -2346,66 +2346,136 @@ h2 {
   gap: 0;
   height: 100%;
   max-height: 100%;
-  background: transparent;
+  background: color-mix(in srgb, var(--pane-bg) 92%, var(--surface));
   overflow: hidden;
   overscroll-behavior: contain;
   border: 0;
   border-radius: 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
 }
 
 .browser-header {
   display: grid;
-  gap: 5px;
+  gap: 12px;
   min-height: 0;
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 6px 10px 5px;
-  border-bottom: 1px solid var(--border);
-  background: var(--pane-bg);
+  padding: 13px 12px 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
+  background: color-mix(in srgb, var(--pane-bg) 94%, var(--surface));
+}
+
+.browser-identity {
+  display: grid;
+  gap: 1px;
+}
+
+.browser-identity h2 {
+  color: var(--title);
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.browser-identity span {
+  color: var(--subtitle);
+  font-size: 0.74rem;
+  line-height: 1.2;
+}
+
+.changes-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.changes-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.changes-heading span {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.changes-heading strong {
+  color: var(--secondary-text);
+  font-size: 0.78rem;
+  line-height: 1.25;
 }
 
 .status-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: 4px;
 }
 
 .browser-tools {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .browser-filter-field {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.browser-filter-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent-strong) 58%, var(--border));
+  background: var(--surface);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .browser-filter-field input {
-  min-height: 22px;
-  padding: 2px 6px;
-  font-size: 0.76rem;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.78rem;
+}
+
+.browser-filter-field input:hover:not(:disabled),
+.browser-filter-field input:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.browser-filter-shortcut {
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-size: 0.66rem;
+  line-height: 1;
 }
 
 .browser-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 84%, transparent);
   font-size: 0.7rem;
 }
-
 .status-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--neutral-bg);
-  color: var(--text);
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-alt) 74%, transparent);
+  color: var(--secondary-text);
   font-size: 0.68rem;
-  line-height: 1.5;
+  line-height: 1;
   transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -2424,31 +2494,30 @@ button.filter-chip:active:not(:disabled) {
 }
 
 .status-chip.modified {
-  background: var(--status-modified-bg);
-  border-color: var(--status-modified-border);
+  background: color-mix(in srgb, var(--status-modified-bg) 58%, transparent);
+  border-color: color-mix(in srgb, var(--status-modified-border) 72%, var(--border));
   color: var(--status-modified-text);
 }
 
-.status-chip.leftOnly,
 .status-chip.rightOnly {
-  background: var(--success-bg);
-  border-color: var(--status-success-border);
+  background: color-mix(in srgb, var(--success-bg) 52%, transparent);
+  border-color: color-mix(in srgb, var(--status-success-border) 72%, var(--border));
   color: var(--status-success-text);
 }
 
+.status-chip.leftOnly,
 .status-chip.binary,
 .status-chip.tooLarge {
-  background: var(--danger-bg);
-  border-color: var(--status-danger-border);
+  background: color-mix(in srgb, var(--danger-bg) 52%, transparent);
+  border-color: color-mix(in srgb, var(--status-danger-border) 72%, var(--border));
   color: var(--status-danger-text);
 }
 
 .filter-chip.active-filter {
-  border-color: var(--active-border);
+  border-color: color-mix(in srgb, var(--active-border) 72%, var(--border));
+  background: color-mix(in srgb, var(--selection-bg) 88%, var(--surface-alt));
   font-weight: 600;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 48%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--active-border) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--active-border) 28%, transparent);
 }
 
 button.filter-chip.modified:hover:not(:disabled),
@@ -2456,13 +2525,13 @@ button.filter-chip.modified:focus-visible {
   background: var(--status-modified-bg);
 }
 
-button.filter-chip.leftOnly:hover:not(:disabled),
-button.filter-chip.leftOnly:focus-visible,
 button.filter-chip.rightOnly:hover:not(:disabled),
 button.filter-chip.rightOnly:focus-visible {
   background: var(--success-bg);
 }
 
+button.filter-chip.leftOnly:hover:not(:disabled),
+button.filter-chip.leftOnly:focus-visible,
 button.filter-chip.binary:hover:not(:disabled),
 button.filter-chip.binary:focus-visible,
 button.filter-chip.tooLarge:hover:not(:disabled),
@@ -2473,12 +2542,13 @@ button.filter-chip.tooLarge:focus-visible {
 .browser-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
   border: 0;
   border-radius: 0;
   background: transparent;
   overflow: auto;
   overscroll-behavior: contain;
+  padding: 8px 8px 10px;
 }
 
 .file-group {
@@ -2490,14 +2560,14 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .file-group + .file-group {
-  border-top: 1px solid var(--border);
+  border-top: 0;
 }
 
 .group-toggle,
 .file-row {
   width: 100%;
   border: 0;
-  border-radius: 0;
+  border-radius: 8px;
   text-align: left;
 }
 
@@ -2506,13 +2576,14 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: auto 14px minmax(0, 1fr) auto;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  min-height: 28px;
+  padding: 4px 7px;
   background: transparent;
   transition: background-color 120ms ease;
 }
 
 .group-toggle:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-soft) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 42%, transparent);
 }
 
 .tree-indent {
@@ -2547,11 +2618,15 @@ button.filter-chip.tooLarge:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--secondary-text);
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .group-count {
   justify-self: end;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-size: 0.68rem;
 }
 
 .chevron {
@@ -2577,7 +2652,10 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .file-list {
-  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 2px;
+  padding: 1px 0 4px;
+  border-top: 0;
 }
 
 .file-row {
@@ -2585,28 +2663,27 @@ button.filter-chip.tooLarge:focus-visible {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 4px;
-  padding: 4px 10px 4px 10px;
+  min-height: 38px;
+  padding: 5px 8px 5px 7px;
   background: transparent;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
   position: relative;
   transition: background-color 100ms ease, box-shadow 100ms ease;
 }
 
 .file-row:hover:not(.selected) {
-  background: color-mix(in srgb, var(--accent-soft) 12%, transparent);
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 44%, transparent);
 }
-
 .file-row-main {
-  grid-template-columns: 6px 14px minmax(0, 1fr);
+  grid-template-columns: 7px 14px minmax(0, 1fr);
   row-gap: 1px;
 }
 
 .file-row.selected {
-  background: var(--selection-bg);
+  background: color-mix(in srgb, var(--selection-bg) 82%, var(--surface-alt));
   box-shadow:
-    inset 3px 0 0 var(--active-border),
-    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 24%, transparent);
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--active-border) 20%, transparent);
 }
 
 .file-row-bottom {
@@ -2621,15 +2698,16 @@ button.filter-chip.tooLarge:focus-visible {
 }
 
 .file-browser .file-row-bottom {
-  font-size: 0.68rem;
+  font-size: 0.67rem;
 }
 
 .file-status-marker {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   flex: 0 0 auto;
   background: var(--muted);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .file-status-marker.modified {
