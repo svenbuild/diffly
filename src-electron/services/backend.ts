@@ -38,7 +38,7 @@ import type {
 } from '../../src/lib/types'
 
 const MAX_TEXT_BYTES = 1024 * 1024
-const MAX_BINARY_RENDER_BYTES = 1024
+const MAX_BINARY_RENDER_BYTES = 1024 * 1024
 const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
 const HEX_BYTES_PER_ROW = 16

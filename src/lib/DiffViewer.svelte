@@ -449,16 +449,51 @@
     return null
   }
 
-  const BINARY_PREVIEW_ROW_LIMIT = 64
+  const BINARY_PREVIEW_OVERSCAN_ROWS = 16
+  let binaryHexScroll: HTMLDivElement | null = null
   let binaryTotalRows = 0
-  let binaryVisibleRows = 0
+  let binaryVisibleRows: number[] = []
+  let binaryTopPadding = 0
+  let binaryBottomPadding = 0
+  let previousBinaryDiff: BinaryDiffPayload | null = null
 
   $: if (binaryDiff?.previewLoaded) {
+    if (binaryDiff !== previousBinaryDiff) {
+      previousBinaryDiff = binaryDiff
+      if (binaryHexScroll) {
+        binaryHexScroll.scrollTop = 0
+      }
+    }
     binaryTotalRows = getBinaryTotalRows(binaryDiff)
-    binaryVisibleRows = Math.min(binaryTotalRows, BINARY_PREVIEW_ROW_LIMIT)
+    updateBinaryVisibleRows()
   } else {
+    previousBinaryDiff = binaryDiff
     binaryTotalRows = 0
-    binaryVisibleRows = 0
+    binaryVisibleRows = []
+    binaryTopPadding = 0
+    binaryBottomPadding = 0
+  }
+
+  function updateBinaryVisibleRows() {
+    if (!binaryDiff?.previewLoaded) {
+      return
+    }
+
+    const viewportHeight = binaryHexScroll?.clientHeight || 720
+    const scrollTop = binaryHexScroll?.scrollTop || 0
+    const visibleCount = Math.max(1, Math.ceil(viewportHeight / BINARY_ROW_HEIGHT))
+    const start = Math.max(
+      0,
+      Math.floor(scrollTop / BINARY_ROW_HEIGHT) - BINARY_PREVIEW_OVERSCAN_ROWS,
+    )
+    const end = Math.min(binaryTotalRows, start + visibleCount + BINARY_PREVIEW_OVERSCAN_ROWS * 2)
+
+    binaryVisibleRows = Array.from(
+      { length: Math.max(0, end - start) },
+      (_, index) => start + index,
+    )
+    binaryTopPadding = start * BINARY_ROW_HEIGHT
+    binaryBottomPadding = Math.max(0, (binaryTotalRows - end) * BINARY_ROW_HEIGHT)
   }
 
   function getBinarySummaryChips(
@@ -1396,7 +1431,7 @@
         </div>
 
         <div class="binary-hex-shell">
-          <div class="binary-hex-scroll">
+          <div class="binary-hex-scroll" bind:this={binaryHexScroll} on:scroll={updateBinaryVisibleRows}>
             {#if binaryDiff}
               {#if !binaryDiff.previewLoaded}
                 <div class="empty-inline-state binary-empty-state">
@@ -1419,7 +1454,10 @@
                   </div>
 
                   <div class="binary-hex-rows">
-                    {#each Array.from({ length: binaryVisibleRows }, (_, index) => index) as rowIndex (rowIndex)}
+                    {#if binaryTopPadding > 0}
+                      <div style:height={`${binaryTopPadding}px`}></div>
+                    {/if}
+                    {#each binaryVisibleRows as rowIndex (rowIndex)}
                       {@const view = binaryDiff ? getBinaryRowView(binaryDiff, rowIndex) : null}
                       {#if view}
                         <div
@@ -1443,9 +1481,12 @@
                         </div>
                       {/if}
                     {/each}
-                    {#if binaryTotalRows > binaryVisibleRows}
+                    {#if binaryBottomPadding > 0}
+                      <div style:height={`${binaryBottomPadding}px`}></div>
+                    {/if}
+                    {#if binaryDiff.truncated}
                       <div class="binary-hex-row binary-hex-truncated">
-                        Showing first {binaryVisibleRows} rows.
+                        Preview loaded first {formatBinarySizeValue(Math.max(binaryDiff.leftBytes.length, binaryDiff.rightBytes.length))}.
                       </div>
                     {/if}
                   </div>
