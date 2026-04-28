@@ -30,6 +30,7 @@ function showMainWindow() {
 
 function createWindow() {
   const savedState = loadWindowState()
+  const icon = getWindowIconPath()
   Menu.setApplicationMenu(null)
 
   mainWindow = new BrowserWindow({
@@ -44,6 +45,7 @@ function createWindow() {
     backgroundColor: '#171717',
     resizable: true,
     autoHideMenuBar: true,
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -77,6 +79,14 @@ function createWindow() {
     const rendererPath = join(__dirname, '../renderer/index.html')
     void mainWindow.loadFile(rendererPath)
   }
+}
+
+function getWindowIconPath() {
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, 'icon.ico')
+    : join(process.cwd(), 'build', 'icons', 'icon.ico')
+
+  return existsSync(iconPath) ? iconPath : undefined
 }
 
 function windowStatePath() {
