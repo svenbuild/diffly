@@ -7,14 +7,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-debug
 dist-ssr
 out
 release
 src-tauri/
+
+# Local environment
+.env
+.env.*
+!.env.example
 *.local
+
+# Tool caches and reports
+.vite/
+.svelte-kit/
+coverage/
+*.tsbuildinfo
+
+# Local generated assets
+windows-app-icons/
 app-icon-clean.png
 themes.txt
 *.tmp
