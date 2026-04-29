@@ -176,6 +176,7 @@
 
   export let initialSession: PersistedSession | null = null
   export let startupFolderPath: string | null = null
+  let pendingStartupOverridePath: string | null = null
 
   let screen: Screen = 'setup'
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
@@ -1297,11 +1298,19 @@
     } finally {
       pickerLoading = false
       persistenceReady = true
+      if (pendingStartupOverridePath !== null) {
+        const queuedOverridePath = pendingStartupOverridePath
+        pendingStartupOverridePath = null
+        void applyStartupOverride(queuedOverridePath)
+      }
     }
   }
 
   async function applyStartupOverride(overridePath: string | null) {
     if (pickerLoading || leftExplorer.roots.length === 0 || rightExplorer.roots.length === 0) {
+      if (overridePath !== null) {
+        pendingStartupOverridePath = overridePath
+      }
       return
     }
 
