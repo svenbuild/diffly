@@ -226,7 +226,10 @@ function rectanglesOverlap(
   )
 }
 
-if (!app.requestSingleInstanceLock()) {
+const initialLaunchContext = getLaunchContextFromArgs(process.argv.slice(1))
+const shouldUseSingleInstanceLock = initialLaunchContext === null
+
+if (shouldUseSingleInstanceLock && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, commandLine) => {
@@ -250,7 +253,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     registerIpcHandlers()
-    createWindow(getLaunchContextFromArgs(process.argv.slice(1)))
+    createWindow(initialLaunchContext)
     for (const launchContext of pendingLaunchContexts.splice(0)) {
       createWindow(launchContext)
     }
