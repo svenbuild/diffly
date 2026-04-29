@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain } from 'electron'
+import type { BrowserWindow } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import {
@@ -101,6 +102,7 @@ interface AnchorPair {
 let launchContext: LaunchContext | null | undefined
 let directoryCache: DirectoryCacheSession | null = null
 const directoryJobs = new Map<string, DirectoryJob>()
+const windowLaunchContexts = new Map<number, LaunchContext | null>()
 let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
 
 export function registerIpcHandlers() {
@@ -115,7 +117,7 @@ export function registerIpcHandlers() {
     pathInfo(payload.path),
   )
   ipcMain.handle('diffly:loadSessionState', () => loadSessionState())
-  ipcMain.handle('diffly:loadLaunchContext', () => loadLaunchContext())
+  ipcMain.handle('diffly:loadLaunchContext', (event) => loadLaunchContext(event.sender.id))
   ipcMain.handle('diffly:saveSessionState', (_event, payload: { session: PersistedSession }) =>
     saveSessionState(payload.session),
   )
@@ -144,6 +146,17 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:loadBinaryPreview', (_event, payload) =>
     loadBinaryPreview(payload.leftPath, payload.rightPath, payload.options),
   )
+}
+
+export function registerWindowLaunchContext(
+  window: BrowserWindow,
+  context: LaunchContext | null,
+) {
+  const webContentsId = window.webContents.id
+  windowLaunchContexts.set(webContentsId, context)
+  window.webContents.once('destroyed', () => {
+    windowLaunchContexts.delete(webContentsId)
+  })
 }
 
 async function choosePath(kind: string) {
@@ -271,16 +284,19 @@ function validateSessionStateSize(byteLength: number) {
   }
 }
 
-function loadLaunchContext(): LaunchContext | null {
+function loadLaunchContext(webContentsId: number): LaunchContext | null {
+  if (windowLaunchContexts.has(webContentsId)) {
+    return windowLaunchContexts.get(webContentsId) ?? null
+  }
+
   if (launchContext === undefined) {
     launchContext = parseLaunchContext(process.argv.slice(1))
   }
   return launchContext
 }
 
-export function setLaunchContextFromArgs(args: string[]) {
-  launchContext = parseLaunchContext(args)
-  return launchContext
+export function getLaunchContextFromArgs(args: string[]) {
+  return parseLaunchContext(args)
 }
 
 function parseLaunchContext(args: string[]): LaunchContext | null {

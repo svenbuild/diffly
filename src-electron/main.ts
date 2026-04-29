@@ -1,7 +1,12 @@
 import { app, BrowserWindow, Menu, screen, shell } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { registerIpcHandlers, setLaunchContextFromArgs } from './services/backend'
+import type { LaunchContext } from '../src/lib/types'
+import {
+  getLaunchContextFromArgs,
+  registerIpcHandlers,
+  registerWindowLaunchContext,
+} from './services/backend'
 
 interface WindowState {
   x: number
@@ -19,21 +24,23 @@ const DEFAULT_WINDOW_STATE: WindowState = {
 }
 
 let mainWindow: Electron.BrowserWindow | null = null
+const windows = new Set<Electron.BrowserWindow>()
+const pendingLaunchContexts: LaunchContext[] = []
 
-function showMainWindow() {
-  if (!mainWindow || mainWindow.isVisible()) {
+function showWindow(window: Electron.BrowserWindow) {
+  if (window.isDestroyed() || window.isVisible()) {
     return
   }
 
-  mainWindow.show()
+  window.show()
 }
 
-function createWindow() {
-  const savedState = loadWindowState()
+function createWindow(launchContext: LaunchContext | null = null) {
+  const savedState = nextWindowState(loadWindowState())
   const icon = getWindowIconPath()
   Menu.setApplicationMenu(null)
 
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     title: 'Diffly',
     width: savedState.width,
     height: savedState.height,
@@ -53,32 +60,50 @@ function createWindow() {
       sandbox: false,
     },
   })
-  mainWindow.setMenuBarVisibility(false)
+  windows.add(window)
+  mainWindow = window
+  registerWindowLaunchContext(window, launchContext)
+  window.setMenuBarVisibility(false)
 
   if (savedState.maximized) {
-    mainWindow.maximize()
+    window.maximize()
   }
 
-  mainWindow.webContents.once('dom-ready', showMainWindow)
-  mainWindow.once('ready-to-show', showMainWindow)
+  window.webContents.once('dom-ready', () => showWindow(window))
+  window.once('ready-to-show', () => showWindow(window))
 
-  mainWindow.on('close', () => {
-    if (mainWindow) {
-      saveWindowState(mainWindow)
+  window.on('close', () => {
+    saveWindowState(window)
+  })
+
+  window.on('closed', () => {
+    windows.delete(window)
+    if (mainWindow === window) {
+      const remainingWindows = Array.from(windows)
+      mainWindow = remainingWindows[remainingWindows.length - 1] ?? null
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details: Electron.HandlerDetails) => {
+  window.webContents.setWindowOpenHandler((details: Electron.HandlerDetails) => {
     void shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     const rendererPath = join(__dirname, '../renderer/index.html')
-    void mainWindow.loadFile(rendererPath)
+    void window.loadFile(rendererPath)
   }
+}
+
+function openLaunchWindow(launchContext: LaunchContext) {
+  if (app.isReady()) {
+    createWindow(launchContext)
+    return
+  }
+
+  pendingLaunchContexts.push(launchContext)
 }
 
 function getWindowIconPath() {
@@ -122,6 +147,22 @@ function loadWindowState(): WindowState {
   } catch {
     return centerDefaultWindowState()
   }
+}
+
+function nextWindowState(state: WindowState): WindowState {
+  const openWindowCount = BrowserWindow.getAllWindows().length
+  if (openWindowCount === 0 || state.maximized) {
+    return state
+  }
+
+  const offset = Math.min(openWindowCount, 6) * 32
+  const nextState = {
+    ...state,
+    x: state.x + offset,
+    y: state.y + offset,
+  }
+
+  return windowStateIsVisible(nextState) ? nextState : centerDefaultWindowState()
 }
 
 function saveWindowState(window: Electron.BrowserWindow) {
@@ -189,23 +230,30 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, commandLine) => {
-    const nextLaunchContext = setLaunchContextFromArgs(commandLine.slice(1))
+    const nextLaunchContext = getLaunchContextFromArgs(commandLine.slice(1))
 
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore()
-      }
-      mainWindow.focus()
+    if (nextLaunchContext) {
+      openLaunchWindow(nextLaunchContext)
+      return
+    }
 
-      if (nextLaunchContext) {
-        mainWindow.webContents.send('diffly:launchContext', nextLaunchContext)
+    const window = BrowserWindow.getFocusedWindow() ?? mainWindow
+    if (window) {
+      if (window.isMinimized()) {
+        window.restore()
       }
+      window.focus()
+    } else {
+      createWindow()
     }
   })
 
   app.whenReady().then(() => {
     registerIpcHandlers()
-    createWindow()
+    createWindow(getLaunchContextFromArgs(process.argv.slice(1)))
+    for (const launchContext of pendingLaunchContexts.splice(0)) {
+      createWindow(launchContext)
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
