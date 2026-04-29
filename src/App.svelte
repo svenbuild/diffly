@@ -1711,13 +1711,14 @@
     const has = existing.includes(path)
     const nextPaths = has ? existing.filter((entry) => entry !== path) : [...existing, path]
     const primary = nextPaths.length > 0 ? nextPaths[nextPaths.length - 1] : ''
-    const primaryKind = primary === path ? kind : pane.selectedTargetKind
+    const primaryKind =
+      !primary ? null : primary === path ? kind : primary === pane.selectedTargetPath ? pane.selectedTargetKind : null
 
     updatePane(side, (current) => ({
       ...current,
       selectedTargetPaths: nextPaths,
       selectedTargetPath: primary,
-      selectedTargetKind: primary ? primaryKind : null,
+      selectedTargetKind: primaryKind,
     }))
 
     if (primary && screen === 'setup' && primaryKind && mode !== primaryKind) {
