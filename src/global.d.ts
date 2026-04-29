@@ -25,6 +25,7 @@ declare global {
       pathInfo(path: string): Promise<PathInfo>
       loadSessionState(): Promise<PersistedSession | null>
       loadLaunchContext(): Promise<LaunchContext | null>
+      onLaunchContext(callback: (context: LaunchContext) => void): () => void
       saveSessionState(session: PersistedSession): Promise<void>
       getAppVersion(): Promise<string>
       checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResult>

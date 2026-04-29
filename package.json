@@ -65,6 +65,7 @@
       "signAndEditExecutable": false
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "installerIcon": "build/icons/icon.ico",
       "uninstallerIcon": "build/icons/icon.ico"
     },

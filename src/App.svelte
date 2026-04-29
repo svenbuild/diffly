@@ -17,6 +17,7 @@
     listRoots,
     loadBinaryPreview,
     loadSessionState,
+    onLaunchContext,
     openCompareItem,
     pollDirectoryCompare,
     pathInfo,
@@ -102,6 +103,8 @@
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
+    LaunchContext,
+    PathKind,
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
@@ -163,6 +166,12 @@
     leftTop: number
     rightTop: number
     unifiedTop: number
+  }
+
+  interface StartupTarget {
+    folderPath: string
+    targetPath: string
+    kind: PathKind
   }
 
   export let initialSession: PersistedSession | null = null
@@ -450,6 +459,11 @@
       }
     }
 
+    const removeLaunchContextListener = onLaunchContext((context) => {
+      const openHerePath = isLaunchContext(context) ? context.openHerePath : ''
+      void applyStartupOverride(openHerePath)
+    })
+
     void initializeAppStartup()
 
     return () => {
@@ -465,6 +479,7 @@
         window.clearTimeout(saveSessionTimer)
       }
 
+      removeLaunchContextListener()
       diffCache.cancelBackgroundPreload()
 
       if (themeTransitionTimer !== null) {
@@ -668,6 +683,14 @@
         window.setTimeout(resolve, 0)
       })
     })
+  }
+
+  function isLaunchContext(value: unknown): value is LaunchContext {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as LaunchContext).openHerePath === 'string'
+    )
   }
 
   async function initializeUpdateVersion() {
@@ -1221,18 +1244,10 @@
       if (roots.length > 0) {
         const startupFolderOverride =
           startupFolderPath ?? await readStartupFolderOverride().catch(() => null)
-        const startupRoot = await resolveStartupFolderPath(startupFolderOverride)
+        const startupTarget = await resolveStartupTarget(startupFolderOverride)
 
-        if (startupRoot) {
-          mode = 'directory'
-
-          await Promise.all([
-            openDirectory('left', startupRoot),
-            openDirectory('right', startupRoot),
-          ])
-
-          selectTarget('left', startupRoot, 'directory')
-          selectTarget('right', startupRoot, 'directory')
+        if (startupTarget) {
+          await applyStartupTarget(startupTarget)
         } else {
           const leftRoot = await resolveInitialPanePath(
             savedSession?.leftPane ?? null,
@@ -1283,6 +1298,32 @@
       pickerLoading = false
       persistenceReady = true
     }
+  }
+
+  async function applyStartupOverride(overridePath: string | null) {
+    if (pickerLoading || leftExplorer.roots.length === 0 || rightExplorer.roots.length === 0) {
+      return
+    }
+
+    const startupTarget = await resolveStartupTarget(overridePath)
+
+    if (startupTarget) {
+      await applyStartupTarget(startupTarget)
+      screen = 'setup'
+      errorMessage = ''
+    }
+  }
+
+  async function applyStartupTarget(startupTarget: StartupTarget) {
+    mode = startupTarget.kind
+
+    await Promise.all([
+      openDirectory('left', startupTarget.folderPath),
+      openDirectory('right', startupTarget.folderPath),
+    ])
+
+    selectTarget('left', startupTarget.targetPath, startupTarget.kind)
+    selectTarget('right', startupTarget.targetPath, startupTarget.kind)
   }
 
   function applyPersistedSession(session: PersistedSession | null) {
@@ -1358,7 +1399,7 @@
     return fallbackPath
   }
 
-  async function resolveStartupFolderPath(overridePath: string | null) {
+  async function resolveStartupTarget(overridePath: string | null): Promise<StartupTarget | null> {
     if (!overridePath) {
       return null
     }
@@ -1366,11 +1407,19 @@
     const info = await pathInfo(overridePath)
 
     if (info.exists && info.isDirectory) {
-      return info.path
+      return {
+        folderPath: info.path,
+        targetPath: info.path,
+        kind: 'directory',
+      }
     }
 
     if (info.exists && info.isFile && info.parentPath) {
-      return info.parentPath
+      return {
+        folderPath: info.parentPath,
+        targetPath: info.path,
+        kind: 'file',
+      }
     }
 
     return null

@@ -278,6 +278,11 @@ function loadLaunchContext(): LaunchContext | null {
   return launchContext
 }
 
+export function setLaunchContextFromArgs(args: string[]) {
+  launchContext = parseLaunchContext(args)
+  return launchContext
+}
+
 function parseLaunchContext(args: string[]): LaunchContext | null {
   const index = args.indexOf('--open-here')
   if (index < 0) {

@@ -23,6 +23,15 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:loadSessionState'),
   loadLaunchContext: () =>
     invoke('diffly:loadLaunchContext'),
+  onLaunchContext: (callback: (context: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, context: unknown) => {
+      callback(context)
+    }
+    ipcRenderer.on('diffly:launchContext', listener)
+    return () => {
+      ipcRenderer.removeListener('diffly:launchContext', listener)
+    }
+  },
   saveSessionState: (session: PersistedSession) =>
     invoke('diffly:saveSessionState', { session }),
   getAppVersion: () =>

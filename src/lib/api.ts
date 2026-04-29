@@ -26,6 +26,9 @@ export const loadSessionState = () =>
 export const loadLaunchContext = () =>
   window.diffly.loadLaunchContext()
 
+export const onLaunchContext = (callback: (context: unknown) => void) =>
+  window.diffly.onLaunchContext(callback)
+
 export const saveSessionState = (session: PersistedSession) =>
   window.diffly.saveSessionState(session)
 

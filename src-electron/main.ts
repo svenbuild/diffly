@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, screen, shell } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { registerIpcHandlers } from './services/backend'
+import { registerIpcHandlers, setLaunchContextFromArgs } from './services/backend'
 
 interface WindowState {
   x: number
@@ -188,12 +188,18 @@ function rectanglesOverlap(
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine) => {
+    const nextLaunchContext = setLaunchContextFromArgs(commandLine.slice(1))
+
     if (mainWindow) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore()
       }
       mainWindow.focus()
+
+      if (nextLaunchContext) {
+        mainWindow.webContents.send('diffly:launchContext', nextLaunchContext)
+      }
     }
   })
 
