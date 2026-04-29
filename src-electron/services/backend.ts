@@ -917,14 +917,15 @@ async function loadBinaryPreviewFile(pathValue: string): Promise<LoadedFile> {
     preview.length > BINARY_SAMPLE_BYTES ? preview.subarray(0, BINARY_SAMPLE_BYTES) : preview
   const detectedKind = detectFileKind(pathValue, info.size, sample)
   const kind: FileKind = detectedKind === 'text' ? 'binary' : detectedKind
+  const includePreviewBytes = detectedKind === 'binary' || detectedKind === 'image'
 
   return {
     kind,
     path: pathValue,
     size: info.size,
     format: detectImageFormat(sample, pathValue),
-    truncated: info.size > preview.length,
-    bytes: preview,
+    truncated: includePreviewBytes && info.size > preview.length,
+    bytes: includePreviewBytes ? preview : new Uint8Array(0),
     sha256: undefined,
   }
 }
