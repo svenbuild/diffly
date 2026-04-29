@@ -75,16 +75,10 @@ interface BackgroundPreloadContext {
   warmDetailDiff?: (diff: FileDiffResult) => void
 }
 
-// Preload radius covers a generous window around the current file so "jump to
-// a distant file" is still hot after a short warmup. Preload is generation-
-// gated and cheap to re-run, so a wide radius doesn't cost anything when the
-// user settles on a spot.
-const BACKGROUND_PRELOAD_RADIUS = 200
-// Bounded LRU cap. Prevents unbounded accumulation of large FileDiffResult
-// payloads (text rows + binary byte arrays) when the user browses many files.
-// Chosen >= BACKGROUND_PRELOAD_RADIUS so the full preload window fits, plus a
-// small buffer for recently-visited files outside the window.
-const DETAIL_DIFF_CACHE_LIMIT = 256
+// Keep automatic detail work minimal. Each cached FileDiffResult can retain
+// full text rows, render state, minimap rows, and binary preview bytes.
+const BACKGROUND_PRELOAD_RADIUS = 0
+const DETAIL_DIFF_CACHE_LIMIT = 16
 
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
   // Using Map preserves insertion order — we promote on access to get LRU.

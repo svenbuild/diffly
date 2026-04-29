@@ -18,6 +18,7 @@ import 'prismjs/components/prism-yaml'
 import type { DiffSegment } from './types'
 
 const MAX_SYNTAX_LINE_LENGTH = 2000
+const SYNTAX_CACHE_LIMIT = 200
 
 type SyntaxLanguage =
   | 'c'
@@ -129,6 +130,8 @@ function getSyntaxPieces(text: string, language: SyntaxLanguage) {
   const cached = syntaxCache.get(cacheKey)
 
   if (cached) {
+    syntaxCache.delete(cacheKey)
+    syntaxCache.set(cacheKey, cached)
     return cached
   }
 
@@ -136,7 +139,7 @@ function getSyntaxPieces(text: string, language: SyntaxLanguage) {
 
   if (!grammar) {
     const plain = [{ text, className: null }] satisfies SyntaxPiece[]
-    syntaxCache.set(cacheKey, plain)
+    cacheSyntaxPieces(cacheKey, plain)
     return plain
   }
 
@@ -144,12 +147,25 @@ function getSyntaxPieces(text: string, language: SyntaxLanguage) {
 
   if (pieces.length === 0) {
     const plain = [{ text, className: null }] satisfies SyntaxPiece[]
-    syntaxCache.set(cacheKey, plain)
+    cacheSyntaxPieces(cacheKey, plain)
     return plain
   }
 
-  syntaxCache.set(cacheKey, pieces)
+  cacheSyntaxPieces(cacheKey, pieces)
   return pieces
+}
+
+function cacheSyntaxPieces(cacheKey: string, pieces: SyntaxPiece[]) {
+  syntaxCache.set(cacheKey, pieces)
+
+  while (syntaxCache.size > SYNTAX_CACHE_LIMIT) {
+    const oldestKey = syntaxCache.keys().next().value
+    if (oldestKey === undefined) {
+      return
+    }
+
+    syntaxCache.delete(oldestKey)
+  }
 }
 
 function flattenSyntaxTokens(
