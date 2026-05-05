@@ -176,6 +176,7 @@
 
   export let initialSession: PersistedSession | null = null
   export let startupFolderPath: string | null = null
+  let pendingStartupOverridePath: string | null = null
 
   let screen: Screen = 'setup'
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
@@ -1297,11 +1298,19 @@
     } finally {
       pickerLoading = false
       persistenceReady = true
+      if (pendingStartupOverridePath !== null) {
+        const queuedOverridePath = pendingStartupOverridePath
+        pendingStartupOverridePath = null
+        void applyStartupOverride(queuedOverridePath)
+      }
     }
   }
 
   async function applyStartupOverride(overridePath: string | null) {
     if (pickerLoading || leftExplorer.roots.length === 0 || rightExplorer.roots.length === 0) {
+      if (overridePath !== null) {
+        pendingStartupOverridePath = overridePath
+      }
       return
     }
 
@@ -1711,13 +1720,14 @@
     const has = existing.includes(path)
     const nextPaths = has ? existing.filter((entry) => entry !== path) : [...existing, path]
     const primary = nextPaths.length > 0 ? nextPaths[nextPaths.length - 1] : ''
-    const primaryKind = primary === path ? kind : pane.selectedTargetKind
+    const primaryKind =
+      !primary ? null : primary === path ? kind : primary === pane.selectedTargetPath ? pane.selectedTargetKind : null
 
     updatePane(side, (current) => ({
       ...current,
       selectedTargetPaths: nextPaths,
       selectedTargetPath: primary,
-      selectedTargetKind: primary ? primaryKind : null,
+      selectedTargetKind: primaryKind,
     }))
 
     if (primary && screen === 'setup' && primaryKind && mode !== primaryKind) {
