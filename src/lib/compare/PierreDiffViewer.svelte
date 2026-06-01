@@ -79,7 +79,7 @@
     })
   }
 
-  $: text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, void renderDiff()
+  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, void renderDiff()
 
   onDestroy(() => {
     fileDiff?.cleanUp()

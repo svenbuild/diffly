@@ -109,7 +109,7 @@
     fileTree?.setSearch(value || null)
   }
 
-  $: visibleEntries, selectedRelativePath, treeSettings, appearanceSettings, void renderTree()
+  $: host, visibleEntries, selectedRelativePath, treeSettings, appearanceSettings, void renderTree()
 
   onDestroy(() => {
     fileTree?.cleanUp()
