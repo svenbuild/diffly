@@ -1014,15 +1014,22 @@ h2 {
   color: var(--warning);
 }
 
-.setup-warning-banner {
-  margin: 0 28px 12px;
-  padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--border-subtle));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warning-bg) 50%, var(--surface));
-  color: var(--text);
+.setup-topbar-warning {
+  min-width: 0;
+  max-width: min(760px, 100%);
+  margin: 0;
+  padding: 7px 11px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--warning) 72%, var(--border-strong));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--warning-bg) 76%, var(--surface));
+  color: color-mix(in srgb, var(--warning) 34%, var(--title));
   font-size: 12px;
-  line-height: 1.4;
+  font-weight: 650;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: inset 3px 0 0 var(--warning);
 }
 
 .settings-shell,

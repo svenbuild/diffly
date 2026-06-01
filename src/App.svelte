@@ -3144,6 +3144,12 @@
         {/if}
       {/snippet}
 
+      {#snippet middle()}
+        {#if sameSelectionWarning}
+          <p class="setup-topbar-warning">{sameSelectionWarning}</p>
+        {/if}
+      {/snippet}
+
       {#snippet actions()}
       <div class="setup-bar-actions">
         <button
@@ -3168,10 +3174,6 @@
 
     {#if errorMessage}
       <p class="error-banner">{errorMessage}</p>
-    {/if}
-
-    {#if sameSelectionWarning}
-      <p class="setup-warning-banner">{sameSelectionWarning}</p>
     {/if}
 
     <section class="setup-body">
