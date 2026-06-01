@@ -1,5 +1,4 @@
 import type {
-  BinaryDiffPayload,
   CompareOptions,
   CompareResponse,
   DirectoryListing,
@@ -49,11 +48,6 @@ declare global {
         relativePath: string,
         options: CompareOptions,
       ): Promise<FileDiffResult>
-      loadBinaryPreview(
-        leftPath: string,
-        rightPath: string,
-        options: CompareOptions,
-      ): Promise<BinaryDiffPayload>
       fileUrl(path: string): string
     }
   }

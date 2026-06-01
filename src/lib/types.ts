@@ -4,12 +4,53 @@ export type CompareMode = 'file' | 'directory'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
-export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'binary' | 'tooLarge'
-export type ContentKind = 'text' | 'image' | 'binary' | 'tooLarge'
-export type DiffChange = 'context' | 'delete' | 'insert'
+export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'unsupported'
+export type ContentKind = 'text' | 'unsupported'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
 export type UpdateChannel = 'stable' | 'prerelease'
+
+export interface CompareViewerSettings {
+  diffStyle: 'split' | 'unified'
+  codeOverflow: 'scroll' | 'wrap'
+  diffIndicators: 'bars' | 'classic' | 'none'
+  lineDiffType: 'word-alt' | 'word' | 'char' | 'none'
+  hunkSeparators: 'line-info' | 'line-info-basic' | 'metadata' | 'simple'
+  expandUnchanged: boolean
+  collapsedContextThreshold: number
+  disableLineNumbers: boolean
+  disableBackground: boolean
+  syntaxMode: 'shiki' | 'plain'
+}
+
+export interface CompareTreeSettings {
+  density: 'compact' | 'default' | 'relaxed'
+  flattenEmptyDirectories: boolean
+  stickyFolders: boolean
+  searchMode: 'expand-matches' | 'collapse-non-matches' | 'hide-non-matches'
+}
+
+export type CompareSource =
+  | {
+      kind: 'localPaths'
+      leftPath: string
+      rightPath: string
+      mode: CompareMode
+    }
+  | {
+      kind: 'gitRepository'
+      repoPath: string
+      baseRef: string
+      headRef: string
+      pathFilter?: string[]
+    }
+  | {
+      kind: 'githubPullRequest'
+      owner: string
+      repo: string
+      pullNumber: number
+      pathFilter?: string[]
+    }
 
 export interface LaunchContext {
   openHerePath: string
@@ -25,13 +66,16 @@ export interface PersistedExplorerPane {
 
 export interface PersistedSession {
   mode: CompareMode
-  viewMode: ViewMode
+  source?: CompareSource
+  viewMode?: ViewMode
+  viewerSettings?: CompareViewerSettings
+  treeSettings?: CompareTreeSettings
   themeMode?: ThemeMode
   appearance?: AppearanceSettings
   ignoreWhitespace: boolean
   ignoreCase: boolean
-  showFullFile: boolean
-  showInlineHighlights: boolean
+  showFullFile?: boolean
+  showInlineHighlights?: boolean
   wrapSideBySideLines?: boolean
   showSyntaxHighlighting?: boolean
   syncSideBySideScroll?: boolean
@@ -84,35 +128,6 @@ export interface DirectoryEntryResult {
   rightSize: number | null
 }
 
-export interface BinaryFileMeta {
-  exists: boolean
-  path: string
-  size: number | null
-  sha256: string | null
-  format: string | null
-  identicalToOtherSide: boolean
-}
-
-export interface ImageDiffPayload {
-  leftAssetUrl: string | null
-  rightAssetUrl: string | null
-  leftMeta: BinaryFileMeta
-  rightMeta: BinaryFileMeta
-}
-
-export interface BinaryDiffPayload {
-  leftMeta: BinaryFileMeta
-  rightMeta: BinaryFileMeta
-  leftBytes: Uint8Array
-  rightBytes: Uint8Array
-  bytesPerRow: 16
-  changedByteCount: number | null
-  changedRowCount: number | null
-  firstDifferenceOffset: number | null
-  truncated: boolean
-  previewLoaded: boolean
-}
-
 export interface TextDiffPayload {
   leftText: string
   rightText: string
@@ -126,31 +141,12 @@ export interface TextDiffPayload {
   rightHasTrailingNewline: boolean
 }
 
-export interface DiffCell {
-  lineNumber: number | null
-  prefix: string
-  text: string
-  segments: DiffSegment[]
-  change: DiffChange
-}
-
-export interface DiffSegment {
-  text: string
-  highlighted: boolean
-}
-
-export interface SideBySideRow {
-  left: DiffCell | null
-  right: DiffCell | null
-}
-
-export interface UnifiedLine {
-  leftLineNumber: number | null
-  rightLineNumber: number | null
-  prefix: string
-  text: string
-  segments: DiffSegment[]
-  change: DiffChange
+export interface UnsupportedDiffPayload {
+  reason: 'binary' | 'image' | 'tooLarge' | 'missing' | 'readError'
+  leftPath: string | null
+  rightPath: string | null
+  leftSize: number | null
+  rightSize: number | null
 }
 
 export interface FileDiffResult {
@@ -158,11 +154,8 @@ export interface FileDiffResult {
   summary: string
   leftLabel: string
   rightLabel: string
-  sideBySide: SideBySideRow[]
-  unified: UnifiedLine[]
   text?: TextDiffPayload | null
-  image?: ImageDiffPayload | null
-  binary?: BinaryDiffPayload | null
+  unsupported?: UnsupportedDiffPayload | null
 }
 
 export interface UpdateMetadata {

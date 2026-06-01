@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import DirectoryBrowser from './lib/DirectoryBrowser.svelte'
-  import DiffViewer from './lib/DiffViewer.svelte'
+  import PierreDirectoryTree from './lib/compare/PierreDirectoryTree.svelte'
+  import CompareViewer from './lib/compare/CompareViewer.svelte'
   import AppTopBar from './lib/AppTopBar.svelte'
   import PickerPane from './lib/PickerPane.svelte'
   import SettingsScreen from './lib/SettingsScreen.svelte'
@@ -15,7 +15,6 @@
     installUpdate,
     listDirectory,
     listRoots,
-    loadBinaryPreview,
     loadSessionState,
     onLaunchContext,
     openCompareItem,
@@ -24,28 +23,7 @@
     saveSessionState,
     startDirectoryCompare,
   } from './lib/api'
-  import {
-    buildSideBySideHunkRanges,
-    buildSideBySideRenderItems,
-    buildUnifiedHunkRanges,
-    buildUnifiedRenderItems,
-  } from './lib/diff-render'
-  import {
-    sideBySideMinimapRows,
-    sideBySideItemMinimapRows,
-    unifiedMinimapRows,
-    unifiedItemMinimapRows,
-    type MinimapRow,
-  } from './lib/minimap-render'
   import { createDiffCacheController } from './lib/app/diff-cache'
-  import {
-    clampScrollOffset,
-    getMaxScrollLeft,
-    getMaxScrollTop,
-    getScrollTopForAnchor,
-    mapScrollOffset,
-    normalizeWheelDelta,
-  } from './lib/app/pane-scroll-sync'
   import {
     createUpdateController,
     formatLastUpdateCheck,
@@ -98,7 +76,8 @@
   import type {
     CompareMode,
     CompareOptions,
-    ContextLinesSetting,
+    CompareTreeSettings,
+    CompareViewerSettings,
     DirectoryEntryResult,
     EntryStatus,
     ExplorerEntry,
@@ -128,14 +107,11 @@
   } from './lib/theme/runtime'
   import type {
     DiffHeaderContext,
-    DiffHunkRange,
     EntryGroup,
     ExplorerPaneState,
     FolderSection,
     SettingsSection,
     Side,
-    SideBySideRenderItem,
-    UnifiedRenderItem,
   } from './lib/ui-types'
 
   const SESSION_SAVE_DELAY_MS = 180
@@ -145,12 +121,6 @@
   const IMMEDIATE_DETAIL_PRIME_COUNT = 2
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const DEFAULT_COMPARE_SIDEBAR_WIDTH = 280
-  const FULL_FILE_NAVIGATION_REFRESH_DELAY_MS = 140
-  const FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD = 300
-  const PANE_WHEEL_SMOOTHING = 0.18
-  const PANE_WHEEL_MIN_STEP = 1.25
-  const DEFAULT_CONTEXT_LINES: ContextLinesSetting = 3
-  const contextLinePresets: ContextLinesSetting[] = [3, 10, 20]
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
@@ -163,9 +133,6 @@
 
   interface DiffScrollSnapshot {
     viewMode: ViewMode
-    leftTop: number
-    rightTop: number
-    unifiedTop: number
   }
 
   interface StartupTarget {
@@ -193,12 +160,24 @@
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
   let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
-  let showFullFile = false
-  let showInlineHighlights = true
-  let wrapSideBySideLines = false
-  let showSyntaxHighlighting = true
-  let syncSideBySideScroll = true
-  let contextLines: ContextLinesSetting = DEFAULT_CONTEXT_LINES
+  let viewerSettings: CompareViewerSettings = {
+    diffStyle: 'split',
+    codeOverflow: 'scroll',
+    diffIndicators: 'bars',
+    lineDiffType: 'word-alt',
+    hunkSeparators: 'line-info',
+    expandUnchanged: false,
+    collapsedContextThreshold: 3,
+    disableLineNumbers: false,
+    disableBackground: false,
+    syntaxMode: 'shiki',
+  }
+  let treeSettings: CompareTreeSettings = {
+    density: 'compact',
+    flattenEmptyDirectories: true,
+    stickyFolders: true,
+    searchMode: 'expand-matches',
+  }
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
   let lastUpdateCheckAt = ''
@@ -220,9 +199,6 @@
   let folderSections: FolderSection[] = []
   let collapsedGroups: Record<string, boolean> = {}
   let activeStatusFilters: EntryStatus[] = []
-  let leftPaneScroll: HTMLDivElement | null = null
-  let rightPaneScroll: HTMLDivElement | null = null
-  let unifiedScroll: HTMLDivElement | null = null
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
@@ -239,14 +215,8 @@
   let directoryComparePairSlots: Array<Array<DirectoryEntryResult | null | undefined>> = []
   let directoryComparePairJobs: Array<{ jobId: string; pairIndex: number; done: boolean }> = []
   let directoryComparePairTimers: Array<number | null> = []
-  let scrollEchoTarget: 'left' | 'right' | null = null
-  let scrollEchoResetFrame: number | null = null
   let paneNavigationScrollFrame: number | null = null
-  let paneNavigationSyncActive = false
   let paneWheelScrollFrame: number | null = null
-  let paneWheelScrollSource: 'left' | 'right' | null = null
-  let paneWheelScrollTargetTop = 0
-  let diffNavigationRefreshQueued = false
   let diffNavigationScrollFrame: number | null = null
   let diffNavigationIdleTimer: number | null = null
   let currentDiffHunk = -1
@@ -261,13 +231,6 @@
   let compareNeedsRefresh = false
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
-  let sideBySideHunkRanges: DiffHunkRange[] = []
-  let unifiedHunkRanges: DiffHunkRange[] = []
-  let sideBySideRenderItems: SideBySideRenderItem[] = []
-  let unifiedRenderItems: UnifiedRenderItem[] = []
-  let sideBySideMinimapData: MinimapRow[] = []
-  let unifiedMinimapData: MinimapRow[] = []
-  let maxLineNumber = 0
   let visibleDiffHunkCount = 0
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
@@ -295,14 +258,6 @@
     rightRootFullPath: '',
   }
   const diffCache = createDiffCacheController({
-    buildSideBySideHunkRanges,
-    buildUnifiedHunkRanges,
-    buildSideBySideRenderItems,
-    buildUnifiedRenderItems,
-    sideBySideMinimapRows,
-    unifiedMinimapRows,
-    sideBySideItemMinimapRows,
-    unifiedItemMinimapRows,
     openCompareItem,
   })
   const updateController = createUpdateController({
@@ -311,9 +266,6 @@
     downloadUpdate,
     installUpdate,
   })
-  let diffFontSize = `${appearanceSettings.codeFontSize}px`
-  let diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
-  let diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
   let updateIndicatorState: UpdateIndicatorState = {
     status: 'idle',
     currentVersion: '',
@@ -326,10 +278,9 @@
     modified: 'Modified',
     leftOnly: 'Left only',
     rightOnly: 'Right only',
-    binary: 'Binary',
-    tooLarge: 'Too large',
+    unsupported: 'Unsupported',
   }
-  const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'binary', 'tooLarge']
+  const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'unsupported']
   const availableLightThemes = getAvailableThemes('light')
   const availableDarkThemes = getAvailableThemes('dark')
   let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
@@ -340,6 +291,38 @@
     ignoreWhitespace,
     ignoreCase,
   })
+
+  function normalizeViewerSettings(
+    settings: CompareViewerSettings | null | undefined,
+    legacy?: PersistedSession | null,
+  ): CompareViewerSettings {
+    const legacyDiffStyle = legacy?.viewMode === 'unified' ? 'unified' : 'split'
+    const legacyOverflow = legacy?.wrapSideBySideLines ? 'wrap' : 'scroll'
+    const legacyLineDiffType = legacy?.showInlineHighlights === false ? 'none' : 'word-alt'
+    const legacySyntaxMode = legacy?.showSyntaxHighlighting === false ? 'plain' : 'shiki'
+
+    return {
+      diffStyle: settings?.diffStyle ?? legacyDiffStyle,
+      codeOverflow: settings?.codeOverflow ?? legacyOverflow,
+      diffIndicators: settings?.diffIndicators ?? 'bars',
+      lineDiffType: settings?.lineDiffType ?? legacyLineDiffType,
+      hunkSeparators: settings?.hunkSeparators ?? 'line-info',
+      expandUnchanged: settings?.expandUnchanged ?? Boolean(legacy?.showFullFile),
+      collapsedContextThreshold: settings?.collapsedContextThreshold ?? legacy?.contextLines ?? 3,
+      disableLineNumbers: settings?.disableLineNumbers ?? false,
+      disableBackground: settings?.disableBackground ?? false,
+      syntaxMode: settings?.syntaxMode ?? legacySyntaxMode,
+    }
+  }
+
+  function normalizeTreeSettings(settings: CompareTreeSettings | null | undefined): CompareTreeSettings {
+    return {
+      density: settings?.density ?? 'compact',
+      flattenEmptyDirectories: settings?.flattenEmptyDirectories ?? true,
+      stickyFolders: settings?.stickyFolders ?? true,
+      searchMode: settings?.searchMode ?? 'expand-matches',
+    }
+  }
 
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
     return (
@@ -372,7 +355,7 @@
   }
 
   const toggleViewMode = () => {
-    viewMode = viewMode === 'sideBySide' ? 'unified' : 'sideBySide'
+    setViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')
   }
 
   function clampCompareSidebarWidth(value: number) {
@@ -432,15 +415,6 @@
     runFileCompareRefreshIfActive()
   }
 
-  const toggleSyncSideBySideScroll = () => {
-    syncSideBySideScroll = !syncSideBySideScroll
-
-    if (!syncSideBySideScroll) {
-      cancelPaneNavigationScroll()
-      cancelPaneWheelScroll()
-    }
-  }
-
   onMount(() => {
     const colorSchemeQuery =
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -487,10 +461,6 @@
         window.clearTimeout(themeTransitionTimer)
       }
 
-      if (scrollEchoResetFrame !== null) {
-        window.cancelAnimationFrame(scrollEchoResetFrame)
-      }
-
       if (paneNavigationScrollFrame !== null) {
         window.cancelAnimationFrame(paneNavigationScrollFrame)
       }
@@ -510,18 +480,6 @@
       }
     }
   })
-
-  function isContextLinesSetting(value: number): value is ContextLinesSetting {
-    return contextLinePresets.includes(value as ContextLinesSetting)
-  }
-
-  function applyContextLines(value: string) {
-    const nextValue = Number(value)
-
-    if (isContextLinesSetting(nextValue)) {
-      contextLines = nextValue
-    }
-  }
 
   function clampAppearanceSize(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, Math.round(value)))
@@ -551,22 +509,10 @@
 
   function setViewMode(nextViewMode: ViewMode) {
     viewMode = nextViewMode
-  }
-
-  function setShowFullFile(nextValue: boolean) {
-    showFullFile = nextValue
-  }
-
-  function setWrapSideBySideLines(nextValue: boolean) {
-    wrapSideBySideLines = nextValue
-  }
-
-  function setShowInlineHighlights(nextValue: boolean) {
-    showInlineHighlights = nextValue
-  }
-
-  function setShowSyntaxHighlighting(nextValue: boolean) {
-    showSyntaxHighlighting = nextValue
+    viewerSettings = {
+      ...viewerSettings,
+      diffStyle: nextViewMode === 'sideBySide' ? 'split' : 'unified',
+    }
   }
 
   function setCheckForUpdatesOnLaunch(nextValue: boolean) {
@@ -931,40 +877,18 @@
 
     return {
       viewMode,
-      leftTop: leftPaneScroll?.scrollTop ?? 0,
-      rightTop: rightPaneScroll?.scrollTop ?? 0,
-      unifiedTop: unifiedScroll?.scrollTop ?? 0,
     }
   }
 
   async function restoreDiffScrollSnapshot(snapshot: DiffScrollSnapshot | null) {
-    if (!snapshot || !activeDiff || activeDiff.contentKind !== 'text') {
-      return
-    }
-
+    void snapshot
     await tick()
-
-    if (snapshot.viewMode === 'sideBySide') {
-      if (leftPaneScroll) {
-        leftPaneScroll.scrollTop = clampScrollOffset(snapshot.leftTop, getMaxScrollTop(leftPaneScroll))
-      }
-
-      if (rightPaneScroll) {
-        rightPaneScroll.scrollTop = clampScrollOffset(snapshot.rightTop, getMaxScrollTop(rightPaneScroll))
-      }
-      return
-    }
-
-    if (unifiedScroll) {
-      unifiedScroll.scrollTop = clampScrollOffset(snapshot.unifiedTop, getMaxScrollTop(unifiedScroll))
-    }
   }
 
   function isImmediatePrimeCandidate(entry: DirectoryEntryResult, centerRelativePath: string) {
     return (
       entry.relativePath !== centerRelativePath &&
-      entry.status !== 'binary' &&
-      entry.status !== 'tooLarge'
+      entry.status === 'modified'
     )
   }
 
@@ -1274,16 +1198,11 @@
       initialSessionFingerprint = JSON.stringify(
         buildPersistedSession({
           mode,
-          viewMode,
+          viewerSettings,
+          treeSettings,
           appearanceSettings,
           ignoreWhitespace,
           ignoreCase,
-          showFullFile,
-          showInlineHighlights,
-          wrapSideBySideLines,
-          showSyntaxHighlighting,
-          syncSideBySideScroll,
-          contextLines,
           checkForUpdatesOnLaunch,
           updateChannel,
           lastUpdateCheckAt,
@@ -1345,6 +1264,17 @@
       viewMode = session.viewMode
     }
 
+    if (session.viewerSettings) {
+      viewerSettings = normalizeViewerSettings(session.viewerSettings, session)
+      viewMode = viewerSettings.diffStyle === 'split' ? 'sideBySide' : 'unified'
+    } else {
+      viewerSettings = normalizeViewerSettings(null, session)
+    }
+
+    if (session.treeSettings) {
+      treeSettings = normalizeTreeSettings(session.treeSettings)
+    }
+
     appearanceSettings = normalizeAppearanceSettings(
       session.appearance,
       session.themeMode,
@@ -1353,11 +1283,6 @@
 
     ignoreWhitespace = session.ignoreWhitespace
     ignoreCase = session.ignoreCase
-    showFullFile = session.showFullFile
-    showInlineHighlights = session.showInlineHighlights ?? true
-    wrapSideBySideLines = session.wrapSideBySideLines ?? false
-    showSyntaxHighlighting = session.showSyntaxHighlighting ?? true
-    syncSideBySideScroll = session.syncSideBySideScroll ?? true
     checkForUpdatesOnLaunch = session.checkForUpdatesOnLaunch ?? true
     updateChannel = session.updateChannel ?? DEFAULT_UPDATE_CHANNEL
     lastUpdateCheckAt = session.lastUpdateCheckAt ?? ''
@@ -1371,11 +1296,6 @@
         message: 'A new Diffly build is available.',
       }
     }
-
-    const nextContextLines = session.contextLines ?? DEFAULT_CONTEXT_LINES
-    contextLines = isContextLinesSetting(nextContextLines)
-      ? nextContextLines
-      : DEFAULT_CONTEXT_LINES
   }
 
   async function resolveInitialPanePath(
@@ -1488,15 +1408,11 @@
   function resetPreferenceState() {
     mode = 'directory'
     viewMode = 'sideBySide'
+    viewerSettings = normalizeViewerSettings(null)
+    treeSettings = normalizeTreeSettings(null)
     appearanceSettings = getDefaultAppearanceSettings()
     ignoreWhitespace = false
     ignoreCase = false
-    showFullFile = false
-    showInlineHighlights = true
-    wrapSideBySideLines = false
-    showSyntaxHighlighting = true
-    syncSideBySideScroll = true
-    contextLines = DEFAULT_CONTEXT_LINES
     checkForUpdatesOnLaunch = true
     updateChannel = DEFAULT_UPDATE_CHANNEL
     lastUpdateCheckAt = ''
@@ -1978,14 +1894,6 @@
         selectedRelativePath = ''
         activeDiff = response.result
         cancelBackgroundDiffPreload()
-        if (response.result.contentKind === 'binary') {
-          void loadActiveBinaryPreview(
-            nextLeftPath,
-            nextRightPath,
-            activeDetailRequestId,
-            compareRevision,
-          ).catch(() => undefined)
-        }
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
@@ -2040,9 +1948,6 @@
           startBackgroundDiffPreload(entry.relativePath, revision)
         } else {
           cancelBackgroundDiffPreload()
-          if (result.contentKind === 'binary') {
-            void loadSelectedBinaryPreview(entry, requestId, revision)
-          }
         }
       }
     } catch (error) {
@@ -2052,56 +1957,6 @@
     } finally {
       if (requestId === activeDetailRequestId) {
         detailLoading = false
-      }
-    }
-  }
-
-  async function loadSelectedBinaryPreview(
-    entry: DirectoryEntryResult,
-    requestId: number,
-    revision: number,
-  ) {
-    if (
-      !entry.leftPath ||
-      !entry.rightPath
-    ) {
-      return
-    }
-
-    try {
-      await loadActiveBinaryPreview(
-        entry.leftPath,
-        entry.rightPath,
-        requestId,
-        revision,
-        entry.relativePath,
-      )
-    } catch {
-      // Keep the placeholder binary state visible; the user can keep navigating.
-    }
-  }
-
-  async function loadActiveBinaryPreview(
-    leftFilePath: string,
-    rightFilePath: string,
-    requestId: number,
-    revision: number,
-    relativePath = '',
-  ) {
-    const preview = await loadBinaryPreview(leftFilePath, rightFilePath, {
-      ignoreWhitespace: false,
-      ignoreCase: false,
-    })
-
-    if (
-      revision === compareRevision &&
-      requestId === activeDetailRequestId &&
-      (relativePath === '' || selectedRelativePath === relativePath) &&
-      activeDiff?.contentKind === 'binary'
-    ) {
-      activeDiff = {
-        ...activeDiff,
-        binary: preview,
       }
     }
   }
@@ -2151,188 +2006,7 @@
     }
   }
 
-  function getActiveDiffScrollContainer() {
-    if (!activeDiff || activeDiff.contentKind !== 'text') {
-      return null
-    }
-
-    return viewMode === 'sideBySide' ? leftPaneScroll : unifiedScroll
-  }
-
-  function getActiveDiffHunkRanges() {
-    if (!activeDiff || activeDiff.contentKind !== 'text') {
-      return []
-    }
-
-    return viewMode === 'sideBySide' ? sideBySideHunkRanges : unifiedHunkRanges
-  }
-
-  function canUseComputedFullFileNavigation() {
-    if (!activeDiff || activeDiff.contentKind !== 'text' || !showFullFile) {
-      return false
-    }
-
-    return viewMode === 'unified' || !wrapSideBySideLines
-  }
-
-  function getApproximateDiffRowHeightPx() {
-    return Math.max(1, Number.parseFloat(diffRowHeight) || 19)
-  }
-
-  function getCurrentDiffHunkFromScrollTop(
-    scrollTop: number,
-    hunkRanges: DiffHunkRange[],
-    rowHeightPx: number,
-  ) {
-    if (hunkRanges.length === 0) {
-      return -1
-    }
-
-    const threshold = scrollTop + 16
-    let low = 0
-    let high = hunkRanges.length - 1
-    let currentIndex = -1
-
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2)
-      const anchorTop = hunkRanges[middle].start * rowHeightPx
-
-      if (anchorTop <= threshold) {
-        currentIndex = middle
-        low = middle + 1
-      } else {
-        high = middle - 1
-      }
-    }
-
-    return currentIndex
-  }
-
-  function getScrollTopForHunk(
-    targetIndex: number,
-    hunkRanges: DiffHunkRange[],
-    rowHeightPx: number,
-  ) {
-    const targetHunk = hunkRanges[targetIndex]
-
-    if (!targetHunk) {
-      return null
-    }
-
-    return targetHunk.start * rowHeightPx
-  }
-
-  function getActiveDiffAnchors() {
-    const container = getActiveDiffScrollContainer()
-
-    if (!container) {
-      return []
-    }
-
-    return Array.from(container.querySelectorAll<HTMLElement>('[data-diff-anchor="true"]'))
-  }
-
-  function getCurrentDiffHunkFromScroll(
-    container: HTMLDivElement,
-    anchors: HTMLElement[],
-  ) {
-    if (anchors.length === 0) {
-      return -1
-    }
-
-    const threshold = container.getBoundingClientRect().top + 16
-    let nextCurrentIndex = -1
-
-    for (const [index, anchor] of anchors.entries()) {
-      if (anchor.getBoundingClientRect().top <= threshold) {
-        nextCurrentIndex = index
-        continue
-      }
-
-      break
-    }
-
-    return nextCurrentIndex
-  }
-
-  function refreshDiffNavigationState() {
-    const container = getActiveDiffScrollContainer()
-
-    if (!container) {
-      currentDiffHunk = -1
-      return
-    }
-
-    if (canUseComputedFullFileNavigation()) {
-      const hunkRanges = getActiveDiffHunkRanges()
-
-      currentDiffHunk = getCurrentDiffHunkFromScrollTop(
-        container.scrollTop,
-        hunkRanges,
-        getApproximateDiffRowHeightPx(),
-      )
-      return
-    }
-
-    const anchors = getActiveDiffAnchors()
-
-    if (anchors.length === 0) {
-      currentDiffHunk = -1
-      return
-    }
-
-    currentDiffHunk = getCurrentDiffHunkFromScroll(container, anchors)
-  }
-
-  function scheduleDiffNavigationRefresh() {
-    if (diffNavigationRefreshQueued) {
-      return
-    }
-
-    diffNavigationRefreshQueued = true
-
-    void tick().then(() => {
-      diffNavigationRefreshQueued = false
-      refreshDiffNavigationState()
-    })
-  }
-
-  function scheduleScrollNavigationRefresh() {
-    if (showFullFile) {
-      if (diffNavigationIdleTimer !== null) {
-        window.clearTimeout(diffNavigationIdleTimer)
-      }
-
-      diffNavigationIdleTimer = window.setTimeout(() => {
-        diffNavigationIdleTimer = null
-        refreshDiffNavigationState()
-      }, FULL_FILE_NAVIGATION_REFRESH_DELAY_MS)
-
-      return
-    }
-
-    if (diffNavigationScrollFrame !== null) {
-      return
-    }
-
-    diffNavigationScrollFrame = window.requestAnimationFrame(() => {
-      diffNavigationScrollFrame = null
-      refreshDiffNavigationState()
-    })
-  }
-
-  function prefersReducedMotion() {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return false
-    }
-
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
-
   function cancelPaneNavigationScroll() {
-    paneNavigationSyncActive = false
-    scrollEchoTarget = null
-
     if (paneNavigationScrollFrame !== null) {
       window.cancelAnimationFrame(paneNavigationScrollFrame)
       paneNavigationScrollFrame = null
@@ -2340,481 +2014,27 @@
   }
 
   function cancelPaneWheelScroll() {
-    paneWheelScrollSource = null
-
     if (paneWheelScrollFrame !== null) {
       window.cancelAnimationFrame(paneWheelScrollFrame)
       paneWheelScrollFrame = null
     }
   }
 
-  function getSideBySideDiffAnchorPair(targetIndex: number) {
-    if (!leftPaneScroll || !rightPaneScroll) {
-      return null
-    }
-
-    const selector = `[data-diff-anchor="true"][data-diff-index="${targetIndex}"]`
-    const leftAnchor = leftPaneScroll.querySelector<HTMLElement>(selector)
-    const rightAnchor = rightPaneScroll.querySelector<HTMLElement>(selector)
-
-    if (!leftAnchor || !rightAnchor) {
-      return null
-    }
-
-    return {
-      leftAnchor,
-      rightAnchor,
-    }
-  }
-
-  function scrollSideBySidePanes(
-    leftTop: number,
-    rightTop: number,
-    behavior: ScrollBehavior,
-  ) {
-    if (!leftPaneScroll || !rightPaneScroll) {
-      return
-    }
-
-    cancelPaneNavigationScroll()
-    cancelPaneWheelScroll()
-
-    const nextLeftTop = clampScrollOffset(leftTop, getMaxScrollTop(leftPaneScroll))
-    const nextRightTop = clampScrollOffset(rightTop, getMaxScrollTop(rightPaneScroll))
-
-    if (behavior === 'auto') {
-      leftPaneScroll.scrollTop = nextLeftTop
-      rightPaneScroll.scrollTop = nextRightTop
-      scheduleScrollNavigationRefresh()
-      return
-    }
-
-    const startLeftTop = leftPaneScroll.scrollTop
-    const startRightTop = rightPaneScroll.scrollTop
-
-    if (
-      Math.abs(nextLeftTop - startLeftTop) < 0.5 &&
-      Math.abs(nextRightTop - startRightTop) < 0.5
-    ) {
-      scheduleScrollNavigationRefresh()
-      return
-    }
-
-    const distance = Math.max(
-      Math.abs(nextLeftTop - startLeftTop),
-      Math.abs(nextRightTop - startRightTop),
-    )
-    const duration = Math.min(220, Math.max(120, distance * 0.18))
-    const startTime = window.performance.now()
-    paneNavigationSyncActive = true
-
-    const animate = (timestamp: number) => {
-      if (!leftPaneScroll || !rightPaneScroll) {
-        cancelPaneNavigationScroll()
-        return
-      }
-
-      const progress = Math.min((timestamp - startTime) / duration, 1)
-      const easedProgress = 1 - Math.pow(1 - progress, 3)
-
-      leftPaneScroll.scrollTop = startLeftTop + (nextLeftTop - startLeftTop) * easedProgress
-      rightPaneScroll.scrollTop = startRightTop + (nextRightTop - startRightTop) * easedProgress
-
-      scheduleScrollNavigationRefresh()
-
-      if (progress >= 1) {
-        leftPaneScroll.scrollTop = nextLeftTop
-        rightPaneScroll.scrollTop = nextRightTop
-        paneNavigationScrollFrame = null
-        paneNavigationSyncActive = false
-        scheduleScrollNavigationRefresh()
-        return
-      }
-
-      paneNavigationScrollFrame = window.requestAnimationFrame(animate)
-    }
-
-    paneNavigationScrollFrame = window.requestAnimationFrame(animate)
-  }
-
-  function scrollDiffHunkIntoView(targetIndex: number) {
-    const container = getActiveDiffScrollContainer()
-
-    if (!container) {
-      return
-    }
-
-    currentDiffHunk = targetIndex
-    const behavior = prefersReducedMotion() ? 'auto' : 'smooth'
-
-    if (canUseComputedFullFileNavigation()) {
-      const nextTop = getScrollTopForHunk(
-        targetIndex,
-        getActiveDiffHunkRanges(),
-        getApproximateDiffRowHeightPx(),
-      )
-
-      if (nextTop === null) {
-        return
-      }
-
-      if (viewMode === 'sideBySide') {
-        scrollSideBySidePanes(nextTop, nextTop, behavior)
-        return
-      }
-
-      container.scrollTo({
-        top: nextTop,
-        behavior,
-      })
-      return
-    }
-
-    const anchors = getActiveDiffAnchors()
-    const anchor = anchors[targetIndex]
-
-    if (!anchor) {
-      return
-    }
-
-    if (viewMode === 'sideBySide') {
-      const anchorPair = getSideBySideDiffAnchorPair(targetIndex)
-
-      if (anchorPair && leftPaneScroll && rightPaneScroll) {
-        scrollSideBySidePanes(
-          getScrollTopForAnchor(leftPaneScroll, anchorPair.leftAnchor),
-          getScrollTopForAnchor(rightPaneScroll, anchorPair.rightAnchor),
-          behavior,
-        )
-        return
-      }
-
-      const nextLeftTop = getScrollTopForAnchor(container, anchor)
-      scrollSideBySidePanes(
-        nextLeftTop,
-        mapScrollOffset(
-          nextLeftTop,
-          getMaxScrollTop(container),
-          getMaxScrollTop(rightPaneScroll ?? container),
-        ),
-        behavior,
-      )
-      return
-    }
-
-    container.scrollTo({
-      top: getScrollTopForAnchor(container, anchor),
-      behavior,
-    })
-  }
-
   function goToPreviousDifference() {
-    if (!canGoToPreviousDiff) {
-      return
-    }
-
-    const targetIndex = Math.max(0, (currentDiffHunk === -1 ? 0 : currentDiffHunk) - 1)
-    scrollDiffHunkIntoView(targetIndex)
+    currentDiffHunk = Math.max(0, currentDiffHunk - 1)
   }
 
   function goToNextDifference() {
-    if (!canGoToNextDiff) {
-      return
-    }
-
-    const targetIndex = Math.min(
-      visibleDiffHunkCount - 1,
-      currentDiffHunk === -1 ? 0 : currentDiffHunk + 1,
-    )
-    scrollDiffHunkIntoView(targetIndex)
-  }
-
-  function getPaneScroll(side: 'left' | 'right') {
-    return side === 'left' ? leftPaneScroll : rightPaneScroll
-  }
-
-  function getPaneContentRoot(pane: HTMLDivElement) {
-    const contentRoot = pane.querySelector('[data-pane-content-root="true"]')
-    return contentRoot instanceof HTMLDivElement ? contentRoot : null
-  }
-
-  function findPaneItemAtOffset(contentRoot: HTMLDivElement, offset: number) {
-    const items = contentRoot.children as HTMLCollectionOf<HTMLElement>
-
-    if (items.length === 0) {
-      return null
-    }
-
-    let low = 0
-    let high = items.length - 1
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2)
-      const item = items.item(mid)
-
-      if (!item) {
-        break
-      }
-
-      const top = item.offsetTop
-      const bottom = top + item.offsetHeight
-
-      if (offset < top) {
-        high = mid - 1
-      } else if (offset >= bottom) {
-        low = mid + 1
-      } else {
-        return { index: mid, item }
-      }
-    }
-
-    const fallbackIndex = Math.max(
-      0,
-      Math.min(items.length - 1, low >= items.length ? items.length - 1 : Math.max(0, low - 1)),
-    )
-    const fallbackItem = items.item(fallbackIndex)
-
-    if (!fallbackItem) {
-      return null
-    }
-
-    return { index: fallbackIndex, item: fallbackItem }
-  }
-
-  function mapPaneScrollTop(sourcePane: HTMLDivElement, targetPane: HTMLDivElement) {
-    const sourceContentRoot = getPaneContentRoot(sourcePane)
-    const targetContentRoot = getPaneContentRoot(targetPane)
-    const sourceMaxScrollTop = getMaxScrollTop(sourcePane)
-    const targetMaxScrollTop = getMaxScrollTop(targetPane)
-
-    if (!wrapSideBySideLines) {
-      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
-    }
-
-    if (sourcePane.scrollTop <= 1) {
-      return 0
-    }
-
-    if (sourceMaxScrollTop - sourcePane.scrollTop <= 1) {
-      return targetMaxScrollTop
-    }
-
-    if (!sourceContentRoot || !targetContentRoot) {
-      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
-    }
-
-    if (sourceContentRoot.children.length !== targetContentRoot.children.length) {
-      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
-    }
-
-    const sourceLastItem = sourceContentRoot.lastElementChild
-    const targetLastItem = targetContentRoot.lastElementChild
-
-    if (sourceLastItem instanceof HTMLElement && targetLastItem instanceof HTMLElement) {
-      const sourceTrailingStart = Math.max(
-        0,
-        sourceLastItem.offsetTop + sourceLastItem.offsetHeight - sourcePane.clientHeight,
-      )
-      const targetTrailingStart = Math.max(
-        0,
-        targetLastItem.offsetTop + targetLastItem.offsetHeight - targetPane.clientHeight,
-      )
-
-      if (sourcePane.scrollTop >= sourceTrailingStart) {
-        const sourceTrailingRange = Math.max(1, sourceMaxScrollTop - sourceTrailingStart)
-        const targetTrailingRange = Math.max(0, targetMaxScrollTop - targetTrailingStart)
-        const trailingProgress = clampScrollOffset(
-          (sourcePane.scrollTop - sourceTrailingStart) / sourceTrailingRange,
-          1,
-        )
-
-        return clampScrollOffset(
-          targetTrailingStart + trailingProgress * targetTrailingRange,
-          targetMaxScrollTop,
-        )
-      }
-    }
-
-    const sourceMatch = findPaneItemAtOffset(sourceContentRoot, sourcePane.scrollTop)
-
-    if (!sourceMatch) {
-      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
-    }
-
-    const targetItem = targetContentRoot.children.item(sourceMatch.index)
-
-    if (!(targetItem instanceof HTMLElement)) {
-      return clampScrollOffset(sourcePane.scrollTop, targetMaxScrollTop)
-    }
-
-    const sourceItemHeight = Math.max(sourceMatch.item.offsetHeight, 1)
-    const targetItemHeight = Math.max(targetItem.offsetHeight, 1)
-    const offsetWithinItem = clampScrollOffset(
-      sourcePane.scrollTop - sourceMatch.item.offsetTop,
-      sourceItemHeight,
-    )
-    const itemProgress = offsetWithinItem / sourceItemHeight
-
-    return clampScrollOffset(
-      targetItem.offsetTop + itemProgress * targetItemHeight,
-      targetMaxScrollTop,
-    )
-  }
-
-  function applyPaneScrollSync(source: 'left' | 'right') {
-    const sourcePane = getPaneScroll(source)
-    const targetSide = source === 'left' ? 'right' : 'left'
-    const targetPane = getPaneScroll(targetSide)
-
-    if (!sourcePane || !targetPane) {
-      return
-    }
-
-    const nextTargetTop = mapPaneScrollTop(sourcePane, targetPane)
-    const nextTargetLeft = clampScrollOffset(sourcePane.scrollLeft, getMaxScrollLeft(targetPane))
-
-    scrollEchoTarget = targetSide
-    if (Math.abs(targetPane.scrollTop - nextTargetTop) >= 0.5) {
-      targetPane.scrollTop = nextTargetTop
-    }
-
-    if (Math.abs(targetPane.scrollLeft - nextTargetLeft) >= 0.5) {
-      targetPane.scrollLeft = nextTargetLeft
-    }
-
-    if (scrollEchoResetFrame !== null) {
-      window.cancelAnimationFrame(scrollEchoResetFrame)
-    }
-
-    scrollEchoResetFrame = window.requestAnimationFrame(() => {
-      scrollEchoResetFrame = null
-      scrollEchoTarget = null
-    })
-
-    scheduleScrollNavigationRefresh()
+    currentDiffHunk += 1
   }
 
   function syncPaneWheel(event: WheelEvent, source: 'left' | 'right') {
-    const sourcePane = getPaneScroll(source)
-
-    if (!sourcePane || event.ctrlKey) {
-      return
-    }
-
-    if (event.shiftKey) {
-      event.preventDefault()
-
-      const deltaLeft = normalizeWheelDelta(
-        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY,
-        event.deltaMode,
-      )
-      const maxScrollLeft = getMaxScrollLeft(sourcePane)
-      const nextScrollLeft = clampScrollOffset(sourcePane.scrollLeft + deltaLeft, maxScrollLeft)
-
-      if (Math.abs(nextScrollLeft - sourcePane.scrollLeft) >= 0.5) {
-        sourcePane.scrollLeft = nextScrollLeft
-        applyPaneScrollSync(source)
-      }
-
-      return
-    }
-
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
-      return
-    }
-
-    if (!syncSideBySideScroll) {
-      if (source === 'left') {
-        scheduleScrollNavigationRefresh()
-      }
-
-      return
-    }
-
-    cancelPaneNavigationScroll()
-    event.preventDefault()
-
-    const deltaTop = normalizeWheelDelta(event.deltaY, event.deltaMode)
-    const maxScrollTop = getMaxScrollTop(sourcePane)
-
-    if (paneWheelScrollSource && paneWheelScrollSource !== source) {
-      cancelPaneWheelScroll()
-    }
-
-    const baseTop =
-      paneWheelScrollSource === source ? paneWheelScrollTargetTop : sourcePane.scrollTop
-    const nextSourceTop = clampScrollOffset(baseTop + deltaTop, maxScrollTop)
-
-    if (Math.abs(nextSourceTop - baseTop) < 0.5) {
-      return
-    }
-
-    paneWheelScrollSource = source
-    paneWheelScrollTargetTop = nextSourceTop
-
-    if (paneWheelScrollFrame !== null) {
-      return
-    }
-
-    const animate = () => {
-      const activePane = getPaneScroll(source)
-
-      if (!activePane || paneWheelScrollSource !== source) {
-        cancelPaneWheelScroll()
-        return
-      }
-
-      const remaining = paneWheelScrollTargetTop - activePane.scrollTop
-
-      if (Math.abs(remaining) < 0.5) {
-        activePane.scrollTop = paneWheelScrollTargetTop
-        applyPaneScrollSync(source)
-        cancelPaneWheelScroll()
-        return
-      }
-
-      const stepMagnitude = Math.min(
-        Math.abs(remaining),
-        Math.max(PANE_WHEEL_MIN_STEP, Math.abs(remaining) * PANE_WHEEL_SMOOTHING),
-      )
-      const step = Math.sign(remaining) * stepMagnitude
-      activePane.scrollTop = clampScrollOffset(
-        activePane.scrollTop + step,
-        getMaxScrollTop(activePane),
-      )
-      applyPaneScrollSync(source)
-      paneWheelScrollFrame = window.requestAnimationFrame(animate)
-    }
-
-    paneWheelScrollFrame = window.requestAnimationFrame(animate)
+    void event
+    void source
   }
 
   function syncPaneScroll(source: 'left' | 'right') {
-    const sourcePane = getPaneScroll(source)
-
-    if (!sourcePane) {
-      return
-    }
-
-    if (!syncSideBySideScroll) {
-      if (source === 'left') {
-        scheduleScrollNavigationRefresh()
-      }
-
-      return
-    }
-
-    if (paneNavigationSyncActive) {
-      scheduleScrollNavigationRefresh()
-      return
-    }
-
-    if (source === scrollEchoTarget) {
-      scrollEchoTarget = null
-      return
-    }
-
-    applyPaneScrollSync(source)
+    void source
   }
 
   function scheduleSessionSave() {
@@ -2828,16 +2048,11 @@
 
     const session = buildPersistedSession({
       mode,
-      viewMode,
+      viewerSettings,
+      treeSettings,
       appearanceSettings,
       ignoreWhitespace,
       ignoreCase,
-      showFullFile,
-      showInlineHighlights,
-      wrapSideBySideLines,
-      showSyntaxHighlighting,
-      syncSideBySideScroll,
-      contextLines,
       checkForUpdatesOnLaunch,
       updateChannel,
       lastUpdateCheckAt,
@@ -2922,21 +2137,6 @@
     return getFileName(side === 'left' ? activeDiff.leftLabel : activeDiff.rightLabel)
   }
 
-  function shouldDeferFullFileRenderItems() {
-    if (!activeDiff || activeDiff.contentKind !== 'text' || !showFullFile) {
-      return false
-    }
-
-    if (viewMode === 'sideBySide') {
-      return (
-        !wrapSideBySideLines &&
-        activeDiff.sideBySide.length > FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD
-      )
-    }
-
-    return activeDiff.unified.length > FULL_FILE_RENDER_ITEM_DEFER_THRESHOLD
-  }
-
   $: {
     const { leftSegments, rightSegments } = splitCommonPathPrefix(leftPath, rightPath)
     leftCompareRoot = buildCompareRootDisplay(leftPath, leftSegments)
@@ -2955,77 +2155,10 @@
     rightRootFullPath: rightCompareRoot.fullPath,
   }
 
-  $: if (activeDiff?.contentKind === 'text') {
-    maxLineNumber = diffCache.getCachedMaxLineNumber(activeDiff)
-    if (viewMode === 'sideBySide') {
-      sideBySideHunkRanges = diffCache.getCachedSideBySideHunks(activeDiff, contextLines)
-      sideBySideRenderItems = shouldDeferFullFileRenderItems()
-        ? []
-        : diffCache.getCachedSideBySideRenderItems(
-            activeDiff,
-            showFullFile,
-            contextLines,
-          )
-      sideBySideMinimapData = showFullFile
-        ? diffCache.getCachedSideBySideFullMinimapRows(activeDiff)
-        : diffCache.getCachedSideBySideItemMinimapRows(
-            activeDiff,
-            showFullFile,
-            contextLines,
-          )
-      unifiedHunkRanges = []
-      unifiedRenderItems = []
-      unifiedMinimapData = []
-    } else {
-      unifiedHunkRanges = diffCache.getCachedUnifiedHunks(activeDiff, contextLines)
-      unifiedRenderItems = shouldDeferFullFileRenderItems()
-        ? []
-        : diffCache.getCachedUnifiedRenderItems(
-            activeDiff,
-            showFullFile,
-            contextLines,
-          )
-      unifiedMinimapData = showFullFile
-        ? diffCache.getCachedUnifiedFullMinimapRows(activeDiff)
-        : diffCache.getCachedUnifiedItemMinimapRows(
-            activeDiff,
-            showFullFile,
-            contextLines,
-          )
-      sideBySideHunkRanges = []
-      sideBySideRenderItems = []
-      sideBySideMinimapData = []
-    }
-  } else {
-    maxLineNumber = 0
-    sideBySideHunkRanges = []
-    unifiedHunkRanges = []
-    sideBySideRenderItems = []
-    unifiedRenderItems = []
-    sideBySideMinimapData = []
-    unifiedMinimapData = []
-  }
-
-  $: visibleDiffHunkCount =
-    viewMode === 'sideBySide' ? sideBySideHunkRanges.length : unifiedHunkRanges.length
-
-  $: canNavigateDiffs =
-    !loading &&
-    !detailLoading &&
-    !pickerLoading &&
-    activeDiff?.contentKind === 'text' &&
-    visibleDiffHunkCount > 0
-
   $: textDiffActive = activeDiff?.contentKind === 'text'
-
-  $: canGoToPreviousDiff = canNavigateDiffs && currentDiffHunk > 0
-
-  $: canGoToNextDiff =
-    canNavigateDiffs && currentDiffHunk < visibleDiffHunkCount - 1
-
-  $: diffFontSize = `${appearanceSettings.codeFontSize}px`
-  $: diffRowLineHeight = `${appearanceSettings.codeFontSize + 3}px`
-  $: diffRowHeight = `${appearanceSettings.codeFontSize + 8}px`
+  $: canNavigateDiffs = false
+  $: canGoToPreviousDiff = false
+  $: canGoToNextDiff = false
   $: {
     const appearanceState = resolveAppearanceState(appearanceSettings, systemPrefersDark)
     resolvedThemeMode = appearanceState.resolvedThemeMode
@@ -3037,11 +2170,6 @@
   $: if (screen === 'compare') {
     activeDiff
     viewMode
-    showFullFile
-    contextLines
-    sideBySideRenderItems
-    unifiedRenderItems
-    scheduleDiffNavigationRefresh()
   } else {
     currentDiffHunk = -1
   }
@@ -3055,14 +2183,10 @@
     mode
     viewMode
     appearanceSettings
+    viewerSettings
+    treeSettings
     ignoreWhitespace
     ignoreCase
-    showFullFile
-    showInlineHighlights
-    wrapSideBySideLines
-    showSyntaxHighlighting
-    syncSideBySideScroll
-    contextLines
     checkForUpdatesOnLaunch
     updateChannel
     lastUpdateCheckAt
@@ -3421,20 +2545,17 @@
       style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
     >
       {#if mode === 'directory'}
-        <DirectoryBrowser
+        <PierreDirectoryTree
           {loading}
           {activeStatusFilters}
           {directoryEntries}
-          {directoryStatusSummary}
-          {visibleFolderSections}
-          {collapsedGroups}
           {selectedRelativePath}
           {statusLabel}
+          {treeSettings}
+          {appearanceSettings}
           {isStatusFilterActive}
           {toggleStatusFilter}
-          {toggleGroup}
           {selectEntry}
-          {getFileName}
         />
         <button
           aria-label="Resize file list panel"
@@ -3445,34 +2566,14 @@
         ></button>
       {/if}
 
-      <DiffViewer
+      <CompareViewer
         {activeDiff}
         loading={mode === 'file' ? loading : false}
         {detailLoading}
+        {viewerSettings}
+        {appearanceSettings}
+        {resolvedThemeMode}
         {viewMode}
-        {currentDiffHunk}
-        {showFullFile}
-        {showInlineHighlights}
-        {wrapSideBySideLines}
-        {showSyntaxHighlighting}
-        {syncSideBySideScroll}
-        {sideBySideRenderItems}
-        {unifiedRenderItems}
-        {sideBySideHunkRanges}
-        {unifiedHunkRanges}
-        {sideBySideMinimapData}
-        {unifiedMinimapData}
-        {maxLineNumber}
-        {diffHeaderContext}
-        {diffFontSize}
-        {diffRowLineHeight}
-        {diffRowHeight}
-        {syncPaneWheel}
-        {syncPaneScroll}
-        {scheduleScrollNavigationRefresh}
-        bind:leftPaneScroll
-        bind:rightPaneScroll
-        bind:unifiedScroll
       />
     </section>
   </main>
@@ -3524,17 +2625,12 @@
       {ignoreWhitespace}
       {ignoreCase}
       {viewMode}
-      {showFullFile}
-      {contextLines}
-      {contextLinePresets}
+      {viewerSettings}
+      {treeSettings}
       minUiFontSize={MIN_UI_FONT_SIZE}
       maxUiFontSize={MAX_UI_FONT_SIZE}
       minCodeFontSize={MIN_CODE_FONT_SIZE}
       maxCodeFontSize={MAX_CODE_FONT_SIZE}
-      {wrapSideBySideLines}
-      {showInlineHighlights}
-      {showSyntaxHighlighting}
-      {syncSideBySideScroll}
       {checkForUpdatesOnLaunch}
       {updateChannel}
       updateChannelLabel={formatUpdateChannelLabel(updateChannel)}
@@ -3560,12 +2656,13 @@
       onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
       onToggleIgnoreCase={toggleIgnoreCase}
       onSetViewMode={setViewMode}
-      onToggleShowFullFile={() => setShowFullFile(!showFullFile)}
-      onSetContextLines={applyContextLines}
-      onToggleWrapSideBySideLines={() => setWrapSideBySideLines(!wrapSideBySideLines)}
-      onToggleShowInlineHighlights={() => setShowInlineHighlights(!showInlineHighlights)}
-      onToggleShowSyntaxHighlighting={() => setShowSyntaxHighlighting(!showSyntaxHighlighting)}
-      onToggleSyncSideBySideScroll={toggleSyncSideBySideScroll}
+      onSetViewerSettings={(settings) => {
+        viewerSettings = settings
+        viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
+      }}
+      onSetTreeSettings={(settings) => {
+        treeSettings = settings
+      }}
       onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
       onSetUpdateChannel={setUpdateChannel}
       onCheckForUpdates={runUpdateCheck}

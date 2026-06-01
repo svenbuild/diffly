@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { pathToFileURL } from 'node:url'
 import type {
   CompareOptions,
   PathKind,
@@ -69,11 +68,4 @@ contextBridge.exposeInMainWorld('diffly', {
       relativePath,
       options,
     }),
-  loadBinaryPreview: (
-    leftPath: string,
-    rightPath: string,
-    options: CompareOptions,
-  ) =>
-    invoke('diffly:loadBinaryPreview', { leftPath, rightPath, options }),
-  fileUrl: (path: string) => pathToFileURL(path).toString(),
 })

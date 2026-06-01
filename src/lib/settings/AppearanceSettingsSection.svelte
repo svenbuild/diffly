@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { detectSyntaxLanguage, renderDiffFragments, type RenderedDiffFragment } from '../syntax'
   import ThemeEditorPanel from './ThemeEditorPanel.svelte'
   import ThemePreviewCard from './ThemePreviewCard.svelte'
   import type { AppearanceSettings, ThemeDefinition, ThemeSemanticColorKey, ThemeVariant } from '../theme'
   import { createThemeCssVariables } from '../theme/runtime'
+
+  interface RenderedDiffFragment {
+    text: string
+    highlighted: boolean
+    className: string
+  }
 
   interface PreviewLine {
     lineNumber: number
@@ -67,8 +72,6 @@
     dark: 'Dark preview',
   }
 
-  const previewLanguage = detectSyntaxLanguage('theme-preview.ts')
-
   let previewStyleOptions: PreviewStyleOptions
   let resolvedThemeState: Record<ThemeVariant, ThemeState>
 
@@ -125,11 +128,15 @@
     segments: Array<{ text: string; highlighted: boolean }>,
     previewOptions: PreviewStyleOptions,
   ) {
-    return renderDiffFragments(
-      text,
-      previewOptions.showInlineHighlights ? segments : [],
-      previewOptions.showSyntaxHighlighting ? previewLanguage : null,
-    )
+    const sourceSegments = previewOptions.showInlineHighlights && segments.length > 0
+      ? segments
+      : [{ text, highlighted: false }]
+
+    return sourceSegments.map((segment) => ({
+      text: segment.text,
+      highlighted: segment.highlighted,
+      className: previewOptions.showSyntaxHighlighting ? 'syntax-token property' : '',
+    }))
   }
 
   function createPreviewLine(

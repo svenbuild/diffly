@@ -1,78 +1,64 @@
 <script lang="ts">
-  import type { ContextLinesSetting, ViewMode } from '../types'
+  import type { CompareTreeSettings, CompareViewerSettings, ViewMode } from '../types'
 
   export let viewMode: ViewMode
-  export let wrapSideBySideLines: boolean
-  export let syncSideBySideScroll: boolean
-  export let showFullFile: boolean
-  export let contextLines: ContextLinesSetting
-  export let contextLinePresets: ContextLinesSetting[]
-  export let showSyntaxHighlighting: boolean
-  export let showInlineHighlights: boolean
+  export let viewerSettings: CompareViewerSettings
+  export let treeSettings: CompareTreeSettings
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let comparisonRulesRequireRefresh: boolean
   export let compareNeedsRefresh: boolean
   export let onSetViewMode: (viewMode: ViewMode) => void
-  export let onToggleWrapSideBySideLines: () => void
-  export let onToggleSyncSideBySideScroll: () => void
-  export let onToggleShowFullFile: () => void
-  export let onSetContextLines: (value: string) => void
-  export let onToggleShowSyntaxHighlighting: () => void
-  export let onToggleShowInlineHighlights: () => void
+  export let onSetViewerSettings: (settings: CompareViewerSettings) => void
+  export let onSetTreeSettings: (settings: CompareTreeSettings) => void
   export let onToggleIgnoreWhitespace: () => void
   export let onToggleIgnoreCase: () => void
+
+  function updateViewerSettings(patch: Partial<CompareViewerSettings>) {
+    onSetViewerSettings({ ...viewerSettings, ...patch })
+  }
+
+  function updateTreeSettings(patch: Partial<CompareTreeSettings>) {
+    onSetTreeSettings({ ...treeSettings, ...patch })
+  }
 </script>
 
 <section class="settings-page viewer-settings">
   <div class="settings-page-heading">
     <h2>Viewer</h2>
-    <p>Defaults for reading and navigating diffs.</p>
+    <p>Defaults for Pierre diffs and directory trees.</p>
   </div>
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Layout</h3>
-      <p>Choose how each diff opens and moves as you read it.</p>
+      <h3>Diff</h3>
+      <p>Control how text changes are rendered.</p>
     </div>
 
     <div class="settings-group-grid">
       <div class="settings-row settings-row-span-full">
         <div class="settings-row-copy">
           <strong>View mode</strong>
-          <p>Use split or unified view when a compare opens.</p>
+          <p>Use split or unified layout.</p>
         </div>
 
         <div class="settings-control">
-          <div
-            class="segmented-control toolbar-segmented-control settings-segmented-control"
-            role="group"
-            aria-label="Default diff view"
-          >
+          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Default diff view">
             <button
               aria-pressed={viewMode === 'sideBySide'}
               class:active={viewMode === 'sideBySide'}
               type="button"
-              on:click={() => onSetViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')}
+              on:click={() => onSetViewMode('sideBySide')}
             >
-              <svg aria-hidden="true" viewBox="0 0 16 16">
-                <rect x="2.6" y="3.2" width="11" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
-                <path d="M8 3.4v9.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-              </svg>
-              <span>Split</span>
+              Split
             </button>
-
             <button
               aria-pressed={viewMode === 'unified'}
               class:active={viewMode === 'unified'}
               type="button"
-              on:click={() => onSetViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')}
+              on:click={() => onSetViewMode('unified')}
             >
-              <svg aria-hidden="true" viewBox="0 0 16 16">
-                <rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
-                <path d="M5 6h6M5 8h5.1M5 10h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
-              </svg>
-              <span>Unified</span>
+              Unified
             </button>
           </div>
         </div>
@@ -81,16 +67,15 @@
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
           <strong>Wrap long lines</strong>
-          <p>Wrap side-by-side lines instead of horizontal scrolling.</p>
+          <p>Wrap code instead of using horizontal scrolling.</p>
         </div>
-
         <span class="settings-control">
           <span class="settings-switch">
             <input
-              checked={wrapSideBySideLines}
+              checked={viewerSettings.codeOverflow === 'wrap'}
               role="switch"
               type="checkbox"
-              on:change={onToggleWrapSideBySideLines}
+              on:change={() => updateViewerSettings({ codeOverflow: viewerSettings.codeOverflow === 'wrap' ? 'scroll' : 'wrap' })}
             />
             <span aria-hidden="true" class="settings-switch-ui"></span>
           </span>
@@ -99,17 +84,70 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Sync scrolling</strong>
-          <p>Keep both panes aligned while you scroll.</p>
+          <strong>Expand unchanged</strong>
+          <p>Open diffs with unchanged regions expanded.</p>
         </div>
-
         <span class="settings-control">
           <span class="settings-switch">
             <input
-              checked={syncSideBySideScroll}
+              checked={viewerSettings.expandUnchanged}
               role="switch"
               type="checkbox"
-              on:change={onToggleSyncSideBySideScroll}
+              on:change={() => updateViewerSettings({ expandUnchanged: !viewerSettings.expandUnchanged })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>Inline diff</strong>
+          <p>Choose word, character, or no inline highlighting.</p>
+        </div>
+        <div class="settings-control">
+          <select
+            value={viewerSettings.lineDiffType}
+            on:change={(event) => updateViewerSettings({ lineDiffType: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['lineDiffType'] })}
+          >
+            <option value="word-alt">Word alt</option>
+            <option value="word">Word</option>
+            <option value="char">Character</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>Hunk separators</strong>
+          <p>Choose the separator style between changed regions.</p>
+        </div>
+        <div class="settings-control">
+          <select
+            value={viewerSettings.hunkSeparators}
+            on:change={(event) => updateViewerSettings({ hunkSeparators: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['hunkSeparators'] })}
+          >
+            <option value="line-info">Line info</option>
+            <option value="line-info-basic">Line info basic</option>
+            <option value="metadata">Metadata</option>
+            <option value="simple">Simple</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
+          <strong>Syntax highlighting</strong>
+          <p>Use Shiki highlighting for supported languages.</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={viewerSettings.syntaxMode === 'shiki'}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateViewerSettings({ syntaxMode: viewerSettings.syntaxMode === 'shiki' ? 'plain' : 'shiki' })}
             />
             <span aria-hidden="true" class="settings-switch-ui"></span>
           </span>
@@ -120,62 +158,40 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Content detail</h3>
-      <p>Choose how much context and rendering detail the viewer shows.</p>
+      <h3>Tree</h3>
+      <p>Control the changed-file list.</p>
     </div>
 
     <div class="settings-group-grid">
-      <label class="settings-row settings-row-interactive">
+      <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Full file</strong>
-          <p>Show the entire file instead of context-only hunks.</p>
+          <strong>Density</strong>
+          <p>Set directory row spacing.</p>
         </div>
-
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={showFullFile}
-              role="switch"
-              type="checkbox"
-              on:change={onToggleShowFullFile}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <div class:settings-row-disabled={showFullFile} class="settings-row">
-        <div class="settings-row-copy">
-          <strong>Context lines</strong>
-          <p>Visible lines around each change. Only used when Full file is off.</p>
-        </div>
-
         <div class="settings-control">
           <select
-            disabled={showFullFile}
-            value={contextLines}
-            on:change={(event) => onSetContextLines((event.currentTarget as HTMLSelectElement).value)}
+            value={treeSettings.density}
+            on:change={(event) => updateTreeSettings({ density: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['density'] })}
           >
-            {#each contextLinePresets as preset}
-              <option value={preset}>{preset}</option>
-            {/each}
+            <option value="compact">Compact</option>
+            <option value="default">Default</option>
+            <option value="relaxed">Relaxed</option>
           </select>
         </div>
       </div>
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Syntax highlighting</strong>
-          <p>Apply language colors inside the diff viewer.</p>
+          <strong>Flatten empty folders</strong>
+          <p>Compress folder chains with no branching.</p>
         </div>
-
         <span class="settings-control">
           <span class="settings-switch">
             <input
-              checked={showSyntaxHighlighting}
+              checked={treeSettings.flattenEmptyDirectories}
               role="switch"
               type="checkbox"
-              on:change={onToggleShowSyntaxHighlighting}
+              on:change={() => updateTreeSettings({ flattenEmptyDirectories: !treeSettings.flattenEmptyDirectories })}
             />
             <span aria-hidden="true" class="settings-switch-ui"></span>
           </span>
@@ -184,17 +200,16 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Inline highlights</strong>
-          <p>Mark changed fragments inside each edited line.</p>
+          <strong>Sticky folders</strong>
+          <p>Keep parent folders visible while scrolling.</p>
         </div>
-
         <span class="settings-control">
           <span class="settings-switch">
             <input
-              checked={showInlineHighlights}
+              checked={treeSettings.stickyFolders}
               role="switch"
               type="checkbox"
-              on:change={onToggleShowInlineHighlights}
+              on:change={() => updateTreeSettings({ stickyFolders: !treeSettings.stickyFolders })}
             />
             <span aria-hidden="true" class="settings-switch-ui"></span>
           </span>
@@ -226,30 +241,10 @@
           <strong>Whitespace</strong>
           <p>Compare spacing exactly or ignore whitespace-only edits.</p>
         </div>
-
         <div class="settings-control">
-          <div
-            class="segmented-control toolbar-segmented-control settings-segmented-control"
-            role="group"
-            aria-label="Whitespace handling"
-          >
-            <button
-              aria-pressed={!ignoreWhitespace}
-              class:active={!ignoreWhitespace}
-              type="button"
-              on:click={onToggleIgnoreWhitespace}
-            >
-              Exact
-            </button>
-
-            <button
-              aria-pressed={ignoreWhitespace}
-              class:active={ignoreWhitespace}
-              type="button"
-              on:click={onToggleIgnoreWhitespace}
-            >
-              Ignore
-            </button>
+          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Whitespace handling">
+            <button aria-pressed={!ignoreWhitespace} class:active={!ignoreWhitespace} type="button" on:click={onToggleIgnoreWhitespace}>Exact</button>
+            <button aria-pressed={ignoreWhitespace} class:active={ignoreWhitespace} type="button" on:click={onToggleIgnoreWhitespace}>Ignore</button>
           </div>
         </div>
       </div>
@@ -259,30 +254,10 @@
           <strong>Case sensitivity</strong>
           <p>Choose whether letter case should count as a change.</p>
         </div>
-
         <div class="settings-control">
-          <div
-            class="segmented-control toolbar-segmented-control settings-segmented-control"
-            role="group"
-            aria-label="Case sensitivity"
-          >
-            <button
-              aria-pressed={!ignoreCase}
-              class:active={!ignoreCase}
-              type="button"
-              on:click={onToggleIgnoreCase}
-            >
-              Sensitive
-            </button>
-
-            <button
-              aria-pressed={ignoreCase}
-              class:active={ignoreCase}
-              type="button"
-              on:click={onToggleIgnoreCase}
-            >
-              Insensitive
-            </button>
+          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Case sensitivity">
+            <button aria-pressed={!ignoreCase} class:active={!ignoreCase} type="button" on:click={onToggleIgnoreCase}>Sensitive</button>
+            <button aria-pressed={ignoreCase} class:active={ignoreCase} type="button" on:click={onToggleIgnoreCase}>Insensitive</button>
           </div>
         </div>
       </div>

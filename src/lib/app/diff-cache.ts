@@ -1,56 +1,4 @@
-import type {
-  CompareMode,
-  ContextLinesSetting,
-  DirectoryEntryResult,
-  FileDiffResult,
-  SideBySideRow,
-  UnifiedLine,
-} from '../types'
-import type { DiffHunkRange, SideBySideRenderItem, UnifiedRenderItem } from '../ui-types'
-import type { MinimapRow } from '../minimap-render'
-
-interface CachedDiffRenderState {
-  sideBySideHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-  unifiedHunks: Map<ContextLinesSetting, DiffHunkRange[]>
-  sideBySideItems: Map<string, SideBySideRenderItem[]>
-  unifiedItems: Map<string, UnifiedRenderItem[]>
-  sideBySideFullMinimapRows?: MinimapRow[]
-  unifiedFullMinimapRows?: MinimapRow[]
-  sideBySideItemMinimapRows: Map<string, MinimapRow[]>
-  unifiedItemMinimapRows: Map<string, MinimapRow[]>
-  maxLineNumber?: number
-}
-
-interface DiffCacheDependencies {
-  buildSideBySideHunkRanges: (
-    rows: SideBySideRow[],
-    contextLines: ContextLinesSetting,
-  ) => DiffHunkRange[]
-  buildUnifiedHunkRanges: (
-    rows: UnifiedLine[],
-    contextLines: ContextLinesSetting,
-  ) => DiffHunkRange[]
-  buildSideBySideRenderItems: (
-    rows: SideBySideRow[],
-    hunks: DiffHunkRange[],
-    includeFullFile: boolean,
-  ) => SideBySideRenderItem[]
-  buildUnifiedRenderItems: (
-    rows: UnifiedLine[],
-    hunks: DiffHunkRange[],
-    includeFullFile: boolean,
-  ) => UnifiedRenderItem[]
-  sideBySideMinimapRows: (rows: SideBySideRow[]) => MinimapRow[]
-  unifiedMinimapRows: (rows: UnifiedLine[]) => MinimapRow[]
-  sideBySideItemMinimapRows: (items: SideBySideRenderItem[]) => MinimapRow[]
-  unifiedItemMinimapRows: (items: UnifiedRenderItem[]) => MinimapRow[]
-  openCompareItem: (
-    leftPath: string,
-    rightPath: string,
-    relativePath: string,
-    options: { ignoreWhitespace: boolean; ignoreCase: boolean },
-  ) => Promise<FileDiffResult>
-}
+import type { CompareMode, DirectoryEntryResult, FileDiffResult } from '../types'
 
 interface DetailCacheContext {
   revision: number
@@ -75,21 +23,25 @@ interface BackgroundPreloadContext {
   warmDetailDiff?: (diff: FileDiffResult) => void
 }
 
-// Keep automatic detail work minimal. Each cached FileDiffResult can retain
-// full text rows, render state, minimap rows, and binary preview bytes.
+interface DiffCacheDependencies {
+  openCompareItem: (
+    leftPath: string,
+    rightPath: string,
+    relativePath: string,
+    options: { ignoreWhitespace: boolean; ignoreCase: boolean },
+  ) => Promise<FileDiffResult>
+}
+
 const BACKGROUND_PRELOAD_RADIUS = 0
 const DETAIL_DIFF_CACHE_LIMIT = 16
 
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
-  // Using Map preserves insertion order — we promote on access to get LRU.
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()
-  const diffRenderCache = new WeakMap<FileDiffResult, CachedDiffRenderState>()
   let backgroundPreloadTimer: number | null = null
   let backgroundPreloadGeneration = 0
   let activePreloadWorkerCount = 0
 
   function touchDetailDiffEntry(cacheKey: string, value: Promise<FileDiffResult>) {
-    // Delete-then-set moves the entry to the end (most-recent) of the Map.
     detailDiffCache.delete(cacheKey)
     detailDiffCache.set(cacheKey, value)
   }
@@ -100,33 +52,6 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       if (oldestKey === undefined) return
       detailDiffCache.delete(oldestKey)
     }
-  }
-
-  function getCachedDiffRenderState(diff: FileDiffResult) {
-    const cached = diffRenderCache.get(diff)
-
-    if (cached) {
-      return cached
-    }
-
-    const state: CachedDiffRenderState = {
-      sideBySideHunks: new Map(),
-      unifiedHunks: new Map(),
-      sideBySideItems: new Map(),
-      unifiedItems: new Map(),
-      sideBySideItemMinimapRows: new Map(),
-      unifiedItemMinimapRows: new Map(),
-    }
-
-    diffRenderCache.set(diff, state)
-    return state
-  }
-
-  function getRenderItemsCacheKey(
-    nextContextLines: ContextLinesSetting,
-    includeFullFile: boolean,
-  ) {
-    return `${nextContextLines}:${includeFullFile ? 'full' : 'hunks'}`
   }
 
   function buildDetailCacheKey(context: DetailCacheContext) {
@@ -195,148 +120,6 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
   }
 
   const controller = {
-    getCachedSideBySideHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-      const state = getCachedDiffRenderState(diff)
-      const cached = state.sideBySideHunks.get(nextContextLines)
-
-      if (cached) {
-        return cached
-      }
-
-      const hunks = dependencies.buildSideBySideHunkRanges(diff.sideBySide, nextContextLines)
-      state.sideBySideHunks.set(nextContextLines, hunks)
-      return hunks
-    },
-
-    getCachedUnifiedHunks(diff: FileDiffResult, nextContextLines: ContextLinesSetting) {
-      const state = getCachedDiffRenderState(diff)
-      const cached = state.unifiedHunks.get(nextContextLines)
-
-      if (cached) {
-        return cached
-      }
-
-      const hunks = dependencies.buildUnifiedHunkRanges(diff.unified, nextContextLines)
-      state.unifiedHunks.set(nextContextLines, hunks)
-      return hunks
-    },
-
-    getCachedSideBySideRenderItems(
-      diff: FileDiffResult,
-      includeFullFile: boolean,
-      nextContextLines: ContextLinesSetting,
-    ) {
-      const state = getCachedDiffRenderState(diff)
-      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-      const cached = state.sideBySideItems.get(cacheKey)
-
-      if (cached) {
-        return cached
-      }
-
-      const items = dependencies.buildSideBySideRenderItems(
-        diff.sideBySide,
-        controller.getCachedSideBySideHunks(diff, nextContextLines),
-        includeFullFile,
-      )
-
-      state.sideBySideItems.set(cacheKey, items)
-      return items
-    },
-
-    getCachedUnifiedRenderItems(
-      diff: FileDiffResult,
-      includeFullFile: boolean,
-      nextContextLines: ContextLinesSetting,
-    ) {
-      const state = getCachedDiffRenderState(diff)
-      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-      const cached = state.unifiedItems.get(cacheKey)
-
-      if (cached) {
-        return cached
-      }
-
-      const items = dependencies.buildUnifiedRenderItems(
-        diff.unified,
-        controller.getCachedUnifiedHunks(diff, nextContextLines),
-        includeFullFile,
-      )
-
-      state.unifiedItems.set(cacheKey, items)
-      return items
-    },
-
-    getCachedSideBySideFullMinimapRows(diff: FileDiffResult) {
-      const state = getCachedDiffRenderState(diff)
-      if (!state.sideBySideFullMinimapRows) {
-        state.sideBySideFullMinimapRows = dependencies.sideBySideMinimapRows(diff.sideBySide)
-      }
-      return state.sideBySideFullMinimapRows
-    },
-
-    getCachedUnifiedFullMinimapRows(diff: FileDiffResult) {
-      const state = getCachedDiffRenderState(diff)
-      if (!state.unifiedFullMinimapRows) {
-        state.unifiedFullMinimapRows = dependencies.unifiedMinimapRows(diff.unified)
-      }
-      return state.unifiedFullMinimapRows
-    },
-
-    getCachedSideBySideItemMinimapRows(
-      diff: FileDiffResult,
-      includeFullFile: boolean,
-      nextContextLines: ContextLinesSetting,
-    ) {
-      const state = getCachedDiffRenderState(diff)
-      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-      const cached = state.sideBySideItemMinimapRows.get(cacheKey)
-      if (cached) return cached
-      const items = controller.getCachedSideBySideRenderItems(
-        diff,
-        includeFullFile,
-        nextContextLines,
-      )
-      const rows = dependencies.sideBySideItemMinimapRows(items)
-      state.sideBySideItemMinimapRows.set(cacheKey, rows)
-      return rows
-    },
-
-    getCachedUnifiedItemMinimapRows(
-      diff: FileDiffResult,
-      includeFullFile: boolean,
-      nextContextLines: ContextLinesSetting,
-    ) {
-      const state = getCachedDiffRenderState(diff)
-      const cacheKey = getRenderItemsCacheKey(nextContextLines, includeFullFile)
-      const cached = state.unifiedItemMinimapRows.get(cacheKey)
-      if (cached) return cached
-      const items = controller.getCachedUnifiedRenderItems(
-        diff,
-        includeFullFile,
-        nextContextLines,
-      )
-      const rows = dependencies.unifiedItemMinimapRows(items)
-      state.unifiedItemMinimapRows.set(cacheKey, rows)
-      return rows
-    },
-
-    getCachedMaxLineNumber(diff: FileDiffResult) {
-      const state = getCachedDiffRenderState(diff)
-      if (state.maxLineNumber !== undefined) return state.maxLineNumber
-      let maxValue = 0
-      const rows = diff.sideBySide
-      for (let index = 0; index < rows.length; index += 1) {
-        const row = rows[index]
-        const leftLineNumber = row.left?.lineNumber ?? 0
-        const rightLineNumber = row.right?.lineNumber ?? 0
-        if (leftLineNumber > maxValue) maxValue = leftLineNumber
-        if (rightLineNumber > maxValue) maxValue = rightLineNumber
-      }
-      state.maxLineNumber = maxValue
-      return maxValue
-    },
-
     getOrCreateDetailDiffPromise(context: DetailCacheContext) {
       if (!context.leftPath || !context.rightPath) {
         throw new Error('No active compare is available.')
@@ -402,11 +185,6 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
           1,
           Math.min(context.preloadConcurrency, queue.length),
         )
-        // Only spawn as many workers as needed to reach the concurrency cap.
-        // Existing workers from a prior preload generation are still awaiting
-        // their in-flight IPCs; once they resolve they will exit because the
-        // generation changed. Counting them here prevents piling up workers
-        // when the user clicks rapidly.
         const workerCount = Math.max(
           0,
           desiredWorkers - activePreloadWorkerCount,
@@ -432,9 +210,6 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
                   ignoreCase: context.ignoreCase,
                 })
 
-                // Warm per-diff derived state (hunks, render items) while the
-                // main thread is idle, so the next file switch doesn't pay the
-                // cost.
                 if (
                   backgroundPreloadGeneration === activeGeneration &&
                   context.warmDetailDiff
@@ -442,7 +217,7 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
                   context.warmDetailDiff(diff)
                 }
               } catch {
-                // Leave errors to the on-demand selection flow instead of surfacing them from preload.
+                // Leave errors to the on-demand selection flow.
               }
             }
           } finally {

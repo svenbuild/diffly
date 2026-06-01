@@ -4,7 +4,8 @@
   import UpdateSettingsSection from './settings/UpdateSettingsSection.svelte'
   import ViewerSettingsSection from './settings/ViewerSettingsSection.svelte'
   import type {
-    ContextLinesSetting,
+    CompareTreeSettings,
+    CompareViewerSettings,
     ThemeMode,
     UpdateMetadata,
     ViewMode,
@@ -49,17 +50,12 @@
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let viewMode: ViewMode
-  export let showFullFile: boolean
-  export let contextLines: ContextLinesSetting
-  export let contextLinePresets: ContextLinesSetting[]
+  export let viewerSettings: CompareViewerSettings
+  export let treeSettings: CompareTreeSettings
   export let minUiFontSize: number
   export let maxUiFontSize: number
   export let minCodeFontSize: number
   export let maxCodeFontSize: number
-  export let wrapSideBySideLines: boolean
-  export let showInlineHighlights: boolean
-  export let showSyntaxHighlighting: boolean
-  export let syncSideBySideScroll: boolean
   export let checkForUpdatesOnLaunch: boolean
   export let updateChannel: 'stable' | 'prerelease'
   export let updateChannelLabel: string
@@ -93,12 +89,8 @@
   export let onToggleIgnoreWhitespace: () => void
   export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
-  export let onToggleShowFullFile: () => void
-  export let onSetContextLines: (value: string) => void
-  export let onToggleWrapSideBySideLines: () => void
-  export let onToggleShowInlineHighlights: () => void
-  export let onToggleShowSyntaxHighlighting: () => void
-  export let onToggleSyncSideBySideScroll: () => void
+  export let onSetViewerSettings: (settings: CompareViewerSettings) => void
+  export let onSetTreeSettings: (settings: CompareTreeSettings) => void
   export let onSetCheckForUpdatesOnLaunch: (value: boolean) => void
   export let onSetUpdateChannel: (value: 'stable' | 'prerelease') => void
   export let onCheckForUpdates: () => void
@@ -161,8 +153,8 @@
           {visibleThemeVariants}
           {availableLightThemes}
           {availableDarkThemes}
-          {showInlineHighlights}
-          {showSyntaxHighlighting}
+          showInlineHighlights={viewerSettings.lineDiffType !== 'none'}
+          showSyntaxHighlighting={viewerSettings.syntaxMode === 'shiki'}
           {minUiFontSize}
           {maxUiFontSize}
           {minCodeFontSize}
@@ -182,24 +174,15 @@
       {#if activeSection === 'viewer'}
         <ViewerSettingsSection
           {viewMode}
-          {wrapSideBySideLines}
-          {syncSideBySideScroll}
-          {showFullFile}
-          {contextLines}
-          {contextLinePresets}
-          {showSyntaxHighlighting}
-          {showInlineHighlights}
+          {viewerSettings}
+          {treeSettings}
           {ignoreWhitespace}
           {ignoreCase}
           {comparisonRulesRequireRefresh}
           {compareNeedsRefresh}
           {onSetViewMode}
-          {onToggleWrapSideBySideLines}
-          {onToggleSyncSideBySideScroll}
-          {onToggleShowFullFile}
-          {onSetContextLines}
-          {onToggleShowSyntaxHighlighting}
-          {onToggleShowInlineHighlights}
+          {onSetViewerSettings}
+          {onSetTreeSettings}
           {onToggleIgnoreWhitespace}
           {onToggleIgnoreCase}
         />

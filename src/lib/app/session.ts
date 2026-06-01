@@ -1,27 +1,22 @@
 import type {
+  CompareTreeSettings,
+  CompareViewerSettings,
   CompareMode,
-  ContextLinesSetting,
   PersistedExplorerPane,
   PersistedSession,
   UpdateChannel,
   UpdateMetadata,
-  ViewMode,
 } from '../types'
 import type { AppearanceSettings } from '../theme'
 import type { ExplorerPaneState } from '../ui-types'
 
 export interface BuildPersistedSessionArgs {
   mode: CompareMode
-  viewMode: ViewMode
+  viewerSettings: CompareViewerSettings
+  treeSettings: CompareTreeSettings
   appearanceSettings: AppearanceSettings
   ignoreWhitespace: boolean
   ignoreCase: boolean
-  showFullFile: boolean
-  showInlineHighlights: boolean
-  wrapSideBySideLines: boolean
-  showSyntaxHighlighting: boolean
-  syncSideBySideScroll: boolean
-  contextLines: ContextLinesSetting
   checkForUpdatesOnLaunch: boolean
   updateChannel: UpdateChannel
   lastUpdateCheckAt: string
@@ -44,18 +39,20 @@ export function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPa
 export function buildPersistedSession(args: BuildPersistedSessionArgs): PersistedSession {
   return {
     mode: args.mode,
-    viewMode: args.viewMode,
+    source: {
+      kind: 'localPaths',
+      leftPath: args.leftPane.selectedTargetPath,
+      rightPath: args.rightPane.selectedTargetPath,
+      mode: args.mode,
+    },
+    viewMode: args.viewerSettings.diffStyle === 'split' ? 'sideBySide' : 'unified',
+    viewerSettings: args.viewerSettings,
+    treeSettings: args.treeSettings,
     themeMode: args.appearanceSettings.mode,
     appearance: args.appearanceSettings,
     ignoreWhitespace: args.ignoreWhitespace,
     ignoreCase: args.ignoreCase,
-    showFullFile: args.showFullFile,
-    showInlineHighlights: args.showInlineHighlights,
-    wrapSideBySideLines: args.wrapSideBySideLines,
-    showSyntaxHighlighting: args.showSyntaxHighlighting,
-    syncSideBySideScroll: args.syncSideBySideScroll,
     viewerTextSize: args.appearanceSettings.codeFontSize,
-    contextLines: args.contextLines,
     checkForUpdatesOnLaunch: args.checkForUpdatesOnLaunch,
     updateChannel: args.updateChannel,
     lastUpdateCheckAt: args.lastUpdateCheckAt,

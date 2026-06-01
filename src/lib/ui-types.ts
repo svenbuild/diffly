@@ -2,8 +2,6 @@ import type {
   DirectoryEntryResult,
   DirectoryListing,
   ExplorerEntry,
-  SideBySideRow,
-  UnifiedLine,
 } from './types'
 
 export interface EntryGroup {
@@ -18,27 +16,6 @@ export interface FolderSection {
   depth: number
   entries: DirectoryEntryResult[]
   totalCount: number
-}
-
-export interface SideBySideRenderItem {
-  type: 'hunk' | 'row'
-  header?: string
-  row?: SideBySideRow
-  hunkIndex?: number
-  isAnchor?: boolean
-}
-
-export interface UnifiedRenderItem {
-  type: 'hunk' | 'row'
-  header?: string
-  row?: UnifiedLine
-  hunkIndex?: number
-  isAnchor?: boolean
-}
-
-export interface DiffHunkRange {
-  start: number
-  end: number
 }
 
 export interface DiffHeaderContext {

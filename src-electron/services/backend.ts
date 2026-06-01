@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import {
   mkdir,
   open,
@@ -11,46 +11,30 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type {
-  BinaryDiffPayload,
-  BinaryFileMeta,
   CompareOptions,
   CompareResponse,
-  ContentKind,
-  DiffCell,
-  DiffChange,
-  DiffSegment,
   DirectoryEntryResult,
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
-  ImageDiffPayload,
   LaunchContext,
   PathInfo,
   PersistedSession,
   PollDirectoryCompareResponse,
-  SideBySideRow,
   TextDiffPayload,
-  UnifiedLine,
   UpdateActionResult,
   UpdateChannel,
   UpdateCheckResult,
+  UnsupportedDiffPayload,
 } from '../../src/lib/types'
 
 const MAX_TEXT_BYTES = 1024 * 1024
-const MAX_BINARY_RENDER_BYTES = 1024 * 1024
 const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
-const HEX_BYTES_PER_ROW = 16
-const LCS_MAX_MATRIX_CELLS = 1_000_000
-const ALIGN_LOOKAHEAD_WINDOW = 32
-const STREAM_CHUNK_BYTES = 1024 * 1024
-const HASH_FILE_SIZE_LIMIT = 256 * 1024 * 1024
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
-const FILE_READ_TIMEOUT_MS = 60_000
 
-type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary'
+type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
 
 interface LoadedFile {
   kind: FileKind
@@ -87,16 +71,6 @@ interface CachedDirectoryEntry {
 interface DirectoryCacheSession {
   key: string
   entries: Map<string, CachedDirectoryEntry>
-}
-
-interface AlignPair {
-  left: number | null
-  right: number | null
-}
-
-interface AnchorPair {
-  left: number
-  right: number
 }
 
 let launchContext: LaunchContext | null | undefined
@@ -142,9 +116,6 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:openCompareItem', (_event, payload) =>
     openCompareItem(payload.leftBase, payload.rightBase, payload.relativePath, payload.options),
-  )
-  ipcMain.handle('diffly:loadBinaryPreview', (_event, payload) =>
-    loadBinaryPreview(payload.leftPath, payload.rightPath, payload.options),
   )
 }
 
@@ -660,11 +631,9 @@ async function computeDirectoryEntry(
     return null
   }
 
-  const status = leftKind === 'tooLarge' || rightKind === 'tooLarge'
-    ? 'tooLarge'
-    : leftKind === 'binary' || rightKind === 'binary' || leftKind === 'image' || rightKind === 'image'
-      ? 'binary'
-      : 'modified'
+  const status = leftKind === 'text' && rightKind === 'text'
+    ? 'modified'
+    : 'unsupported'
 
   return {
     relativePath,
@@ -710,101 +679,49 @@ function resolveChildPath(base: string, relativePathValue: string) {
   return resolvedChild
 }
 
-async function loadBinaryPreview(leftPath: string, rightPath: string, _options: CompareOptions) {
-  const [leftLoaded, rightLoaded] = await Promise.all([
-    loadBinaryPreviewFile(leftPath),
-    loadBinaryPreviewFile(rightPath),
-  ])
-  return buildBinaryPayload(leftPath, rightPath, leftLoaded, rightLoaded)
-}
-
 async function buildFileDiff(
   leftPath: string,
   rightPath: string,
   leftLabel: string,
   rightLabel: string,
-  options: CompareOptions,
+  _options: CompareOptions,
 ): Promise<FileDiffResult> {
   const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath, false),
-    loadFile(rightPath, false),
+    loadFile(leftPath),
+    loadFile(rightPath),
   ])
   const summary = buildSummary(leftLoaded, rightLoaded)
 
-  if (shouldRenderAsImage(leftLoaded, rightLoaded)) {
-    return {
-      contentKind: 'image',
-      summary,
-      leftLabel,
-      rightLabel,
-      text: null,
-      sideBySide: [],
-      unified: [],
-      image: buildImagePayload(leftPath, rightPath, leftLoaded, rightLoaded),
-      binary: null,
-    }
-  }
-
-  if (leftLoaded.kind === 'tooLarge' || rightLoaded.kind === 'tooLarge') {
-    return {
-      ...emptyNonTextResult('tooLarge', summary, leftLabel, rightLabel),
-      binary: buildBinaryPayload(leftPath, rightPath, leftLoaded, rightLoaded, false),
-    }
-  }
-
-  if (leftLoaded.kind === 'text' || rightLoaded.kind === 'text') {
+  if (canBuildTextDiff(leftLoaded, rightLoaded)) {
     const textPayload = buildTextPayload(leftLoaded, rightLoaded)
-    const views = buildTextViews(
-      textPayload.leftText,
-      textPayload.rightText,
-      options,
-    )
     return {
       contentKind: 'text',
       summary,
       leftLabel,
       rightLabel,
       text: textPayload,
-      sideBySide: views.sideBySide,
-      unified: views.unified,
-      image: null,
-      binary: null,
+      unsupported: null,
     }
   }
 
   return {
-    contentKind: 'binary',
+    contentKind: 'unsupported',
     summary,
     leftLabel,
     rightLabel,
     text: null,
-    sideBySide: [],
-    unified: [],
-    image: null,
-    binary: buildBinaryPayload(leftPath, rightPath, leftLoaded, rightLoaded, false),
+    unsupported: buildUnsupportedPayload(leftPath, rightPath, leftLoaded, rightLoaded),
   }
 }
 
-function emptyNonTextResult(
-  contentKind: ContentKind,
-  summary: string,
-  leftLabel: string,
-  rightLabel: string,
-): FileDiffResult {
-  return {
-    contentKind,
-    summary,
-    leftLabel,
-    rightLabel,
-    text: null,
-    sideBySide: [],
-    unified: [],
-    image: null,
-    binary: null,
-  }
+function canBuildTextDiff(left: LoadedFile, right: LoadedFile) {
+  return (
+    (left.kind === 'text' && (right.kind === 'text' || right.kind === 'missing')) ||
+    (right.kind === 'text' && (left.kind === 'text' || left.kind === 'missing'))
+  )
 }
 
-async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promise<LoadedFile> {
+async function loadFile(pathValue: string): Promise<LoadedFile> {
   let info
   try {
     info = await stat(pathValue)
@@ -818,50 +735,7 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     }
   }
 
-  // Small-file fast path: if the file fits in the preview cap, a single
-  // partial read gives us everything (sample, preview, full bytes for hash).
-  // No streaming, no second open.
-  if (info.size <= MAX_BINARY_RENDER_BYTES) {
-    const buffer = info.size === 0
-      ? new Uint8Array(0)
-      : await readPartial(pathValue, info.size)
-    const sample =
-      buffer.length > BINARY_SAMPLE_BYTES ? buffer.subarray(0, BINARY_SAMPLE_BYTES) : buffer
-    const kind = detectFileKind(pathValue, info.size, sample)
-
-    if (kind === 'tooLarge') {
-      return { kind, path: pathValue, size: info.size, format: null, truncated: true }
-    }
-
-    if (kind === 'text') {
-      const bytes = Buffer.from(buffer)
-      return {
-        kind,
-        path: pathValue,
-        size: info.size,
-        format: null,
-        truncated: false,
-        text: bytes.toString('utf8'),
-        sha256: sha256(bytes),
-        lineEnding: bytes.includes(Buffer.from('\r\n')) ? 'crlf' : 'lf',
-        hasTrailingNewline: bytes[bytes.length - 1] === 10,
-      }
-    }
-
-    return {
-      kind,
-      path: pathValue,
-      size: info.size,
-      format: detectImageFormat(sample, pathValue),
-      truncated: false,
-      bytes: includeBinaryPreview ? buffer : new Uint8Array(0),
-      sha256: sha256(buffer),
-    }
-  }
-
-  // Larger file: classify with a cheap 8 KB sample before deciding what to
-  // do next. tooLarge files stop here without any further reads.
-  const sample = await readPartial(pathValue, BINARY_SAMPLE_BYTES)
+  const sample = await readPartial(pathValue, Math.min(info.size, BINARY_SAMPLE_BYTES))
   const kind = detectFileKind(pathValue, info.size, sample)
   if (kind === 'tooLarge') {
     return {
@@ -874,8 +748,20 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
   }
 
   if (kind === 'text') {
-    // Text means size <= MAX_TEXT_BYTES, bounded.
-    const bytes = await readFile(pathValue)
+    let bytes: Buffer
+    try {
+      bytes = await readFile(pathValue)
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      return {
+        kind: 'readError',
+        path: pathValue,
+        size: info.size,
+        format: null,
+        truncated: false,
+      }
+    }
+
     return {
       kind,
       path: pathValue,
@@ -889,52 +775,12 @@ async function loadFile(pathValue: string, includeBinaryPreview: boolean): Promi
     }
   }
 
-  // Binary or image larger than 256 KB: single streaming pass that
-  // captures the preview window and computes the hash simultaneously.
-  const { preview, sha256: hash } = await readBinaryPreviewAndHash(pathValue, info.size)
   return {
     kind,
     path: pathValue,
     size: info.size,
     format: detectImageFormat(sample, pathValue),
-    truncated: includeBinaryPreview && info.size > MAX_BINARY_RENDER_BYTES,
-    bytes: includeBinaryPreview ? preview : new Uint8Array(0),
-    sha256: hash ?? undefined,
-  }
-}
-
-async function loadBinaryPreviewFile(pathValue: string): Promise<LoadedFile> {
-  let info
-  try {
-    info = await stat(pathValue)
-  } catch {
-    return {
-      kind: 'missing',
-      path: pathValue,
-      size: null,
-      format: null,
-      truncated: false,
-    }
-  }
-
-  const previewLength = Math.min(info.size, MAX_BINARY_RENDER_BYTES)
-  const preview = previewLength === 0
-    ? new Uint8Array(0)
-    : await readPartial(pathValue, previewLength)
-  const sample =
-    preview.length > BINARY_SAMPLE_BYTES ? preview.subarray(0, BINARY_SAMPLE_BYTES) : preview
-  const detectedKind = detectFileKind(pathValue, info.size, sample)
-  const kind: FileKind = detectedKind === 'text' ? 'binary' : detectedKind
-  const includePreviewBytes = detectedKind === 'binary' || detectedKind === 'image'
-  const previewOmitted = !includePreviewBytes && info.size > 0
-
-  return {
-    kind,
-    path: pathValue,
-    size: info.size,
-    format: detectImageFormat(sample, pathValue),
-    truncated: previewOmitted || info.size > preview.length,
-    bytes: includePreviewBytes ? preview : new Uint8Array(0),
+    truncated: false,
     sha256: undefined,
   }
 }
@@ -960,67 +806,6 @@ async function readPartial(pathValue: string, length: number): Promise<Uint8Arra
 
 async function sampleFile(pathValue: string) {
   return readPartial(pathValue, BINARY_SAMPLE_BYTES)
-}
-
-async function readBinaryPreviewAndHash(
-  pathValue: string,
-  sizeHint: number,
-): Promise<{ preview: Uint8Array; sha256: string | null }> {
-  if (sizeHint > HASH_FILE_SIZE_LIMIT) {
-    // Files too large to hash: just capture the preview window.
-    return {
-      preview: await readPartial(pathValue, MAX_BINARY_RENDER_BYTES),
-      sha256: null,
-    }
-  }
-
-  return new Promise((resolveResult, rejectResult) => {
-    const hasher = createHash('sha256')
-    const previewCap = Math.min(sizeHint, MAX_BINARY_RENDER_BYTES)
-    const previewBuffer = previewCap > 0 ? Buffer.alloc(previewCap) : Buffer.alloc(0)
-    let previewWritten = 0
-    let settled = false
-
-    const stream = createReadStream(pathValue, { highWaterMark: STREAM_CHUNK_BYTES })
-
-    const timeout = setTimeout(() => {
-      if (settled) return
-      settled = true
-      stream.destroy()
-      rejectResult(new Error(`Reading file timed out after ${FILE_READ_TIMEOUT_MS / 1000}s: ${pathValue}`))
-    }, FILE_READ_TIMEOUT_MS)
-    timeout.unref?.()
-
-    stream.on('data', (chunk) => {
-      const buffer = chunk as Buffer
-      hasher.update(buffer)
-
-      if (previewWritten < previewBuffer.length) {
-        const remaining = previewBuffer.length - previewWritten
-        const copyLength = buffer.length < remaining ? buffer.length : remaining
-        buffer.copy(previewBuffer, previewWritten, 0, copyLength)
-        previewWritten += copyLength
-      }
-    })
-
-    stream.once('end', () => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      resolveResult({
-        preview: Uint8Array.prototype.slice.call(previewBuffer, 0, previewWritten),
-        sha256: hasher.digest('hex'),
-      })
-    })
-
-    stream.once('error', (error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      stream.destroy()
-      rejectResult(error)
-    })
-  })
 }
 
 function detectFileKind(pathValue: string, size: number, sample: Uint8Array): FileKind {
@@ -1085,11 +870,6 @@ function detectImageFormat(bytes: Uint8Array, pathValue: string) {
     : null
 }
 
-function shouldRenderAsImage(left: LoadedFile, right: LoadedFile) {
-  return left.kind === 'image' && ['image', 'missing'].includes(right.kind)
-    || right.kind === 'image' && ['image', 'missing'].includes(left.kind)
-}
-
 function buildSummary(left: LoadedFile, right: LoadedFile) {
   if (left.kind === 'missing' && right.kind === 'missing') {
     return 'Neither file exists.'
@@ -1118,355 +898,6 @@ function buildTextPayload(left: LoadedFile, right: LoadedFile): TextDiffPayload 
   }
 }
 
-function buildTextViews(leftText: string, rightText: string, options: CompareOptions) {
-  const leftLines = splitLines(leftText)
-  const rightLines = splitLines(rightText)
-  const pairs = alignLines(leftLines, rightLines, options)
-  const sideBySide: SideBySideRow[] = []
-  const unified: UnifiedLine[] = []
-  let leftLineNumber = 1
-  let rightLineNumber = 1
-
-  for (const pair of pairs) {
-    const leftLine = pair.left === null ? null : leftLines[pair.left] ?? ''
-    const rightLine = pair.right === null ? null : rightLines[pair.right] ?? ''
-    let change: DiffChange
-    if (leftLine === null) {
-      change = 'insert'
-    } else if (rightLine === null) {
-      change = 'delete'
-    } else {
-      change = normalizeCompareText(leftLine, options) === normalizeCompareText(rightLine, options)
-        ? 'context'
-        : 'delete'
-    }
-
-    const leftCell = leftLine === null
-      ? null
-      : buildDiffCell(leftLineNumber++, change === 'insert' ? 'context' : change, leftLine)
-    const rightCell = rightLine === null
-      ? null
-      : buildDiffCell(rightLineNumber++, change === 'delete' && leftLine !== null ? 'insert' : change, rightLine)
-
-    if (leftCell && rightCell && leftCell.change !== 'context' && rightCell.change !== 'context') {
-      const [leftSegments, rightSegments] = buildInlineSegments(leftCell.text, rightCell.text)
-      leftCell.segments = leftSegments
-      rightCell.segments = rightSegments
-    }
-
-    sideBySide.push({ left: leftCell, right: rightCell })
-
-    if (leftCell && rightCell && leftCell.change !== 'context' && rightCell.change !== 'context') {
-      unified.push(unifiedLine(leftCell, '-'))
-      unified.push(unifiedLine(rightCell, '+'))
-    } else {
-      if (leftCell) {
-        unified.push(unifiedLine(leftCell, leftCell.change === 'delete' ? '-' : ' '))
-      }
-      if (rightCell && !leftCell) {
-        unified.push(unifiedLine(rightCell, '+'))
-      }
-    }
-  }
-
-  return { sideBySide, unified }
-}
-
-function splitLines(text: string) {
-  if (!text) {
-    return []
-  }
-  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-}
-
-function alignLines(left: string[], right: string[], options: CompareOptions): AlignPair[] {
-  return coalesceChangedRows(alignLineRange(left, right, options, 0, left.length, 0, right.length))
-}
-
-function alignLineRange(
-  left: string[],
-  right: string[],
-  options: CompareOptions,
-  leftStart: number,
-  leftEnd: number,
-  rightStart: number,
-  rightEnd: number,
-): AlignPair[] {
-  const leftLength = leftEnd - leftStart
-  const rightLength = rightEnd - rightStart
-
-  if (leftLength === 0) {
-    return range(rightStart, rightEnd).map((rightIndex) => ({ left: null, right: rightIndex }))
-  }
-
-  if (rightLength === 0) {
-    return range(leftStart, leftEnd).map((leftIndex) => ({ left: leftIndex, right: null }))
-  }
-
-  if (leftLength * rightLength <= LCS_MAX_MATRIX_CELLS) {
-    return alignLineRangeWithLcs(left, right, options, leftStart, leftEnd, rightStart, rightEnd)
-  }
-
-  const anchors = uniqueLineAnchors(left, right, options, leftStart, leftEnd, rightStart, rightEnd)
-  if (anchors.length === 0) {
-    return alignLineRangeGreedy(left, right, options, leftStart, leftEnd, rightStart, rightEnd)
-  }
-
-  const pairs: AlignPair[] = []
-  let nextLeftStart = leftStart
-  let nextRightStart = rightStart
-
-  for (const anchor of anchors) {
-    pairs.push(
-      ...alignLineRange(
-        left,
-        right,
-        options,
-        nextLeftStart,
-        anchor.left,
-        nextRightStart,
-        anchor.right,
-      ),
-    )
-    pairs.push(anchor)
-    nextLeftStart = anchor.left + 1
-    nextRightStart = anchor.right + 1
-  }
-
-  pairs.push(
-    ...alignLineRange(
-      left,
-      right,
-      options,
-      nextLeftStart,
-      leftEnd,
-      nextRightStart,
-      rightEnd,
-    ),
-  )
-
-  return pairs
-}
-
-function alignLineRangeWithLcs(
-  left: string[],
-  right: string[],
-  options: CompareOptions,
-  leftStart: number,
-  leftEnd: number,
-  rightStart: number,
-  rightEnd: number,
-): AlignPair[] {
-  const leftLength = leftEnd - leftStart
-  const rightLength = rightEnd - rightStart
-  const width = rightLength + 1
-  const matrix = new Array((leftLength + 1) * width).fill(0)
-
-  for (let leftOffset = leftLength - 1; leftOffset >= 0; leftOffset -= 1) {
-    for (let rightOffset = rightLength - 1; rightOffset >= 0; rightOffset -= 1) {
-      const offset = leftOffset * width + rightOffset
-      matrix[offset] = normalizedLine(left, leftStart + leftOffset, options) === normalizedLine(right, rightStart + rightOffset, options)
-        ? matrix[(leftOffset + 1) * width + rightOffset + 1] + 1
-        : Math.max(matrix[(leftOffset + 1) * width + rightOffset], matrix[leftOffset * width + rightOffset + 1])
-    }
-  }
-
-  const pairs: AlignPair[] = []
-  let leftOffset = 0
-  let rightOffset = 0
-  while (leftOffset < leftLength || rightOffset < rightLength) {
-    if (
-      leftOffset < leftLength &&
-      rightOffset < rightLength &&
-      normalizedLine(left, leftStart + leftOffset, options) === normalizedLine(right, rightStart + rightOffset, options)
-    ) {
-      pairs.push({ left: leftStart + leftOffset, right: rightStart + rightOffset })
-      leftOffset += 1
-      rightOffset += 1
-    } else if (
-      rightOffset >= rightLength ||
-      matrix[(leftOffset + 1) * width + rightOffset] >= matrix[leftOffset * width + rightOffset + 1]
-    ) {
-      pairs.push({ left: leftStart + leftOffset, right: null })
-      leftOffset += 1
-    } else {
-      pairs.push({ left: null, right: rightStart + rightOffset })
-      rightOffset += 1
-    }
-  }
-
-  return pairs
-}
-
-function uniqueLineAnchors(
-  left: string[],
-  right: string[],
-  options: CompareOptions,
-  leftStart: number,
-  leftEnd: number,
-  rightStart: number,
-  rightEnd: number,
-): AnchorPair[] {
-  const leftOccurrences = lineOccurrences(left, options, leftStart, leftEnd)
-  const rightOccurrences = lineOccurrences(right, options, rightStart, rightEnd)
-  const candidates: AnchorPair[] = []
-
-  for (const [line, leftIndexes] of leftOccurrences) {
-    const rightIndexes = rightOccurrences.get(line)
-    if (line && leftIndexes.length === 1 && rightIndexes?.length === 1) {
-      candidates.push({ left: leftIndexes[0], right: rightIndexes[0] })
-    }
-  }
-
-  candidates.sort((leftCandidate, rightCandidate) =>
-    leftCandidate.left - rightCandidate.left || leftCandidate.right - rightCandidate.right,
-  )
-
-  return longestIncreasingRightSequence(candidates)
-}
-
-function lineOccurrences(
-  lines: string[],
-  options: CompareOptions,
-  start: number,
-  end: number,
-) {
-  const occurrences = new Map<string, number[]>()
-  for (let index = start; index < end; index += 1) {
-    const line = normalizedLine(lines, index, options)
-    const indexes = occurrences.get(line) ?? []
-    indexes.push(index)
-    occurrences.set(line, indexes)
-  }
-  return occurrences
-}
-
-function longestIncreasingRightSequence(candidates: AnchorPair[]): AnchorPair[] {
-  if (candidates.length === 0) {
-    return []
-  }
-
-  const lengths = new Array<number>(candidates.length).fill(1)
-  const previous = new Array<number>(candidates.length).fill(-1)
-  let bestIndex = 0
-
-  for (let index = 0; index < candidates.length; index += 1) {
-    for (let prior = 0; prior < index; prior += 1) {
-      if (candidates[prior].right < candidates[index].right && lengths[prior] + 1 > lengths[index]) {
-        lengths[index] = lengths[prior] + 1
-        previous[index] = prior
-      }
-    }
-    if (lengths[index] > lengths[bestIndex]) {
-      bestIndex = index
-    }
-  }
-
-  const anchors: AnchorPair[] = []
-  for (let index = bestIndex; index >= 0; index = previous[index]) {
-    anchors.push(candidates[index])
-    if (previous[index] < 0) {
-      break
-    }
-  }
-  return anchors.reverse()
-}
-
-function alignLineRangeGreedy(
-  left: string[],
-  right: string[],
-  options: CompareOptions,
-  leftStart: number,
-  leftEnd: number,
-  rightStart: number,
-  rightEnd: number,
-): AlignPair[] {
-  const pairs: AlignPair[] = []
-  let leftIndex = leftStart
-  let rightIndex = rightStart
-
-  while (leftIndex < leftEnd || rightIndex < rightEnd) {
-    if (leftIndex >= leftEnd) {
-      pairs.push({ left: null, right: rightIndex })
-      rightIndex += 1
-      continue
-    }
-
-    if (rightIndex >= rightEnd) {
-      pairs.push({ left: leftIndex, right: null })
-      leftIndex += 1
-      continue
-    }
-
-    const leftLine = normalizedLine(left, leftIndex, options)
-    const rightLine = normalizedLine(right, rightIndex, options)
-    if (leftLine === rightLine) {
-      pairs.push({ left: leftIndex, right: rightIndex })
-      leftIndex += 1
-      rightIndex += 1
-      continue
-    }
-
-    const rightMatchOffset = findNextLine(right, leftLine, rightIndex + 1, rightEnd, options)
-    const leftMatchOffset = findNextLine(left, rightLine, leftIndex + 1, leftEnd, options)
-
-    if (rightMatchOffset > 0 && (leftMatchOffset < 0 || rightMatchOffset <= leftMatchOffset)) {
-      pairs.push({ left: null, right: rightIndex })
-      rightIndex += 1
-    } else if (leftMatchOffset > 0) {
-      pairs.push({ left: leftIndex, right: null })
-      leftIndex += 1
-    } else {
-      pairs.push({ left: leftIndex, right: null })
-      pairs.push({ left: null, right: rightIndex })
-      leftIndex += 1
-      rightIndex += 1
-    }
-  }
-
-  return pairs
-}
-
-function findNextLine(
-  searchLines: string[],
-  targetLine: string,
-  start: number,
-  end: number,
-  options: CompareOptions,
-) {
-  const limit = Math.min(end, start + ALIGN_LOOKAHEAD_WINDOW)
-  for (let index = start; index < limit; index += 1) {
-    if (normalizedLine(searchLines, index, options) === targetLine) {
-      return index - start + 1
-    }
-  }
-
-  return -1
-}
-
-function coalesceChangedRows(pairs: AlignPair[]): AlignPair[] {
-  const result: AlignPair[] = []
-  for (let index = 0; index < pairs.length; index += 1) {
-    const current = pairs[index]
-    const next = pairs[index + 1]
-    if (current.left !== null && current.right === null && next?.left === null && next.right !== null) {
-      result.push({ left: current.left, right: next.right })
-      index += 1
-    } else {
-      result.push(current)
-    }
-  }
-  return result
-}
-
-function range(start: number, end: number) {
-  return Array.from({ length: end - start }, (_value, index) => start + index)
-}
-
-function normalizedLine(lines: string[], index: number, options: CompareOptions) {
-  return normalizeCompareText(lines[index] ?? '', options)
-}
-
 function normalizeCompareText(text: string, options: CompareOptions) {
   let value = text
   if (options.ignoreWhitespace) {
@@ -1478,139 +909,41 @@ function normalizeCompareText(text: string, options: CompareOptions) {
   return value
 }
 
-function buildDiffCell(lineNumber: number, change: DiffChange, text: string): DiffCell {
-  return {
-    lineNumber,
-    prefix: change === 'delete' ? '-' : change === 'insert' ? '+' : ' ',
-    text,
-    segments: [{ text, highlighted: false }],
-    change,
-  }
-}
-
-function buildInlineSegments(leftText: string, rightText: string): [DiffSegment[], DiffSegment[]] {
-  let prefixLength = 0
-  const minLength = Math.min(leftText.length, rightText.length)
-  while (prefixLength < minLength && leftText[prefixLength] === rightText[prefixLength]) {
-    prefixLength += 1
-  }
-
-  let suffixLength = 0
-  while (
-    suffixLength < minLength - prefixLength &&
-    leftText[leftText.length - 1 - suffixLength] === rightText[rightText.length - 1 - suffixLength]
-  ) {
-    suffixLength += 1
-  }
-
-  return [
-    splitInlineSegments(leftText, prefixLength, suffixLength),
-    splitInlineSegments(rightText, prefixLength, suffixLength),
-  ]
-}
-
-function splitInlineSegments(text: string, prefixLength: number, suffixLength: number): DiffSegment[] {
-  const changedEnd = text.length - suffixLength
-  const segments: DiffSegment[] = []
-  if (prefixLength > 0) {
-    segments.push({ text: text.slice(0, prefixLength), highlighted: false })
-  }
-  if (changedEnd > prefixLength) {
-    segments.push({ text: text.slice(prefixLength, changedEnd), highlighted: true })
-  }
-  if (suffixLength > 0) {
-    segments.push({ text: text.slice(changedEnd), highlighted: false })
-  }
-  return segments.length > 0 ? segments : [{ text, highlighted: false }]
-}
-
-function unifiedLine(cell: DiffCell, prefix: string): UnifiedLine {
-  return {
-    leftLineNumber: cell.change === 'insert' ? null : cell.lineNumber,
-    rightLineNumber: cell.change === 'delete' ? null : cell.lineNumber,
-    prefix,
-    text: cell.text,
-    segments: cell.segments,
-    change: cell.change,
-  }
-}
-
-function buildImagePayload(
+function buildUnsupportedPayload(
   leftPath: string,
   rightPath: string,
   left: LoadedFile,
   right: LoadedFile,
-): ImageDiffPayload {
-  const identical = left.sha256 !== undefined && left.sha256 === right.sha256
+): UnsupportedDiffPayload {
   return {
-    leftAssetUrl: left.kind === 'image' ? pathToFileURL(leftPath).toString() : null,
-    rightAssetUrl: right.kind === 'image' ? pathToFileURL(rightPath).toString() : null,
-    leftMeta: buildBinaryMeta(leftPath, left, identical),
-    rightMeta: buildBinaryMeta(rightPath, right, identical),
+    reason: unsupportedReason(left, right),
+    leftPath: left.kind === 'missing' ? null : leftPath,
+    rightPath: right.kind === 'missing' ? null : rightPath,
+    leftSize: left.kind === 'missing' ? null : left.size,
+    rightSize: right.kind === 'missing' ? null : right.size,
   }
 }
 
-function buildBinaryPayload(
-  leftPath: string,
-  rightPath: string,
+function unsupportedReason(
   left: LoadedFile,
   right: LoadedFile,
-  includeBytes = true,
-): BinaryDiffPayload {
-  const leftBytes = includeBytes ? left.bytes ?? new Uint8Array(0) : new Uint8Array(0)
-  const rightBytes = includeBytes ? right.bytes ?? new Uint8Array(0) : new Uint8Array(0)
-  const identical = left.sha256 !== undefined && left.sha256 === right.sha256
-  const truncated = left.truncated || right.truncated
-  const stats = identical || truncated
-    ? { changedByteCount: null, changedRowCount: null, firstDifferenceOffset: null }
-    : binaryStats(leftBytes, rightBytes)
-
-  return {
-    leftMeta: buildBinaryMeta(leftPath, left, identical),
-    rightMeta: buildBinaryMeta(rightPath, right, identical),
-    leftBytes,
-    rightBytes,
-    bytesPerRow: HEX_BYTES_PER_ROW,
-    ...stats,
-    truncated,
-    previewLoaded: includeBytes,
+): UnsupportedDiffPayload['reason'] {
+  if (left.kind === 'readError' || right.kind === 'readError') {
+    return 'readError'
   }
-}
-
-function buildBinaryMeta(pathValue: string, file: LoadedFile, identicalToOtherSide: boolean): BinaryFileMeta {
-  const exists = file.kind !== 'missing' && file.kind !== 'text'
-  return {
-    exists,
-    path: pathValue,
-    size: exists ? file.size : null,
-    sha256: exists ? file.sha256 ?? null : null,
-    format: exists ? file.format : null,
-    identicalToOtherSide: exists && identicalToOtherSide,
+  if (left.kind === 'tooLarge' || right.kind === 'tooLarge') {
+    return 'tooLarge'
   }
-}
-
-function binaryStats(left: Uint8Array, right: Uint8Array) {
-  const total = Math.max(left.length, right.length)
-  let changedByteCount = 0
-  let changedRowCount = 0
-  let firstDifferenceOffset: number | null = null
-
-  for (let offset = 0; offset < total; offset += HEX_BYTES_PER_ROW) {
-    let rowChanged = false
-    for (let index = 0; index < HEX_BYTES_PER_ROW; index += 1) {
-      const byteOffset = offset + index
-      if (left[byteOffset] !== right[byteOffset]) {
-        changedByteCount += 1
-        rowChanged = true
-        firstDifferenceOffset ??= byteOffset
-      }
-    }
-    if (rowChanged) {
-      changedRowCount += 1
-    }
+  if (left.kind === 'image' || right.kind === 'image') {
+    return 'image'
   }
-
-  return { changedByteCount, changedRowCount, firstDifferenceOffset }
+  if (left.kind === 'binary' || right.kind === 'binary') {
+    return 'binary'
+  }
+  if (left.kind === 'missing' || right.kind === 'missing') {
+    return 'missing'
+  }
+  return 'readError'
 }
 
 async function filesEqual(leftPath: string, rightPath: string) {

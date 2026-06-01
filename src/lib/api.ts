@@ -1,5 +1,4 @@
 import type {
-  BinaryDiffPayload,
   CompareOptions,
   CompareResponse,
   FileDiffResult,
@@ -74,15 +73,6 @@ export const openCompareItem = (
     .openCompareItem(leftBase, rightBase, relativePath, options)
     .then(normalizeFileDiffResult)
 
-export const loadBinaryPreview = (
-  leftPath: string,
-  rightPath: string,
-  options: CompareOptions,
-) =>
-  window.diffly
-    .loadBinaryPreview(leftPath, rightPath, options)
-    .then(normalizeBinaryDiffPayload)
-
 function normalizeCompareResponse(response: CompareResponse): CompareResponse {
   if (response.kind === 'file') {
     return {
@@ -95,40 +85,5 @@ function normalizeCompareResponse(response: CompareResponse): CompareResponse {
 }
 
 function normalizeFileDiffResult(result: FileDiffResult): FileDiffResult {
-  if (!result.binary) {
-    return result
-  }
-
-  return {
-    ...result,
-    binary: normalizeBinaryDiffPayload(result.binary),
-  }
-}
-
-function normalizeBinaryDiffPayload(diff: BinaryDiffPayload): BinaryDiffPayload {
-  return {
-    ...diff,
-    leftBytes: toUint8Array(diff.leftBytes),
-    rightBytes: toUint8Array(diff.rightBytes),
-  }
-}
-
-function toUint8Array(value: unknown): Uint8Array {
-  if (value instanceof Uint8Array) {
-    return value
-  }
-
-  if (value instanceof ArrayBuffer) {
-    return new Uint8Array(value)
-  }
-
-  if (ArrayBuffer.isView(value)) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-  }
-
-  if (Array.isArray(value)) {
-    return Uint8Array.from(value)
-  }
-
-  return new Uint8Array(0)
+  return result
 }

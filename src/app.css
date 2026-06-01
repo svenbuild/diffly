@@ -2765,8 +2765,148 @@ h2 {
   grid-row: 1;
 }
 
+.compare-layout > .directory-tree-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.compare-layout > .compare-viewer {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .compare-layout.single-pane > .viewer {
   grid-column: 1;
+}
+
+.compare-layout.single-pane > .compare-viewer {
+  grid-column: 1;
+}
+
+.compare-viewer,
+.pierre-diff-host,
+.directory-tree-panel,
+.directory-tree-host {
+  min-height: 0;
+}
+
+.compare-viewer {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pierre-diff-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+}
+
+.compare-viewer-state,
+.directory-tree-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 180px;
+  color: var(--muted);
+}
+
+.unsupported-compare-view {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  width: 100%;
+  padding: 28px;
+  overflow: auto;
+}
+
+.unsupported-compare-copy {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.unsupported-compare-copy h2,
+.unsupported-compare-copy p {
+  margin: 0;
+}
+
+.unsupported-compare-copy h2 {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.unsupported-compare-copy p {
+  color: var(--muted);
+}
+
+.unsupported-compare-meta {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  margin: 0;
+}
+
+.unsupported-compare-meta div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.unsupported-compare-meta dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.unsupported-compare-meta dd {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+}
+
+.unsupported-compare-meta dd span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-tree-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--pane-bg);
+}
+
+.directory-toolbar input {
+  width: 100%;
+}
+
+.directory-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.directory-filter-row .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.directory-tree-host {
+  position: relative;
+  overflow: hidden;
 }
 
 .file-browser,
