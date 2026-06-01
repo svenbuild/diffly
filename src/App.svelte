@@ -1777,7 +1777,11 @@
     const nextPaths = has ? existing.filter((entry) => entry !== path) : [...existing, path]
     const primary = nextPaths.length > 0 ? nextPaths[nextPaths.length - 1] : ''
     const primaryKind =
-      !primary ? null : primary === path ? kind : primary === pane.selectedTargetPath ? pane.selectedTargetKind : null
+      !primary
+        ? null
+        : primary === path
+          ? kind
+          : pane.selectedTargetKind
 
     updatePane(side, (current) => ({
       ...current,
@@ -3101,6 +3105,7 @@
       : !leftPickerReady
         ? `Select the left ${mode === 'directory' ? 'folder' : 'file'}.`
         : `Select the right ${mode === 'directory' ? 'folder' : 'file'}.`
+  $: setupTopbarWarning = sameSelectionWarning || setupHintMessage
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: comparePairsLabel = (() => {
@@ -3145,8 +3150,8 @@
       {/snippet}
 
       {#snippet middle()}
-        {#if sameSelectionWarning}
-          <p class="setup-topbar-warning">{sameSelectionWarning}</p>
+        {#if setupTopbarWarning}
+          <p class="setup-topbar-warning">{setupTopbarWarning}</p>
         {/if}
       {/snippet}
 
