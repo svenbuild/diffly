@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { tick } from 'svelte'
   import PierreDiffViewer from './PierreDiffViewer.svelte'
   import UnsupportedCompareView from './UnsupportedCompareView.svelte'
   import type { AppearanceSettings } from '../theme'
@@ -13,6 +13,7 @@
   interface EntryDiffState {
     diff: FileDiffResult | null
     error: string
+    generation: number
     loading: boolean
     revision: number
   }
@@ -27,12 +28,16 @@
   export let revision = 0
   export let loadEntryDiff: (entry: DirectoryEntryResult) => Promise<FileDiffResult>
 
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 4
+  const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+
   let scrollHost: HTMLElement | null = null
-  let observer: IntersectionObserver | null = null
   let entriesSignature = ''
+  let loadGeneration = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
   const sectionHosts = new Map<string, HTMLElement>()
+  const headerPrefixRenderers = new Map<string, () => HTMLElement | null>()
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -47,7 +52,7 @@
       const key = entryKey(entry)
 
       const state = entryStates.get(key)
-      if (state) {
+      if (state?.revision === revision) {
         nextStates.set(key, state)
       }
     }
@@ -55,6 +60,12 @@
     for (const key of collapsedPaths) {
       if (nextPaths.has(key)) {
         nextCollapsedPaths.add(key)
+      }
+    }
+
+    for (const key of headerPrefixRenderers.keys()) {
+      if (!nextPaths.has(key)) {
+        headerPrefixRenderers.delete(key)
       }
     }
 
@@ -86,31 +97,15 @@
     collapsedPaths = nextCollapsedPaths
   }
 
-  function isNearViewport(node: HTMLElement) {
-    const root = scrollHost
-    const nodeRect = node.getBoundingClientRect()
-    const rootRect = root?.getBoundingClientRect()
-    const top = rootRect?.top ?? 0
-    const bottom = rootRect?.bottom ?? window.innerHeight
-    const preloadMargin = 720
-
-    return nodeRect.bottom >= top - preloadMargin && nodeRect.top <= bottom + preloadMargin
-  }
-
-  function ensureLoadedIfNearViewport(relativePath: string) {
-    const node = sectionHosts.get(relativePath)
-    const entry = directoryEntries.find((candidate) => candidate.relativePath === relativePath)
-
-    if (node && entry && !isCollapsed(relativePath) && isNearViewport(node)) {
-      void ensureLoaded(entry)
-    }
-  }
-
-  async function ensureLoaded(entry: DirectoryEntryResult) {
+  async function ensureLoaded(entry: DirectoryEntryResult, generation = loadGeneration) {
     const path = entryKey(entry)
     const state = getEntryState(path)
 
-    if (state?.loading || (state?.diff && state.revision === revision)) {
+    if (state?.diff && state.revision === revision) {
+      return
+    }
+
+    if (state?.loading && state.revision === revision && state.generation === generation) {
       return
     }
 
@@ -118,74 +113,74 @@
     setEntryState(path, {
       diff: state?.revision === loadRevision ? state.diff : null,
       error: '',
+      generation,
       loading: true,
       revision: loadRevision,
     })
 
     try {
       const diff = await loadEntryDiff(entry)
-      if (revision !== loadRevision) {
+      if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
 
       setEntryState(path, {
         diff,
         error: '',
+        generation,
         loading: false,
         revision: loadRevision,
       })
     } catch (error) {
-      if (revision !== loadRevision) {
+      if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
 
       setEntryState(path, {
         diff: null,
         error: error instanceof Error ? error.message : 'Unable to open this file diff.',
+        generation,
         loading: false,
         revision: loadRevision,
       })
     }
   }
 
-  function loadVisibleSections(entries: IntersectionObserverEntry[]) {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) {
-        continue
-      }
+  function startDirectoryDiffLoading() {
+    loadGeneration += 1
 
-      const relativePath = (entry.target as HTMLElement).dataset.relativePath
-      const directoryEntry = directoryEntries.find((candidate) => candidate.relativePath === relativePath)
-      if (directoryEntry && !isCollapsed(directoryEntry.relativePath)) {
-        void ensureLoaded(directoryEntry)
+    const generation = loadGeneration
+    const queue = [...directoryEntries]
+    const workerCount = Math.min(DIRECTORY_DIFF_LOAD_CONCURRENCY, queue.length)
+
+    async function runWorker() {
+      while (generation === loadGeneration) {
+        const entry = queue.shift()
+        if (!entry) {
+          return
+        }
+
+        await ensureLoaded(entry, generation)
       }
+    }
+
+    for (let index = 0; index < workerCount; index += 1) {
+      void runWorker()
     }
   }
 
-  function scheduleViewportCheck(relativePath: string) {
-    window.requestAnimationFrame(() => {
-      ensureLoadedIfNearViewport(relativePath)
-    })
-  }
-
-  function observeSection(node: HTMLElement, relativePath: string) {
+  function trackSection(node: HTMLElement, relativePath: string) {
     node.dataset.relativePath = relativePath
     sectionHosts.set(relativePath, node)
-    observer?.observe(node)
-    scheduleViewportCheck(relativePath)
 
     return {
       update(nextRelativePath: string) {
-        observer?.unobserve(node)
         sectionHosts.delete(relativePath)
         relativePath = nextRelativePath
         node.dataset.relativePath = relativePath
         sectionHosts.set(relativePath, node)
-        observer?.observe(node)
-        scheduleViewportCheck(relativePath)
       },
       destroy() {
-        observer?.unobserve(node)
         sectionHosts.delete(relativePath)
       },
     }
@@ -213,14 +208,30 @@
     const nextCollapsed = !isCollapsed(entry.relativePath)
     setCollapsed(entry.relativePath, nextCollapsed)
 
-    if (!nextCollapsed) {
-      void ensureLoaded(entry)
-    }
+    void ensureLoaded(entry)
+  }
+
+  function createChevronIcon() {
+    const svg = document.createElementNS(SVG_NAMESPACE, 'svg')
+    const path = document.createElementNS(SVG_NAMESPACE, 'path')
+
+    svg.setAttribute('aria-hidden', 'true')
+    svg.setAttribute('viewBox', '0 0 16 16')
+    svg.setAttribute('focusable', 'false')
+    svg.classList.add('diffly-diff-header-toggle-icon')
+    path.setAttribute('d', 'M5.75 3.5 10.25 8l-4.5 4.5')
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', 'currentColor')
+    path.setAttribute('stroke-linecap', 'round')
+    path.setAttribute('stroke-linejoin', 'round')
+    path.setAttribute('stroke-width', '1.8')
+    svg.appendChild(path)
+
+    return svg
   }
 
   function renderDiffHeaderPrefix(entry: DirectoryEntryResult) {
     const button = document.createElement('button')
-    const icon = document.createElement('span')
     const collapsed = isCollapsed(entry.relativePath)
 
     button.type = 'button'
@@ -228,10 +239,8 @@
     button.setAttribute('aria-label', collapsed ? 'Expand file diff' : 'Collapse file diff')
     button.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
     button.title = collapsed ? 'Expand file diff' : 'Collapse file diff'
-    icon.className = 'diffly-diff-header-toggle-icon'
-    icon.textContent = '>'
     button.dataset.collapsed = collapsed ? 'true' : 'false'
-    button.appendChild(icon)
+    button.appendChild(createChevronIcon())
     button.addEventListener('click', (event) => {
       event.stopPropagation()
       toggleEntry(entry)
@@ -240,36 +249,28 @@
     return button
   }
 
+  function getHeaderPrefixRenderer(entry: DirectoryEntryResult) {
+    const path = entryKey(entry)
+    let renderer = headerPrefixRenderers.get(path)
+
+    if (!renderer) {
+      renderer = () => renderDiffHeaderPrefix(entry)
+      headerPrefixRenderers.set(path, renderer)
+    }
+
+    return renderer
+  }
+
   $: {
     const nextSignature = `${revision}:${directoryEntries.map((entry) => entry.relativePath).join('\u0000')}`
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
       syncEntryCollections()
+      startDirectoryDiffLoading()
     }
   }
 
   $: selectedRelativePath, void scrollToEntry(selectedRelativePath)
-
-  onMount(() => {
-    observer = new IntersectionObserver(loadVisibleSections, {
-      root: scrollHost,
-      rootMargin: '720px 0px',
-      threshold: 0,
-    })
-
-    for (const node of sectionHosts.values()) {
-      observer.observe(node)
-    }
-
-    for (const entry of directoryEntries) {
-      ensureLoadedIfNearViewport(entry.relativePath)
-    }
-  })
-
-  onDestroy(() => {
-    observer?.disconnect()
-    observer = null
-  })
 </script>
 
 <section class="directory-diff-list" bind:this={scrollHost}>
@@ -290,7 +291,7 @@
         class:collapsed
         class:selected={selectedRelativePath === entry.relativePath}
         class="directory-diff-section"
-        use:observeSection={entry.relativePath}
+        use:trackSection={entry.relativePath}
       >
         <div class="directory-diff-body">
           {#if state?.loading}
@@ -310,7 +311,7 @@
               {resolvedThemeMode}
               {viewMode}
               {collapsed}
-              renderHeaderPrefix={() => renderDiffHeaderPrefix(entry)}
+              renderHeaderPrefix={getHeaderPrefixRenderer(entry)}
             />
           {:else if state?.diff}
             <UnsupportedCompareView

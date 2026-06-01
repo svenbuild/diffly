@@ -103,14 +103,26 @@
 
   function applyCollapsedState() {
     const container = host?.querySelector('diffs-container') as HTMLElement | null
-    const pre = container?.shadowRoot?.querySelector('pre') as HTMLPreElement | null
+    const shadowRoot = container?.shadowRoot ?? null
 
     if (container) {
       container.toggleAttribute('data-diffly-collapsed', collapsed)
     }
 
-    if (pre) {
-      pre.hidden = collapsed
+    if (!shadowRoot) {
+      return
+    }
+
+    for (const element of Array.from(shadowRoot.children)) {
+      if (!(element instanceof HTMLElement)) {
+        continue
+      }
+
+      const isHeader = element.hasAttribute('data-diffs-header')
+      const isStyle = element.tagName.toLowerCase() === 'style'
+      if (!isHeader && !isStyle) {
+        element.hidden = collapsed
+      }
     }
   }
 

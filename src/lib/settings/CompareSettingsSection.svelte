@@ -54,6 +54,14 @@
 
   {#if activeTab === 'diffs'}
     <div aria-labelledby="compare-diffs-tab" id="compare-diffs-panel" role="tabpanel">
+      <nav class="settings-category-nav" aria-label="Diff setting sections">
+        <a href="#diff-layout">Layout</a>
+        <a href="#diff-rendering">Rendering</a>
+        <a href="#diff-syntax">Syntax</a>
+        <a href="#diff-interaction">Interaction</a>
+        <a href="#diff-rules">Rules</a>
+      </nav>
+
       <DiffSettingsSection
         {viewMode}
         {viewerSettings}
@@ -69,6 +77,13 @@
     </div>
   {:else}
     <div aria-labelledby="compare-trees-tab" id="compare-trees-panel" role="tabpanel">
+      <nav class="settings-category-nav" aria-label="Tree setting sections">
+        <a href="#tree-structure">Structure</a>
+        <a href="#tree-density">Density</a>
+        <a href="#tree-search">Search</a>
+        <a href="#tree-mutations">Mutations</a>
+      </nav>
+
       <TreeSettingsSection
         {treeSettings}
         {onSetTreeSettings}

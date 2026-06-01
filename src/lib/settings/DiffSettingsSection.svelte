@@ -23,7 +23,7 @@
 </script>
 
 <section class="library-settings diff-settings">
-  <section class="settings-group">
+  <section class="settings-group" id="diff-layout">
     <div class="settings-group-header">
       <h3>Layout and context</h3>
       <p>Structure, wrapping, collapsed regions, and sticky file headers.</p>
@@ -146,7 +146,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="diff-rendering">
     <div class="settings-group-header">
       <h3>Code rendering</h3>
       <p>Inline highlights, gutters, hunk separators, and line backgrounds.</p>
@@ -262,7 +262,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="diff-syntax">
     <div class="settings-group-header">
       <h3>Syntax and limits</h3>
       <p>Highlighter engine, CSS output mode, and expensive tokenization limits.</p>
@@ -371,7 +371,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="diff-interaction">
     <div class="settings-group-header">
       <h3>Mouse and selection</h3>
       <p>Hover state, token callbacks, gutter buttons, and selected ranges.</p>
@@ -488,7 +488,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="diff-rules">
     <div class="settings-group-header">
       <h3>Compare rules</h3>
       <p>

@@ -22,7 +22,7 @@
 </script>
 
 <section class="library-settings tree-settings">
-  <section class="settings-group">
+  <section class="settings-group" id="tree-structure">
     <div class="settings-group-header">
       <h3>Tree structure</h3>
       <p>Sorting, initial expansion, flattened folders, and sticky parents.</p>
@@ -132,7 +132,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="tree-density">
     <div class="settings-group-header">
       <h3>Tree density</h3>
       <p>Preset density, exact row height, and virtualized row windows.</p>
@@ -226,7 +226,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="tree-search">
     <div class="settings-group-header">
       <h3>Tree search</h3>
       <p>Built-in Pierre search, match handling, focus, and initial query.</p>
@@ -318,7 +318,7 @@
     </div>
   </section>
 
-  <section class="settings-group">
+  <section class="settings-group" id="tree-mutations">
     <div class="settings-group-header">
       <h3>Tree mutations</h3>
       <p>Optional local Pierre interactions for drag/drop and inline rename.</p>
