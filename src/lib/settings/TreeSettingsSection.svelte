@@ -21,12 +21,7 @@
   }
 </script>
 
-<section class="settings-page library-settings tree-settings">
-  <div class="settings-page-heading">
-    <h2>Trees</h2>
-    <p>Settings passed directly to Pierre Trees for directory rendering, search, and virtualization.</p>
-  </div>
-
+<section class="library-settings tree-settings">
   <section class="settings-group">
     <div class="settings-group-header">
       <h3>Structure</h3>
@@ -320,51 +315,6 @@
           />
         </div>
       </div>
-    </div>
-  </section>
-
-  <section class="settings-group">
-    <div class="settings-group-header">
-      <h3>Mutation</h3>
-      <p>Enable Pierre model interactions that mutate the in-memory tree.</p>
-    </div>
-
-    <div class="settings-group-grid">
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>Drag and drop</strong>
-          <p>Allow Pierre's in-memory drag and drop behavior.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={treeSettings.dragAndDrop}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateTreeSettings({ dragAndDrop: !treeSettings.dragAndDrop })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>Renaming</strong>
-          <p>Allow Pierre's in-memory rename interaction.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={treeSettings.renaming}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateTreeSettings({ renaming: !treeSettings.renaming })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
     </div>
   </section>
 </section>

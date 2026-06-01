@@ -22,12 +22,7 @@
   }
 </script>
 
-<section class="settings-page library-settings diff-settings">
-  <div class="settings-page-heading">
-    <h2>Diffs</h2>
-    <p>Settings passed directly to Pierre Diffs for text rendering, highlighting, and interaction.</p>
-  </div>
-
+<section class="library-settings diff-settings">
   <section class="settings-group">
     <div class="settings-group-header">
       <h3>Layout</h3>
@@ -308,24 +303,6 @@
         </div>
       </div>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>CSS classes</strong>
-          <p>Render token styles through CSS classes when supported.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.useCSSClasses}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ useCSSClasses: !viewerSettings.useCSSClasses })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>Tokenize max line length</strong>
@@ -379,7 +356,7 @@
   <section class="settings-group">
     <div class="settings-group-header">
       <h3>Interaction</h3>
-      <p>Control hover, selection, and gutter utility behavior.</p>
+      <p>Control hover and selection behavior.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -403,42 +380,6 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Whitespace token interactions</strong>
-          <p>Allow token events to include whitespace tokens.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.enableTokenInteractionsOnWhitespace}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ enableTokenInteractionsOnWhitespace: !viewerSettings.enableTokenInteractionsOnWhitespace })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>Gutter utility</strong>
-          <p>Enable Pierre's built-in gutter utility interaction lane.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.enableGutterUtility}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ enableGutterUtility: !viewerSettings.enableGutterUtility })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
           <strong>Line selection</strong>
           <p>Allow selecting ranges inside the rendered diff.</p>
         </div>
@@ -449,24 +390,6 @@
               role="switch"
               type="checkbox"
               on:change={() => updateViewerSettings({ enableLineSelection: !viewerSettings.enableLineSelection })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>Controlled selection</strong>
-          <p>Use Pierre's controlled selection mode.</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.controlledSelection}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ controlledSelection: !viewerSettings.controlledSelection })}
             />
             <span aria-hidden="true" class="settings-switch-ui"></span>
           </span>

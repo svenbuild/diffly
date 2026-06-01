@@ -1246,6 +1246,42 @@ h2 {
   gap: 14px;
 }
 
+.compare-settings-page {
+  align-content: start;
+}
+
+.settings-tabs {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.settings-tabs button {
+  min-width: 92px;
+  height: 30px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.settings-tabs button:hover {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.settings-tabs button.active {
+  border-color: var(--border);
+  background: var(--active-surface);
+  color: var(--active-text);
+}
+
 .library-settings {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
@@ -5097,7 +5133,7 @@ button.filter-chip.tooLarge:focus-visible {
 
   .settings-nav-list,
   .settings-section-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     max-width: none;
   }
 

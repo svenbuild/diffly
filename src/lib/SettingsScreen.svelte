@@ -1,8 +1,7 @@
 <script lang="ts">
   import AppearanceSettingsSection from './settings/AppearanceSettingsSection.svelte'
-  import DiffSettingsSection from './settings/DiffSettingsSection.svelte'
+  import CompareSettingsSection from './settings/CompareSettingsSection.svelte'
   import ResetSettingsSection from './settings/ResetSettingsSection.svelte'
-  import TreeSettingsSection from './settings/TreeSettingsSection.svelte'
   import UpdateSettingsSection from './settings/UpdateSettingsSection.svelte'
   import type {
     CompareTreeSettings,
@@ -36,8 +35,7 @@
 
   const sections: SectionItem[] = [
     { id: 'appearance', label: 'Appearance' },
-    { id: 'diffs', label: 'Diffs' },
-    { id: 'trees', label: 'Trees' },
+    { id: 'compare', label: 'Compare' },
     { id: 'updates', label: 'Updates' },
     { id: 'reset', label: 'Reset' },
   ]
@@ -121,17 +119,10 @@
                   <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.3" />
                   <path d="M8 2.8v10.4" fill="none" stroke="currentColor" stroke-width="1.3" />
                 </svg>
-              {:else if section.id === 'diffs'}
+              {:else if section.id === 'compare'}
                 <svg viewBox="0 0 16 16">
                   <rect x="2.5" y="3.2" width="11" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3" />
                   <path d="M8 3.4v9.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-                </svg>
-              {:else if section.id === 'trees'}
-                <svg viewBox="0 0 16 16">
-                  <path d="M4.5 3.2v9.6M4.5 5.2h3.1M4.5 8h5.2M4.5 10.8h6.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
-                  <circle cx="4.5" cy="5.2" r="1" fill="currentColor" />
-                  <circle cx="4.5" cy="8" r="1" fill="currentColor" />
-                  <circle cx="4.5" cy="10.8" r="1" fill="currentColor" />
                 </svg>
               {:else if section.id === 'updates'}
                 <svg viewBox="0 0 16 16">
@@ -180,25 +171,20 @@
         />
       {/if}
 
-      {#if activeSection === 'diffs'}
-        <DiffSettingsSection
+      {#if activeSection === 'compare'}
+        <CompareSettingsSection
           {viewMode}
           {viewerSettings}
+          {treeSettings}
           {ignoreWhitespace}
           {ignoreCase}
           {comparisonRulesRequireRefresh}
           {compareNeedsRefresh}
           {onSetViewMode}
           {onSetViewerSettings}
+          {onSetTreeSettings}
           {onToggleIgnoreWhitespace}
           {onToggleIgnoreCase}
-        />
-      {/if}
-
-      {#if activeSection === 'trees'}
-        <TreeSettingsSection
-          {treeSettings}
-          {onSetTreeSettings}
         />
       {/if}
 

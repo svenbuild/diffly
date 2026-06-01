@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import {
   mkdir,
@@ -33,6 +33,7 @@ const MAX_TEXT_BYTES = 1024 * 1024
 const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
+const DIRECTORY_COMPARE_CONCURRENCY = 8
 
 type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
 
@@ -40,6 +41,7 @@ interface LoadedFile {
   kind: FileKind
   text?: string
   bytes?: Uint8Array
+  cacheKey?: string
   sha256?: string
   lineEnding?: 'lf' | 'crlf'
   hasTrailingNewline?: boolean
@@ -474,8 +476,7 @@ async function compareDirectories(
   onUpdate?: (index: number, entry: DirectoryEntryResult | null) => void,
   onTotal?: (total: number) => void,
 ): Promise<DirectoryEntryResult[]> {
-  const leftInfo = await stat(leftPath)
-  const rightInfo = await stat(rightPath)
+  const [leftInfo, rightInfo] = await Promise.all([stat(leftPath), stat(rightPath)])
   if (!leftInfo.isDirectory()) {
     throw new Error('The left path is not a directory.')
   }
@@ -483,32 +484,46 @@ async function compareDirectories(
     throw new Error('The right path is not a directory.')
   }
 
-  const leftFiles = await collectDirectoryFiles(leftPath)
-  const rightFiles = await collectDirectoryFiles(rightPath)
+  const [leftFiles, rightFiles] = await Promise.all([
+    collectDirectoryFiles(leftPath),
+    collectDirectoryFiles(rightPath),
+  ])
   const allPaths = Array.from(new Set([...leftFiles.keys(), ...rightFiles.keys()])).sort()
   const cacheKey = JSON.stringify({ leftPath, rightPath, ...options })
   const previousEntries = directoryCache?.key === cacheKey ? directoryCache.entries : new Map()
   const nextEntries = new Map<string, CachedDirectoryEntry>()
-  const results: DirectoryEntryResult[] = []
+  const resultSlots: Array<DirectoryEntryResult | null> = new Array(allPaths.length).fill(null)
+  let nextIndex = 0
   onTotal?.(allPaths.length)
 
-  for (let index = 0; index < allPaths.length; index += 1) {
-    const relativePath = allPaths[index]
-    const entry = await compareDirectoryEntry(
-      relativePath,
-      leftFiles.get(relativePath) ?? null,
-      rightFiles.get(relativePath) ?? null,
-      options,
-      previousEntries.get(relativePath),
-      nextEntries,
-    )
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex
+      nextIndex += 1
 
-    if (entry) {
-      results.push(entry)
+      if (index >= allPaths.length) {
+        return
+      }
+
+      const relativePath = allPaths[index]
+      const entry = await compareDirectoryEntry(
+        relativePath,
+        leftFiles.get(relativePath) ?? null,
+        rightFiles.get(relativePath) ?? null,
+        options,
+        previousEntries.get(relativePath),
+        nextEntries,
+      )
+
+      resultSlots[index] = entry
+      onUpdate?.(index, entry)
     }
-    onUpdate?.(index, entry)
   }
 
+  const workerCount = Math.min(DIRECTORY_COMPARE_CONCURRENCY, allPaths.length)
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()))
+
+  const results = resultSlots.filter((entry): entry is DirectoryEntryResult => entry !== null)
   directoryCache = { key: cacheKey, entries: nextEntries }
   return results
 }
@@ -769,7 +784,7 @@ async function loadFile(pathValue: string): Promise<LoadedFile> {
       format: null,
       truncated: false,
       text: bytes.toString('utf8'),
-      sha256: sha256(bytes),
+      cacheKey: `${pathValue}:${info.size}:${Math.trunc(info.mtimeMs)}`,
       lineEnding: bytes.includes(Buffer.from('\r\n')) ? 'crlf' : 'lf',
       hasTrailingNewline: bytes[bytes.length - 1] === 10,
     }
@@ -889,6 +904,8 @@ function buildTextPayload(left: LoadedFile, right: LoadedFile): TextDiffPayload 
     rightText: right.kind === 'text' ? right.text ?? '' : '',
     leftExists: left.kind === 'text',
     rightExists: right.kind === 'text',
+    leftCacheKey: left.kind === 'text' ? left.cacheKey ?? null : null,
+    rightCacheKey: right.kind === 'text' ? right.cacheKey ?? null : null,
     leftSha256: left.kind === 'text' ? left.sha256 ?? null : null,
     rightSha256: right.kind === 'text' ? right.sha256 ?? null : null,
     leftLineEnding: left.lineEnding ?? 'lf',
@@ -986,10 +1003,6 @@ async function filesEqual(leftPath: string, rightPath: string) {
       rightHandle.close().catch(() => undefined),
     ])
   }
-}
-
-function sha256(bytes: Uint8Array) {
-  return createHash('sha256').update(bytes).digest('hex')
 }
 
 function errorMessage(error: unknown) {

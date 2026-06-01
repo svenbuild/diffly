@@ -43,25 +43,21 @@
       disableVirtualizationBuffers: viewerSettings.disableVirtualizationBuffers,
       stickyHeader: viewerSettings.stickyHeader,
       preferredHighlighter: viewerSettings.preferredHighlighter,
-      useCSSClasses: viewerSettings.useCSSClasses,
       useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
       tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
       tokenizeMaxLength: viewerSettings.tokenizeMaxLength,
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
-      enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
-      enableGutterUtility: viewerSettings.enableGutterUtility,
       enableLineSelection: viewerSettings.enableLineSelection,
-      controlledSelection: viewerSettings.controlledSelection,
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
     }
   }
 
-  function buildFile(label: string, contents: string, sha256: string | null): FileContents {
+  function buildFile(label: string, contents: string, cacheKey: string | null, sha256: string | null): FileContents {
     return {
       name: fileName(label),
       contents,
-      cacheKey: sha256 ?? `${label}:${contents.length}`,
+      cacheKey: cacheKey ?? sha256 ?? `${label}:${contents.length}`,
     }
   }
 
@@ -86,8 +82,8 @@
     }
 
     fileDiff.render({
-      oldFile: buildFile(leftLabel, text.leftText, text.leftSha256),
-      newFile: buildFile(rightLabel, text.rightText, text.rightSha256),
+      oldFile: buildFile(leftLabel, text.leftText, text.leftCacheKey, text.leftSha256),
+      newFile: buildFile(rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
       containerWrapper: host,
       forceRender: true,
     })

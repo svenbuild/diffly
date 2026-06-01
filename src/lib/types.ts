@@ -26,15 +26,11 @@ export interface CompareViewerSettings {
   stickyHeader: boolean
   syntaxMode: 'shiki' | 'plain'
   preferredHighlighter: 'shiki-js' | 'shiki-wasm'
-  useCSSClasses: boolean
   tokenizeMaxLineLength: number
   tokenizeMaxLength: number
   maxLineDiffLength: number
   lineHoverHighlight: 'disabled' | 'both' | 'number' | 'line'
-  enableTokenInteractionsOnWhitespace: boolean
-  enableGutterUtility: boolean
   enableLineSelection: boolean
-  controlledSelection: boolean
 }
 
 export interface CompareTreeSettings {
@@ -54,8 +50,6 @@ export interface CompareTreeSettings {
   initialVisibleRowCount: number
   itemHeight: number
   overscan: number
-  dragAndDrop: boolean
-  renaming: boolean
 }
 
 export type CompareSource =
@@ -161,6 +155,8 @@ export interface TextDiffPayload {
   rightText: string
   leftExists: boolean
   rightExists: boolean
+  leftCacheKey: string | null
+  rightCacheKey: string | null
   leftSha256: string | null
   rightSha256: string | null
   leftLineEnding: 'lf' | 'crlf'

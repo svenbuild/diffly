@@ -49,7 +49,6 @@ export interface ExplorerPaneState {
 export type Side = 'left' | 'right'
 export type SettingsSection =
   | 'appearance'
-  | 'diffs'
-  | 'trees'
+  | 'compare'
   | 'updates'
   | 'reset'

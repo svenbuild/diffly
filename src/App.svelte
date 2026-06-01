@@ -111,7 +111,6 @@
   const THEME_SWITCH_DURATION_MS = 140
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
-  const IMMEDIATE_DETAIL_PRIME_COUNT = 2
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const DEFAULT_COMPARE_SIDEBAR_WIDTH = 280
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
@@ -169,15 +168,11 @@
     stickyHeader: false,
     syntaxMode: 'shiki',
     preferredHighlighter: 'shiki-js',
-    useCSSClasses: false,
     tokenizeMaxLineLength: 1000,
     tokenizeMaxLength: 100000,
     maxLineDiffLength: 1000,
     lineHoverHighlight: 'disabled',
-    enableTokenInteractionsOnWhitespace: false,
-    enableGutterUtility: false,
     enableLineSelection: false,
-    controlledSelection: false,
   }
   let treeSettings: CompareTreeSettings = {
     density: 'compact',
@@ -196,8 +191,6 @@
     initialVisibleRowCount: 12,
     itemHeight: 24,
     overscan: 6,
-    dragAndDrop: false,
-    renaming: false,
   }
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
@@ -341,17 +334,13 @@
       preferredHighlighter: isPreferredHighlighter(settings?.preferredHighlighter)
         ? settings.preferredHighlighter
         : current.preferredHighlighter,
-      useCSSClasses: settings?.useCSSClasses ?? false,
       tokenizeMaxLineLength: clampNumber(settings?.tokenizeMaxLineLength, 0, 20000, current.tokenizeMaxLineLength),
       tokenizeMaxLength: clampNumber(settings?.tokenizeMaxLength, 0, 1000000, current.tokenizeMaxLength),
       maxLineDiffLength: clampNumber(settings?.maxLineDiffLength, 0, 20000, current.maxLineDiffLength),
       lineHoverHighlight: isLineHoverHighlight(settings?.lineHoverHighlight)
         ? settings.lineHoverHighlight
         : current.lineHoverHighlight,
-      enableTokenInteractionsOnWhitespace: settings?.enableTokenInteractionsOnWhitespace ?? false,
-      enableGutterUtility: settings?.enableGutterUtility ?? false,
       enableLineSelection: settings?.enableLineSelection ?? false,
-      controlledSelection: settings?.controlledSelection ?? false,
     }
   }
 
@@ -381,8 +370,6 @@
       initialVisibleRowCount: clampNumber(settings?.initialVisibleRowCount, 1, 200, current.initialVisibleRowCount),
       itemHeight: clampNumber(settings?.itemHeight, 18, 60, current.itemHeight),
       overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
-      dragAndDrop: settings?.dragAndDrop ?? false,
-      renaming: settings?.renaming ?? false,
     }
   }
 
@@ -975,66 +962,6 @@
     await tick()
   }
 
-  function isImmediatePrimeCandidate(entry: DirectoryEntryResult, centerRelativePath: string) {
-    return (
-      entry.relativePath !== centerRelativePath &&
-      entry.status === 'modified'
-    )
-  }
-
-  function primeAdjacentDetailDiffs(
-    centerRelativePath: string,
-    revision = compareRevision,
-    entries = filteredDirectoryEntries,
-  ) {
-    if (
-      mode !== 'directory' ||
-      !leftPath ||
-      !rightPath ||
-      IMMEDIATE_DETAIL_PRIME_COUNT <= 0 ||
-      entries.length < 2
-    ) {
-      return
-    }
-
-    const centerIndex = entries.findIndex((entry) => entry.relativePath === centerRelativePath)
-    if (centerIndex === -1) {
-      return
-    }
-
-    const primePaths: string[] = []
-
-    for (
-      let offset = 1;
-      offset < entries.length && primePaths.length < IMMEDIATE_DETAIL_PRIME_COUNT;
-      offset += 1
-    ) {
-      const nextEntry = entries[centerIndex + offset]
-      if (
-        nextEntry &&
-        isImmediatePrimeCandidate(nextEntry, centerRelativePath) &&
-        !primePaths.includes(nextEntry.relativePath)
-      ) {
-        primePaths.push(nextEntry.relativePath)
-      }
-
-      const previousEntry = entries[centerIndex - offset]
-      if (
-        previousEntry &&
-        isImmediatePrimeCandidate(previousEntry, centerRelativePath) &&
-        !primePaths.includes(previousEntry.relativePath)
-      ) {
-        primePaths.push(previousEntry.relativePath)
-      }
-    }
-
-    for (const relativePath of primePaths) {
-      void getOrCreateDetailDiffPromise(relativePath, revision).catch(() => {
-        // Leave neighbor-prime failures to explicit file open handling.
-      })
-    }
-  }
-
   function startBackgroundDiffPreload(
     centerRelativePath: string,
     revision = compareRevision,
@@ -1171,7 +1098,6 @@
           (filteredDirectoryEntries.length > 0 ? defaultDirectoryEntry(filteredDirectoryEntries) : null)
 
         if (nextEntry) {
-          primeAdjacentDetailDiffs(nextEntry.relativePath, revision)
           void selectEntry(
             nextEntry,
             revision,
@@ -1965,11 +1891,9 @@
         )
 
         if (preservedEntry) {
-          primeAdjacentDetailDiffs(preservedEntry.relativePath, compareRevision)
           void selectEntry(preservedEntry, compareRevision, restoreScroll)
         } else if (filteredDirectoryEntries.length > 0) {
           const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
-          primeAdjacentDetailDiffs(nextEntry.relativePath, compareRevision)
           void selectEntry(nextEntry, compareRevision)
         } else {
           selectedRelativePath = ''
@@ -2018,8 +1942,6 @@
       if (switchingEntry) {
         activeDiff = null
       }
-
-      await tick()
 
       if (revision !== compareRevision || requestId !== activeDetailRequestId) {
         return
@@ -2556,7 +2478,7 @@
         </div>
 
         <div class="compare-action-group global-actions">
-          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('diffs')}>
+          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('compare')}>
             Settings
           </button>
           <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
