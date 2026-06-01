@@ -28,7 +28,6 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let collapsed = false
-  export let renderHeaderPrefix: (() => HTMLElement | null) | null = null
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
@@ -125,26 +124,9 @@
 
   function applyCollapsedState() {
     const container = host?.querySelector('diffs-container') as HTMLElement | null
-    const shadowRoot = container?.shadowRoot ?? null
 
     if (container) {
       container.toggleAttribute('data-diffly-collapsed', collapsed)
-    }
-
-    if (!shadowRoot) {
-      return
-    }
-
-    for (const element of Array.from(shadowRoot.children)) {
-      if (!(element instanceof HTMLElement)) {
-        continue
-      }
-
-      const isHeader = element.hasAttribute('data-diffs-header')
-      const isStyle = element.tagName.toLowerCase() === 'style'
-      if (!isHeader && !isStyle) {
-        element.hidden = collapsed
-      }
     }
   }
 
@@ -197,6 +179,7 @@
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
       themeType: resolvedThemeMode,
+      collapsed,
       diffStyle: viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle,
       overflow: viewerSettings.codeOverflow,
       diffIndicators: viewerSettings.diffIndicators,
@@ -229,7 +212,6 @@
       controlledSelection: viewerSettings.controlledSelection,
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
-      renderHeaderPrefix: renderHeaderPrefix ?? undefined,
       onPostRender: applyCollapsedState,
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
     }
@@ -285,7 +267,7 @@
     applyCollapsedState()
   }
 
-  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, renderHeaderPrefix, commentAnnotations, void renderDiff()
+  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, commentAnnotations, void renderDiff()
 
   onDestroy(() => {
     if (interactionMessageTimer !== null) {

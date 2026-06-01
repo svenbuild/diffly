@@ -2983,6 +2983,88 @@ h2 {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+.directory-diff-header {
+  display: grid;
+  grid-template-columns: 28px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 44px;
+  padding: 0 18px 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--editor-bg) 96%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.directory-diff-section.collapsed .directory-diff-header {
+  border-bottom-color: transparent;
+}
+
+.directory-diff-toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.directory-diff-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.directory-diff-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.directory-diff-toggle svg {
+  width: 15px;
+  height: 15px;
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+
+.directory-diff-toggle svg.collapsed {
+  transform: rotate(0deg);
+}
+
+.directory-diff-file-marker {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--accent);
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--editor-bg) 82%, transparent);
+}
+
+.directory-diff-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-diff-status {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.directory-diff-status.success {
+  color: var(--success);
+}
+
+.directory-diff-status.danger {
+  color: var(--danger-text);
+}
+
 .directory-diff-body {
   min-height: 34px;
   background: var(--editor-bg);

@@ -111,6 +111,9 @@
   const THEME_SWITCH_DURATION_MS = 140
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
+  const DIRECTORY_DETAIL_PRELOAD_CONCURRENCY = 2
+  const DIRECTORY_DETAIL_PRELOAD_ATTEMPTS = 2
+  const DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS = 30000
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
@@ -241,6 +244,8 @@
   let initialSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
+  let directoryDetailPreloadGeneration = 0
+  let directoryDetailPreloadSignature = ''
   let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareSidebarResizeActive = false
   let compareDirtyReason: CompareDirtyReason | null = null
@@ -545,6 +550,7 @@
 
       removeLaunchContextListener()
       diffCache.cancelBackgroundPreload()
+      cancelDirectoryDetailPreload()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -801,6 +807,10 @@
     diffCache.cancelBackgroundPreload()
   }
 
+  function cancelDirectoryDetailPreload() {
+    directoryDetailPreloadGeneration += 1
+  }
+
   function clearDirectoryComparePollTimer() {
     if (directoryComparePollTimer !== null) {
       window.clearTimeout(directoryComparePollTimer)
@@ -957,6 +967,79 @@
       ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
       ignoreCase: activeCompareOptions.ignoreCase,
     })
+  }
+
+  async function preloadDirectoryEntryDiff(
+    entry: DirectoryEntryResult,
+    revision: number,
+    generation: number,
+  ) {
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= DIRECTORY_DETAIL_PRELOAD_ATTEMPTS; attempt += 1) {
+      if (generation !== directoryDetailPreloadGeneration || revision !== compareRevision) {
+        return
+      }
+
+      try {
+        await withDirectoryPreloadTimeout(
+          getOrCreateDetailDiffPromise(entry.relativePath, revision),
+          DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS,
+        )
+        return
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    throw lastError
+  }
+
+  function withDirectoryPreloadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+    let timeoutId: number | null = null
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error('Timed out while preloading this file diff.'))
+      }, timeoutMs)
+    })
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    })
+  }
+
+  function startDirectoryDetailPreload(entries: DirectoryEntryResult[], revision = compareRevision) {
+    cancelDirectoryDetailPreload()
+
+    if (mode !== 'directory' || entries.length === 0 || !leftPath || !rightPath) {
+      return
+    }
+
+    const generation = directoryDetailPreloadGeneration
+    const queue = [...entries]
+    const workerCount = Math.min(DIRECTORY_DETAIL_PRELOAD_CONCURRENCY, queue.length)
+
+    const runWorker = async () => {
+      while (generation === directoryDetailPreloadGeneration && revision === compareRevision) {
+        const entry = queue.shift()
+
+        if (!entry) {
+          return
+        }
+
+        try {
+          await preloadDirectoryEntryDiff(entry, revision, generation)
+        } catch {
+          // The visible directory diff list reports per-file errors on demand.
+        }
+      }
+    }
+
+    for (let index = 0; index < workerCount; index += 1) {
+      void runWorker()
+    }
   }
 
   function captureDiffScrollSnapshot(): DiffScrollSnapshot | null {
@@ -1983,6 +2066,28 @@
 
   async function loadEntryDiff(entry: DirectoryEntryResult, revision = compareRevision) {
     return getOrCreateDetailDiffPromise(entry.relativePath, revision)
+  }
+
+  $: {
+    const nextDirectoryPreloadSignature =
+      mode === 'directory' && directoryEntries.length > 0
+        ? [
+            compareRevision,
+            activeCompareOptions.ignoreWhitespace ? '1' : '0',
+            activeCompareOptions.ignoreCase ? '1' : '0',
+            directoryEntries.map((entry) => entry.relativePath).join('\u0000'),
+          ].join('\u0001')
+        : ''
+
+    if (nextDirectoryPreloadSignature !== directoryDetailPreloadSignature) {
+      directoryDetailPreloadSignature = nextDirectoryPreloadSignature
+
+      if (nextDirectoryPreloadSignature) {
+        startDirectoryDetailPreload(directoryEntries, compareRevision)
+      } else {
+        cancelDirectoryDetailPreload()
+      }
+    }
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {

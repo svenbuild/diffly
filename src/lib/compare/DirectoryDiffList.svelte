@@ -31,9 +31,15 @@
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 2
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+  const statusLabel: Record<DirectoryEntryResult['status'], string> = {
+    modified: 'Modified',
+    leftOnly: 'Left only',
+    rightOnly: 'Right only',
+    unsupported: 'Unsupported',
+  }
 
   let scrollHost: HTMLElement | null = null
+  let embeddedViewerSettings: CompareViewerSettings = viewerSettings
   let entriesSignature = ''
   let loadGeneration = 0
   let activeQueueRevision = -1
@@ -43,7 +49,6 @@
   let queuedPaths = new Set<string>()
   let loadQueue: DirectoryEntryResult[] = []
   const sectionHosts = new Map<string, HTMLElement>()
-  const headerPrefixRenderers = new Map<string, () => HTMLElement | null>()
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -66,12 +71,6 @@
     for (const key of collapsedPaths) {
       if (nextPaths.has(key)) {
         nextCollapsedPaths.add(key)
-      }
-    }
-
-    for (const key of headerPrefixRenderers.keys()) {
-      if (!nextPaths.has(key)) {
-        headerPrefixRenderers.delete(key)
       }
     }
 
@@ -108,12 +107,7 @@
 
     for (let attempt = 1; attempt <= DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
       try {
-        return await Promise.race([
-          loadEntryDiff(entry, loadRevision),
-          new Promise<FileDiffResult>((_, reject) => {
-            window.setTimeout(() => reject(new Error('Timed out while loading this file diff.')), DIRECTORY_DIFF_LOAD_TIMEOUT_MS)
-          }),
-        ])
+        return await withLoadTimeout(loadEntryDiff(entry, loadRevision), DIRECTORY_DIFF_LOAD_TIMEOUT_MS)
       } catch (error) {
         lastError = error
       }
@@ -252,11 +246,6 @@
     node.dataset.relativePath = activeEntry.relativePath
     sectionHosts.set(activeEntry.relativePath, node)
 
-    const onClick = (event: MouseEvent) => {
-      handleSectionClick(event, activeEntry)
-    }
-    node.addEventListener('click', onClick)
-
     return {
       update(nextEntry: DirectoryEntryResult) {
         sectionHosts.delete(activeEntry.relativePath)
@@ -265,7 +254,6 @@
         sectionHosts.set(activeEntry.relativePath, node)
       },
       destroy() {
-        node.removeEventListener('click', onClick)
         sectionHosts.delete(activeEntry.relativePath)
       },
     }
@@ -293,78 +281,27 @@
     const nextCollapsed = !isCollapsed(entry.relativePath)
     setCollapsed(entry.relativePath, nextCollapsed)
 
-    void ensureLoaded(entry)
-  }
-
-  function clickedToggle(event: MouseEvent) {
-    return event.composedPath().some((target) => {
-      return target instanceof HTMLElement && target.classList.contains('diffly-diff-header-toggle')
-    })
-  }
-
-  function handleSectionClick(event: MouseEvent, entry: DirectoryEntryResult) {
-    if (!clickedToggle(event)) {
-      return
+    if (!nextCollapsed) {
+      void ensureLoaded(entry)
     }
-
-    event.preventDefault()
-    event.stopPropagation()
-    toggleEntry(entry)
   }
 
-  function createChevronIcon() {
-    const svg = document.createElementNS(SVG_NAMESPACE, 'svg')
-    const path = document.createElementNS(SVG_NAMESPACE, 'path')
-
-    svg.setAttribute('aria-hidden', 'true')
-    svg.setAttribute('viewBox', '0 0 16 16')
-    svg.setAttribute('focusable', 'false')
-    svg.classList.add('diffly-diff-header-toggle-icon')
-    path.setAttribute('d', 'M5.75 3.5 10.25 8l-4.5 4.5')
-    path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'currentColor')
-    path.setAttribute('stroke-linecap', 'round')
-    path.setAttribute('stroke-linejoin', 'round')
-    path.setAttribute('stroke-width', '1.8')
-    svg.appendChild(path)
-
-    return svg
-  }
-
-  function renderDiffHeaderPrefix(entry: DirectoryEntryResult) {
-    const button = document.createElement('button')
-    const collapsed = isCollapsed(entry.relativePath)
-
-    button.type = 'button'
-    button.className = 'diffly-diff-header-toggle'
-    button.setAttribute('aria-label', collapsed ? 'Expand file diff' : 'Collapse file diff')
-    button.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
-    button.title = collapsed ? 'Expand file diff' : 'Collapse file diff'
-    button.dataset.collapsed = collapsed ? 'true' : 'false'
-    button.appendChild(createChevronIcon())
-    button.addEventListener('pointerdown', (event) => {
-      event.stopPropagation()
-    })
-    button.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      toggleEntry(entry)
+  function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+    let timeoutId: number | null = null
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error('Timed out while loading this file diff.'))
+      }, timeoutMs)
     })
 
-    return button
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    })
   }
 
-  function getHeaderPrefixRenderer(entry: DirectoryEntryResult) {
-    const path = entryKey(entry)
-    let renderer = headerPrefixRenderers.get(path)
-
-    if (!renderer) {
-      renderer = () => renderDiffHeaderPrefix(entry)
-      headerPrefixRenderers.set(path, renderer)
-    }
-
-    return renderer
-  }
+  $: embeddedViewerSettings = { ...viewerSettings, disableFileHeader: true }
 
   $: {
     const nextSignature = `${revision}:${directoryEntries.map((entry) => entry.relativePath).join('\u0000')}`
@@ -398,38 +335,65 @@
         class="directory-diff-section"
         use:trackSection={entry}
       >
-        <div class="directory-diff-body">
-          {#if state?.loading}
-            <div class="directory-diff-loading">
-              <span class="refresh-spinner visible"></span>
-              <span>Loading diff...</span>
-            </div>
-          {:else if state?.error}
-            <div class="directory-diff-error">{state.error}</div>
-          {:else if state?.diff?.contentKind === 'text' && state.diff.text}
-            <PierreDiffViewer
-              text={state.diff.text}
-              leftLabel={state.diff.leftLabel}
-              rightLabel={state.diff.rightLabel}
-              {viewerSettings}
-              {appearanceSettings}
-              {resolvedThemeMode}
-              {viewMode}
-              {collapsed}
-              renderHeaderPrefix={getHeaderPrefixRenderer(entry)}
-            />
-          {:else if state?.diff}
-            <UnsupportedCompareView
-              unsupported={state.diff.unsupported ?? null}
-              summary={state.diff.summary}
-            />
-          {:else}
-            <div class="directory-diff-loading">
-              <span class="refresh-spinner visible"></span>
-              <span>Loading diff...</span>
-            </div>
-          {/if}
-        </div>
+        <header class="directory-diff-header">
+          <button
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Expand file diff' : 'Collapse file diff'}
+            class="directory-diff-toggle"
+            title={collapsed ? 'Expand file diff' : 'Collapse file diff'}
+            type="button"
+            on:click={() => toggleEntry(entry)}
+          >
+            <svg aria-hidden="true" class:collapsed viewBox="0 0 16 16">
+              <path
+                d="M5.75 3.5 10.25 8l-4.5 4.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+              />
+            </svg>
+          </button>
+          <span aria-hidden="true" class="directory-diff-file-marker"></span>
+          <span class="directory-diff-title">{entry.relativePath}</span>
+          <span class:danger={entry.status === 'leftOnly'} class:success={entry.status !== 'leftOnly'} class="directory-diff-status">
+            {statusLabel[entry.status]}
+          </span>
+        </header>
+
+        {#if !collapsed}
+          <div class="directory-diff-body">
+            {#if state?.loading}
+              <div class="directory-diff-loading">
+                <span class="refresh-spinner visible"></span>
+                <span>Loading diff...</span>
+              </div>
+            {:else if state?.error}
+              <div class="directory-diff-error">{state.error}</div>
+            {:else if state?.diff?.contentKind === 'text' && state.diff.text}
+              <PierreDiffViewer
+                text={state.diff.text}
+                leftLabel={state.diff.leftLabel}
+                rightLabel={state.diff.rightLabel}
+                viewerSettings={embeddedViewerSettings}
+                {appearanceSettings}
+                {resolvedThemeMode}
+                {viewMode}
+              />
+            {:else if state?.diff}
+              <UnsupportedCompareView
+                unsupported={state.diff.unsupported ?? null}
+                summary={state.diff.summary}
+              />
+            {:else}
+              <div class="directory-diff-loading">
+                <span class="refresh-spinner visible"></span>
+                <span>Loading diff...</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </article>
     {/each}
   {/if}
