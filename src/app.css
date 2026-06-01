@@ -1283,9 +1283,9 @@ h2 {
 }
 
 .library-settings {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   align-items: start;
-  gap: 16px;
+  gap: 14px;
 }
 
 .update-settings,
@@ -1312,6 +1312,34 @@ h2 {
   background: var(--surface);
   overflow: hidden;
   box-shadow: none;
+}
+
+.compare-settings-page .settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  width: max-content;
+  background: var(--pane-bg);
+  box-shadow: 0 8px 14px color-mix(in srgb, var(--pane-bg) 80%, transparent);
+}
+
+.compare-settings-page .settings-group {
+  background: color-mix(in srgb, var(--surface) 88%, var(--editor-bg));
+}
+
+.compare-settings-page .settings-group-header {
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 180px),
+    color-mix(in srgb, var(--surface-alt) 52%, var(--surface));
+}
+
+.compare-settings-page .settings-group-header h3 {
+  font-size: 13px;
+}
+
+.compare-settings-page .settings-row {
+  min-height: 40px;
 }
 
 .settings-page:not(.library-settings):not(.update-settings):not(.settings-reset-page) .settings-group {
@@ -2858,6 +2886,175 @@ h2 {
   overflow: auto;
 }
 
+.directory-diff-list {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--editor-bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.directory-diff-list::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.directory-diff-list::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.directory-diff-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.directory-diff-section {
+  min-width: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--editor-bg);
+  scroll-margin-top: 0;
+}
+
+.directory-diff-section.selected {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.directory-diff-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--panel-bg) 76%, var(--editor-bg));
+}
+
+.directory-diff-title-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 33px;
+  padding: 0 12px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.directory-diff-title-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 42%, transparent);
+}
+
+.directory-diff-collapse-button {
+  width: 28px;
+  height: 33px;
+  min-height: 33px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.directory-diff-collapse-button:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent-soft) 36%, transparent);
+}
+
+.directory-diff-disclosure {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  transition: transform 120ms ease;
+}
+
+.directory-diff-disclosure.expanded {
+  transform: rotate(90deg);
+}
+
+.directory-diff-disclosure svg {
+  width: 14px;
+  height: 14px;
+}
+
+.directory-diff-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.directory-diff-title strong,
+.directory-diff-title span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-diff-title strong {
+  color: var(--title);
+  font-size: 12px;
+}
+
+.directory-diff-title span {
+  color: var(--muted);
+  font-family: var(--code, var(--font-code));
+  font-size: 11px;
+}
+
+.directory-diff-status {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-diff-status.status-modified {
+  color: var(--accent-strong);
+}
+
+.directory-diff-status.status-leftOnly {
+  color: var(--del-text);
+}
+
+.directory-diff-status.status-rightOnly {
+  color: var(--add-text);
+}
+
+.directory-diff-body {
+  min-height: 86px;
+  background: var(--editor-bg);
+}
+
+.directory-diff-body > .pierre-diff-host {
+  overflow: visible;
+}
+
+.directory-diff-loading,
+.directory-diff-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 86px;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.directory-diff-error {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger-bg) 18%, transparent);
+}
+
 .pierre-diff-feedback {
   position: absolute;
   right: 14px;
@@ -2954,7 +3151,7 @@ h2 {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
-  padding: 12px;
+  padding: 4px 4px 4px 0;
   border-right: 1px solid var(--border);
   background: var(--pane-bg);
 }

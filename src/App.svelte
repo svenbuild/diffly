@@ -112,7 +112,7 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
-  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 280
+  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
@@ -192,9 +192,9 @@
     searchFakeFocus: false,
     searchBlurBehavior: 'close',
     initialSearchQuery: '',
-    initialVisibleRowCount: 12,
-    itemHeight: 24,
-    overscan: 6,
+    initialVisibleRowCount: 18,
+    itemHeight: 22,
+    overscan: 8,
     dragAndDrop: false,
     renaming: false,
   }
@@ -448,7 +448,7 @@
   }
 
   function clampCompareSidebarWidth(value: number) {
-    return Math.min(420, Math.max(240, Math.round(value)))
+    return Math.min(380, Math.max(206, Math.round(value)))
   }
 
   function stopCompareSidebarResize() {
@@ -1981,6 +1981,10 @@
     }
   }
 
+  async function loadEntryDiff(entry: DirectoryEntryResult) {
+    return getOrCreateDetailDiffPromise(entry.relativePath, compareRevision)
+  }
+
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
     filteredDirectoryEntries = entries
   }
@@ -2532,13 +2536,20 @@
       {/if}
 
       <CompareViewer
+        {mode}
         {activeDiff}
-        loading={mode === 'file' ? loading : false}
+        {directoryEntries}
+        {selectedRelativePath}
+        {loading}
         {detailLoading}
         {viewerSettings}
         {appearanceSettings}
         {resolvedThemeMode}
         {viewMode}
+        {statusLabel}
+        revision={compareRevision}
+        {loadEntryDiff}
+        {selectEntry}
       />
     </section>
   </main>

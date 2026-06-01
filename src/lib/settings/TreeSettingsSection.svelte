@@ -24,8 +24,8 @@
 <section class="library-settings tree-settings">
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Structure</h3>
-      <p>Control how paths are sorted, expanded, and flattened.</p>
+      <h3>Tree structure</h3>
+      <p>Sorting, initial expansion, flattened folders, and sticky parents.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -134,8 +134,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Density</h3>
-      <p>Control row height, spacing, and virtualized row windows.</p>
+      <h3>Tree density</h3>
+      <p>Preset density, exact row height, and virtualized row windows.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -228,8 +228,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Search</h3>
-      <p>Control Pierre's built-in tree search behavior.</p>
+      <h3>Tree search</h3>
+      <p>Built-in Pierre search, match handling, focus, and initial query.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -320,8 +320,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Mutation</h3>
-      <p>Enable Pierre's in-memory tree mutation interactions.</p>
+      <h3>Tree mutations</h3>
+      <p>Optional local Pierre interactions for drag/drop and inline rename.</p>
     </div>
 
     <div class="settings-group-grid">

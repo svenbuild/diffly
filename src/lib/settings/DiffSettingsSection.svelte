@@ -25,8 +25,8 @@
 <section class="library-settings diff-settings">
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Layout</h3>
-      <p>Control the rendered diff structure and unchanged regions.</p>
+      <h3>Layout and context</h3>
+      <p>Structure, wrapping, collapsed regions, and sticky file headers.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -148,8 +148,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Rendering</h3>
-      <p>Control hunk styling, indicators, line numbers, and backgrounds.</p>
+      <h3>Code rendering</h3>
+      <p>Inline highlights, gutters, hunk separators, and line backgrounds.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -264,8 +264,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Highlighting</h3>
-      <p>Control Shiki and expensive tokenization limits.</p>
+      <h3>Syntax and limits</h3>
+      <p>Highlighter engine, CSS output mode, and expensive tokenization limits.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -373,8 +373,8 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Interaction</h3>
-      <p>Control hover, token, gutter, and selection behavior.</p>
+      <h3>Mouse and selection</h3>
+      <p>Hover state, token callbacks, gutter buttons, and selected ranges.</p>
     </div>
 
     <div class="settings-group-grid">
@@ -490,9 +490,9 @@
 
   <section class="settings-group">
     <div class="settings-group-header">
-      <h3>Comparison rules</h3>
+      <h3>Compare rules</h3>
       <p>
-        Choose what counts as a meaningful change.
+        Whitespace and case handling before Pierre receives the file contents.
         {#if comparisonRulesRequireRefresh}
           Press Refresh in the compare toolbar to apply updates to the current folder snapshot.
         {/if}

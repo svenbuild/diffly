@@ -75,7 +75,22 @@ export function buildPierreTreeUnsafeCss(
     }
 
     button[data-type='item'] {
-      border-radius: 6px;
+      min-height: 22px;
+      padding-left: 2px;
+      border-radius: 4px;
+    }
+
+    [data-file-tree-search-container] {
+      padding: 4px 4px 6px;
+    }
+
+    [data-file-tree-search-input] {
+      min-height: 26px;
+      font-size: ${Math.max(11, settings.uiFontSize - 1)}px;
+    }
+
+    [data-file-tree-virtualized-scroll] {
+      padding-left: 0;
     }
   `
 }
