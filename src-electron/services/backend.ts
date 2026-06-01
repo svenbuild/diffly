@@ -305,16 +305,8 @@ function parseLaunchContext(args: string[]): LaunchContext | null {
     return null
   }
 
-  const openHerePath = args[index + 1]
-  if (!openHerePath || !existsSync(openHerePath)) {
-    return null
-  }
-
-  try {
-    if (!existsSync(openHerePath)) {
-      return null
-    }
-  } catch {
+  const openHerePath = args[index + 1]?.trim()
+  if (!openHerePath) {
     return null
   }
 

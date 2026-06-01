@@ -1326,10 +1326,7 @@
   async function applyStartupTarget(startupTarget: StartupTarget) {
     mode = startupTarget.kind
 
-    await Promise.all([
-      openDirectory('left', startupTarget.folderPath),
-      openDirectory('right', startupTarget.folderPath),
-    ])
+    await openDirectoryForBothPanes(startupTarget.folderPath)
 
     selectTarget('left', startupTarget.targetPath, startupTarget.kind)
     selectTarget('right', startupTarget.targetPath, startupTarget.kind)
@@ -1629,6 +1626,65 @@
         loading: false,
         error: error instanceof Error ? error.message : 'Unable to open the folder.',
       }))
+    }
+  }
+
+  async function openDirectoryForBothPanes(path: string, historyMode: 'push' | 'keep' = 'push') {
+    leftExplorer = {
+      ...leftExplorer,
+      loading: true,
+      error: '',
+    }
+    rightExplorer = {
+      ...rightExplorer,
+      loading: true,
+      error: '',
+    }
+
+    try {
+      const listing =
+        leftExplorer.listings[path] ??
+        rightExplorer.listings[path] ??
+        await listDirectory(path)
+      const leftHistoryState = buildNextHistoryState(leftExplorer, path, historyMode)
+      const rightHistoryState = buildNextHistoryState(rightExplorer, path, historyMode)
+
+      leftExplorer = {
+        ...leftExplorer,
+        ...leftHistoryState,
+        currentPath: path,
+        pathInput: path,
+        currentListing: listing,
+        listings: {
+          ...leftExplorer.listings,
+          [path]: listing,
+        },
+        loading: false,
+      }
+      rightExplorer = {
+        ...rightExplorer,
+        ...rightHistoryState,
+        currentPath: path,
+        pathInput: path,
+        currentListing: listing,
+        listings: {
+          ...rightExplorer.listings,
+          [path]: listing,
+        },
+        loading: false,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to open the folder.'
+      leftExplorer = {
+        ...leftExplorer,
+        loading: false,
+        error: message,
+      }
+      rightExplorer = {
+        ...rightExplorer,
+        loading: false,
+        error: message,
+      }
     }
   }
 

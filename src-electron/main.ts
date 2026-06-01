@@ -99,11 +99,42 @@ function createWindow(launchContext: LaunchContext | null = null) {
 
 function openLaunchWindow(launchContext: LaunchContext) {
   if (app.isReady()) {
-    createWindow(launchContext)
+    routeLaunchContext(launchContext)
     return
   }
 
   pendingLaunchContexts.push(launchContext)
+}
+
+function routeLaunchContext(launchContext: LaunchContext) {
+  const window = BrowserWindow.getFocusedWindow() ?? mainWindow
+  if (!window || window.isDestroyed()) {
+    createWindow(launchContext)
+    return
+  }
+
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  showWindow(window)
+  window.focus()
+  sendLaunchContext(window, launchContext)
+}
+
+function sendLaunchContext(window: Electron.BrowserWindow, launchContext: LaunchContext) {
+  registerWindowLaunchContext(window, launchContext)
+
+  const send = () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('diffly:launchContext', launchContext)
+    }
+  }
+
+  if (window.webContents.isLoading()) {
+    window.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
 }
 
 function getWindowIconPath() {
@@ -227,9 +258,8 @@ function rectanglesOverlap(
 }
 
 const initialLaunchContext = getLaunchContextFromArgs(process.argv.slice(1))
-const shouldUseSingleInstanceLock = initialLaunchContext === null
 
-if (shouldUseSingleInstanceLock && !app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, commandLine) => {
@@ -255,7 +285,7 @@ if (shouldUseSingleInstanceLock && !app.requestSingleInstanceLock()) {
     registerIpcHandlers()
     createWindow(initialLaunchContext)
     for (const launchContext of pendingLaunchContexts.splice(0)) {
-      createWindow(launchContext)
+      routeLaunchContext(launchContext)
     }
 
     app.on('activate', () => {
