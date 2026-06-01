@@ -168,11 +168,15 @@
     stickyHeader: false,
     syntaxMode: 'shiki',
     preferredHighlighter: 'shiki-js',
+    useCSSClasses: false,
     tokenizeMaxLineLength: 1000,
     tokenizeMaxLength: 100000,
     maxLineDiffLength: 1000,
     lineHoverHighlight: 'disabled',
+    enableTokenInteractionsOnWhitespace: false,
+    enableGutterUtility: false,
     enableLineSelection: false,
+    controlledSelection: false,
   }
   let treeSettings: CompareTreeSettings = {
     density: 'compact',
@@ -191,6 +195,8 @@
     initialVisibleRowCount: 12,
     itemHeight: 24,
     overscan: 6,
+    dragAndDrop: false,
+    renaming: false,
   }
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
@@ -334,13 +340,17 @@
       preferredHighlighter: isPreferredHighlighter(settings?.preferredHighlighter)
         ? settings.preferredHighlighter
         : current.preferredHighlighter,
+      useCSSClasses: settings?.useCSSClasses ?? false,
       tokenizeMaxLineLength: clampNumber(settings?.tokenizeMaxLineLength, 0, 20000, current.tokenizeMaxLineLength),
       tokenizeMaxLength: clampNumber(settings?.tokenizeMaxLength, 0, 1000000, current.tokenizeMaxLength),
       maxLineDiffLength: clampNumber(settings?.maxLineDiffLength, 0, 20000, current.maxLineDiffLength),
       lineHoverHighlight: isLineHoverHighlight(settings?.lineHoverHighlight)
         ? settings.lineHoverHighlight
         : current.lineHoverHighlight,
+      enableTokenInteractionsOnWhitespace: settings?.enableTokenInteractionsOnWhitespace ?? false,
+      enableGutterUtility: settings?.enableGutterUtility ?? false,
       enableLineSelection: settings?.enableLineSelection ?? false,
+      controlledSelection: settings?.controlledSelection ?? false,
     }
   }
 
@@ -370,6 +380,8 @@
       initialVisibleRowCount: clampNumber(settings?.initialVisibleRowCount, 1, 200, current.initialVisibleRowCount),
       itemHeight: clampNumber(settings?.itemHeight, 18, 60, current.itemHeight),
       overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
+      dragAndDrop: settings?.dragAndDrop ?? false,
+      renaming: settings?.renaming ?? false,
     }
   }
 

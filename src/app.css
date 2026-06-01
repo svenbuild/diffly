@@ -2847,6 +2847,7 @@ h2 {
 
 .compare-viewer {
   display: flex;
+  position: relative;
   min-width: 0;
   overflow: hidden;
 }
@@ -2855,6 +2856,22 @@ h2 {
   flex: 1 1 auto;
   min-width: 0;
   overflow: auto;
+}
+
+.pierre-diff-feedback {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  max-width: min(420px, calc(100% - 28px));
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
 }
 
 .compare-viewer-state,

@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { FileDiff } from '@pierre/diffs'
-  import type { FileContents, FileDiffOptions } from '@pierre/diffs'
+  import type {
+    DiffTokenEventBaseProps,
+    FileContents,
+    FileDiffOptions,
+    SelectedLineRange,
+  } from '@pierre/diffs'
   import type { AppearanceSettings } from '../theme'
   import {
     buildPierreDiffUnsafeCss,
@@ -20,9 +25,78 @@
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff | null = null
   let renderVersion = 0
+  let selectedLineRange: SelectedLineRange | null = null
+  let interactionMessage = ''
+  let interactionMessageTimer: number | null = null
+  let renderedTextKey = ''
 
   function fileName(label: string) {
     return label.split(/[\\/]/).pop() || label || 'file.txt'
+  }
+
+  function textKey() {
+    return [
+      text.leftCacheKey ?? text.leftSha256 ?? text.leftText.length,
+      text.rightCacheKey ?? text.rightSha256 ?? text.rightText.length,
+      text.leftText.length,
+      text.rightText.length,
+    ].join(':')
+  }
+
+  function describeSide(side: string | undefined) {
+    return side === 'additions' ? 'right' : 'left'
+  }
+
+  function describeRange(range: SelectedLineRange) {
+    const startSide = describeSide(range.side)
+    const endSide = describeSide(range.endSide ?? range.side)
+    const startLine = range.start
+    const endLine = range.end
+
+    if (startLine === endLine && startSide === endSide) {
+      return `${startSide} line ${startLine}`
+    }
+
+    return `${startSide} line ${startLine} to ${endSide} line ${endLine}`
+  }
+
+  function setInteractionMessage(message: string) {
+    interactionMessage = message
+
+    if (interactionMessageTimer !== null) {
+      window.clearTimeout(interactionMessageTimer)
+    }
+
+    interactionMessageTimer = window.setTimeout(() => {
+      interactionMessage = ''
+      interactionMessageTimer = null
+    }, 2200)
+  }
+
+  function applyControlledSelection(range: SelectedLineRange | null) {
+    selectedLineRange = range
+
+    if (viewerSettings.controlledSelection) {
+      fileDiff?.setSelectedLines(range, { notify: false })
+    }
+  }
+
+  function handleLineSelected(range: SelectedLineRange | null) {
+    applyControlledSelection(range)
+
+    if (range) {
+      setInteractionMessage(`Selected ${describeRange(range)}.`)
+    }
+  }
+
+  function handleGutterUtilityClick(range: SelectedLineRange) {
+    applyControlledSelection(range)
+    setInteractionMessage(`Gutter utility clicked ${describeRange(range)}.`)
+  }
+
+  function handleTokenClick(token: DiffTokenEventBaseProps) {
+    const tokenText = token.tokenText.trim() || 'whitespace'
+    setInteractionMessage(`Token "${tokenText}" on ${describeSide(token.side)} line ${token.lineNumber}.`)
   }
 
   function buildOptions(): FileDiffOptions<undefined> {
@@ -43,12 +117,23 @@
       disableVirtualizationBuffers: viewerSettings.disableVirtualizationBuffers,
       stickyHeader: viewerSettings.stickyHeader,
       preferredHighlighter: viewerSettings.preferredHighlighter,
+      useCSSClasses: viewerSettings.useCSSClasses,
       useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
       tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
       tokenizeMaxLength: viewerSettings.tokenizeMaxLength,
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
-      enableLineSelection: viewerSettings.enableLineSelection,
+      enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
+      enableGutterUtility: viewerSettings.enableGutterUtility,
+      onGutterUtilityClick: handleGutterUtilityClick,
+      onTokenClick: handleTokenClick,
+      enableLineSelection:
+        viewerSettings.enableLineSelection ||
+        viewerSettings.controlledSelection ||
+        viewerSettings.enableGutterUtility,
+      controlledSelection: viewerSettings.controlledSelection,
+      onLineSelected: handleLineSelected,
+      onLineSelectionEnd: handleLineSelected,
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
     }
   }
@@ -74,6 +159,12 @@
     }
 
     const nextOptions = buildOptions()
+    const nextTextKey = textKey()
+    if (nextTextKey !== renderedTextKey) {
+      renderedTextKey = nextTextKey
+      selectedLineRange = null
+      interactionMessage = ''
+    }
 
     if (!fileDiff) {
       fileDiff = new FileDiff(nextOptions)
@@ -87,14 +178,24 @@
       containerWrapper: host,
       forceRender: true,
     })
+
+    if (viewerSettings.controlledSelection) {
+      fileDiff.setSelectedLines(selectedLineRange, { notify: false })
+    }
   }
 
   $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, void renderDiff()
 
   onDestroy(() => {
+    if (interactionMessageTimer !== null) {
+      window.clearTimeout(interactionMessageTimer)
+    }
     fileDiff?.cleanUp()
     fileDiff = null
   })
 </script>
 
 <div class="pierre-diff-host" bind:this={host}></div>
+{#if interactionMessage}
+  <div class="pierre-diff-feedback" role="status">{interactionMessage}</div>
+{/if}

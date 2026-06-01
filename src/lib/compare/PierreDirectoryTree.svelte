@@ -59,6 +59,8 @@
       initialVisibleRowCount: treeSettings.initialVisibleRowCount,
       itemHeight: treeSettings.itemHeight,
       overscan: treeSettings.overscan,
+      dragAndDrop: treeSettings.dragAndDrop,
+      renaming: treeSettings.renaming,
       unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings, resolvedThemeMode),
       gitStatus: visibleEntries.map((entry) => ({
         path: entry.relativePath,

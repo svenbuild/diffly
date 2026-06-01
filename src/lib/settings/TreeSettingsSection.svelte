@@ -317,4 +317,49 @@
       </div>
     </div>
   </section>
+
+  <section class="settings-group">
+    <div class="settings-group-header">
+      <h3>Mutation</h3>
+      <p>Enable Pierre's in-memory tree mutation interactions.</p>
+    </div>
+
+    <div class="settings-group-grid">
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
+          <strong>Drag and drop</strong>
+          <p>Allow Pierre's local drag and drop behavior in the tree.</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={treeSettings.dragAndDrop}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateTreeSettings({ dragAndDrop: !treeSettings.dragAndDrop })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
+          <strong>Renaming</strong>
+          <p>Allow Pierre's local inline rename behavior in the tree.</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={treeSettings.renaming}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateTreeSettings({ renaming: !treeSettings.renaming })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+    </div>
+  </section>
 </section>
