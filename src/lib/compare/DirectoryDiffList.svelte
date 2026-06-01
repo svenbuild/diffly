@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import PierreDiffViewer from './PierreDiffViewer.svelte'
+  import PierreDirectoryCodeView from './PierreDirectoryCodeView.svelte'
   import UnsupportedCompareView from './UnsupportedCompareView.svelte'
+  import { openCompareItem } from '../api'
   import type { AppearanceSettings } from '../theme'
   import type {
+    CompareOptions,
     CompareViewerSettings,
     DirectoryEntryResult,
     FileDiffResult,
@@ -18,6 +19,18 @@
     revision: number
   }
 
+  interface LoadedDirectoryDiff {
+    entry: DirectoryEntryResult
+    diff: FileDiffResult | null
+    error: string
+    loading: boolean
+  }
+
+  interface SecondaryDirectoryDiff {
+    entry: DirectoryEntryResult
+    state: EntryDiffState
+  }
+
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
   export let loading = false
@@ -26,13 +39,22 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
-  export let loadEntryDiff: (
-    entry: DirectoryEntryResult,
-    revision: number,
-    options?: { force?: boolean },
-  ) => Promise<FileDiffResult>
+  export let leftPath = ''
+  export let rightPath = ''
+  export let compareOptions: CompareOptions = {
+    ignoreWhitespace: false,
+    ignoreCase: false,
+  }
+  export let resolveEntryBases: (relativePath: string) => {
+    leftBase: string
+    rightBase: string
+    relativePath: string
+  } = (relativePath) => ({
+    leftBase: leftPath,
+    rightBase: rightPath,
+    relativePath,
+  })
 
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
   const statusLabel: Record<DirectoryEntryResult['status'], string> = {
@@ -42,17 +64,14 @@
     unsupported: 'Unsupported',
   }
 
-  let scrollHost: HTMLElement | null = null
-  let embeddedViewerSettings: CompareViewerSettings = viewerSettings
   let entriesSignature = ''
   let loadGeneration = 0
-  let activeQueueRevision = -1
-  let activeWorkerCount = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
-  let queuedPaths = new Set<string>()
-  let loadQueue: DirectoryEntryResult[] = []
-  const sectionHosts = new Map<string, HTMLElement>()
+  let scrollTargetRevision = 0
+  let textEntries: LoadedDirectoryDiff[] = []
+  let secondaryEntries: SecondaryDirectoryDiff[] = []
+  let pendingEntryCount = 0
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -67,7 +86,10 @@
       const key = entryKey(entry)
 
       const state = entryStates.get(key)
-      if (state?.revision === revision) {
+      if (
+        state?.revision === revision &&
+        (!state.loading || state.generation === loadGeneration)
+      ) {
         nextStates.set(key, state)
       }
 
@@ -110,13 +132,19 @@
     collapsedPaths = nextCollapsedPaths
   }
 
-  async function loadEntryDiffWithRetry(entry: DirectoryEntryResult, loadRevision: number) {
+  async function loadEntryDiffWithRetry(entry: DirectoryEntryResult) {
     let lastError: unknown = null
 
-    for (let attempt = 1; attempt <= DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
       try {
+        const bases = resolveEntryBases(entry.relativePath)
         return await withLoadTimeout(
-          loadEntryDiff(entry, loadRevision, { force: attempt > 1 }),
+          openCompareItem(
+            bases.leftBase,
+            bases.rightBase,
+            bases.relativePath,
+            compareOptions,
+          ),
           DIRECTORY_DIFF_LOAD_TIMEOUT_MS,
         )
       } catch (error) {
@@ -127,19 +155,22 @@
     throw lastError
   }
 
-  async function ensureLoaded(entry: DirectoryEntryResult, generation = loadGeneration) {
+  async function ensureLoaded(
+    entry: DirectoryEntryResult,
+    generation = loadGeneration,
+    loadRevision = revision,
+  ) {
     const path = entryKey(entry)
     const state = getEntryState(path)
 
-    if (state?.diff && state.revision === revision) {
+    if (state?.diff && state.revision === loadRevision) {
       return
     }
 
-    if (state?.loading && state.revision === revision && state.generation === generation) {
+    if (state?.loading && state.revision === loadRevision && state.generation === generation) {
       return
     }
 
-    const loadRevision = revision
     setEntryState(path, {
       diff: state?.revision === loadRevision ? state.diff : null,
       error: '',
@@ -149,7 +180,7 @@
     })
 
     try {
-      const diff = await loadEntryDiffWithRetry(entry, loadRevision)
+      const diff = await loadEntryDiffWithRetry(entry)
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
@@ -176,101 +207,7 @@
     }
   }
 
-  function resetQueueForRevision() {
-    activeQueueRevision = revision
-    loadGeneration += 1
-    activeWorkerCount = 0
-    loadQueue = []
-    queuedPaths = new Set()
-  }
-
-  function queueMissingDiffLoads() {
-    if (activeQueueRevision !== revision) {
-      resetQueueForRevision()
-    }
-
-    const generation = loadGeneration
-    let changed = false
-
-    for (const entry of directoryEntries) {
-      const path = entryKey(entry)
-      const state = getEntryState(path)
-
-      if (state?.diff || state?.loading || queuedPaths.has(path)) {
-        continue
-      }
-
-      loadQueue = [...loadQueue, entry]
-      queuedPaths = new Set(queuedPaths).add(path)
-      changed = true
-    }
-
-    if (changed || loadQueue.length > 0) {
-      pumpLoadQueue(generation)
-    }
-  }
-
-  async function runLoadWorker(generation: number) {
-    activeWorkerCount += 1
-
-    try {
-      while (generation === loadGeneration) {
-        const [entry, ...rest] = loadQueue
-        loadQueue = rest
-
-        if (!entry) {
-          return
-        }
-
-        const path = entryKey(entry)
-        const nextQueuedPaths = new Set(queuedPaths)
-        nextQueuedPaths.delete(path)
-        queuedPaths = nextQueuedPaths
-
-        await ensureLoaded(entry, generation)
-      }
-    } finally {
-      if (generation !== loadGeneration) {
-        return
-      }
-
-      activeWorkerCount -= 1
-      if (loadQueue.length > 0) {
-        pumpLoadQueue(generation)
-      }
-    }
-  }
-
-  function pumpLoadQueue(generation = loadGeneration) {
-    while (
-      generation === loadGeneration &&
-      activeWorkerCount < DIRECTORY_DIFF_LOAD_CONCURRENCY &&
-      loadQueue.length > 0
-    ) {
-      void runLoadWorker(generation)
-    }
-  }
-
-  function trackSection(node: HTMLElement, entry: DirectoryEntryResult) {
-    let activeEntry = entry
-
-    node.dataset.relativePath = activeEntry.relativePath
-    sectionHosts.set(activeEntry.relativePath, node)
-
-    return {
-      update(nextEntry: DirectoryEntryResult) {
-        sectionHosts.delete(activeEntry.relativePath)
-        activeEntry = nextEntry
-        node.dataset.relativePath = activeEntry.relativePath
-        sectionHosts.set(activeEntry.relativePath, node)
-      },
-      destroy() {
-        sectionHosts.delete(activeEntry.relativePath)
-      },
-    }
-  }
-
-  async function scrollToEntry(path: string) {
+  function scrollToEntry(path: string) {
     if (!path) {
       return
     }
@@ -280,35 +217,73 @@
       return
     }
 
-    setOnlyExpanded(path)
-    await tick()
-
-    const node = sectionHosts.get(path)
-    node?.scrollIntoView({ block: 'start' })
-    void ensureLoaded(entry)
+    scrollTargetRevision += 1
+    if (!isCollapsed(entry.relativePath)) {
+      void ensureLoaded(entry)
+    }
   }
 
   function toggleEntry(entry: DirectoryEntryResult) {
     const nextCollapsed = !isCollapsed(entry.relativePath)
-    if (nextCollapsed) {
-      setCollapsed(entry.relativePath, true)
-    } else {
-      setOnlyExpanded(entry.relativePath)
-    }
-
+    setCollapsed(entry.relativePath, nextCollapsed)
     if (!nextCollapsed) {
       void ensureLoaded(entry)
     }
   }
 
-  function setOnlyExpanded(path: string) {
-    const nextCollapsedPaths = new Set<string>()
+  function toggleEntryByPath(path: string) {
+    const entry = directoryEntries.find((candidate) => candidate.relativePath === path)
+    if (!entry) {
+      return
+    }
+
+    toggleEntry(entry)
+  }
+
+  function rebuildVisibleEntries() {
+    const nextTextEntries: LoadedDirectoryDiff[] = []
+    const nextSecondaryEntries: SecondaryDirectoryDiff[] = []
+    let nextPendingEntryCount = 0
+
     for (const entry of directoryEntries) {
-      if (entry.relativePath !== path) {
-        nextCollapsedPaths.add(entry.relativePath)
+      const state = getEntryState(entry.relativePath)
+
+      if (entry.status === 'unsupported') {
+        nextSecondaryEntries.push({
+          entry,
+          state: state ?? {
+            diff: null,
+            error: '',
+            generation: loadGeneration,
+            loading: false,
+            revision,
+          },
+        })
+      } else if (state?.diff?.contentKind === 'text' && state.diff.text) {
+        nextTextEntries.push({
+          entry,
+          diff: state.diff,
+          error: '',
+          loading: state.loading,
+        })
+      } else if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
+        nextSecondaryEntries.push({ entry, state })
+      } else {
+        nextTextEntries.push({
+          entry,
+          diff: null,
+          error: '',
+          loading: state?.loading ?? false,
+        })
+        if (state?.loading) {
+          nextPendingEntryCount += 1
+        }
       }
     }
-    collapsedPaths = nextCollapsedPaths
+
+    textEntries = nextTextEntries
+    secondaryEntries = nextSecondaryEntries
+    pendingEntryCount = nextPendingEntryCount
   }
 
   function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -326,21 +301,25 @@
     })
   }
 
-  $: embeddedViewerSettings = { ...viewerSettings, disableFileHeader: true }
-
   $: {
     const nextSignature = `${revision}:${directoryEntries.map((entry) => entry.relativePath).join('\u0000')}`
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
+      loadGeneration += 1
       syncEntryCollections()
-      queueMissingDiffLoads()
     }
   }
 
-  $: selectedRelativePath, void scrollToEntry(selectedRelativePath)
+  $: {
+    directoryEntries
+    entryStates
+    rebuildVisibleEntries()
+  }
+
+  $: selectedRelativePath, scrollToEntry(selectedRelativePath)
 </script>
 
-<section class="directory-diff-list" bind:this={scrollHost}>
+<section class="directory-diff-list">
   {#if loading && directoryEntries.length === 0}
     <div class="compare-viewer-state">
       <span class="refresh-spinner visible"></span>
@@ -351,79 +330,44 @@
       <p>No file changes.</p>
     </div>
   {:else}
-    {#each directoryEntries as entry (entry.relativePath)}
-      {@const state = getEntryState(entry.relativePath)}
-      {@const collapsed = isCollapsed(entry.relativePath)}
-      <article
-        class:collapsed
-        class:selected={selectedRelativePath === entry.relativePath}
-        class="directory-diff-section"
-        use:trackSection={entry}
-      >
-        <button
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Expand file diff' : 'Collapse file diff'}
-          class="directory-diff-header"
-          title={collapsed ? 'Expand file diff' : 'Collapse file diff'}
-          type="button"
-          onclick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            toggleEntry(entry)
-          }}
-        >
-          <span class="directory-diff-toggle">
-            <svg aria-hidden="true" class:collapsed viewBox="0 0 16 16">
-              <path
-                d="M5.75 3.5 10.25 8l-4.5 4.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.8"
-              />
-            </svg>
-          </span>
-          <span aria-hidden="true" class="directory-diff-file-marker"></span>
-          <span class="directory-diff-title">{entry.relativePath}</span>
-          <span class:danger={entry.status === 'leftOnly'} class:success={entry.status !== 'leftOnly'} class="directory-diff-status">
-            {statusLabel[entry.status]}
-          </span>
-        </button>
+    {#if textEntries.length > 0}
+      <PierreDirectoryCodeView
+        entries={textEntries}
+        {collapsedPaths}
+        {selectedRelativePath}
+        {viewerSettings}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        {viewMode}
+        {scrollTargetRevision}
+        toggleEntry={toggleEntryByPath}
+      />
+    {:else if pendingEntryCount > 0}
+      <div class="compare-viewer-state">
+        <span class="refresh-spinner visible"></span>
+        <p>Loading diffs...</p>
+      </div>
+    {/if}
 
-        {#if !collapsed}
-          <div class="directory-diff-body">
-            {#if state?.loading}
-              <div class="directory-diff-loading">
-                <span class="refresh-spinner visible"></span>
-                <span>Loading diff...</span>
-              </div>
-            {:else if state?.error}
+    {#if secondaryEntries.length > 0}
+      <div class="directory-diff-secondary-list">
+        {#each secondaryEntries as { entry, state } (entry.relativePath)}
+          <article class="directory-diff-secondary-row">
+            <header>
+              <span>{entry.relativePath}</span>
+              <strong>{statusLabel[entry.status]}</strong>
+            </header>
+            {#if state.error}
               <div class="directory-diff-error">{state.error}</div>
-            {:else if state?.diff?.contentKind === 'text' && state.diff.text}
-              <PierreDiffViewer
-                text={state.diff.text}
-                leftLabel={state.diff.leftLabel}
-                rightLabel={state.diff.rightLabel}
-                viewerSettings={embeddedViewerSettings}
-                {appearanceSettings}
-                {resolvedThemeMode}
-                {viewMode}
-              />
-            {:else if state?.diff}
+            {:else if state.diff}
               <UnsupportedCompareView
                 unsupported={state.diff.unsupported ?? null}
                 summary={state.diff.summary}
               />
-            {:else}
-              <div class="directory-diff-loading">
-                <span class="refresh-spinner visible"></span>
-                <span>Loading diff...</span>
-              </div>
             {/if}
-          </div>
-        {/if}
-      </article>
-    {/each}
+          </article>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </section>

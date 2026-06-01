@@ -2017,6 +2017,14 @@
     revision = compareRevision,
     restoreScroll: DiffScrollSnapshot | null = null,
   ) {
+    if (mode === 'directory') {
+      if (revision === compareRevision) {
+        selectedRelativePath = entry.relativePath
+        errorMessage = ''
+      }
+      return
+    }
+
     if (!leftPath || !rightPath) {
       return
     }
@@ -2090,12 +2098,7 @@
 
     if (nextDirectoryPreloadSignature !== directoryDetailPreloadSignature) {
       directoryDetailPreloadSignature = nextDirectoryPreloadSignature
-
-      if (nextDirectoryPreloadSignature) {
-        startDirectoryDetailPreload(directoryEntries, compareRevision)
-      } else {
-        cancelDirectoryDetailPreload()
-      }
+      cancelDirectoryDetailPreload()
     }
   }
 
@@ -2661,7 +2664,10 @@
         {resolvedThemeMode}
         {viewMode}
         revision={compareRevision}
-        {loadEntryDiff}
+        {leftPath}
+        {rightPath}
+        compareOptions={activeCompareOptions}
+        resolveEntryBases={getDetailBasesForPath}
       />
     </section>
   </main>

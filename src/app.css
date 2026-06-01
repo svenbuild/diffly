@@ -2948,6 +2948,18 @@ h2 {
 }
 
 .directory-diff-list {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--editor-bg);
+}
+
+.directory-code-view-host {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -2957,76 +2969,29 @@ h2 {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
-.directory-diff-list::-webkit-scrollbar {
+.directory-code-view-host::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 
-.directory-diff-list::-webkit-scrollbar-track {
+.directory-code-view-host::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
 
-.directory-diff-list::-webkit-scrollbar-thumb {
+.directory-code-view-host::-webkit-scrollbar-thumb {
   border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
   background: var(--scrollbar-thumb);
 }
 
-.directory-diff-section {
-  min-width: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--editor-bg);
-  scroll-margin-top: 0;
-}
-
-.directory-diff-section.selected {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.directory-diff-header {
-  display: grid;
-  grid-template-columns: 28px 14px minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 8px;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 18px 0 10px;
-  position: relative;
-  z-index: 3;
-  border-bottom: 1px solid var(--border-subtle);
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
-  border-radius: 0;
-  background: color-mix(in srgb, var(--editor-bg) 96%, var(--surface));
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
-  text-align: left;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.directory-diff-section.collapsed .directory-diff-header {
-  border-bottom-color: transparent;
-}
-
-.directory-diff-header:hover {
-  background: color-mix(in srgb, var(--editor-bg) 90%, var(--surface));
-}
-
-.directory-diff-header:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.directory-diff-toggle {
+.diffly-codeview-collapse-button {
   display: grid;
   place-items: center;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0 -2px 0 -6px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -3035,57 +3000,32 @@ h2 {
   cursor: pointer;
 }
 
-.directory-diff-header:hover .directory-diff-toggle {
-  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+.diffly-codeview-collapse-button:hover,
+.diffly-codeview-collapse-button:focus-visible {
+  background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
   color: var(--text);
 }
 
-.directory-diff-toggle svg {
+.diffly-codeview-collapse-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diffly-codeview-collapse-button svg {
   width: 15px;
   height: 15px;
   transform: rotate(90deg);
   transition: transform 120ms ease;
 }
 
-.directory-diff-toggle svg.collapsed {
+.diffly-codeview-collapse-button[data-collapsed='true'] svg {
   transform: rotate(0deg);
 }
 
-.directory-diff-file-marker {
-  width: 13px;
-  height: 13px;
-  border: 2px solid var(--accent);
-  border-radius: 5px;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--editor-bg) 82%, transparent);
-}
-
-.directory-diff-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.directory-diff-status {
+.diffly-codeview-status-metadata {
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
-}
-
-.directory-diff-status.success {
-  color: var(--success);
-}
-
-.directory-diff-status.danger {
-  color: var(--danger-text);
-}
-
-.directory-diff-body {
-  min-height: 34px;
-  background: var(--editor-bg);
-}
-
-.directory-diff-body > .pierre-diff-host {
-  overflow: visible;
+  font-weight: 500;
 }
 
 .directory-diff-loading,
@@ -3102,6 +3042,42 @@ h2 {
 .directory-diff-error {
   color: var(--danger-text);
   background: color-mix(in srgb, var(--danger-bg) 18%, transparent);
+}
+
+.directory-diff-secondary-list {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--editor-bg);
+}
+
+.directory-diff-secondary-row {
+  display: grid;
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.directory-diff-secondary-row header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 16px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.directory-diff-secondary-row header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-diff-secondary-row header strong {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .diffly-comment-annotation {

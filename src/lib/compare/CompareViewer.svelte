@@ -5,6 +5,7 @@
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
+    CompareOptions,
     CompareViewerSettings,
     DirectoryEntryResult,
     FileDiffResult,
@@ -22,11 +23,21 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
-  export let loadEntryDiff: (
-    entry: DirectoryEntryResult,
-    revision: number,
-    options?: { force?: boolean },
-  ) => Promise<FileDiffResult>
+  export let leftPath = ''
+  export let rightPath = ''
+  export let compareOptions: CompareOptions = {
+    ignoreWhitespace: false,
+    ignoreCase: false,
+  }
+  export let resolveEntryBases: (relativePath: string) => {
+    leftBase: string
+    rightBase: string
+    relativePath: string
+  } = (relativePath) => ({
+    leftBase: leftPath,
+    rightBase: rightPath,
+    relativePath,
+  })
 </script>
 
 <section class="compare-viewer">
@@ -40,7 +51,10 @@
       {resolvedThemeMode}
       {viewMode}
       {revision}
-      {loadEntryDiff}
+      {leftPath}
+      {rightPath}
+      {compareOptions}
+      {resolveEntryBases}
     />
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">
