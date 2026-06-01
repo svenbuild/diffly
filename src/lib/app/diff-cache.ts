@@ -7,6 +7,7 @@ interface DetailCacheContext {
   relativePath: string
   ignoreWhitespace: boolean
   ignoreCase: boolean
+  force?: boolean
 }
 
 interface BackgroundPreloadContext {
@@ -126,11 +127,15 @@ export function createDiffCacheController(dependencies: DiffCacheDependencies) {
       }
 
       const cacheKey = buildDetailCacheKey(context)
-      const existingPromise = detailDiffCache.get(cacheKey)
+      const existingPromise = context.force ? null : detailDiffCache.get(cacheKey)
 
       if (existingPromise) {
         touchDetailDiffEntry(cacheKey, existingPromise)
         return existingPromise
+      }
+
+      if (context.force) {
+        detailDiffCache.delete(cacheKey)
       }
 
       const resultPromise = dependencies

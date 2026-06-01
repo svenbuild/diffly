@@ -2988,17 +2988,36 @@ h2 {
   grid-template-columns: 28px 14px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 8px;
+  width: 100%;
   min-height: 44px;
   padding: 0 18px 0 10px;
+  position: relative;
+  z-index: 3;
   border-bottom: 1px solid var(--border-subtle);
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0;
   background: color-mix(in srgb, var(--editor-bg) 96%, var(--surface));
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .directory-diff-section.collapsed .directory-diff-header {
   border-bottom-color: transparent;
+}
+
+.directory-diff-header:hover {
+  background: color-mix(in srgb, var(--editor-bg) 90%, var(--surface));
+}
+
+.directory-diff-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .directory-diff-toggle {
@@ -3016,14 +3035,9 @@ h2 {
   cursor: pointer;
 }
 
-.directory-diff-toggle:hover {
-  background: var(--hover-bg);
+.directory-diff-header:hover .directory-diff-toggle {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
   color: var(--text);
-}
-
-.directory-diff-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
 .directory-diff-toggle svg {
@@ -3088,40 +3102,6 @@ h2 {
 .directory-diff-error {
   color: var(--danger-text);
   background: color-mix(in srgb, var(--danger-bg) 18%, transparent);
-}
-
-.diffly-diff-header-toggle {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
-  min-height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: currentColor;
-  cursor: pointer;
-  display: inline-grid;
-  place-items: center;
-  pointer-events: auto;
-  position: relative;
-  z-index: 5;
-}
-
-.diffly-diff-header-toggle:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
-}
-
-.diffly-diff-header-toggle-icon {
-  display: block;
-  width: 14px;
-  height: 14px;
-  transform: rotate(90deg);
-  transition: transform 120ms ease;
-}
-
-.diffly-diff-header-toggle[data-collapsed='true'] .diffly-diff-header-toggle-icon {
-  transform: rotate(0deg);
 }
 
 .diffly-comment-annotation {

@@ -26,10 +26,14 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
-  export let loadEntryDiff: (entry: DirectoryEntryResult, revision: number) => Promise<FileDiffResult>
+  export let loadEntryDiff: (
+    entry: DirectoryEntryResult,
+    revision: number,
+    options?: { force?: boolean },
+  ) => Promise<FileDiffResult>
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
-  const DIRECTORY_DIFF_LOAD_ATTEMPTS = 2
+  const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
   const statusLabel: Record<DirectoryEntryResult['status'], string> = {
     modified: 'Modified',
@@ -65,6 +69,10 @@
       const state = entryStates.get(key)
       if (state?.revision === revision) {
         nextStates.set(key, state)
+      }
+
+      if (!collapsedPaths.has(key) && !state) {
+        nextCollapsedPaths.add(key)
       }
     }
 
@@ -107,7 +115,10 @@
 
     for (let attempt = 1; attempt <= DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
       try {
-        return await withLoadTimeout(loadEntryDiff(entry, loadRevision), DIRECTORY_DIFF_LOAD_TIMEOUT_MS)
+        return await withLoadTimeout(
+          loadEntryDiff(entry, loadRevision, { force: attempt > 1 }),
+          DIRECTORY_DIFF_LOAD_TIMEOUT_MS,
+        )
       } catch (error) {
         lastError = error
       }
@@ -269,7 +280,7 @@
       return
     }
 
-    setCollapsed(path, false)
+    setOnlyExpanded(path)
     await tick()
 
     const node = sectionHosts.get(path)
@@ -279,11 +290,25 @@
 
   function toggleEntry(entry: DirectoryEntryResult) {
     const nextCollapsed = !isCollapsed(entry.relativePath)
-    setCollapsed(entry.relativePath, nextCollapsed)
+    if (nextCollapsed) {
+      setCollapsed(entry.relativePath, true)
+    } else {
+      setOnlyExpanded(entry.relativePath)
+    }
 
     if (!nextCollapsed) {
       void ensureLoaded(entry)
     }
+  }
+
+  function setOnlyExpanded(path: string) {
+    const nextCollapsedPaths = new Set<string>()
+    for (const entry of directoryEntries) {
+      if (entry.relativePath !== path) {
+        nextCollapsedPaths.add(entry.relativePath)
+      }
+    }
+    collapsedPaths = nextCollapsedPaths
   }
 
   function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -335,15 +360,19 @@
         class="directory-diff-section"
         use:trackSection={entry}
       >
-        <header class="directory-diff-header">
-          <button
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? 'Expand file diff' : 'Collapse file diff'}
-            class="directory-diff-toggle"
-            title={collapsed ? 'Expand file diff' : 'Collapse file diff'}
-            type="button"
-            on:click={() => toggleEntry(entry)}
-          >
+        <button
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand file diff' : 'Collapse file diff'}
+          class="directory-diff-header"
+          title={collapsed ? 'Expand file diff' : 'Collapse file diff'}
+          type="button"
+          onclick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            toggleEntry(entry)
+          }}
+        >
+          <span class="directory-diff-toggle">
             <svg aria-hidden="true" class:collapsed viewBox="0 0 16 16">
               <path
                 d="M5.75 3.5 10.25 8l-4.5 4.5"
@@ -354,13 +383,13 @@
                 stroke-width="1.8"
               />
             </svg>
-          </button>
+          </span>
           <span aria-hidden="true" class="directory-diff-file-marker"></span>
           <span class="directory-diff-title">{entry.relativePath}</span>
           <span class:danger={entry.status === 'leftOnly'} class:success={entry.status !== 'leftOnly'} class="directory-diff-status">
             {statusLabel[entry.status]}
           </span>
-        </header>
+        </button>
 
         {#if !collapsed}
           <div class="directory-diff-body">

@@ -112,7 +112,7 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const DIRECTORY_DETAIL_PRELOAD_CONCURRENCY = 2
-  const DIRECTORY_DETAIL_PRELOAD_ATTEMPTS = 2
+  const DIRECTORY_DETAIL_PRELOAD_ATTEMPTS = 3
   const DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS = 30000
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
@@ -957,7 +957,11 @@
     }
   }
 
-  function getOrCreateDetailDiffPromise(relativePath: string, revision = compareRevision) {
+  function getOrCreateDetailDiffPromise(
+    relativePath: string,
+    revision = compareRevision,
+    options: { force?: boolean } = {},
+  ) {
     const bases = getDetailBasesForPath(relativePath)
     return diffCache.getOrCreateDetailDiffPromise({
       revision,
@@ -966,6 +970,7 @@
       relativePath: bases.relativePath,
       ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
       ignoreCase: activeCompareOptions.ignoreCase,
+      force: options.force,
     })
   }
 
@@ -983,7 +988,7 @@
 
       try {
         await withDirectoryPreloadTimeout(
-          getOrCreateDetailDiffPromise(entry.relativePath, revision),
+          getOrCreateDetailDiffPromise(entry.relativePath, revision, { force: attempt > 1 }),
           DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS,
         )
         return
@@ -2064,8 +2069,12 @@
     }
   }
 
-  async function loadEntryDiff(entry: DirectoryEntryResult, revision = compareRevision) {
-    return getOrCreateDetailDiffPromise(entry.relativePath, revision)
+  async function loadEntryDiff(
+    entry: DirectoryEntryResult,
+    revision = compareRevision,
+    options: { force?: boolean } = {},
+  ) {
+    return getOrCreateDetailDiffPromise(entry.relativePath, revision, options)
   }
 
   $: {
