@@ -49,19 +49,14 @@
   } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
-    buildFolderSections,
     formatCompactPath,
     formatRelativePathLabel,
     getFileName,
-    getVisibleFolderSections,
     normalizeSelectionPath,
     splitCommonPathPrefix,
   } from './lib/path-utils'
   import {
-    buildGroups,
     defaultDirectoryEntry,
-    filterDirectoryEntries,
-    reconcileCollapsedState,
   } from './lib/app/directory-state'
   import {
     buildNextHistoryState,
@@ -107,9 +102,7 @@
   } from './lib/theme/runtime'
   import type {
     DiffHeaderContext,
-    EntryGroup,
     ExplorerPaneState,
-    FolderSection,
     SettingsSection,
     Side,
   } from './lib/ui-types'
@@ -168,15 +161,43 @@
     hunkSeparators: 'line-info',
     expandUnchanged: false,
     collapsedContextThreshold: 3,
+    expansionLineCount: 100,
     disableLineNumbers: false,
+    disableFileHeader: false,
     disableBackground: false,
+    disableVirtualizationBuffers: false,
+    stickyHeader: false,
     syntaxMode: 'shiki',
+    preferredHighlighter: 'shiki-js',
+    useCSSClasses: false,
+    tokenizeMaxLineLength: 1000,
+    tokenizeMaxLength: 100000,
+    maxLineDiffLength: 1000,
+    lineHoverHighlight: 'disabled',
+    enableTokenInteractionsOnWhitespace: false,
+    enableGutterUtility: false,
+    enableLineSelection: false,
+    controlledSelection: false,
   }
   let treeSettings: CompareTreeSettings = {
     density: 'compact',
+    customDensity: 1,
     flattenEmptyDirectories: true,
     stickyFolders: true,
+    initialExpansion: 'open',
+    initialExpansionDepth: 2,
+    initialExpandedPaths: [],
+    sortMode: 'path',
     searchMode: 'expand-matches',
+    search: true,
+    searchFakeFocus: false,
+    searchBlurBehavior: 'close',
+    initialSearchQuery: '',
+    initialVisibleRowCount: 12,
+    itemHeight: 24,
+    overscan: 6,
+    dragAndDrop: false,
+    renaming: false,
   }
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
@@ -195,10 +216,6 @@
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntries: DirectoryEntryResult[] = []
-  let filteredEntryGroups: EntryGroup[] = []
-  let folderSections: FolderSection[] = []
-  let collapsedGroups: Record<string, boolean> = {}
-  let activeStatusFilters: EntryStatus[] = []
   let selectedRelativePath = ''
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
@@ -280,7 +297,6 @@
     rightOnly: 'Right only',
     unsupported: 'Unsupported',
   }
-  const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'unsupported']
   const availableLightThemes = getAvailableThemes('light')
   const availableDarkThemes = getAvailableThemes('dark')
   let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
@@ -296,6 +312,7 @@
     settings: CompareViewerSettings | null | undefined,
     legacy?: PersistedSession | null,
   ): CompareViewerSettings {
+    const current = viewerSettings
     const legacyDiffStyle = legacy?.viewMode === 'unified' ? 'unified' : 'split'
     const legacyOverflow = legacy?.wrapSideBySideLines ? 'wrap' : 'scroll'
     const legacyLineDiffType = legacy?.showInlineHighlights === false ? 'none' : 'word-alt'
@@ -308,20 +325,93 @@
       lineDiffType: settings?.lineDiffType ?? legacyLineDiffType,
       hunkSeparators: settings?.hunkSeparators ?? 'line-info',
       expandUnchanged: settings?.expandUnchanged ?? Boolean(legacy?.showFullFile),
-      collapsedContextThreshold: settings?.collapsedContextThreshold ?? legacy?.contextLines ?? 3,
+      collapsedContextThreshold: clampNumber(
+        settings?.collapsedContextThreshold ?? legacy?.contextLines,
+        0,
+        500,
+        current.collapsedContextThreshold,
+      ),
+      expansionLineCount: clampNumber(settings?.expansionLineCount, 1, 5000, current.expansionLineCount),
       disableLineNumbers: settings?.disableLineNumbers ?? false,
+      disableFileHeader: settings?.disableFileHeader ?? false,
       disableBackground: settings?.disableBackground ?? false,
+      disableVirtualizationBuffers: settings?.disableVirtualizationBuffers ?? false,
+      stickyHeader: settings?.stickyHeader ?? false,
       syntaxMode: settings?.syntaxMode ?? legacySyntaxMode,
+      preferredHighlighter: isPreferredHighlighter(settings?.preferredHighlighter)
+        ? settings.preferredHighlighter
+        : current.preferredHighlighter,
+      useCSSClasses: settings?.useCSSClasses ?? false,
+      tokenizeMaxLineLength: clampNumber(settings?.tokenizeMaxLineLength, 0, 20000, current.tokenizeMaxLineLength),
+      tokenizeMaxLength: clampNumber(settings?.tokenizeMaxLength, 0, 1000000, current.tokenizeMaxLength),
+      maxLineDiffLength: clampNumber(settings?.maxLineDiffLength, 0, 20000, current.maxLineDiffLength),
+      lineHoverHighlight: isLineHoverHighlight(settings?.lineHoverHighlight)
+        ? settings.lineHoverHighlight
+        : current.lineHoverHighlight,
+      enableTokenInteractionsOnWhitespace: settings?.enableTokenInteractionsOnWhitespace ?? false,
+      enableGutterUtility: settings?.enableGutterUtility ?? false,
+      enableLineSelection: settings?.enableLineSelection ?? false,
+      controlledSelection: settings?.controlledSelection ?? false,
     }
   }
 
   function normalizeTreeSettings(settings: CompareTreeSettings | null | undefined): CompareTreeSettings {
+    const current = treeSettings
+
     return {
-      density: settings?.density ?? 'compact',
+      density: isTreeDensity(settings?.density) ? settings.density : current.density,
+      customDensity: clampNumber(settings?.customDensity, 0.5, 2, current.customDensity),
       flattenEmptyDirectories: settings?.flattenEmptyDirectories ?? true,
       stickyFolders: settings?.stickyFolders ?? true,
-      searchMode: settings?.searchMode ?? 'expand-matches',
+      initialExpansion: isTreeInitialExpansion(settings?.initialExpansion)
+        ? settings.initialExpansion
+        : current.initialExpansion,
+      initialExpansionDepth: clampNumber(settings?.initialExpansionDepth, 0, 12, current.initialExpansionDepth),
+      initialExpandedPaths: Array.isArray(settings?.initialExpandedPaths)
+        ? settings.initialExpandedPaths
+            .filter((path) => typeof path === 'string' && path.trim())
+            .map((path) => path.trim())
+        : current.initialExpandedPaths,
+      sortMode: settings?.sortMode === 'default' ? 'default' : 'path',
+      searchMode: isTreeSearchMode(settings?.searchMode) ? settings.searchMode : current.searchMode,
+      search: settings?.search ?? true,
+      searchFakeFocus: settings?.searchFakeFocus ?? false,
+      searchBlurBehavior: settings?.searchBlurBehavior === 'retain' ? 'retain' : 'close',
+      initialSearchQuery: typeof settings?.initialSearchQuery === 'string' ? settings.initialSearchQuery : '',
+      initialVisibleRowCount: clampNumber(settings?.initialVisibleRowCount, 1, 200, current.initialVisibleRowCount),
+      itemHeight: clampNumber(settings?.itemHeight, 18, 60, current.itemHeight),
+      overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
+      dragAndDrop: settings?.dragAndDrop ?? false,
+      renaming: settings?.renaming ?? false,
     }
+  }
+
+  function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return fallback
+    }
+
+    return Math.min(max, Math.max(min, Math.round(value)))
+  }
+
+  function isPreferredHighlighter(value: string | null | undefined): value is CompareViewerSettings['preferredHighlighter'] {
+    return value === 'shiki-js' || value === 'shiki-wasm'
+  }
+
+  function isLineHoverHighlight(value: string | null | undefined): value is CompareViewerSettings['lineHoverHighlight'] {
+    return value === 'disabled' || value === 'both' || value === 'number' || value === 'line'
+  }
+
+  function isTreeDensity(value: string | null | undefined): value is CompareTreeSettings['density'] {
+    return value === 'compact' || value === 'default' || value === 'relaxed' || value === 'custom'
+  }
+
+  function isTreeInitialExpansion(value: string | null | undefined): value is CompareTreeSettings['initialExpansion'] {
+    return value === 'closed' || value === 'open' || value === 'depth'
+  }
+
+  function isTreeSearchMode(value: string | null | undefined): value is CompareTreeSettings['searchMode'] {
+    return value === 'expand-matches' || value === 'collapse-non-matches' || value === 'hide-non-matches'
   }
 
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
@@ -1387,10 +1477,6 @@
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
     filteredDirectoryEntries = []
-    filteredEntryGroups = []
-    folderSections = []
-    collapsedGroups = {}
-    activeStatusFilters = []
     selectedRelativePath = ''
     activeDiff = null
     errorMessage = ''
@@ -1962,48 +2048,7 @@
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
-    filteredDirectoryEntries = filterDirectoryEntries(entries, activeStatusFilters)
-    filteredEntryGroups = buildGroups(filteredDirectoryEntries)
-
-    if (filteredEntryGroups.length === 0) {
-      folderSections = []
-      collapsedGroups = {}
-      return
-    }
-
-    const nextSections = buildFolderSections(filteredEntryGroups)
-    folderSections = nextSections
-    collapsedGroups = reconcileCollapsedState(collapsedGroups, nextSections)
-  }
-
-  async function toggleStatusFilter(status: EntryStatus) {
-    activeStatusFilters = activeStatusFilters.includes(status)
-      ? activeStatusFilters.filter((value) => value !== status)
-      : [...activeStatusFilters, status]
-    syncFilteredDirectoryState()
-
-    if (mode !== 'directory' || screen !== 'compare') {
-      return
-    }
-
-    if (filteredDirectoryEntries.some((entry) => entry.relativePath === selectedRelativePath)) {
-      return
-    }
-
-    if (filteredDirectoryEntries.length > 0) {
-      await selectEntry(defaultDirectoryEntry(filteredDirectoryEntries))
-      return
-    }
-
-    selectedRelativePath = ''
-    activeDiff = null
-  }
-
-  function toggleGroup(groupKey: string) {
-    collapsedGroups = {
-      ...collapsedGroups,
-      [groupKey]: !collapsedGroups[groupKey],
-    }
+    filteredDirectoryEntries = entries
   }
 
   function cancelPaneNavigationScroll() {
@@ -2084,10 +2129,6 @@
       return paths.includes(entry.path)
     }
     return pane.selectedTargetPath === entry.path
-  }
-
-  function isStatusFilterActive(status: EntryStatus) {
-    return activeStatusFilters.includes(status)
   }
 
   function buildCompareRootDisplay(fullPath: string, distinctSegments: string[]): CompareRootDisplay {
@@ -2206,7 +2247,6 @@
 
   $: compareNeedsRefresh = compareDirtyReason !== null
   $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
-  $: visibleFolderSections = getVisibleFolderSections(folderSections, collapsedGroups)
   $: pickerSides = [
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
@@ -2249,13 +2289,6 @@
     const right = rightExplorer.selectedTargetPath || 'Right target not selected'
     return `${left}\n  ↔ ${right}`
   })()
-  $: directoryStatusSummary = statusOrder
-    .map((status) => ({
-      status,
-      label: statusLabel[status],
-      count: directoryEntries.filter((entry) => entry.status === status).length,
-    }))
-    .filter((item) => item.count > 0)
 </script>
 
 <svelte:head>
@@ -2523,7 +2556,7 @@
         </div>
 
         <div class="compare-action-group global-actions">
-          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('viewer')}>
+          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('diffs')}>
             Settings
           </button>
           <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
@@ -2547,14 +2580,12 @@
       {#if mode === 'directory'}
         <PierreDirectoryTree
           {loading}
-          {activeStatusFilters}
           {directoryEntries}
           {selectedRelativePath}
           {statusLabel}
           {treeSettings}
           {appearanceSettings}
-          {isStatusFilterActive}
-          {toggleStatusFilter}
+          {resolvedThemeMode}
           {selectEntry}
         />
         <button

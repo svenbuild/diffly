@@ -18,16 +18,44 @@ export interface CompareViewerSettings {
   hunkSeparators: 'line-info' | 'line-info-basic' | 'metadata' | 'simple'
   expandUnchanged: boolean
   collapsedContextThreshold: number
+  expansionLineCount: number
   disableLineNumbers: boolean
+  disableFileHeader: boolean
   disableBackground: boolean
+  disableVirtualizationBuffers: boolean
+  stickyHeader: boolean
   syntaxMode: 'shiki' | 'plain'
+  preferredHighlighter: 'shiki-js' | 'shiki-wasm'
+  useCSSClasses: boolean
+  tokenizeMaxLineLength: number
+  tokenizeMaxLength: number
+  maxLineDiffLength: number
+  lineHoverHighlight: 'disabled' | 'both' | 'number' | 'line'
+  enableTokenInteractionsOnWhitespace: boolean
+  enableGutterUtility: boolean
+  enableLineSelection: boolean
+  controlledSelection: boolean
 }
 
 export interface CompareTreeSettings {
-  density: 'compact' | 'default' | 'relaxed'
+  density: 'compact' | 'default' | 'relaxed' | 'custom'
+  customDensity: number
   flattenEmptyDirectories: boolean
   stickyFolders: boolean
+  initialExpansion: 'closed' | 'open' | 'depth'
+  initialExpansionDepth: number
+  initialExpandedPaths: string[]
+  sortMode: 'path' | 'default'
   searchMode: 'expand-matches' | 'collapse-non-matches' | 'hide-non-matches'
+  search: boolean
+  searchFakeFocus: boolean
+  searchBlurBehavior: 'close' | 'retain'
+  initialSearchQuery: string
+  initialVisibleRowCount: number
+  itemHeight: number
+  overscan: number
+  dragAndDrop: boolean
+  renaming: boolean
 }
 
 export type CompareSource =

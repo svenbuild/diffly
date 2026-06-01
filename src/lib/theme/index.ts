@@ -108,7 +108,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'absolutely',
     variant: 'dark',
-    codeThemeId: 'absolutely',
+    codeThemeId: 'vitesse-dark',
     accent: '#cc7d5e',
     surface: '#2d2d2b',
     ink: '#f9f9f7',
@@ -127,7 +127,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'absolutely',
     variant: 'light',
-    codeThemeId: 'absolutely',
+    codeThemeId: 'vitesse-light',
     accent: '#cc7d5e',
     surface: '#f9f9f7',
     ink: '#2d2d2b',
@@ -146,7 +146,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'ayu',
     variant: 'dark',
-    codeThemeId: 'ayu',
+    codeThemeId: 'ayu-dark',
     accent: '#e6b450',
     surface: '#0b0e14',
     ink: '#bfbdb6',
@@ -165,7 +165,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'catppuccin',
     variant: 'dark',
-    codeThemeId: 'catppuccin',
+    codeThemeId: 'catppuccin-mocha',
     accent: '#cba6f7',
     surface: '#1e1e2e',
     ink: '#cdd6f4',
@@ -184,7 +184,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'catppuccin',
     variant: 'light',
-    codeThemeId: 'catppuccin',
+    codeThemeId: 'catppuccin-latte',
     accent: '#8839ef',
     surface: '#eff1f5',
     ink: '#4c4f69',
@@ -203,7 +203,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'codex',
     variant: 'dark',
-    codeThemeId: 'codex',
+    codeThemeId: 'dark-plus',
     accent: '#0169cc',
     surface: '#111111',
     ink: '#fcfcfc',
@@ -222,7 +222,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'codex',
     variant: 'light',
-    codeThemeId: 'codex',
+    codeThemeId: 'light-plus',
     accent: '#0169cc',
     surface: '#ffffff',
     ink: '#0d0d0d',
@@ -260,7 +260,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'everforest',
     variant: 'dark',
-    codeThemeId: 'everforest',
+    codeThemeId: 'everforest-dark',
     accent: '#a7c080',
     surface: '#2d353b',
     ink: '#d3c6aa',
@@ -279,7 +279,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'everforest',
     variant: 'light',
-    codeThemeId: 'everforest',
+    codeThemeId: 'everforest-light',
     accent: '#93b259',
     surface: '#fdf6e3',
     ink: '#5c6a72',
@@ -298,7 +298,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'github',
     variant: 'dark',
-    codeThemeId: 'github',
+    codeThemeId: 'github-dark',
     accent: '#1f6feb',
     surface: '#0d1117',
     ink: '#e6edf3',
@@ -317,7 +317,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'github',
     variant: 'light',
-    codeThemeId: 'github',
+    codeThemeId: 'github-light',
     accent: '#0969da',
     surface: '#ffffff',
     ink: '#1f2328',
@@ -336,7 +336,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'gruvbox',
     variant: 'dark',
-    codeThemeId: 'gruvbox',
+    codeThemeId: 'gruvbox-dark-medium',
     accent: '#458588',
     surface: '#282828',
     ink: '#ebdbb2',
@@ -355,7 +355,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'gruvbox',
     variant: 'light',
-    codeThemeId: 'gruvbox',
+    codeThemeId: 'gruvbox-light-medium',
     accent: '#458588',
     surface: '#fbf1c7',
     ink: '#3c3836',
@@ -374,7 +374,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'legacy-tuerkis',
     variant: 'dark',
-    codeThemeId: 'material',
+    codeThemeId: 'material-theme',
     accent: '#22C7C7',
     surface: '#202020',
     ink: '#F5F7FA',
@@ -393,7 +393,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'legacy-tuerkis',
     variant: 'light',
-    codeThemeId: 'material',
+    codeThemeId: 'material-theme-lighter',
     accent: '#159A9C',
     surface: '#F4FBFB',
     ink: '#173536',
@@ -412,7 +412,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'linear',
     variant: 'dark',
-    codeThemeId: 'linear',
+    codeThemeId: 'min-dark',
     accent: '#5e6ad2',
     surface: '#17181d',
     ink: '#e6e9ef',
@@ -431,7 +431,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'linear',
     variant: 'light',
-    codeThemeId: 'linear',
+    codeThemeId: 'min-light',
     accent: '#5e6ad2',
     surface: '#f7f8fa',
     ink: '#2a3140',
@@ -450,7 +450,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'lobster',
     variant: 'dark',
-    codeThemeId: 'lobster',
+    codeThemeId: 'poimandres',
     accent: '#ff5c5c',
     surface: '#111827',
     ink: '#e4e4e7',
@@ -469,7 +469,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'material',
     variant: 'dark',
-    codeThemeId: 'material',
+    codeThemeId: 'material-theme',
     accent: '#80cbc4',
     surface: '#212121',
     ink: '#eeffff',
@@ -488,7 +488,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'matrix',
     variant: 'dark',
-    codeThemeId: 'matrix',
+    codeThemeId: 'synthwave-84',
     accent: '#1eff5a',
     surface: '#040805',
     ink: '#b8ffca',
@@ -564,7 +564,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'notion',
     variant: 'dark',
-    codeThemeId: 'notion',
+    codeThemeId: 'min-dark',
     accent: '#3183d8',
     surface: '#191919',
     ink: '#d9d9d8',
@@ -583,7 +583,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'notion',
     variant: 'light',
-    codeThemeId: 'notion',
+    codeThemeId: 'min-light',
     accent: '#3183d8',
     surface: '#ffffff',
     ink: '#37352f',
@@ -602,7 +602,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'one',
     variant: 'dark',
-    codeThemeId: 'one',
+    codeThemeId: 'one-dark-pro',
     accent: '#4d78cc',
     surface: '#282c34',
     ink: '#abb2bf',
@@ -621,7 +621,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'one',
     variant: 'light',
-    codeThemeId: 'one',
+    codeThemeId: 'one-light',
     accent: '#526fff',
     surface: '#fafafa',
     ink: '#383a42',
@@ -640,7 +640,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'oscurange',
     variant: 'dark',
-    codeThemeId: 'oscurange',
+    codeThemeId: 'vesper',
     accent: '#f9b98c',
     surface: '#0b0b0f',
     ink: '#e6e6e6',
@@ -659,7 +659,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'proof',
     variant: 'light',
-    codeThemeId: 'proof',
+    codeThemeId: 'vitesse-light',
     accent: '#3d755d',
     surface: '#f5f3ed',
     ink: '#2f312d',
@@ -697,7 +697,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'rose-pine',
     variant: 'light',
-    codeThemeId: 'rose-pine',
+    codeThemeId: 'rose-pine-dawn',
     accent: '#d7827e',
     surface: '#faf4ed',
     ink: '#575279',
@@ -716,7 +716,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'sentry',
     variant: 'dark',
-    codeThemeId: 'sentry',
+    codeThemeId: 'poimandres',
     accent: '#7055f6',
     surface: '#2d2935',
     ink: '#e6dff9',
@@ -735,7 +735,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'solarized',
     variant: 'dark',
-    codeThemeId: 'solarized',
+    codeThemeId: 'solarized-dark',
     accent: '#d30102',
     surface: '#002b36',
     ink: '#93a1a1',
@@ -754,7 +754,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'solarized',
     variant: 'light',
-    codeThemeId: 'solarized',
+    codeThemeId: 'solarized-light',
     accent: '#b58900',
     surface: '#fdf6e3',
     ink: '#53676d',
@@ -773,7 +773,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'temple',
     variant: 'dark',
-    codeThemeId: 'temple',
+    codeThemeId: 'kanagawa-dragon',
     accent: '#e4f222',
     surface: '#02120c',
     ink: '#c7e6da',
@@ -811,7 +811,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'vscode-plus',
     variant: 'dark',
-    codeThemeId: 'vscode-plus',
+    codeThemeId: 'dark-plus',
     accent: '#007acc',
     surface: '#1e1e1e',
     ink: '#d4d4d4',
@@ -830,7 +830,7 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'vscode-plus',
     variant: 'light',
-    codeThemeId: 'vscode-plus',
+    codeThemeId: 'light-plus',
     accent: '#007acc',
     surface: '#ffffff',
     ink: '#000000',

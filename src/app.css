@@ -1246,7 +1246,7 @@ h2 {
   gap: 14px;
 }
 
-.viewer-settings {
+.library-settings {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
   gap: 16px;
@@ -1259,7 +1259,7 @@ h2 {
   gap: 16px;
 }
 
-.viewer-settings > .settings-page-heading,
+.library-settings > .settings-page-heading,
 .update-settings > .settings-page-heading,
 .settings-reset-page > .settings-page-heading {
   grid-column: 1 / -1;
@@ -1278,11 +1278,11 @@ h2 {
   box-shadow: none;
 }
 
-.settings-page:not(.viewer-settings):not(.update-settings):not(.settings-reset-page) .settings-group {
+.settings-page:not(.library-settings):not(.update-settings):not(.settings-reset-page) .settings-group {
   min-width: 0;
 }
 
-.viewer-settings .settings-group,
+.library-settings .settings-group,
 .update-settings .settings-group,
 .settings-reset-page .settings-group {
   min-width: 0;
@@ -1353,6 +1353,11 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.settings-row-block {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
 .settings-row-interactive {
   cursor: var(--interactive-cursor);
   transition: background-color 120ms ease;
@@ -1398,6 +1403,20 @@ h2 {
   min-width: 112px;
   max-width: var(--control-width-sm);
   height: 30px;
+}
+
+.settings-control input,
+.settings-control textarea {
+  width: 100%;
+}
+
+.settings-control input[type='number'] {
+  max-width: 112px;
+}
+
+.settings-control textarea {
+  min-height: 84px;
+  resize: vertical;
 }
 
 .settings-theme-grid {
@@ -2880,28 +2899,11 @@ h2 {
 
 .directory-tree-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 10px;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   padding: 12px;
   border-right: 1px solid var(--border);
   background: var(--pane-bg);
-}
-
-.directory-toolbar input {
-  width: 100%;
-}
-
-.directory-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.directory-filter-row .filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .directory-tree-host {
@@ -5030,14 +5032,14 @@ button.filter-chip.tooLarge:focus-visible {
   }
 
   .settings-appearance-shell,
-  .viewer-settings,
+  .library-settings,
   .update-settings,
   .settings-reset-page {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-appearance-preview-column,
-  .viewer-settings > .settings-page-heading,
+  .library-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
   .settings-reset-page > .settings-page-heading {
     grid-column: 1 / -1;
@@ -5095,7 +5097,7 @@ button.filter-chip.tooLarge:focus-visible {
 
   .settings-nav-list,
   .settings-section-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     max-width: none;
   }
 
@@ -5115,14 +5117,14 @@ button.filter-chip.tooLarge:focus-visible {
   }
 
   .settings-appearance-shell,
-  .viewer-settings,
+  .library-settings,
   .update-settings,
   .settings-reset-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .settings-appearance-preview-column,
-  .viewer-settings > .settings-page-heading,
+  .library-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
   .settings-reset-page > .settings-page-heading {
     grid-column: auto;

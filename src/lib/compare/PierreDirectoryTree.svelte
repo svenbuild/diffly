@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { FileTree, preparePresortedFileTreeInput } from '@pierre/trees'
+  import { FileTree, prepareFileTreeInput, preparePresortedFileTreeInput } from '@pierre/trees'
   import type { FileTreeOptions } from '@pierre/trees'
   import type { AppearanceSettings } from '../theme'
   import { buildPierreTreeUnsafeCss } from '../theme/pierre'
@@ -9,43 +9,59 @@
   export let loading = false
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
-  export let activeStatusFilters: EntryStatus[] = []
   export let statusLabel: Record<EntryStatus, string>
   export let treeSettings: CompareTreeSettings
   export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: 'light' | 'dark'
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
-  export let isStatusFilterActive: (status: EntryStatus) => boolean
-  export let toggleStatusFilter: (status: EntryStatus) => Promise<void>
 
   let host: HTMLDivElement | null = null
   let fileTree: FileTree | null = null
-  let searchQuery = ''
   let renderVersion = 0
 
-  const statusOrder: EntryStatus[] = ['modified', 'leftOnly', 'rightOnly', 'unsupported']
-
-  $: visibleEntries = activeStatusFilters.length === 0
-    ? directoryEntries
-    : directoryEntries.filter((entry) => activeStatusFilters.includes(entry.status))
+  $: visibleEntries = directoryEntries
   $: entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
-  $: statusSummary = statusOrder.map((status) => ({
-    status,
-    label: statusLabel[status],
-    count: directoryEntries.filter((entry) => entry.status === status).length,
-  }))
+
+  function resolveDensity(settings: CompareTreeSettings) {
+    return settings.density === 'custom'
+      ? settings.customDensity
+      : settings.density
+  }
+
+  function resolveInitialExpansion(settings: CompareTreeSettings) {
+    return settings.initialExpansion === 'depth'
+      ? settings.initialExpansionDepth
+      : settings.initialExpansion
+  }
+
+  function buildPreparedInput(paths: string[], settings: CompareTreeSettings) {
+    if (settings.sortMode === 'default') {
+      return prepareFileTreeInput(paths)
+    }
+
+    return preparePresortedFileTreeInput([...paths].sort())
+  }
 
   function buildOptions(paths: string[]): FileTreeOptions {
     return {
-      preparedInput: preparePresortedFileTreeInput(paths),
-      density: treeSettings.density,
+      preparedInput: buildPreparedInput(paths, treeSettings),
+      density: resolveDensity(treeSettings),
       flattenEmptyDirectories: treeSettings.flattenEmptyDirectories,
       stickyFolders: treeSettings.stickyFolders,
       fileTreeSearchMode: treeSettings.searchMode,
-      initialExpansion: 'open',
+      initialExpansion: resolveInitialExpansion(treeSettings),
+      initialExpandedPaths: treeSettings.initialExpandedPaths,
       initialSelectedPaths: selectedRelativePath ? [selectedRelativePath] : [],
-      search: true,
-      initialSearchQuery: searchQuery || null,
-      unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings),
+      search: treeSettings.search,
+      searchFakeFocus: treeSettings.searchFakeFocus,
+      searchBlurBehavior: treeSettings.searchBlurBehavior,
+      initialSearchQuery: treeSettings.initialSearchQuery || null,
+      initialVisibleRowCount: treeSettings.initialVisibleRowCount,
+      itemHeight: treeSettings.itemHeight,
+      overscan: treeSettings.overscan,
+      dragAndDrop: treeSettings.dragAndDrop,
+      renaming: treeSettings.renaming,
+      unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings, resolvedThemeMode),
       gitStatus: visibleEntries.map((entry) => ({
         path: entry.relativePath,
         status: entry.status === 'modified'
@@ -88,15 +104,11 @@
       return
     }
 
-    const paths = visibleEntries.map((entry) => entry.relativePath).sort()
+    const paths = visibleEntries.map((entry) => entry.relativePath)
 
     fileTree?.cleanUp()
     fileTree = new FileTree(buildOptions(paths))
     fileTree.render({ containerWrapper: host })
-
-    if (searchQuery) {
-      fileTree.setSearch(searchQuery)
-    }
 
     if (selectedRelativePath && paths.includes(selectedRelativePath)) {
       fileTree.focusPath(selectedRelativePath)
@@ -104,12 +116,7 @@
     }
   }
 
-  function updateSearch(value: string) {
-    searchQuery = value
-    fileTree?.setSearch(value || null)
-  }
-
-  $: host, visibleEntries, selectedRelativePath, treeSettings, appearanceSettings, void renderTree()
+  $: host, visibleEntries, selectedRelativePath, treeSettings, appearanceSettings, resolvedThemeMode, void renderTree()
 
   onDestroy(() => {
     fileTree?.cleanUp()
@@ -118,32 +125,6 @@
 </script>
 
 <aside class="directory-tree-panel">
-  <div class="directory-toolbar">
-    <input
-      aria-label="Search changed files"
-      placeholder="Search files"
-      type="search"
-      value={searchQuery}
-      on:input={(event) => updateSearch((event.currentTarget as HTMLInputElement).value)}
-    />
-  </div>
-
-  <div class="directory-filter-row" role="group" aria-label="Directory filters">
-    {#each statusSummary as item}
-      <button
-        aria-pressed={isStatusFilterActive(item.status)}
-        class:active={isStatusFilterActive(item.status)}
-        class={`filter-chip ${item.status}`}
-        disabled={item.count === 0}
-        type="button"
-        on:click={() => toggleStatusFilter(item.status)}
-      >
-        <span>{item.label}</span>
-        <strong>{item.count}</strong>
-      </button>
-    {/each}
-  </div>
-
   <div class="directory-tree-host" bind:this={host}>
     {#if loading && directoryEntries.length === 0}
       <div class="directory-tree-state">
