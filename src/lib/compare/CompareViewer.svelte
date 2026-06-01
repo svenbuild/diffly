@@ -22,7 +22,7 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
-  export let loadEntryDiff: (entry: DirectoryEntryResult) => Promise<FileDiffResult>
+  export let loadEntryDiff: (entry: DirectoryEntryResult, revision: number) => Promise<FileDiffResult>
 </script>
 
 <section class="compare-viewer">

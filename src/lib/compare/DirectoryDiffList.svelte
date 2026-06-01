@@ -26,16 +26,22 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
-  export let loadEntryDiff: (entry: DirectoryEntryResult) => Promise<FileDiffResult>
+  export let loadEntryDiff: (entry: DirectoryEntryResult, revision: number) => Promise<FileDiffResult>
 
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 4
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
+  const DIRECTORY_DIFF_LOAD_ATTEMPTS = 2
+  const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
   const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
   let scrollHost: HTMLElement | null = null
   let entriesSignature = ''
   let loadGeneration = 0
+  let activeQueueRevision = -1
+  let activeWorkerCount = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
+  let queuedPaths = new Set<string>()
+  let loadQueue: DirectoryEntryResult[] = []
   const sectionHosts = new Map<string, HTMLElement>()
   const headerPrefixRenderers = new Map<string, () => HTMLElement | null>()
 
@@ -97,6 +103,25 @@
     collapsedPaths = nextCollapsedPaths
   }
 
+  async function loadEntryDiffWithRetry(entry: DirectoryEntryResult, loadRevision: number) {
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
+      try {
+        return await Promise.race([
+          loadEntryDiff(entry, loadRevision),
+          new Promise<FileDiffResult>((_, reject) => {
+            window.setTimeout(() => reject(new Error('Timed out while loading this file diff.')), DIRECTORY_DIFF_LOAD_TIMEOUT_MS)
+          }),
+        ])
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    throw lastError
+  }
+
   async function ensureLoaded(entry: DirectoryEntryResult, generation = loadGeneration) {
     const path = entryKey(entry)
     const state = getEntryState(path)
@@ -119,7 +144,7 @@
     })
 
     try {
-      const diff = await loadEntryDiff(entry)
+      const diff = await loadEntryDiffWithRetry(entry, loadRevision)
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
@@ -146,42 +171,102 @@
     }
   }
 
-  function startDirectoryDiffLoading() {
+  function resetQueueForRevision() {
+    activeQueueRevision = revision
     loadGeneration += 1
+    activeWorkerCount = 0
+    loadQueue = []
+    queuedPaths = new Set()
+  }
+
+  function queueMissingDiffLoads() {
+    if (activeQueueRevision !== revision) {
+      resetQueueForRevision()
+    }
 
     const generation = loadGeneration
-    const queue = [...directoryEntries]
-    const workerCount = Math.min(DIRECTORY_DIFF_LOAD_CONCURRENCY, queue.length)
+    let changed = false
 
-    async function runWorker() {
+    for (const entry of directoryEntries) {
+      const path = entryKey(entry)
+      const state = getEntryState(path)
+
+      if (state?.diff || state?.loading || queuedPaths.has(path)) {
+        continue
+      }
+
+      loadQueue = [...loadQueue, entry]
+      queuedPaths = new Set(queuedPaths).add(path)
+      changed = true
+    }
+
+    if (changed || loadQueue.length > 0) {
+      pumpLoadQueue(generation)
+    }
+  }
+
+  async function runLoadWorker(generation: number) {
+    activeWorkerCount += 1
+
+    try {
       while (generation === loadGeneration) {
-        const entry = queue.shift()
+        const [entry, ...rest] = loadQueue
+        loadQueue = rest
+
         if (!entry) {
           return
         }
 
+        const path = entryKey(entry)
+        const nextQueuedPaths = new Set(queuedPaths)
+        nextQueuedPaths.delete(path)
+        queuedPaths = nextQueuedPaths
+
         await ensureLoaded(entry, generation)
       }
-    }
+    } finally {
+      if (generation !== loadGeneration) {
+        return
+      }
 
-    for (let index = 0; index < workerCount; index += 1) {
-      void runWorker()
+      activeWorkerCount -= 1
+      if (loadQueue.length > 0) {
+        pumpLoadQueue(generation)
+      }
     }
   }
 
-  function trackSection(node: HTMLElement, relativePath: string) {
-    node.dataset.relativePath = relativePath
-    sectionHosts.set(relativePath, node)
+  function pumpLoadQueue(generation = loadGeneration) {
+    while (
+      generation === loadGeneration &&
+      activeWorkerCount < DIRECTORY_DIFF_LOAD_CONCURRENCY &&
+      loadQueue.length > 0
+    ) {
+      void runLoadWorker(generation)
+    }
+  }
+
+  function trackSection(node: HTMLElement, entry: DirectoryEntryResult) {
+    let activeEntry = entry
+
+    node.dataset.relativePath = activeEntry.relativePath
+    sectionHosts.set(activeEntry.relativePath, node)
+
+    const onClick = (event: MouseEvent) => {
+      handleSectionClick(event, activeEntry)
+    }
+    node.addEventListener('click', onClick)
 
     return {
-      update(nextRelativePath: string) {
-        sectionHosts.delete(relativePath)
-        relativePath = nextRelativePath
-        node.dataset.relativePath = relativePath
-        sectionHosts.set(relativePath, node)
+      update(nextEntry: DirectoryEntryResult) {
+        sectionHosts.delete(activeEntry.relativePath)
+        activeEntry = nextEntry
+        node.dataset.relativePath = activeEntry.relativePath
+        sectionHosts.set(activeEntry.relativePath, node)
       },
       destroy() {
-        sectionHosts.delete(relativePath)
+        node.removeEventListener('click', onClick)
+        sectionHosts.delete(activeEntry.relativePath)
       },
     }
   }
@@ -209,6 +294,22 @@
     setCollapsed(entry.relativePath, nextCollapsed)
 
     void ensureLoaded(entry)
+  }
+
+  function clickedToggle(event: MouseEvent) {
+    return event.composedPath().some((target) => {
+      return target instanceof HTMLElement && target.classList.contains('diffly-diff-header-toggle')
+    })
+  }
+
+  function handleSectionClick(event: MouseEvent, entry: DirectoryEntryResult) {
+    if (!clickedToggle(event)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    toggleEntry(entry)
   }
 
   function createChevronIcon() {
@@ -241,7 +342,11 @@
     button.title = collapsed ? 'Expand file diff' : 'Collapse file diff'
     button.dataset.collapsed = collapsed ? 'true' : 'false'
     button.appendChild(createChevronIcon())
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation()
+    })
     button.addEventListener('click', (event) => {
+      event.preventDefault()
       event.stopPropagation()
       toggleEntry(entry)
     })
@@ -266,7 +371,7 @@
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
       syncEntryCollections()
-      startDirectoryDiffLoading()
+      queueMissingDiffLoads()
     }
   }
 
@@ -291,7 +396,7 @@
         class:collapsed
         class:selected={selectedRelativePath === entry.relativePath}
         class="directory-diff-section"
-        use:trackSection={entry.relativePath}
+        use:trackSection={entry}
       >
         <div class="directory-diff-body">
           {#if state?.loading}

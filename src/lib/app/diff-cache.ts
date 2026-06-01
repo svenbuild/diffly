@@ -33,7 +33,7 @@ interface DiffCacheDependencies {
 }
 
 const BACKGROUND_PRELOAD_RADIUS = 0
-const DETAIL_DIFF_CACHE_LIMIT = 16
+const DETAIL_DIFF_CACHE_LIMIT = 128
 
 export function createDiffCacheController(dependencies: DiffCacheDependencies) {
   const detailDiffCache = new Map<string, Promise<FileDiffResult>>()

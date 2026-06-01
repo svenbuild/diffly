@@ -1981,8 +1981,8 @@
     }
   }
 
-  async function loadEntryDiff(entry: DirectoryEntryResult) {
-    return getOrCreateDetailDiffPromise(entry.relativePath, compareRevision)
+  async function loadEntryDiff(entry: DirectoryEntryResult, revision = compareRevision) {
+    return getOrCreateDetailDiffPromise(entry.relativePath, revision)
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {

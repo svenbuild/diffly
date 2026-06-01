@@ -2,6 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import { FileDiff } from '@pierre/diffs'
   import type {
+    DiffLineAnnotation,
     DiffTokenEventBaseProps,
     FileContents,
     FileDiffOptions,
@@ -14,6 +15,11 @@
   } from '../theme/pierre'
   import type { CompareViewerSettings, TextDiffPayload, ViewMode } from '../types'
 
+  interface DifflyCommentAnnotation {
+    id: string
+    text: string
+  }
+
   export let text: TextDiffPayload
   export let leftLabel: string
   export let rightLabel: string
@@ -25,9 +31,11 @@
   export let renderHeaderPrefix: (() => HTMLElement | null) | null = null
 
   let host: HTMLDivElement | null = null
-  let fileDiff: FileDiff | null = null
+  let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
+  let commentId = 0
+  let commentAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
   let renderedTextKey = ''
@@ -93,7 +101,21 @@
 
   function handleGutterUtilityClick(range: SelectedLineRange) {
     applyControlledSelection(range)
-    setInteractionMessage(`Gutter utility clicked ${describeRange(range)}.`)
+    const side = range.endSide ?? range.side ?? 'additions'
+    const lineNumber = range.end
+
+    commentAnnotations = [
+      ...commentAnnotations,
+      {
+        side,
+        lineNumber,
+        metadata: {
+          id: `comment-${commentId += 1}`,
+          text: '',
+        },
+      },
+    ]
+    setInteractionMessage(`Comment opened for ${describeRange(range)}.`)
   }
 
   function handleTokenClick(token: DiffTokenEventBaseProps) {
@@ -126,7 +148,52 @@
     }
   }
 
-  function buildOptions(): FileDiffOptions<undefined> {
+  function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
+    const wrapper = document.createElement('div')
+    const form = document.createElement('form')
+    const avatar = document.createElement('div')
+    const input = document.createElement('input')
+    const submit = document.createElement('button')
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+
+    wrapper.className = 'diffly-comment-annotation'
+    form.className = 'diffly-comment-composer'
+    avatar.className = 'diffly-comment-avatar'
+    avatar.textContent = 'D'
+    input.type = 'text'
+    input.placeholder = 'Add a comment...'
+    input.value = annotation.metadata.text
+    submit.type = 'submit'
+    submit.className = 'diffly-comment-submit'
+    submit.setAttribute('aria-label', 'Save comment')
+    icon.setAttribute('viewBox', '0 0 16 16')
+    icon.setAttribute('aria-hidden', 'true')
+    path.setAttribute('d', 'M8 13V3m0 0L4.5 6.5M8 3l3.5 3.5')
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', 'currentColor')
+    path.setAttribute('stroke-linecap', 'round')
+    path.setAttribute('stroke-linejoin', 'round')
+    path.setAttribute('stroke-width', '1.8')
+    icon.appendChild(path)
+    submit.appendChild(icon)
+
+    input.addEventListener('input', () => {
+      annotation.metadata.text = input.value
+    })
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      annotation.metadata.text = input.value.trim()
+      setInteractionMessage('Comment saved locally.')
+    })
+
+    form.append(avatar, input, submit)
+    wrapper.appendChild(form)
+
+    return wrapper
+  }
+
+  function buildOptions(): FileDiffOptions<DifflyCommentAnnotation> {
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
       themeType: resolvedThemeMode,
@@ -153,6 +220,7 @@
       enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
       enableGutterUtility: viewerSettings.enableGutterUtility,
       onGutterUtilityClick: handleGutterUtilityClick,
+      renderAnnotation: renderCommentAnnotation,
       onTokenClick: handleTokenClick,
       enableLineSelection:
         viewerSettings.enableLineSelection ||
@@ -192,11 +260,12 @@
     if (nextTextKey !== renderedTextKey) {
       renderedTextKey = nextTextKey
       selectedLineRange = null
+      commentAnnotations = []
       interactionMessage = ''
     }
 
     if (!fileDiff) {
-      fileDiff = new FileDiff(nextOptions)
+      fileDiff = new FileDiff<DifflyCommentAnnotation>(nextOptions)
     } else {
       fileDiff.setOptions(nextOptions)
     }
@@ -206,6 +275,7 @@
       newFile: buildFile(rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
       containerWrapper: host,
       forceRender: true,
+      lineAnnotations: commentAnnotations,
     })
 
     if (viewerSettings.controlledSelection) {
@@ -215,7 +285,7 @@
     applyCollapsedState()
   }
 
-  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, renderHeaderPrefix, void renderDiff()
+  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, renderHeaderPrefix, commentAnnotations, void renderDiff()
 
   onDestroy(() => {
     if (interactionMessageTimer !== null) {
