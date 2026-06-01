@@ -7,7 +7,6 @@
     CompareMode,
     CompareViewerSettings,
     DirectoryEntryResult,
-    EntryStatus,
     FileDiffResult,
     ViewMode,
   } from '../types'
@@ -22,10 +21,8 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
-  export let statusLabel: Record<EntryStatus, string>
   export let revision = 0
   export let loadEntryDiff: (entry: DirectoryEntryResult) => Promise<FileDiffResult>
-  export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
 </script>
 
 <section class="compare-viewer">
@@ -38,10 +35,8 @@
       {appearanceSettings}
       {resolvedThemeMode}
       {viewMode}
-      {statusLabel}
       {revision}
       {loadEntryDiff}
-      {selectEntry}
     />
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">

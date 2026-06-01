@@ -6,7 +6,6 @@
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
-    EntryStatus,
     FileDiffResult,
     ViewMode,
   } from '../types'
@@ -25,15 +24,13 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
-  export let statusLabel: Record<EntryStatus, string>
   export let revision = 0
   export let loadEntryDiff: (entry: DirectoryEntryResult) => Promise<FileDiffResult>
-  export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
 
   let scrollHost: HTMLElement | null = null
   let observer: IntersectionObserver | null = null
   let entriesSignature = ''
-  let expandedPaths = new Set<string>()
+  let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
   const sectionHosts = new Map<string, HTMLElement>()
 
@@ -41,23 +38,13 @@
     return entry.relativePath
   }
 
-  function fileName(path: string) {
-    return path.split(/[\\/]/).pop() || path
-  }
-
-  function folderName(path: string) {
-    const index = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-    return index > 0 ? path.slice(0, index) : ''
-  }
-
   function syncEntryCollections() {
     const nextPaths = new Set(directoryEntries.map((entry) => entryKey(entry)))
-    const nextExpandedPaths = new Set<string>()
+    const nextCollapsedPaths = new Set<string>()
     const nextStates = new Map<string, EntryDiffState>()
 
     for (const entry of directoryEntries) {
       const key = entryKey(entry)
-      nextExpandedPaths.add(key)
 
       const state = entryStates.get(key)
       if (state) {
@@ -65,13 +52,13 @@
       }
     }
 
-    for (const key of expandedPaths) {
+    for (const key of collapsedPaths) {
       if (nextPaths.has(key)) {
-        nextExpandedPaths.add(key)
+        nextCollapsedPaths.add(key)
       }
     }
 
-    expandedPaths = nextExpandedPaths
+    collapsedPaths = nextCollapsedPaths
     entryStates = nextStates
   }
 
@@ -85,18 +72,38 @@
     return entryStates.get(path) ?? null
   }
 
-  function isExpanded(path: string) {
-    return expandedPaths.has(path)
+  function isCollapsed(path: string) {
+    return collapsedPaths.has(path)
   }
 
-  function setExpanded(path: string, expanded: boolean) {
-    const nextExpandedPaths = new Set(expandedPaths)
-    if (expanded) {
-      nextExpandedPaths.add(path)
+  function setCollapsed(path: string, collapsed: boolean) {
+    const nextCollapsedPaths = new Set(collapsedPaths)
+    if (collapsed) {
+      nextCollapsedPaths.add(path)
     } else {
-      nextExpandedPaths.delete(path)
+      nextCollapsedPaths.delete(path)
     }
-    expandedPaths = nextExpandedPaths
+    collapsedPaths = nextCollapsedPaths
+  }
+
+  function isNearViewport(node: HTMLElement) {
+    const root = scrollHost
+    const nodeRect = node.getBoundingClientRect()
+    const rootRect = root?.getBoundingClientRect()
+    const top = rootRect?.top ?? 0
+    const bottom = rootRect?.bottom ?? window.innerHeight
+    const preloadMargin = 720
+
+    return nodeRect.bottom >= top - preloadMargin && nodeRect.top <= bottom + preloadMargin
+  }
+
+  function ensureLoadedIfNearViewport(relativePath: string) {
+    const node = sectionHosts.get(relativePath)
+    const entry = directoryEntries.find((candidate) => candidate.relativePath === relativePath)
+
+    if (node && entry && !isCollapsed(relativePath) && isNearViewport(node)) {
+      void ensureLoaded(entry)
+    }
   }
 
   async function ensureLoaded(entry: DirectoryEntryResult) {
@@ -149,16 +156,23 @@
 
       const relativePath = (entry.target as HTMLElement).dataset.relativePath
       const directoryEntry = directoryEntries.find((candidate) => candidate.relativePath === relativePath)
-      if (directoryEntry && isExpanded(directoryEntry.relativePath)) {
+      if (directoryEntry && !isCollapsed(directoryEntry.relativePath)) {
         void ensureLoaded(directoryEntry)
       }
     }
+  }
+
+  function scheduleViewportCheck(relativePath: string) {
+    window.requestAnimationFrame(() => {
+      ensureLoadedIfNearViewport(relativePath)
+    })
   }
 
   function observeSection(node: HTMLElement, relativePath: string) {
     node.dataset.relativePath = relativePath
     sectionHosts.set(relativePath, node)
     observer?.observe(node)
+    scheduleViewportCheck(relativePath)
 
     return {
       update(nextRelativePath: string) {
@@ -168,6 +182,7 @@
         node.dataset.relativePath = relativePath
         sectionHosts.set(relativePath, node)
         observer?.observe(node)
+        scheduleViewportCheck(relativePath)
       },
       destroy() {
         observer?.unobserve(node)
@@ -186,7 +201,7 @@
       return
     }
 
-    setExpanded(path, true)
+    setCollapsed(path, false)
     await tick()
 
     const node = sectionHosts.get(path)
@@ -194,20 +209,35 @@
     void ensureLoaded(entry)
   }
 
-  async function handleHeaderClick(entry: DirectoryEntryResult) {
-    setExpanded(entry.relativePath, true)
-    await selectEntry(entry)
-    await scrollToEntry(entry.relativePath)
-  }
+  function toggleEntry(entry: DirectoryEntryResult) {
+    const nextCollapsed = !isCollapsed(entry.relativePath)
+    setCollapsed(entry.relativePath, nextCollapsed)
 
-  function toggleEntry(event: MouseEvent, entry: DirectoryEntryResult) {
-    event.stopPropagation()
-    const nextExpanded = !isExpanded(entry.relativePath)
-    setExpanded(entry.relativePath, nextExpanded)
-
-    if (nextExpanded) {
+    if (!nextCollapsed) {
       void ensureLoaded(entry)
     }
+  }
+
+  function renderDiffHeaderPrefix(entry: DirectoryEntryResult) {
+    const button = document.createElement('button')
+    const icon = document.createElement('span')
+    const collapsed = isCollapsed(entry.relativePath)
+
+    button.type = 'button'
+    button.className = 'diffly-diff-header-toggle'
+    button.setAttribute('aria-label', collapsed ? 'Expand file diff' : 'Collapse file diff')
+    button.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+    button.title = collapsed ? 'Expand file diff' : 'Collapse file diff'
+    icon.className = 'diffly-diff-header-toggle-icon'
+    icon.textContent = '>'
+    button.dataset.collapsed = collapsed ? 'true' : 'false'
+    button.appendChild(icon)
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      toggleEntry(entry)
+    })
+
+    return button
   }
 
   $: {
@@ -230,6 +260,10 @@
     for (const node of sectionHosts.values()) {
       observer.observe(node)
     }
+
+    for (const entry of directoryEntries) {
+      ensureLoadedIfNearViewport(entry.relativePath)
+    }
   })
 
   onDestroy(() => {
@@ -251,75 +285,45 @@
   {:else}
     {#each directoryEntries as entry (entry.relativePath)}
       {@const state = getEntryState(entry.relativePath)}
-      {@const expanded = isExpanded(entry.relativePath)}
+      {@const collapsed = isCollapsed(entry.relativePath)}
       <article
+        class:collapsed
         class:selected={selectedRelativePath === entry.relativePath}
         class="directory-diff-section"
         use:observeSection={entry.relativePath}
       >
-        <div class="directory-diff-header">
-          <button
-            aria-label={expanded ? 'Collapse file diff' : 'Expand file diff'}
-            aria-expanded={expanded}
-            class="directory-diff-collapse-button"
-            type="button"
-            on:click={(event) => toggleEntry(event, entry)}
-          >
-            <span class:expanded class="directory-diff-disclosure" aria-hidden="true">
-              <svg viewBox="0 0 16 16">
-                <path d="M5.7 3.8 10.3 8l-4.6 4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
-              </svg>
-            </span>
-          </button>
-
-          <button
-            class="directory-diff-title-button"
-            type="button"
-            on:click={() => handleHeaderClick(entry)}
-          >
-            <span class="directory-diff-title">
-              <strong>{fileName(entry.relativePath)}</strong>
-              {#if folderName(entry.relativePath)}
-                <span>{folderName(entry.relativePath)}</span>
-              {/if}
-            </span>
-            <span class={`directory-diff-status status-${entry.status}`}>
-              {statusLabel[entry.status]}
-            </span>
-          </button>
+        <div class="directory-diff-body">
+          {#if state?.loading}
+            <div class="directory-diff-loading">
+              <span class="refresh-spinner visible"></span>
+              <span>Loading diff...</span>
+            </div>
+          {:else if state?.error}
+            <div class="directory-diff-error">{state.error}</div>
+          {:else if state?.diff?.contentKind === 'text' && state.diff.text}
+            <PierreDiffViewer
+              text={state.diff.text}
+              leftLabel={state.diff.leftLabel}
+              rightLabel={state.diff.rightLabel}
+              {viewerSettings}
+              {appearanceSettings}
+              {resolvedThemeMode}
+              {viewMode}
+              {collapsed}
+              renderHeaderPrefix={() => renderDiffHeaderPrefix(entry)}
+            />
+          {:else if state?.diff}
+            <UnsupportedCompareView
+              unsupported={state.diff.unsupported ?? null}
+              summary={state.diff.summary}
+            />
+          {:else}
+            <div class="directory-diff-loading">
+              <span class="refresh-spinner visible"></span>
+              <span>Loading diff...</span>
+            </div>
+          {/if}
         </div>
-
-        {#if expanded}
-          <div class="directory-diff-body">
-            {#if state?.loading}
-              <div class="directory-diff-loading">
-                <span class="refresh-spinner visible"></span>
-                <span>Loading diff...</span>
-              </div>
-            {:else if state?.error}
-              <div class="directory-diff-error">{state.error}</div>
-            {:else if state?.diff?.contentKind === 'text' && state.diff.text}
-              <PierreDiffViewer
-                text={state.diff.text}
-                leftLabel={state.diff.leftLabel}
-                rightLabel={state.diff.rightLabel}
-                {viewerSettings}
-                {appearanceSettings}
-                {resolvedThemeMode}
-                {viewMode}
-              />
-            {:else if state?.diff}
-              <UnsupportedCompareView
-                unsupported={state.diff.unsupported ?? null}
-                summary={state.diff.summary}
-              />
-            {:else}
-              <div class="directory-diff-loading">
-                <span>Waiting for viewport...</span>
-              </div>
-            {/if}
-          </div>
-        {/if}
       </article>
     {/each}
   {/if}

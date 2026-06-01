@@ -21,6 +21,8 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
+  export let collapsed = false
+  export let renderHeaderPrefix: (() => HTMLElement | null) | null = null
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff | null = null
@@ -99,6 +101,19 @@
     setInteractionMessage(`Token "${tokenText}" on ${describeSide(token.side)} line ${token.lineNumber}.`)
   }
 
+  function applyCollapsedState() {
+    const container = host?.querySelector('diffs-container') as HTMLElement | null
+    const pre = container?.shadowRoot?.querySelector('pre') as HTMLPreElement | null
+
+    if (container) {
+      container.toggleAttribute('data-diffly-collapsed', collapsed)
+    }
+
+    if (pre) {
+      pre.hidden = collapsed
+    }
+  }
+
   function buildOptions(): FileDiffOptions<undefined> {
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
@@ -134,6 +149,8 @@
       controlledSelection: viewerSettings.controlledSelection,
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
+      renderHeaderPrefix: renderHeaderPrefix ?? undefined,
+      onPostRender: applyCollapsedState,
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
     }
   }
@@ -182,9 +199,11 @@
     if (viewerSettings.controlledSelection) {
       fileDiff.setSelectedLines(selectedLineRange, { notify: false })
     }
+
+    applyCollapsedState()
   }
 
-  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, void renderDiff()
+  $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, renderHeaderPrefix, void renderDiff()
 
   onDestroy(() => {
     if (interactionMessageTimer !== null) {

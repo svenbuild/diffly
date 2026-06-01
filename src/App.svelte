@@ -2546,10 +2546,8 @@
         {appearanceSettings}
         {resolvedThemeMode}
         {viewMode}
-        {statusLabel}
         revision={compareRevision}
         {loadEntryDiff}
-        {selectEntry}
       />
     </section>
   </main>
