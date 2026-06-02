@@ -1,6 +1,5 @@
 <script lang="ts">
   import PierreDirectoryCodeView from './PierreDirectoryCodeView.svelte'
-  import UnsupportedCompareView from './UnsupportedCompareView.svelte'
   import { openCompareItem } from '../api'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -24,11 +23,6 @@
     diff: FileDiffResult | null
     error: string
     loading: boolean
-  }
-
-  interface SecondaryDirectoryDiff {
-    entry: DirectoryEntryResult
-    state: EntryDiffState
   }
 
   export let directoryEntries: DirectoryEntryResult[] = []
@@ -57,13 +51,6 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const DIRECTORY_DIFF_AUTO_LOAD_CONCURRENCY = 3
-  const statusLabel: Record<DirectoryEntryResult['status'], string> = {
-    modified: 'Modified',
-    leftOnly: 'Left only',
-    rightOnly: 'Right only',
-    unsupported: 'Unsupported',
-  }
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -71,10 +58,7 @@
   let entryStates = new Map<string, EntryDiffState>()
   let scrollTargetRevision = 0
   let textEntries: LoadedDirectoryDiff[] = []
-  let secondaryEntries: SecondaryDirectoryDiff[] = []
   let pendingEntryCount = 0
-  let activeAutoLoadCount = 0
-  let queuedAutoLoadKeys = new Set<string>()
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -119,58 +103,6 @@
 
   function isCollapsed(path: string) {
     return collapsedPaths.has(path)
-  }
-
-  function autoLoadKey(path: string, generation = loadGeneration, loadRevision = revision) {
-    return `${loadRevision}:${generation}:${path}`
-  }
-
-  function shouldAutoLoad(entry: DirectoryEntryResult) {
-    if (entry.status === 'unsupported' || isCollapsed(entry.relativePath)) {
-      return false
-    }
-
-    const state = getEntryState(entry.relativePath)
-    if (!state || state.revision !== revision) {
-      return true
-    }
-
-    return !state.loading && !state.diff && !state.error
-  }
-
-  function scheduleOpenEntryLoads() {
-    if (directoryEntries.length === 0) {
-      queuedAutoLoadKeys = new Set()
-      activeAutoLoadCount = 0
-      return
-    }
-
-    while (activeAutoLoadCount < DIRECTORY_DIFF_AUTO_LOAD_CONCURRENCY) {
-      const entry = directoryEntries.find((candidate) => {
-        const key = autoLoadKey(candidate.relativePath)
-        return shouldAutoLoad(candidate) && !queuedAutoLoadKeys.has(key)
-      })
-
-      if (!entry) {
-        return
-      }
-
-      const generation = loadGeneration
-      const loadRevision = revision
-      const key = autoLoadKey(entry.relativePath, generation, loadRevision)
-      const nextQueuedKeys = new Set(queuedAutoLoadKeys)
-      nextQueuedKeys.add(key)
-      queuedAutoLoadKeys = nextQueuedKeys
-      activeAutoLoadCount += 1
-
-      void ensureLoaded(entry, generation, loadRevision).finally(() => {
-        const afterLoadQueuedKeys = new Set(queuedAutoLoadKeys)
-        afterLoadQueuedKeys.delete(key)
-        queuedAutoLoadKeys = afterLoadQueuedKeys
-        activeAutoLoadCount = Math.max(0, activeAutoLoadCount - 1)
-        scheduleOpenEntryLoads()
-      })
-    }
   }
 
   function setCollapsed(path: string, collapsed: boolean) {
@@ -293,35 +225,31 @@
 
   function rebuildVisibleEntries() {
     const nextTextEntries: LoadedDirectoryDiff[] = []
-    const nextSecondaryEntries: SecondaryDirectoryDiff[] = []
     let nextPendingEntryCount = 0
+    const selectedEntry = selectedRelativePath
+      ? directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)
+      : directoryEntries.find((entry) => entry.status !== 'unsupported')
 
-    for (const entry of directoryEntries) {
-      const state = getEntryState(entry.relativePath)
+    if (selectedEntry && selectedEntry.status !== 'unsupported') {
+      const state = getEntryState(selectedEntry.relativePath)
 
-      if (entry.status === 'unsupported') {
-        nextSecondaryEntries.push({
-          entry,
-          state: state ?? {
-            diff: null,
-            error: '',
-            generation: loadGeneration,
-            loading: false,
-            revision,
-          },
-        })
-      } else if (state?.diff?.contentKind === 'text' && state.diff.text) {
+      if (state?.diff?.contentKind === 'text' && state.diff.text) {
         nextTextEntries.push({
-          entry,
+          entry: selectedEntry,
           diff: state.diff,
           error: '',
           loading: state.loading,
         })
       } else if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
-        nextSecondaryEntries.push({ entry, state })
+        nextTextEntries.push({
+          entry: selectedEntry,
+          diff: null,
+          error: state.error || 'No text diff is available for this file.',
+          loading: false,
+        })
       } else {
         nextTextEntries.push({
-          entry,
+          entry: selectedEntry,
           diff: null,
           error: '',
           loading: state?.loading ?? false,
@@ -333,7 +261,6 @@
     }
 
     textEntries = nextTextEntries
-    secondaryEntries = nextSecondaryEntries
     pendingEntryCount = nextPendingEntryCount
   }
 
@@ -363,11 +290,11 @@
 
   $: {
     directoryEntries
+    selectedRelativePath
     entryStates
     rebuildVisibleEntries()
   }
 
-  $: directoryEntries, collapsedPaths, entryStates, scheduleOpenEntryLoads()
   $: selectedRelativePath, scrollToEntry(selectedRelativePath)
 </script>
 
@@ -399,26 +326,9 @@
         <span class="refresh-spinner visible"></span>
         <p>Loading diffs...</p>
       </div>
-    {/if}
-
-    {#if secondaryEntries.length > 0}
-      <div class="directory-diff-secondary-list">
-        {#each secondaryEntries as { entry, state } (entry.relativePath)}
-          <article class="directory-diff-secondary-row">
-            <header>
-              <span>{entry.relativePath}</span>
-              <strong>{statusLabel[entry.status]}</strong>
-            </header>
-            {#if state.error}
-              <div class="directory-diff-error">{state.error}</div>
-            {:else if state.diff}
-              <UnsupportedCompareView
-                unsupported={state.diff.unsupported ?? null}
-                summary={state.diff.summary}
-              />
-            {/if}
-          </article>
-        {/each}
+    {:else if selectedRelativePath}
+      <div class="compare-viewer-state">
+        <p>No text diff selected.</p>
       </div>
     {/if}
   {/if}
