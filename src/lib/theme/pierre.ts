@@ -32,6 +32,19 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
       font-family: ${darkTokens.uiFont};
     }
 
+    *,
+    *::before,
+    *::after {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+
     :host([data-theme='light']) {
       --diffs-font-family-override: ${lightTokens.codeFont};
       --diffs-header-font-family: ${lightTokens.uiFont};
