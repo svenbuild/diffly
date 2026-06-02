@@ -688,3 +688,16 @@
 {#if interactionMessage}
   <div class="pierre-diff-feedback" role="status">{interactionMessage}</div>
 {/if}
+
+<style>
+  .directory-code-view-host {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .directory-code-view-host::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+</style>
