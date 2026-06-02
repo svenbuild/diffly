@@ -57,6 +57,7 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
+  const DIRECTORY_DIFF_AUTO_LOAD_CONCURRENCY = 3
   const statusLabel: Record<DirectoryEntryResult['status'], string> = {
     modified: 'Modified',
     leftOnly: 'Left only',
@@ -72,6 +73,8 @@
   let textEntries: LoadedDirectoryDiff[] = []
   let secondaryEntries: SecondaryDirectoryDiff[] = []
   let pendingEntryCount = 0
+  let activeAutoLoadCount = 0
+  let queuedAutoLoadKeys = new Set<string>()
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -91,10 +94,6 @@
         (!state.loading || state.generation === loadGeneration)
       ) {
         nextStates.set(key, state)
-      }
-
-      if (!collapsedPaths.has(key) && !state) {
-        nextCollapsedPaths.add(key)
       }
     }
 
@@ -120,6 +119,58 @@
 
   function isCollapsed(path: string) {
     return collapsedPaths.has(path)
+  }
+
+  function autoLoadKey(path: string, generation = loadGeneration, loadRevision = revision) {
+    return `${loadRevision}:${generation}:${path}`
+  }
+
+  function shouldAutoLoad(entry: DirectoryEntryResult) {
+    if (entry.status === 'unsupported' || isCollapsed(entry.relativePath)) {
+      return false
+    }
+
+    const state = getEntryState(entry.relativePath)
+    if (!state || state.revision !== revision) {
+      return true
+    }
+
+    return !state.loading && !state.diff && !state.error
+  }
+
+  function scheduleOpenEntryLoads() {
+    if (directoryEntries.length === 0) {
+      queuedAutoLoadKeys = new Set()
+      activeAutoLoadCount = 0
+      return
+    }
+
+    while (activeAutoLoadCount < DIRECTORY_DIFF_AUTO_LOAD_CONCURRENCY) {
+      const entry = directoryEntries.find((candidate) => {
+        const key = autoLoadKey(candidate.relativePath)
+        return shouldAutoLoad(candidate) && !queuedAutoLoadKeys.has(key)
+      })
+
+      if (!entry) {
+        return
+      }
+
+      const generation = loadGeneration
+      const loadRevision = revision
+      const key = autoLoadKey(entry.relativePath, generation, loadRevision)
+      const nextQueuedKeys = new Set(queuedAutoLoadKeys)
+      nextQueuedKeys.add(key)
+      queuedAutoLoadKeys = nextQueuedKeys
+      activeAutoLoadCount += 1
+
+      void ensureLoaded(entry, generation, loadRevision).finally(() => {
+        const afterLoadQueuedKeys = new Set(queuedAutoLoadKeys)
+        afterLoadQueuedKeys.delete(key)
+        queuedAutoLoadKeys = afterLoadQueuedKeys
+        activeAutoLoadCount = Math.max(0, activeAutoLoadCount - 1)
+        scheduleOpenEntryLoads()
+      })
+    }
   }
 
   function setCollapsed(path: string, collapsed: boolean) {
@@ -316,6 +367,7 @@
     rebuildVisibleEntries()
   }
 
+  $: directoryEntries, collapsedPaths, entryStates, scheduleOpenEntryLoads()
   $: selectedRelativePath, scrollToEntry(selectedRelativePath)
 </script>
 
