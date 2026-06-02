@@ -608,15 +608,6 @@
     if (viewerSettings.controlledSelection) {
       codeView.setSelectedLines(selectedLineSelection, { notify: false })
     }
-
-    if (selectedRelativePath && codeView.getItem(selectedRelativePath)) {
-      codeView.scrollTo({
-        type: 'item',
-        id: selectedRelativePath,
-        align: 'start',
-        behavior: 'instant',
-      })
-    }
   }
 
   function syncCollapsedSnapshot() {
