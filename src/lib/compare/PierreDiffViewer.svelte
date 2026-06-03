@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { FileDiff } from '@pierre/diffs'
+  import { FileDiff, areOptionsEqual } from '@pierre/diffs'
   import type {
     DiffLineAnnotation,
     DiffTokenEventBaseProps,
@@ -31,6 +31,7 @@
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
+  let renderedOptions: FileDiffOptions<DifflyCommentAnnotation> | null = null
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
   let commentId = 0
@@ -246,17 +247,20 @@
       interactionMessage = ''
     }
 
+    const forceRender = !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions)
+
     if (!fileDiff) {
       fileDiff = new FileDiff<DifflyCommentAnnotation>(nextOptions)
     } else {
       fileDiff.setOptions(nextOptions)
     }
+    renderedOptions = nextOptions
 
     fileDiff.render({
       oldFile: buildFile(leftLabel, text.leftText, text.leftCacheKey, text.leftSha256),
       newFile: buildFile(rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
       containerWrapper: host,
-      forceRender: true,
+      forceRender,
       lineAnnotations: commentAnnotations,
     })
 
@@ -275,6 +279,7 @@
     }
     fileDiff?.cleanUp()
     fileDiff = null
+    renderedOptions = null
   })
 </script>
 

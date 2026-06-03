@@ -2251,7 +2251,9 @@
     rightRootFullPath: rightCompareRoot.fullPath,
   }
 
-  $: textDiffActive = activeDiff?.contentKind === 'text'
+  $: textDiffActive = mode === 'directory'
+    ? directoryEntries.some((entry) => entry.status !== 'unsupported')
+    : activeDiff?.contentKind === 'text'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false
   $: canGoToNextDiff = false

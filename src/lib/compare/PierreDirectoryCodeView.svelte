@@ -67,9 +67,15 @@
   export let viewMode: ViewMode
   export let scrollTargetRevision = 0
   export let toggleEntry: (relativePath: string) => void = () => {}
+  export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
 
   let host: HTMLDivElement | null = null
   let codeView: CodeView<DifflyCommentAnnotation> | null = null
+  let unsubscribeScroll: (() => void) | null = null
+  let visibleRequestFrame: number | null = null
+  let layoutRetryFrame: number | null = null
+  let lastRequestedVisibleKey = ''
+  let lastRenderedItemListKey = ''
   let renderRevision = 0
   let selectedLineSelection: CodeViewLineSelection | null = null
   let commentId = 0
@@ -297,7 +303,12 @@
     const loadedEntry = entryByPath.get(itemId)
     const metadata = document.createElement('span')
     metadata.className = 'diffly-codeview-status-metadata'
-    metadata.textContent = loadedEntry?.loading ? 'Loading...' : statusLabel(loadedEntry?.entry.status)
+    if (loadedEntry?.error) {
+      metadata.textContent = 'Error'
+      metadata.title = loadedEntry.error
+    } else {
+      metadata.textContent = loadedEntry?.loading ? 'Loading...' : statusLabel(loadedEntry?.entry.status)
+    }
     return metadata
   }
 
@@ -311,6 +322,55 @@
 
     node.toggleAttribute('data-diffly-placeholder', placeholderPaths.has(itemId))
     node.toggleAttribute('data-diffly-loading', loadingPaths.has(itemId))
+    node.toggleAttribute('data-diffly-error', Boolean(entryByPath.get(itemId)?.error))
+    scheduleVisibleEntryRequest()
+  }
+
+  function scheduleVisibleEntryRequest() {
+    if (visibleRequestFrame !== null) {
+      return
+    }
+
+    visibleRequestFrame = window.requestAnimationFrame(() => {
+      visibleRequestFrame = null
+      if (!codeView) {
+        return
+      }
+
+      const paths = codeView.getRenderedItems().map((item) => item.id)
+      if (paths.length === 0) {
+        return
+      }
+
+      const key = paths.join('\u0000')
+      if (key === lastRequestedVisibleKey) {
+        return
+      }
+
+      lastRequestedVisibleKey = key
+      requestVisibleEntries(paths)
+    })
+  }
+
+  function syncScrollSubscription() {
+    if (!codeView || unsubscribeScroll) {
+      return
+    }
+
+    unsubscribeScroll = codeView.subscribeToScroll(() => {
+      scheduleVisibleEntryRequest()
+    })
+  }
+
+  function scheduleLayoutRetry() {
+    if (layoutRetryFrame !== null) {
+      return
+    }
+
+    layoutRetryFrame = window.requestAnimationFrame(() => {
+      layoutRetryFrame = null
+      void syncCodeView()
+    })
   }
 
   function buildOptions(): CodeViewOptions<DifflyCommentAnnotation> {
@@ -450,25 +510,47 @@
     }
   }
 
-  function buildPlaceholderFile(entry: DirectoryEntryResult): FileContents {
+  function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff): FileContents {
+    const { entry } = loadedEntry
+    const contents = loadedEntry.error || (loadedEntry.loading ? 'Loading diff...' : '')
+
     return {
       name: entry.relativePath,
-      contents: '',
-      cacheKey: `placeholder:${entry.relativePath}:${entry.status}:${entry.leftSize ?? ''}:${entry.rightSize ?? ''}`,
+      contents,
+      cacheKey: [
+        'placeholder',
+        entry.relativePath,
+        entry.status,
+        entry.leftSize ?? '',
+        entry.rightSize ?? '',
+        contents,
+      ].join('\u0000'),
     }
+  }
+
+  function placeholderVersion(loadedEntry: LoadedDirectoryDiff) {
+    if (loadedEntry.loading) {
+      return 1
+    }
+
+    if (loadedEntry.error) {
+      return 2
+    }
+
+    return loadedEntry.diff ? 3 : 0
   }
 
   function codeViewItemFor(
     loadedEntry: LoadedDirectoryDiff,
   ): CodeViewItem<DifflyCommentAnnotation> | null {
-    const { entry, diff, loading } = loadedEntry
+    const { entry, diff } = loadedEntry
     if (!diff?.text) {
       return {
         id: entry.relativePath,
         type: 'file',
-        file: buildPlaceholderFile(entry),
+        file: buildPlaceholderFile(loadedEntry),
         collapsed: collapsedPaths.has(entry.relativePath),
-        version: loading ? 1 : 0,
+        version: placeholderVersion(loadedEntry),
       }
     }
 
@@ -561,7 +643,7 @@
   }
 
   async function waitForHostLayout(currentRevision: number) {
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < 16; attempt += 1) {
       if (currentRevision !== renderRevision || !host) {
         return false
       }
@@ -575,7 +657,7 @@
       })
     }
 
-    return Boolean(host)
+    return false
   }
 
   async function syncCodeView() {
@@ -586,24 +668,37 @@
       return
     }
 
-    await waitForHostLayout(currentRevision)
+    const hasLayout = await waitForHostLayout(currentRevision)
 
     if (!host || currentRevision !== renderRevision) {
       return
     }
 
+    if (!hasLayout) {
+      scheduleLayoutRetry()
+      return
+    }
+
     const options = buildOptions()
     const items = buildItems()
+    const itemListKey = items.map((item) => `${item.id}:${item.version ?? ''}`).join('\u0000')
+
+    if (itemListKey !== lastRenderedItemListKey) {
+      lastRenderedItemListKey = itemListKey
+      lastRequestedVisibleKey = ''
+    }
 
     if (!codeView) {
       codeView = new CodeView<DifflyCommentAnnotation>(options)
       codeView.setup(host)
+      syncScrollSubscription()
     } else {
       codeView.setOptions(options)
     }
 
     codeView.setItems(items)
     syncCollapsedSnapshot()
+    scheduleVisibleEntryRequest()
 
     if (viewerSettings.controlledSelection) {
       codeView.setSelectedLines(selectedLineSelection, { notify: false })
@@ -646,6 +741,7 @@
         align: 'start',
         behavior: 'instant',
       })
+      scheduleVisibleEntryRequest()
     }
   }
 
@@ -670,6 +766,18 @@
       window.clearTimeout(interactionMessageTimer)
     }
 
+    if (visibleRequestFrame !== null) {
+      window.cancelAnimationFrame(visibleRequestFrame)
+      visibleRequestFrame = null
+    }
+
+    if (layoutRetryFrame !== null) {
+      window.cancelAnimationFrame(layoutRetryFrame)
+      layoutRetryFrame = null
+    }
+
+    unsubscribeScroll?.()
+    unsubscribeScroll = null
     codeView?.cleanUp()
     codeView = null
   })
@@ -679,16 +787,3 @@
 {#if interactionMessage}
   <div class="pierre-diff-feedback" role="status">{interactionMessage}</div>
 {/if}
-
-<style>
-  .directory-code-view-host {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .directory-code-view-host::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-    display: none;
-  }
-</style>

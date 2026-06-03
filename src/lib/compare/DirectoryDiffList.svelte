@@ -51,11 +51,18 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
+  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 12
+  const DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS = 8
 
   let entriesSignature = ''
   let loadGeneration = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
+  let entryByPath = new Map<string, DirectoryEntryResult>()
+  let loadQueue: string[] = []
+  let loadQueueKeys = new Set<string>()
+  let activeLoadCount = 0
   let scrollTargetRevision = 0
   let textEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
@@ -89,6 +96,8 @@
 
     collapsedPaths = nextCollapsedPaths
     entryStates = nextStates
+    loadQueue = loadQueue.filter((path) => nextPaths.has(path))
+    loadQueueKeys = new Set(loadQueue)
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
@@ -150,6 +159,10 @@
       return
     }
 
+    if (state?.error && state.revision === loadRevision) {
+      return
+    }
+
     if (state?.loading && state.revision === loadRevision && state.generation === generation) {
       return
     }
@@ -190,19 +203,141 @@
     }
   }
 
+  function scheduleEntryLoad(entry: DirectoryEntryResult | null | undefined, priority = false) {
+    if (!entry || entry.status === 'unsupported') {
+      return
+    }
+
+    const path = entryKey(entry)
+    const state = getEntryState(path)
+
+    if (state?.revision === revision && (state.diff || state.error || state.loading)) {
+      return
+    }
+
+    const nextQueue = loadQueue.filter((queuedPath) => queuedPath !== path)
+    if (priority) {
+      nextQueue.unshift(path)
+    } else if (!loadQueueKeys.has(path)) {
+      nextQueue.push(path)
+    } else {
+      return
+    }
+
+    loadQueue = nextQueue
+    loadQueueKeys = new Set(nextQueue)
+    pumpLoadQueue()
+  }
+
+  function takeNextQueuedEntry() {
+    while (loadQueue.length > 0) {
+      const [nextPath, ...remainingQueue] = loadQueue
+      loadQueue = remainingQueue
+      loadQueueKeys = new Set(remainingQueue)
+
+      const entry = entryByPath.get(nextPath)
+      if (entry && entry.status !== 'unsupported') {
+        return entry
+      }
+    }
+
+    return null
+  }
+
+  function pumpLoadQueue() {
+    while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
+      const entry = takeNextQueuedEntry()
+      if (!entry) {
+        return
+      }
+
+      const generation = loadGeneration
+      const loadRevision = revision
+      activeLoadCount += 1
+
+      void ensureLoaded(entry, generation, loadRevision).finally(() => {
+        if (generation === loadGeneration) {
+          activeLoadCount = Math.max(0, activeLoadCount - 1)
+          pumpLoadQueue()
+        }
+      })
+    }
+  }
+
+  function scheduleEntryWindow(path: string, priority = false) {
+    if (!path) {
+      return
+    }
+
+    const centerIndex = directoryEntries.findIndex((entry) => entry.relativePath === path)
+    if (centerIndex < 0) {
+      return
+    }
+
+    const startIndex = Math.max(0, centerIndex - DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS)
+    const endIndex = Math.min(
+      directoryEntries.length - 1,
+      centerIndex + DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS,
+    )
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      scheduleEntryLoad(directoryEntries[index], priority && index === centerIndex)
+    }
+  }
+
+  function scheduleInitialLoads() {
+    let scheduledCount = 0
+
+    for (const entry of directoryEntries) {
+      if (scheduledCount >= DIRECTORY_DIFF_INITIAL_LOAD_COUNT) {
+        return
+      }
+
+      if (entry.status !== 'unsupported') {
+        scheduleEntryLoad(entry)
+        scheduledCount += 1
+      }
+    }
+  }
+
+  function scheduleActiveLoads() {
+    const selectedEntry = selectedRelativePath
+      ? entryByPath.get(selectedRelativePath)
+      : directoryEntries.find((entry) => entry.status !== 'unsupported')
+
+    scheduleInitialLoads()
+    if (selectedEntry) {
+      scheduleEntryWindow(selectedEntry.relativePath, true)
+    }
+  }
+
+  function requestVisibleEntries(paths: string[]) {
+    const seenPaths = new Set<string>()
+
+    for (const path of paths) {
+      if (seenPaths.has(path)) {
+        continue
+      }
+
+      seenPaths.add(path)
+      scheduleEntryWindow(path)
+      scheduleEntryLoad(entryByPath.get(path), true)
+    }
+  }
+
   function scrollToEntry(path: string) {
     if (!path) {
       return
     }
 
-    const entry = directoryEntries.find((candidate) => candidate.relativePath === path)
+    const entry = entryByPath.get(path)
     if (!entry) {
       return
     }
 
     scrollTargetRevision += 1
     if (!isCollapsed(entry.relativePath)) {
-      void ensureLoaded(entry)
+      scheduleEntryWindow(entry.relativePath, true)
     }
   }
 
@@ -210,12 +345,12 @@
     const nextCollapsed = !isCollapsed(entry.relativePath)
     setCollapsed(entry.relativePath, nextCollapsed)
     if (!nextCollapsed) {
-      void ensureLoaded(entry)
+      scheduleEntryLoad(entry, true)
     }
   }
 
   function toggleEntryByPath(path: string) {
-    const entry = directoryEntries.find((candidate) => candidate.relativePath === path)
+    const entry = entryByPath.get(path)
     if (!entry) {
       return
     }
@@ -226,37 +361,45 @@
   function rebuildVisibleEntries() {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     let nextPendingEntryCount = 0
-    const selectedEntry = selectedRelativePath
-      ? directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)
-      : directoryEntries.find((entry) => entry.status !== 'unsupported')
 
-    if (selectedEntry && selectedEntry.status !== 'unsupported') {
-      const state = getEntryState(selectedEntry.relativePath)
+    for (const entry of directoryEntries) {
+      const state = getEntryState(entry.relativePath)
+
+      if (entry.status === 'unsupported') {
+        nextTextEntries.push({
+          entry,
+          diff: null,
+          error: 'No text diff is available for this file.',
+          loading: false,
+        })
+        continue
+      }
+
+      if (state?.loading) {
+        nextPendingEntryCount += 1
+      }
 
       if (state?.diff?.contentKind === 'text' && state.diff.text) {
         nextTextEntries.push({
-          entry: selectedEntry,
+          entry,
           diff: state.diff,
           error: '',
           loading: state.loading,
         })
       } else if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
         nextTextEntries.push({
-          entry: selectedEntry,
+          entry,
           diff: null,
           error: state.error || 'No text diff is available for this file.',
           loading: false,
         })
       } else {
         nextTextEntries.push({
-          entry: selectedEntry,
+          entry,
           diff: null,
           error: '',
           loading: state?.loading ?? false,
         })
-        if (state?.loading) {
-          nextPendingEntryCount += 1
-        }
       }
     }
 
@@ -280,13 +423,19 @@
   }
 
   $: {
-    const nextSignature = `${revision}:${directoryEntries.map((entry) => entry.relativePath).join('\u0000')}`
+    directoryEntries
+    const nextSignature = String(revision)
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
       loadGeneration += 1
-      syncEntryCollections()
+      loadQueue = []
+      loadQueueKeys = new Set()
+      activeLoadCount = 0
     }
+    syncEntryCollections()
   }
+
+  $: entryByPath = new Map(directoryEntries.map((entry) => [entry.relativePath, entry]))
 
   $: {
     directoryEntries
@@ -294,6 +443,8 @@
     entryStates
     rebuildVisibleEntries()
   }
+
+  $: directoryEntries, entryByPath, selectedRelativePath, revision, loadGeneration, scheduleActiveLoads()
 
   $: selectedRelativePath, scrollToEntry(selectedRelativePath)
 </script>
@@ -320,6 +471,7 @@
         {viewMode}
         {scrollTargetRevision}
         toggleEntry={toggleEntryByPath}
+        {requestVisibleEntries}
       />
     {:else if pendingEntryCount > 0}
       <div class="compare-viewer-state">
