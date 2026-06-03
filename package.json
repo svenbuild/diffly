@@ -15,6 +15,7 @@
     "test": "npm run check",
     "perf:backend": "node scripts/perf-backend.mjs",
     "perf:directory-aggregation": "node scripts/perf-directory-aggregation.mjs",
+    "perf:directory-list-state": "node scripts/perf-directory-list-state.mjs",
     "perf:directory-stream": "node scripts/perf-directory-stream.mjs",
     "perf:explorer": "node scripts/perf-explorer.mjs",
     "electron:dev": "electron-vite dev",

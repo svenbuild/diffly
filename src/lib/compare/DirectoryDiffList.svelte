@@ -102,13 +102,17 @@
       return
     }
 
+    const previousStates = entryStates
     const nextStates = new Map(entryStates)
+    const changedPaths: string[] = []
     for (const [path, state] of pendingEntryStateUpdates) {
       nextStates.set(path, state)
+      changedPaths.push(path)
     }
 
     pendingEntryStateUpdates = new Map()
     entryStates = nextStates
+    updateVisibleEntriesForStatePaths(changedPaths, previousStates, nextStates)
   }
 
   function scheduleEntryStateFlush() {
@@ -120,12 +124,17 @@
   }
 
   function syncEntryCollections() {
-    const nextPaths = new Set(directoryEntries.map((entry) => entryKey(entry)))
+    const nextPaths = new Set<string>()
+    const nextEntryByPath = new Map<string, DirectoryEntryResult>()
+    const nextEntryIndexByPath = new Map<string, number>()
     const nextCollapsedPaths = new Set<string>()
     const nextStates = new Map<string, EntryDiffState>()
 
-    for (const entry of directoryEntries) {
+    for (const [index, entry] of directoryEntries.entries()) {
       const key = entryKey(entry)
+      nextPaths.add(key)
+      nextEntryByPath.set(key, entry)
+      nextEntryIndexByPath.set(key, index)
 
       const state = entryStates.get(key)
       if (state && entryStateIsCurrent(state)) {
@@ -160,6 +169,9 @@
     loadedEntryCache = new Map(
       Array.from(loadedEntryCache).filter(([path]) => nextPaths.has(path)),
     )
+    entryByPath = nextEntryByPath
+    entryIndexByPath = nextEntryIndexByPath
+    rebuildVisibleEntries(nextStates)
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
@@ -533,55 +545,108 @@
     toggleEntry(entry)
   }
 
-  function rebuildVisibleEntries() {
+  function buildLoadedEntry(
+    entry: DirectoryEntryResult,
+    state: EntryDiffState | null,
+    cached = loadedEntryCache.get(entry.relativePath),
+  ) {
+    const renderKey = buildLoadedEntryRenderKey(entry, state)
+    const createEntry = (
+      diff: FileDiffResult | null,
+      error: string,
+      itemLoading: boolean,
+    ) =>
+      cached?.renderKey === renderKey
+        ? cached
+        : {
+            entry,
+            diff,
+            error,
+            loading: itemLoading,
+            renderKey,
+          }
+
+    if (entry.status === 'unsupported') {
+      return createEntry(null, 'No text diff is available for this file.', false)
+    }
+
+    if (state?.diff?.contentKind === 'text' && state.diff.text) {
+      return createEntry(state.diff, '', state.loading)
+    }
+
+    if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
+      return createEntry(null, state.error || 'No text diff is available for this file.', false)
+    }
+
+    return createEntry(null, '', state?.loading ?? false)
+  }
+
+  function entryStateIsPending(state: EntryDiffState | null | undefined) {
+    return Boolean(state && entryStateIsCurrent(state) && state.loading)
+  }
+
+  function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     const nextLoadedEntryCache = new Map<string, LoadedDirectoryDiff>()
     let nextPendingEntryCount = 0
 
     for (const entry of directoryEntries) {
-      const state = getEntryState(entry.relativePath)
-      const renderKey = buildLoadedEntryRenderKey(entry, state)
-      const cached = loadedEntryCache.get(entry.relativePath)
-      const pushLoadedEntry = (
-        diff: FileDiffResult | null,
-        error: string,
-        itemLoading: boolean,
-      ) => {
-        const nextEntry =
-          cached?.renderKey === renderKey
-            ? cached
-            : {
-                entry,
-                diff,
-                error,
-                loading: itemLoading,
-                renderKey,
-              }
-        nextLoadedEntryCache.set(entry.relativePath, nextEntry)
-        nextTextEntries.push(nextEntry)
-      }
-
-      if (entry.status === 'unsupported') {
-        pushLoadedEntry(null, 'No text diff is available for this file.', false)
-        continue
-      }
-
-      if (state?.loading) {
+      const state = states.get(entry.relativePath) ?? null
+      if (entryStateIsPending(state)) {
         nextPendingEntryCount += 1
       }
 
-      if (state?.diff?.contentKind === 'text' && state.diff.text) {
-        pushLoadedEntry(state.diff, '', state.loading)
-      } else if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
-        pushLoadedEntry(null, state.error || 'No text diff is available for this file.', false)
-      } else {
-        pushLoadedEntry(null, '', state?.loading ?? false)
-      }
+      const loadedEntry = buildLoadedEntry(entry, state)
+      nextLoadedEntryCache.set(entry.relativePath, loadedEntry)
+      nextTextEntries.push(loadedEntry)
     }
 
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
     pendingEntryCount = nextPendingEntryCount
+  }
+
+  function updateVisibleEntriesForStatePaths(
+    paths: string[],
+    previousStates: Map<string, EntryDiffState>,
+    nextStates: Map<string, EntryDiffState>,
+  ) {
+    if (paths.length === 0 || textEntries.length === 0) {
+      return
+    }
+
+    const nextTextEntries = [...textEntries]
+    const nextLoadedEntryCache = new Map(loadedEntryCache)
+    let nextPendingEntryCount = pendingEntryCount
+    let changed = false
+
+    for (const path of paths) {
+      const entry = entryByPath.get(path)
+      const index = entryIndexByPath.get(path)
+      if (!entry || index === undefined) {
+        continue
+      }
+
+      const previousPending = entryStateIsPending(previousStates.get(path))
+      const nextState = nextStates.get(path) ?? null
+      const nextPending = entryStateIsPending(nextState)
+      if (previousPending !== nextPending) {
+        nextPendingEntryCount += nextPending ? 1 : -1
+      }
+
+      const loadedEntry = buildLoadedEntry(entry, nextState, nextLoadedEntryCache.get(path))
+      nextLoadedEntryCache.set(path, loadedEntry)
+      nextTextEntries[index] = loadedEntry
+      changed = true
+    }
+
+    if (!changed) {
+      return
+    }
+
+    pendingEntryCount = Math.max(0, nextPendingEntryCount)
+    loadedEntryCache = nextLoadedEntryCache
+    textEntries = nextTextEntries
   }
 
   function buildLoadedEntryRenderKey(
@@ -643,16 +708,6 @@
       activeLoadCount = 0
     }
     syncEntryCollections()
-  }
-
-  $: entryByPath = new Map(directoryEntries.map((entry) => [entry.relativePath, entry]))
-  $: entryIndexByPath = new Map(directoryEntries.map((entry, index) => [entry.relativePath, index]))
-
-  $: {
-    directoryEntries
-    selectedRelativePath
-    entryStates
-    rebuildVisibleEntries()
   }
 
   $: directoryEntries,
