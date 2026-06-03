@@ -1603,8 +1603,11 @@
     }
 
     activeDetailRequestId += 1
+    compareRevision += 1
     diffCache.clearDetailDiffs()
     cancelBackgroundDiffPreload()
+    stopDirectoryComparePolling(true)
+    loading = false
     detailLoading = false
     compareDirtyReason = null
     mode = nextMode
@@ -1621,6 +1624,9 @@
 
   function goToSetup() {
     activeDetailRequestId += 1
+    compareRevision += 1
+    stopDirectoryComparePolling(false)
+    loading = false
     detailLoading = false
     cancelBackgroundDiffPreload()
     compareDirtyReason = null

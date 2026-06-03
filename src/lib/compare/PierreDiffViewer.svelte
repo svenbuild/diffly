@@ -39,6 +39,9 @@
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
   let renderedTextKey = ''
+  let renderedAnnotationsKey = ''
+  let leftFileCache: { key: string; file: FileContents } | null = null
+  let rightFileCache: { key: string; file: FileContents } | null = null
 
   function fileName(label: string) {
     return label.split(/[\\/]/).pop() || label || 'file.txt'
@@ -68,6 +71,17 @@
     }
 
     return `${startSide} line ${startLine} to ${endSide} line ${endLine}`
+  }
+
+  function annotationKey(annotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>>) {
+    return annotations
+      .map((annotation) => [
+        annotation.side,
+        annotation.lineNumber,
+        annotation.metadata.id,
+        annotation.metadata.text,
+      ].join(':'))
+      .join('\u0001')
   }
 
   function setInteractionMessage(message: string) {
@@ -218,12 +232,37 @@
     }
   }
 
-  function buildFile(label: string, contents: string, cacheKey: string | null, sha256: string | null): FileContents {
-    return {
+  function buildFile(
+    side: 'left' | 'right',
+    label: string,
+    contents: string,
+    cacheKey: string | null,
+    sha256: string | null,
+  ): FileContents {
+    const key = [
+      label,
+      cacheKey ?? sha256 ?? '',
+      contents.length,
+    ].join('\u0000')
+    const cache = side === 'left' ? leftFileCache : rightFileCache
+
+    if (cache?.key === key && cache.file.contents === contents) {
+      return cache.file
+    }
+
+    const file = {
       name: fileName(label),
       contents,
       cacheKey: cacheKey ?? sha256 ?? `${label}:${contents.length}`,
     }
+
+    if (side === 'left') {
+      leftFileCache = { key, file }
+    } else {
+      rightFileCache = { key, file }
+    }
+
+    return file
   }
 
   async function renderDiff() {
@@ -240,25 +279,39 @@
 
     const nextOptions = buildOptions()
     const nextTextKey = textKey()
-    if (nextTextKey !== renderedTextKey) {
+    const textChanged = nextTextKey !== renderedTextKey
+    if (textChanged) {
       renderedTextKey = nextTextKey
+      renderedAnnotationsKey = ''
       selectedLineRange = null
       commentAnnotations = []
       interactionMessage = ''
     }
 
     const forceRender = !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions)
+    const nextAnnotationsKey = annotationKey(commentAnnotations)
+    const annotationsChanged = nextAnnotationsKey !== renderedAnnotationsKey
 
     if (!fileDiff) {
       fileDiff = new FileDiff<DifflyCommentAnnotation>(nextOptions)
-    } else {
+    } else if (forceRender) {
       fileDiff.setOptions(nextOptions)
     }
     renderedOptions = nextOptions
 
+    if (!forceRender && !annotationsChanged && !textChanged) {
+      if (viewerSettings.controlledSelection) {
+        fileDiff.setSelectedLines(selectedLineRange, { notify: false })
+      }
+      applyCollapsedState()
+      return
+    }
+
+    renderedAnnotationsKey = nextAnnotationsKey
+
     fileDiff.render({
-      oldFile: buildFile(leftLabel, text.leftText, text.leftCacheKey, text.leftSha256),
-      newFile: buildFile(rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
+      oldFile: buildFile('left', leftLabel, text.leftText, text.leftCacheKey, text.leftSha256),
+      newFile: buildFile('right', rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
       containerWrapper: host,
       forceRender,
       lineAnnotations: commentAnnotations,

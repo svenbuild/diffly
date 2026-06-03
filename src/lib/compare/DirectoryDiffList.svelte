@@ -68,6 +68,9 @@
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let entryIndexByPath = new Map<string, number>()
   let loadedEntryCache = new Map<string, LoadedDirectoryDiff>()
+  let changedEntryPaths: string[] = []
+  let changedEntryRevision = 0
+  let entryStructureRevision = 0
   let priorityLoadQueue: string[] = []
   let normalLoadQueue: string[] = []
   let priorityLoadQueueHead = 0
@@ -171,7 +174,18 @@
     )
     entryByPath = nextEntryByPath
     entryIndexByPath = nextEntryIndexByPath
+    changedEntryPaths = []
+    entryStructureRevision += 1
     rebuildVisibleEntries(nextStates)
+  }
+
+  function publishChangedEntryPaths(paths: string[]) {
+    if (paths.length === 0) {
+      return
+    }
+
+    changedEntryPaths = paths
+    changedEntryRevision += 1
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
@@ -647,6 +661,7 @@
     pendingEntryCount = Math.max(0, nextPendingEntryCount)
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
+    publishChangedEntryPaths(paths)
   }
 
   function buildLoadedEntryRenderKey(
@@ -742,6 +757,9 @@
         {resolvedThemeMode}
         {viewMode}
         {scrollTargetRevision}
+        {changedEntryPaths}
+        {changedEntryRevision}
+        {entryStructureRevision}
         toggleEntry={toggleEntryByPath}
         {requestVisibleEntries}
         pauseDiffLoading={pauseDirectoryDiffLoads}

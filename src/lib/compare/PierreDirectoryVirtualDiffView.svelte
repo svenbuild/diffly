@@ -99,6 +99,9 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let scrollTargetRevision = 0
+  export let changedEntryPaths: string[] = []
+  export let changedEntryRevision = 0
+  export let entryStructureRevision = 0
   export let toggleEntry: (relativePath: string) => void = () => {}
   export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
   export let pauseDiffLoading: () => void = () => {}
@@ -120,6 +123,10 @@
   let lastRenderedItemListKey = ''
   let lastOptionsKey = ''
   let lastWorkerOptionsKey = ''
+  let lastEntryStructureRevision = -1
+  let lastChangedEntryRevision = 0
+  let lastCollapsedPaths: Set<string> | null = null
+  let lastCommentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>> | null = null
   let appliedScrollTargetRevision = 0
   let userScrollCorrectionSuppressedUntil = 0
   let programmaticScrollAllowedUntil = 0
@@ -137,6 +144,10 @@
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
   const emptyAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
+  let renderedItems: Array<CodeViewItem<DifflyCommentAnnotation>> = []
+  let itemIndexByPath = new Map<string, number>()
+  let itemInputIndexByPath = new Map<string, number>()
+  let itemKeyByPath = new Map<string, string>()
   const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 1800
   const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 3600
   const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 2.5
@@ -1007,6 +1018,10 @@
     }
   }
 
+  function codeViewItemKey(item: CodeViewItem<DifflyCommentAnnotation>) {
+    return `${item.id}:${item.type}:${item.version ?? 0}`
+  }
+
   function pruneItemCaches(activePaths: Set<string>) {
     for (const path of parsedDiffs.keys()) {
       if (!activePaths.has(path)) {
@@ -1024,15 +1039,19 @@
   function buildItems() {
     const items: Array<CodeViewItem<DifflyCommentAnnotation>> = []
     const itemKeyParts: string[] = []
+    const nextItemIndexByPath = new Map<string, number>()
+    const nextItemInputIndexByPath = new Map<string, number>()
+    const nextItemKeyByPath = new Map<string, string>()
     const nextEntryByPath = new Map<string, LoadedDirectoryDiff>()
     const nextPlaceholderPaths = new Set<string>()
     const nextLoadingPaths = new Set<string>()
     const activePaths = new Set<string>()
 
-    for (const loadedEntry of entries) {
+    for (const [entryInputIndex, loadedEntry] of entries.entries()) {
       const { entry, diff, loading } = loadedEntry
       activePaths.add(entry.relativePath)
       nextEntryByPath.set(entry.relativePath, loadedEntry)
+      nextItemInputIndexByPath.set(entry.relativePath, entryInputIndex)
 
       if (!diff?.text) {
         nextPlaceholderPaths.add(entry.relativePath)
@@ -1044,8 +1063,11 @@
 
       const item = codeViewItemFor(loadedEntry)
       if (item) {
+        const itemKey = codeViewItemKey(item)
+        nextItemIndexByPath.set(entry.relativePath, items.length)
+        nextItemKeyByPath.set(entry.relativePath, itemKey)
         items.push(item)
-        itemKeyParts.push(`${item.id}:${item.type}:${item.version ?? 0}`)
+        itemKeyParts.push(itemKey)
       }
     }
 
@@ -1053,11 +1075,99 @@
     entryByPath = nextEntryByPath
     placeholderPaths = nextPlaceholderPaths
     loadingPaths = nextLoadingPaths
+    renderedItems = items
+    itemIndexByPath = nextItemIndexByPath
+    itemInputIndexByPath = nextItemInputIndexByPath
+    itemKeyByPath = nextItemKeyByPath
 
     return {
       itemListKey: itemKeyParts.join('\u0000'),
       items,
     }
+  }
+
+  function syncChangedItems(paths: string[]) {
+    if (!codeView || paths.length === 0 || renderedItems.length === 0) {
+      return false
+    }
+
+    let nextRenderedItems = renderedItems
+    let nextEntryByPath = entryByPath
+    let nextPlaceholderPaths = placeholderPaths
+    let nextLoadingPaths = loadingPaths
+    let nextItemKeyByPath = itemKeyByPath
+    let changed = false
+
+    const ensureCollections = () => {
+      if (nextRenderedItems === renderedItems) {
+        nextRenderedItems = [...renderedItems]
+        nextEntryByPath = new Map(entryByPath)
+        nextPlaceholderPaths = new Set(placeholderPaths)
+        nextLoadingPaths = new Set(loadingPaths)
+        nextItemKeyByPath = new Map(itemKeyByPath)
+      }
+    }
+
+    for (const path of new Set(paths)) {
+      const itemIndex = itemIndexByPath.get(path)
+      const inputIndex = itemInputIndexByPath.get(path)
+
+      if (itemIndex === undefined || inputIndex === undefined) {
+        return false
+      }
+
+      const loadedEntry = entries[inputIndex]
+      if (!loadedEntry || loadedEntry.entry.relativePath !== path) {
+        return false
+      }
+
+      ensureCollections()
+      nextEntryByPath.set(path, loadedEntry)
+
+      if (loadedEntry.diff?.text) {
+        nextPlaceholderPaths.delete(path)
+      } else {
+        nextPlaceholderPaths.add(path)
+      }
+
+      if (loadedEntry.loading) {
+        nextLoadingPaths.add(path)
+      } else {
+        nextLoadingPaths.delete(path)
+      }
+
+      const item = codeViewItemFor(loadedEntry)
+      if (!item) {
+        return false
+      }
+
+      const itemKey = codeViewItemKey(item)
+      if (itemKey === nextItemKeyByPath.get(path)) {
+        continue
+      }
+
+      if (!codeView.updateItem(item)) {
+        return false
+      }
+
+      nextRenderedItems[itemIndex] = item
+      nextItemKeyByPath.set(path, itemKey)
+      changed = true
+    }
+
+    if (!changed) {
+      entryByPath = nextEntryByPath
+      placeholderPaths = nextPlaceholderPaths
+      loadingPaths = nextLoadingPaths
+      return true
+    }
+
+    renderedItems = nextRenderedItems
+    entryByPath = nextEntryByPath
+    placeholderPaths = nextPlaceholderPaths
+    loadingPaths = nextLoadingPaths
+    itemKeyByPath = nextItemKeyByPath
+    return true
   }
 
   function scheduleVisibleEntryRequest(delayMs = DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS) {
@@ -1111,7 +1221,7 @@
       addPath(item.id)
     }
 
-    if (!host) {
+    if (paths.length > 0 || !host) {
       return paths
     }
 
@@ -1260,7 +1370,17 @@
     syncWorkerRenderOptions()
     const nextOptionsKey = optionsKey()
     const options = buildOptions()
-    const { itemListKey, items } = buildItems()
+    const optionsChanged = nextOptionsKey !== lastOptionsKey
+    const structureChanged = entryStructureRevision !== lastEntryStructureRevision
+    const collapsedChanged = collapsedPaths !== lastCollapsedPaths
+    const annotationsChanged = commentAnnotations !== lastCommentAnnotations
+    const canPatchChangedItems =
+      codeView &&
+      !structureChanged &&
+      !collapsedChanged &&
+      !annotationsChanged &&
+      changedEntryRevision !== lastChangedEntryRevision &&
+      changedEntryPaths.length > 0
 
     if (!codeView) {
       codeView = new CodeView<DifflyCommentAnnotation>(options, getWorkerPool())
@@ -1268,7 +1388,7 @@
       codeView.setup(host)
       lastOptionsKey = nextOptionsKey
       syncScrollSubscription()
-    } else if (nextOptionsKey !== lastOptionsKey) {
+    } else if (optionsChanged) {
       syncCodeViewVirtualization(codeView)
       lastOptionsKey = nextOptionsKey
       codeView.setOptions(options)
@@ -1276,6 +1396,21 @@
     } else {
       syncCodeViewVirtualization(codeView)
     }
+
+    if (canPatchChangedItems && syncChangedItems(changedEntryPaths)) {
+      lastChangedEntryRevision = changedEntryRevision
+      scheduleVisibleEntryRequest()
+      if (viewerSettings.controlledSelection) {
+        codeView.setSelectedLines(selectedLineSelection, { notify: false })
+      }
+      return
+    }
+
+    const { itemListKey, items } = buildItems()
+    lastEntryStructureRevision = entryStructureRevision
+    lastChangedEntryRevision = changedEntryRevision
+    lastCollapsedPaths = collapsedPaths
+    lastCommentAnnotations = commentAnnotations
 
     if (itemListKey !== lastRenderedItemListKey) {
       lastRenderedItemListKey = itemListKey
