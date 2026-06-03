@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:startDirectoryCompare', { leftPath, rightPath, options }),
   pollDirectoryCompare: (jobId: string) =>
     invoke('diffly:pollDirectoryCompare', { jobId }),
+  cancelDirectoryCompare: (jobId: string) =>
+    invoke('diffly:cancelDirectoryCompare', { jobId }),
   openCompareItem: (
     leftBase: string,
     rightBase: string,

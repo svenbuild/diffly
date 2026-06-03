@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { FileTree, prepareFileTreeInput, preparePresortedFileTreeInput } from '@pierre/trees'
-  import type { FileTreeOptions } from '@pierre/trees'
+  import type { FileTreeOptions, GitStatusEntry } from '@pierre/trees'
   import type { AppearanceSettings } from '../theme'
   import { buildPierreTreeUnsafeCss } from '../theme/pierre'
   import type { CompareTreeSettings, DirectoryEntryResult, EntryStatus } from '../types'
@@ -18,6 +18,9 @@
   let host: HTMLDivElement | null = null
   let fileTree: FileTree | null = null
   let renderVersion = 0
+  let renderedStructureKey = ''
+  let renderedPathKey = ''
+  let renderedStatusKey = ''
 
   $: visibleEntries = directoryEntries
   $: entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
@@ -42,7 +45,20 @@
     return preparePresortedFileTreeInput([...paths].sort())
   }
 
-  function buildOptions(paths: string[]): FileTreeOptions {
+  function buildGitStatus(entries: DirectoryEntryResult[]): GitStatusEntry[] {
+    return entries.map((entry) => ({
+      path: entry.relativePath,
+      status: entry.status === 'modified'
+        ? 'modified'
+        : entry.status === 'leftOnly'
+          ? 'deleted'
+          : entry.status === 'rightOnly'
+            ? 'added'
+            : 'ignored',
+    }))
+  }
+
+  function buildOptions(paths: string[], selectedPath: string): FileTreeOptions {
     return {
       preparedInput: buildPreparedInput(paths, treeSettings),
       density: resolveDensity(treeSettings),
@@ -51,7 +67,7 @@
       fileTreeSearchMode: treeSettings.searchMode,
       initialExpansion: resolveInitialExpansion(treeSettings),
       initialExpandedPaths: treeSettings.initialExpandedPaths,
-      initialSelectedPaths: selectedRelativePath ? [selectedRelativePath] : [],
+      initialSelectedPaths: selectedPath ? [selectedPath] : [],
       search: treeSettings.search,
       searchFakeFocus: treeSettings.searchFakeFocus,
       searchBlurBehavior: treeSettings.searchBlurBehavior,
@@ -62,16 +78,7 @@
       dragAndDrop: treeSettings.dragAndDrop,
       renaming: treeSettings.renaming,
       unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings, resolvedThemeMode),
-      gitStatus: visibleEntries.map((entry) => ({
-        path: entry.relativePath,
-        status: entry.status === 'modified'
-          ? 'modified'
-          : entry.status === 'leftOnly'
-            ? 'deleted'
-            : entry.status === 'rightOnly'
-              ? 'added'
-              : 'ignored',
-      })),
+      gitStatus: buildGitStatus(visibleEntries),
       renderRowDecoration: ({ item }) => {
         const entry = entryByPath.get(item.path)
         if (!entry) {
@@ -92,7 +99,62 @@
     }
   }
 
-  async function renderTree() {
+  function treeStructureKey() {
+    return JSON.stringify({
+      treeSettings,
+      appearanceSettings,
+      resolvedThemeMode,
+    })
+  }
+
+  function pathKey(entries: DirectoryEntryResult[]) {
+    return entries.map((entry) => entry.relativePath).join('\u0000')
+  }
+
+  function statusKey(entries: DirectoryEntryResult[]) {
+    return entries.map((entry) => `${entry.relativePath}:${entry.status}`).join('\u0000')
+  }
+
+  function resetRenderedKeys() {
+    renderedStructureKey = ''
+    renderedPathKey = ''
+    renderedStatusKey = ''
+  }
+
+  function selectCurrentPath(scrollToSelection = true) {
+    if (!fileTree) {
+      return
+    }
+
+    if (!selectedRelativePath) {
+      for (const selectedPath of fileTree.getSelectedPaths()) {
+        fileTree.getItem(selectedPath)?.deselect()
+      }
+      return
+    }
+
+    const item = fileTree.getItem(selectedRelativePath)
+    if (!item) {
+      return
+    }
+
+    for (const selectedPath of fileTree.getSelectedPaths()) {
+      if (selectedPath !== selectedRelativePath) {
+        fileTree.getItem(selectedPath)?.deselect()
+      }
+    }
+
+    if (!item.isSelected()) {
+      item.select()
+    }
+
+    fileTree.focusPath(selectedRelativePath)
+    if (scrollToSelection) {
+      fileTree.scrollToPath(selectedRelativePath, { focus: false, offset: 'nearest' })
+    }
+  }
+
+  async function syncTreeData() {
     if (!host) {
       return
     }
@@ -105,22 +167,44 @@
     }
 
     const paths = visibleEntries.map((entry) => entry.relativePath)
+    const nextStructureKey = treeStructureKey()
+    const nextPathKey = pathKey(visibleEntries)
+    const nextStatusKey = statusKey(visibleEntries)
 
-    fileTree?.cleanUp()
-    fileTree = new FileTree(buildOptions(paths))
-    fileTree.render({ containerWrapper: host })
-
-    if (selectedRelativePath && paths.includes(selectedRelativePath)) {
-      fileTree.focusPath(selectedRelativePath)
-      fileTree.scrollToPath(selectedRelativePath, { focus: false, offset: 'nearest' })
+    if (!fileTree || nextStructureKey !== renderedStructureKey) {
+      fileTree?.cleanUp()
+      fileTree = new FileTree(buildOptions(paths, selectedRelativePath))
+      fileTree.render({ containerWrapper: host })
+      renderedStructureKey = nextStructureKey
+      renderedPathKey = nextPathKey
+      renderedStatusKey = nextStatusKey
+      selectCurrentPath()
+      return
     }
+
+    if (nextPathKey !== renderedPathKey) {
+      fileTree.resetPaths(paths, {
+        preparedInput: buildPreparedInput(paths, treeSettings),
+        initialExpandedPaths: treeSettings.initialExpandedPaths,
+      })
+      renderedPathKey = nextPathKey
+    }
+
+    if (nextStatusKey !== renderedStatusKey) {
+      fileTree.setGitStatus(buildGitStatus(visibleEntries))
+      renderedStatusKey = nextStatusKey
+    }
+
+    selectCurrentPath()
   }
 
-  $: host, visibleEntries, selectedRelativePath, treeSettings, appearanceSettings, resolvedThemeMode, void renderTree()
+  $: host, visibleEntries, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
+  $: selectedRelativePath, selectCurrentPath()
 
   onDestroy(() => {
     fileTree?.cleanUp()
     fileTree = null
+    resetRenderedKeys()
   })
 </script>
 

@@ -63,6 +63,9 @@ export const startDirectoryCompare = (
 export const pollDirectoryCompare = (jobId: string) =>
   window.diffly.pollDirectoryCompare(jobId)
 
+export const cancelDirectoryCompare = (jobId: string) =>
+  window.diffly.cancelDirectoryCompare(jobId)
+
 export const openCompareItem = (
   leftBase: string,
   rightBase: string,

@@ -2,6 +2,7 @@ import { app, dialog, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import type { Stats } from 'node:fs'
 import {
   mkdir,
   open,
@@ -34,6 +35,12 @@ const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
 const DIRECTORY_COMPARE_CONCURRENCY = 8
+const DIRECTORY_POLL_UPDATE_LIMIT = 512
+const DIRECTORY_JOB_RETENTION_MS = 60_000
+const LIST_DIRECTORY_STAT_CONCURRENCY = 32
+const DRIVE_ROOT_PROBE_TIMEOUT_MS = 250
+const CRLF_BYTES = Buffer.from('\r\n')
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 
 type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
 
@@ -57,6 +64,8 @@ interface DirectoryJob {
   updates: Array<{ index: number; entry: DirectoryEntryResult | null }>
   done: boolean
   error: string | null
+  cancelled: boolean
+  completedAt: number | null
 }
 
 interface FileIdentity {
@@ -116,6 +125,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:pollDirectoryCompare', (_event, payload: { jobId: string }) =>
     pollDirectoryCompare(payload.jobId),
   )
+  ipcMain.handle('diffly:cancelDirectoryCompare', (_event, payload: { jobId: string }) =>
+    cancelDirectoryCompare(payload.jobId),
+  )
   ipcMain.handle('diffly:openCompareItem', (_event, payload) =>
     openCompareItem(payload.leftBase, payload.rightBase, payload.relativePath, payload.options),
   )
@@ -144,38 +156,42 @@ async function listRoots(): Promise<ExplorerEntry[]> {
     return [await explorerEntry('/', 'drive')]
   }
 
-  const roots: ExplorerEntry[] = []
-  for (let code = 65; code <= 90; code += 1) {
-    const root = `${String.fromCharCode(code)}:\\`
-    if (existsSync(root)) {
-      roots.push(await explorerEntry(root, 'drive'))
-    }
-  }
-  return roots
+  const entries = await Promise.all(
+    Array.from({ length: 26 }, (_, index) =>
+      driveRootEntry(`${String.fromCharCode(65 + index)}:\\`),
+    ),
+  )
+
+  return entries.filter((entry): entry is ExplorerEntry => entry !== null)
 }
 
 async function listDirectory(pathValue: string): Promise<DirectoryListing> {
   const entries = await readdir(pathValue, { withFileTypes: true })
-  const directories: ExplorerEntry[] = []
-  const files: ExplorerEntry[] = []
+  const directories: Array<{ path: string; kind: ExplorerEntry['kind'] }> = []
+  const files: Array<{ path: string; kind: ExplorerEntry['kind'] }> = []
 
   for (const entry of entries) {
     const fullPath = join(pathValue, entry.name)
     if (entry.isDirectory()) {
-      directories.push(await explorerEntry(fullPath, 'directory'))
+      directories.push({ path: fullPath, kind: 'directory' })
     } else if (entry.isFile()) {
-      files.push(await explorerEntry(fullPath, 'file'))
+      files.push({ path: fullPath, kind: 'file' })
     }
   }
 
-  directories.sort(compareExplorerEntries)
-  files.sort(compareExplorerEntries)
+  const [directoryEntries, fileEntries] = await Promise.all([
+    buildExplorerEntries(directories),
+    buildExplorerEntries(files),
+  ])
+
+  directoryEntries.sort(compareExplorerEntries)
+  fileEntries.sort(compareExplorerEntries)
 
   return {
     path: pathValue,
     parentPath: dirname(pathValue) === pathValue ? null : dirname(pathValue),
-    directories,
-    files,
+    directories: directoryEntries,
+    files: fileEntries,
   }
 }
 
@@ -223,6 +239,62 @@ async function explorerEntry(pathValue: string, kind: ExplorerEntry['kind']): Pr
     size,
     modifiedMs,
   }
+}
+
+async function driveRootEntry(pathValue: string): Promise<ExplorerEntry | null> {
+  const info = await statWithTimeout(pathValue, DRIVE_ROOT_PROBE_TIMEOUT_MS)
+  if (!info?.isDirectory()) {
+    return null
+  }
+
+  return {
+    name: basename(pathValue) || pathValue,
+    path: pathValue,
+    kind: 'drive',
+    size: null,
+    modifiedMs: Math.trunc(info.mtimeMs),
+  }
+}
+
+async function statWithTimeout(pathValue: string, timeoutMs: number): Promise<Stats | null> {
+  let timeoutId: NodeJS.Timeout | null = null
+  const probe = stat(pathValue).catch(() => null)
+  const timeout = new Promise<null>((resolveTimeout) => {
+    timeoutId = setTimeout(() => resolveTimeout(null), timeoutMs)
+  })
+
+  try {
+    return await Promise.race([probe, timeout])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
+async function buildExplorerEntries(
+  items: Array<{ path: string; kind: ExplorerEntry['kind'] }>,
+) {
+  const results: ExplorerEntry[] = new Array(items.length)
+  let nextIndex = 0
+
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex
+      nextIndex += 1
+
+      if (index >= items.length) {
+        return
+      }
+
+      const item = items[index]
+      results[index] = await explorerEntry(item.path, item.kind)
+    }
+  }
+
+  const workerCount = Math.min(LIST_DIRECTORY_STAT_CONCURRENCY, items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()))
+  return results
 }
 
 function compareExplorerEntries(left: ExplorerEntry, right: ExplorerEntry) {
@@ -381,7 +453,7 @@ function unavailableAction(message: string): UpdateActionResult {
   return { kind: 'unavailable', message }
 }
 
-async function comparePaths(
+export async function comparePaths(
   leftPath: string,
   rightPath: string,
   mode: 'file' | 'directory',
@@ -401,6 +473,7 @@ async function comparePaths(
 }
 
 async function startDirectoryCompare(leftPath: string, rightPath: string, options: CompareOptions) {
+  pruneDirectoryJobs()
   const jobId = randomUUID()
   const job: DirectoryJob = {
     totalCount: null,
@@ -408,6 +481,8 @@ async function startDirectoryCompare(leftPath: string, rightPath: string, option
     updates: [],
     done: false,
     error: null,
+    cancelled: false,
+    completedAt: null,
   }
   directoryJobs.set(jobId, job)
 
@@ -416,6 +491,7 @@ async function startDirectoryCompare(leftPath: string, rightPath: string, option
 }
 
 function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
+  pruneDirectoryJobs()
   const job = directoryJobs.get(jobId)
   if (!job) {
     return {
@@ -427,8 +503,9 @@ function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
     }
   }
 
-  const updates = job.updates.splice(0)
-  if (job.done) {
+  const updates = job.updates.splice(0, DIRECTORY_POLL_UPDATE_LIMIT)
+  const done = job.done && job.updates.length === 0
+  if (done) {
     directoryJobs.delete(jobId)
   }
 
@@ -436,8 +513,31 @@ function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
     totalCount: job.totalCount,
     completedCount: job.completedCount,
     updates,
-    done: job.done,
+    done,
     error: job.error,
+  }
+}
+
+function cancelDirectoryCompare(jobId: string) {
+  const job = directoryJobs.get(jobId)
+  if (!job) {
+    return false
+  }
+
+  job.cancelled = true
+  job.done = true
+  job.updates = []
+  job.completedAt = Date.now()
+  directoryJobs.delete(jobId)
+  return true
+}
+
+function pruneDirectoryJobs() {
+  const now = Date.now()
+  for (const [jobId, job] of directoryJobs) {
+    if (job.done && job.completedAt !== null && now - job.completedAt > DIRECTORY_JOB_RETENTION_MS) {
+      directoryJobs.delete(jobId)
+    }
   }
 }
 
@@ -448,12 +548,23 @@ async function runDirectoryJob(
   options: CompareOptions,
 ) {
   try {
+    if (job.cancelled) {
+      return
+    }
+
     const entries = await compareDirectories(leftPath, rightPath, options, (index, entry) => {
+      if (job.cancelled) {
+        return
+      }
       job.completedCount += 1
       job.updates.push({ index, entry })
     }, (total) => {
       job.totalCount = total
-    })
+    }, () => job.cancelled)
+
+    if (job.cancelled) {
+      return
+    }
 
     if (job.totalCount === null) {
       job.totalCount = entries.length
@@ -463,9 +574,12 @@ async function runDirectoryJob(
       })
     }
   } catch (error) {
-    job.error = errorMessage(error)
+    if (!job.cancelled) {
+      job.error = errorMessage(error)
+    }
   } finally {
     job.done = true
+    job.completedAt = Date.now()
   }
 }
 
@@ -475,6 +589,7 @@ async function compareDirectories(
   options: CompareOptions,
   onUpdate?: (index: number, entry: DirectoryEntryResult | null) => void,
   onTotal?: (total: number) => void,
+  isCancelled?: () => boolean,
 ): Promise<DirectoryEntryResult[]> {
   const [leftInfo, rightInfo] = await Promise.all([stat(leftPath), stat(rightPath)])
   if (!leftInfo.isDirectory()) {
@@ -485,9 +600,14 @@ async function compareDirectories(
   }
 
   const [leftFiles, rightFiles] = await Promise.all([
-    collectDirectoryFiles(leftPath),
-    collectDirectoryFiles(rightPath),
+    collectDirectoryFiles(leftPath, isCancelled),
+    collectDirectoryFiles(rightPath, isCancelled),
   ])
+
+  if (isCancelled?.()) {
+    return []
+  }
+
   const allPaths = Array.from(new Set([...leftFiles.keys(), ...rightFiles.keys()])).sort()
   const cacheKey = JSON.stringify({ leftPath, rightPath, ...options })
   const previousEntries = directoryCache?.key === cacheKey ? directoryCache.entries : new Map()
@@ -498,6 +618,10 @@ async function compareDirectories(
 
   const runWorker = async () => {
     while (true) {
+      if (isCancelled?.()) {
+        return
+      }
+
       const index = nextIndex
       nextIndex += 1
 
@@ -516,7 +640,9 @@ async function compareDirectories(
       )
 
       resultSlots[index] = entry
-      onUpdate?.(index, entry)
+      if (!isCancelled?.()) {
+        onUpdate?.(index, entry)
+      }
     }
   }
 
@@ -528,12 +654,20 @@ async function compareDirectories(
   return results
 }
 
-async function collectDirectoryFiles(root: string) {
+async function collectDirectoryFiles(root: string, isCancelled?: () => boolean) {
   const files = new Map<string, string>()
 
   async function walk(current: string) {
+    if (isCancelled?.()) {
+      return
+    }
+
     const entries = await readdir(current, { withFileTypes: true })
     for (const entry of entries) {
+      if (isCancelled?.()) {
+        return
+      }
+
       const fullPath = join(current, entry.name)
       if (entry.isDirectory()) {
         await walk(fullPath)
@@ -567,7 +701,14 @@ async function compareDirectoryEntry(
     return cached.result
   }
 
-  const result = await computeDirectoryEntry(relativePath, leftPath, rightPath, options)
+  const result = await computeDirectoryEntry(
+    relativePath,
+    leftPath,
+    rightPath,
+    leftIdentity,
+    rightIdentity,
+    options,
+  )
   nextEntries.set(relativePath, {
     left: leftIdentity,
     right: rightIdentity,
@@ -580,29 +721,29 @@ async function computeDirectoryEntry(
   relativePath: string,
   leftPath: string | null,
   rightPath: string | null,
+  leftIdentity: FileIdentity | null,
+  rightIdentity: FileIdentity | null,
   options: CompareOptions,
 ): Promise<DirectoryEntryResult | null> {
   if (leftPath && !rightPath) {
-    const info = await stat(leftPath)
     return {
       relativePath,
       status: 'leftOnly',
       leftPath,
       rightPath: null,
-      leftSize: info.size,
+      leftSize: leftIdentity?.size ?? null,
       rightSize: null,
     }
   }
 
   if (!leftPath && rightPath) {
-    const info = await stat(rightPath)
     return {
       relativePath,
       status: 'rightOnly',
       leftPath: null,
       rightPath,
       leftSize: null,
-      rightSize: info.size,
+      rightSize: rightIdentity?.size ?? null,
     }
   }
 
@@ -610,11 +751,13 @@ async function computeDirectoryEntry(
     return null
   }
 
-  const [leftInfo, rightInfo] = await Promise.all([stat(leftPath), stat(rightPath)])
+  if (!leftIdentity || !rightIdentity) {
+    return null
+  }
 
   // Skip equal-content fast path for trivially differing sizes.
   if (
-    leftInfo.size !== rightInfo.size &&
+    leftIdentity.size !== rightIdentity.size &&
     !(options.ignoreWhitespace || options.ignoreCase)
   ) {
     // Sizes differ and we are not normalising — definitely not equal. Fall
@@ -626,13 +769,13 @@ async function computeDirectoryEntry(
     sampleFile(leftPath),
     sampleFile(rightPath),
   ])
-  const leftKind = detectFileKind(leftPath, leftInfo.size, leftSample)
-  const rightKind = detectFileKind(rightPath, rightInfo.size, rightSample)
+  const leftKind = detectFileKind(leftPath, leftIdentity.size, leftSample)
+  const rightKind = detectFileKind(rightPath, rightIdentity.size, rightSample)
 
   if (leftKind === 'text' && rightKind === 'text' && (options.ignoreWhitespace || options.ignoreCase)) {
     if (
-      leftInfo.size <= MAX_TEXT_BYTES &&
-      rightInfo.size <= MAX_TEXT_BYTES
+      leftIdentity.size <= MAX_TEXT_BYTES &&
+      rightIdentity.size <= MAX_TEXT_BYTES
     ) {
       const [leftText, rightText] = await Promise.all([
         readFile(leftPath, 'utf8'),
@@ -642,8 +785,14 @@ async function computeDirectoryEntry(
         return null
       }
     }
-  } else if (leftInfo.size === rightInfo.size && await filesEqual(leftPath, rightPath)) {
-    return null
+  } else if (leftIdentity.size === rightIdentity.size) {
+    const samplesEqual = bytesEqual(leftSample, rightSample)
+    if (samplesEqual && leftIdentity.size <= leftSample.byteLength) {
+      return null
+    }
+    if (samplesEqual && await filesEqual(leftPath, rightPath, leftSample.byteLength)) {
+      return null
+    }
   }
 
   const status = leftKind === 'text' && rightKind === 'text'
@@ -655,8 +804,8 @@ async function computeDirectoryEntry(
     status,
     leftPath,
     rightPath,
-    leftSize: leftInfo.size,
-    rightSize: rightInfo.size,
+    leftSize: leftIdentity.size,
+    rightSize: rightIdentity.size,
   }
 }
 
@@ -764,9 +913,10 @@ async function loadFile(pathValue: string): Promise<LoadedFile> {
 
   if (kind === 'text') {
     let bytes: Buffer
+    let text: string
     try {
       bytes = await readFile(pathValue)
-      new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      text = UTF8_DECODER.decode(bytes)
     } catch {
       return {
         kind: 'readError',
@@ -783,9 +933,9 @@ async function loadFile(pathValue: string): Promise<LoadedFile> {
       size: info.size,
       format: null,
       truncated: false,
-      text: bytes.toString('utf8'),
+      text,
       cacheKey: `${pathValue}:${info.size}:${Math.trunc(info.mtimeMs)}`,
-      lineEnding: bytes.includes(Buffer.from('\r\n')) ? 'crlf' : 'lf',
+      lineEnding: bytes.includes(CRLF_BYTES) ? 'crlf' : 'lf',
       hasTrailingNewline: bytes[bytes.length - 1] === 10,
     }
   }
@@ -824,11 +974,12 @@ async function sampleFile(pathValue: string) {
 }
 
 function detectFileKind(pathValue: string, size: number, sample: Uint8Array): FileKind {
-  if (size > MAX_TEXT_BYTES && !detectImageFormat(sample, pathValue)) {
+  const imageFormat = detectImageFormat(sample, pathValue)
+  if (size > MAX_TEXT_BYTES && !imageFormat) {
     return 'tooLarge'
   }
 
-  if (detectImageFormat(sample, pathValue)) {
+  if (imageFormat) {
     return 'image'
   }
 
@@ -963,7 +1114,17 @@ function unsupportedReason(
   return 'readError'
 }
 
-async function filesEqual(leftPath: string, rightPath: string) {
+function bytesEqual(left: Uint8Array, right: Uint8Array) {
+  if (left.byteLength !== right.byteLength) {
+    return false
+  }
+
+  const leftBuffer = Buffer.from(left.buffer, left.byteOffset, left.byteLength)
+  const rightBuffer = Buffer.from(right.buffer, right.byteOffset, right.byteLength)
+  return leftBuffer.compare(rightBuffer) === 0
+}
+
+async function filesEqual(leftPath: string, rightPath: string, startOffset = 0) {
   const [leftHandle, rightHandle] = await Promise.all([
     open(leftPath, 'r'),
     open(rightPath, 'r'),
@@ -971,7 +1132,7 @@ async function filesEqual(leftPath: string, rightPath: string) {
 
   const leftBuffer = Buffer.alloc(FILES_EQUAL_CHUNK_BYTES)
   const rightBuffer = Buffer.alloc(FILES_EQUAL_CHUNK_BYTES)
-  let offset = 0
+  let offset = startOffset
 
   try {
     while (true) {

@@ -42,6 +42,7 @@ declare global {
         options: CompareOptions,
       ): Promise<StartDirectoryCompareResponse>
       pollDirectoryCompare(jobId: string): Promise<PollDirectoryCompareResponse>
+      cancelDirectoryCompare(jobId: string): Promise<boolean>
       openCompareItem(
         leftBase: string,
         rightBase: string,

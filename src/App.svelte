@@ -1,7 +1,5 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import PierreDirectoryTree from './lib/compare/PierreDirectoryTree.svelte'
-  import CompareViewer from './lib/compare/CompareViewer.svelte'
   import AppTopBar from './lib/AppTopBar.svelte'
   import PickerPane from './lib/PickerPane.svelte'
   import SettingsScreen from './lib/SettingsScreen.svelte'
@@ -10,6 +8,7 @@
     choosePath,
     checkForUpdates,
     comparePaths,
+    cancelDirectoryCompare,
     downloadUpdate,
     getAppVersion,
     installUpdate,
@@ -218,6 +217,7 @@
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntries: DirectoryEntryResult[] = []
+  let filteredDirectoryEntryPaths = new Set<string>()
   let selectedRelativePath = ''
   let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
@@ -248,6 +248,7 @@
   let currentDiffHunk = -1
   let persistenceReady = false
   let saveSessionTimer: number | null = null
+  let compareComponentsPreloadCancel: (() => void) | null = null
   let initialSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
@@ -288,6 +289,9 @@
   const diffCache = createDiffCacheController({
     openCompareItem,
   })
+  let PierreDirectoryTreeComponent: typeof import('./lib/compare/PierreDirectoryTree.svelte').default | null = null
+  let CompareViewerComponent: typeof import('./lib/compare/CompareViewer.svelte').default | null = null
+  let compareComponentsPromise: Promise<void> | null = null
   const updateController = createUpdateController({
     getAppVersion,
     checkForUpdates,
@@ -516,6 +520,49 @@
     runFileCompareRefreshIfActive()
   }
 
+  function loadCompareComponents() {
+    if (PierreDirectoryTreeComponent && CompareViewerComponent) {
+      return Promise.resolve()
+    }
+
+    if (!compareComponentsPromise) {
+      compareComponentsPromise = Promise.all([
+        import('./lib/compare/PierreDirectoryTree.svelte'),
+        import('./lib/compare/CompareViewer.svelte'),
+      ])
+        .then(([directoryTreeModule, compareViewerModule]) => {
+          PierreDirectoryTreeComponent = directoryTreeModule.default
+          CompareViewerComponent = compareViewerModule.default
+        })
+        .catch((error) => {
+          compareComponentsPromise = null
+          throw error
+        })
+    }
+
+    return compareComponentsPromise
+  }
+
+  function scheduleCompareComponentsPreload() {
+    if (typeof window === 'undefined' || compareComponentsPreloadCancel) {
+      return
+    }
+
+    const preload = () => {
+      compareComponentsPreloadCancel = null
+      void loadCompareComponents().catch(() => undefined)
+    }
+
+    if ('requestIdleCallback' in window && 'cancelIdleCallback' in window) {
+      const handle = window.requestIdleCallback(preload, { timeout: 1500 })
+      compareComponentsPreloadCancel = () => window.cancelIdleCallback(handle)
+      return
+    }
+
+    const handle = globalThis.setTimeout(preload, 600)
+    compareComponentsPreloadCancel = () => globalThis.clearTimeout(handle)
+  }
+
   onMount(() => {
     const colorSchemeQuery =
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -541,6 +588,7 @@
     })
 
     void initializeAppStartup()
+    scheduleCompareComponentsPreload()
 
     return () => {
       if (colorSchemeQuery) {
@@ -554,6 +602,9 @@
       if (saveSessionTimer !== null) {
         window.clearTimeout(saveSessionTimer)
       }
+
+      compareComponentsPreloadCancel?.()
+      compareComponentsPreloadCancel = null
 
       removeLaunchContextListener()
       diffCache.cancelBackgroundPreload()
@@ -839,7 +890,13 @@
     }
   }
 
-  function stopDirectoryComparePolling(clearEntries = false) {
+  function stopDirectoryComparePolling(clearEntries = false, cancelBackendJobs = true) {
+    const jobIds = cancelBackendJobs
+      ? directoryComparePairJobs
+          .map((job) => job.jobId)
+          .filter((jobId) => jobId.length > 0)
+      : []
+
     clearDirectoryComparePollTimer()
     clearDirectoryEntriesFlushFrame()
     pendingDirectoryDefaultSelection = null
@@ -850,6 +907,10 @@
       directoryCompareEntrySlots = []
       directoryComparePairs = []
       directoryComparePairSlots = []
+    }
+
+    for (const jobId of jobIds) {
+      void cancelDirectoryCompare(jobId).catch(() => undefined)
     }
   }
 
@@ -1277,7 +1338,7 @@
 
         const allDone = directoryComparePairJobs.every((entry) => entry.done)
         if (allDone) {
-          stopDirectoryComparePolling()
+          stopDirectoryComparePolling(false, false)
           loading = false
 
           if (directoryEntries.length === 0) {
@@ -2182,7 +2243,9 @@
 
     if (
       selectedRelativePath &&
-      entries.some((entry) => entry.relativePath === selectedRelativePath)
+      (entries === filteredDirectoryEntries
+        ? filteredDirectoryEntryPaths.has(selectedRelativePath)
+        : entries.some((entry) => entry.relativePath === selectedRelativePath))
     ) {
       return
     }
@@ -2195,6 +2258,7 @@
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
     filteredDirectoryEntries = entries
+    filteredDirectoryEntryPaths = new Set(entries.map((entry) => entry.relativePath))
     ensureDirectorySelection(entries)
   }
 
@@ -2380,6 +2444,12 @@
     lightAppearanceTheme = appearanceState.lightAppearanceTheme
     darkAppearanceTheme = appearanceState.darkAppearanceTheme
     visibleAppearanceVariants = appearanceState.visibleAppearanceVariants
+  }
+
+  $: if (screen === 'compare') {
+    void loadCompareComponents().catch((error) => {
+      errorMessage = error instanceof Error ? error.message : 'Unable to load compare view.'
+    })
   }
 
   $: if (screen === 'compare') {
@@ -2752,16 +2822,28 @@
       style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
     >
       {#if mode === 'directory'}
-        <PierreDirectoryTree
-          {loading}
-          {directoryEntries}
-          {selectedRelativePath}
-          {statusLabel}
-          {treeSettings}
-          {appearanceSettings}
-          {resolvedThemeMode}
-          {selectEntry}
-        />
+        {#if PierreDirectoryTreeComponent}
+          <svelte:component
+            this={PierreDirectoryTreeComponent}
+            {loading}
+            {directoryEntries}
+            {selectedRelativePath}
+            {statusLabel}
+            {treeSettings}
+            {appearanceSettings}
+            {resolvedThemeMode}
+            {selectEntry}
+          />
+        {:else}
+          <aside class="directory-tree-panel">
+            <div class="directory-tree-host">
+              <div class="directory-tree-state">
+                <span class="refresh-spinner visible"></span>
+                <p>Loading file list...</p>
+              </div>
+            </div>
+          </aside>
+        {/if}
         <button
           aria-label="Resize file list panel"
           class="compare-sidebar-resizer"
@@ -2771,24 +2853,34 @@
         ></button>
       {/if}
 
-      <CompareViewer
-        {mode}
-        {activeDiff}
-        {directoryEntries}
-        {selectedRelativePath}
-        scrollTargetRevision={directoryScrollTargetRevision}
-        {loading}
-        {detailLoading}
-        {viewerSettings}
-        {appearanceSettings}
-        {resolvedThemeMode}
-        {viewMode}
-        revision={compareRevision}
-        {leftPath}
-        {rightPath}
-        compareOptions={activeCompareOptions}
-        resolveEntryBases={getDetailBasesForPath}
-      />
+      {#if CompareViewerComponent}
+        <svelte:component
+          this={CompareViewerComponent}
+          {mode}
+          {activeDiff}
+          {directoryEntries}
+          {selectedRelativePath}
+          scrollTargetRevision={directoryScrollTargetRevision}
+          {loading}
+          {detailLoading}
+          {viewerSettings}
+          {appearanceSettings}
+          {resolvedThemeMode}
+          {viewMode}
+          revision={compareRevision}
+          {leftPath}
+          {rightPath}
+          compareOptions={activeCompareOptions}
+          resolveEntryBases={getDetailBasesForPath}
+        />
+      {:else}
+        <section class="compare-viewer">
+          <div class="compare-viewer-state">
+            <span class="refresh-spinner visible"></span>
+            <p>Opening compare view...</p>
+          </div>
+        </section>
+      {/if}
     </section>
   </main>
 {:else}
