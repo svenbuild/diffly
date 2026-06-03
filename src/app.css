@@ -2740,6 +2740,10 @@ h2 {
   overflow: auto;
 }
 
+.virtual-list-spacer {
+  flex: 0 0 auto;
+}
+
 .entry-row {
   width: 100%;
   height: 30px;

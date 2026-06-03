@@ -15,6 +15,7 @@
     "test": "npm run check",
     "perf:backend": "node scripts/perf-backend.mjs",
     "perf:directory-stream": "node scripts/perf-directory-stream.mjs",
+    "perf:explorer": "node scripts/perf-explorer.mjs",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "electron:package": "npm run build && electron-builder --win nsis portable --config.npmRebuild=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",

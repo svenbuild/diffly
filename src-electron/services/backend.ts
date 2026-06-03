@@ -8,6 +8,8 @@ import {
   open,
   readdir,
   readFile,
+  rename,
+  rm,
   stat,
   writeFile,
 } from 'node:fs/promises'
@@ -39,10 +41,12 @@ const DIRECTORY_WALK_CONCURRENCY = 16
 const DIRECTORY_CACHE_LIMIT = 8
 const DIRECTORY_POLL_UPDATE_LIMIT = 512
 const DIRECTORY_JOB_RETENTION_MS = 60_000
-const LIST_DIRECTORY_STAT_CONCURRENCY = 32
+const LIST_DIRECTORY_STAT_CONCURRENCY = 64
+const DIRECTORY_LISTING_CACHE_LIMIT = 64
 const DRIVE_ROOT_PROBE_TIMEOUT_MS = 250
 const CRLF_BYTES = Buffer.from('\r\n')
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+const EXPLORER_ENTRY_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' })
 
 type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
 
@@ -86,8 +90,20 @@ interface DirectoryCacheSession {
   entries: Map<string, CachedDirectoryEntry>
 }
 
+interface ExplorerEntryInput {
+  name: string
+  path: string
+  kind: ExplorerEntry['kind']
+}
+
+interface CachedDirectoryListing {
+  modifiedMs: number
+  listing: DirectoryListing
+}
+
 let launchContext: LaunchContext | null | undefined
 const directoryCache = new Map<string, DirectoryCacheSession>()
+const directoryListingCache = new Map<string, CachedDirectoryListing>()
 const directoryJobs = new Map<string, DirectoryJob>()
 const windowLaunchContexts = new Map<number, LaunchContext | null>()
 let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
@@ -153,7 +169,7 @@ async function choosePath(kind: string) {
   return result.canceled ? null : result.filePaths[0] ?? null
 }
 
-async function listRoots(): Promise<ExplorerEntry[]> {
+export async function listRoots(): Promise<ExplorerEntry[]> {
   if (process.platform !== 'win32') {
     return [await explorerEntry('/', 'drive')]
   }
@@ -167,17 +183,23 @@ async function listRoots(): Promise<ExplorerEntry[]> {
   return entries.filter((entry): entry is ExplorerEntry => entry !== null)
 }
 
-async function listDirectory(pathValue: string): Promise<DirectoryListing> {
+export async function listDirectory(pathValue: string): Promise<DirectoryListing> {
+  const directoryInfo = await stat(pathValue)
+  const cached = getCachedDirectoryListing(pathValue, directoryInfo.mtimeMs)
+  if (cached) {
+    return cached
+  }
+
   const entries = await readdir(pathValue, { withFileTypes: true })
-  const directories: Array<{ path: string; kind: ExplorerEntry['kind'] }> = []
-  const files: Array<{ path: string; kind: ExplorerEntry['kind'] }> = []
+  const directories: ExplorerEntryInput[] = []
+  const files: ExplorerEntryInput[] = []
 
   for (const entry of entries) {
     const fullPath = join(pathValue, entry.name)
     if (entry.isDirectory()) {
-      directories.push({ path: fullPath, kind: 'directory' })
+      directories.push({ name: entry.name, path: fullPath, kind: 'directory' })
     } else if (entry.isFile()) {
-      files.push({ path: fullPath, kind: 'file' })
+      files.push({ name: entry.name, path: fullPath, kind: 'file' })
     }
   }
 
@@ -189,12 +211,14 @@ async function listDirectory(pathValue: string): Promise<DirectoryListing> {
   directoryEntries.sort(compareExplorerEntries)
   fileEntries.sort(compareExplorerEntries)
 
-  return {
+  const listing = {
     path: pathValue,
     parentPath: dirname(pathValue) === pathValue ? null : dirname(pathValue),
     directories: directoryEntries,
     files: fileEntries,
   }
+  setCachedDirectoryListing(pathValue, directoryInfo.mtimeMs, listing)
+  return listing
 }
 
 async function pathInfo(pathValue: string): Promise<PathInfo> {
@@ -221,7 +245,35 @@ async function pathInfo(pathValue: string): Promise<PathInfo> {
   }
 }
 
-async function explorerEntry(pathValue: string, kind: ExplorerEntry['kind']): Promise<ExplorerEntry> {
+function getCachedDirectoryListing(pathValue: string, modifiedMs: number) {
+  const cached = directoryListingCache.get(pathValue)
+  if (!cached || cached.modifiedMs !== modifiedMs) {
+    return null
+  }
+
+  directoryListingCache.delete(pathValue)
+  directoryListingCache.set(pathValue, cached)
+  return cached.listing
+}
+
+function setCachedDirectoryListing(pathValue: string, modifiedMs: number, listing: DirectoryListing) {
+  directoryListingCache.delete(pathValue)
+  directoryListingCache.set(pathValue, { modifiedMs, listing })
+
+  while (directoryListingCache.size > DIRECTORY_LISTING_CACHE_LIMIT) {
+    const oldestKey = directoryListingCache.keys().next().value
+    if (oldestKey === undefined) {
+      return
+    }
+    directoryListingCache.delete(oldestKey)
+  }
+}
+
+export function clearDirectoryListingCache() {
+  directoryListingCache.clear()
+}
+
+async function explorerEntry(pathValue: string, kind: ExplorerEntry['kind'], name?: string): Promise<ExplorerEntry> {
   let size: number | null = null
   let modifiedMs: number | null = null
 
@@ -235,7 +287,7 @@ async function explorerEntry(pathValue: string, kind: ExplorerEntry['kind']): Pr
   }
 
   return {
-    name: basename(pathValue) || pathValue,
+    name: name ?? (basename(pathValue) || pathValue),
     path: pathValue,
     kind,
     size,
@@ -275,7 +327,7 @@ async function statWithTimeout(pathValue: string, timeoutMs: number): Promise<St
 }
 
 async function buildExplorerEntries(
-  items: Array<{ path: string; kind: ExplorerEntry['kind'] }>,
+  items: ExplorerEntryInput[],
 ) {
   const results: ExplorerEntry[] = new Array(items.length)
   let nextIndex = 0
@@ -290,7 +342,7 @@ async function buildExplorerEntries(
       }
 
       const item = items[index]
-      results[index] = await explorerEntry(item.path, item.kind)
+      results[index] = await explorerEntry(item.path, item.kind, item.name)
     }
   }
 
@@ -300,10 +352,10 @@ async function buildExplorerEntries(
 }
 
 function compareExplorerEntries(left: ExplorerEntry, right: ExplorerEntry) {
-  return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+  return EXPLORER_ENTRY_COLLATOR.compare(left.name, right.name)
 }
 
-async function loadSessionState(): Promise<PersistedSession | null> {
+export async function loadSessionState(): Promise<PersistedSession | null> {
   const filePath = sessionPath()
   if (!existsSync(filePath)) {
     return null
@@ -314,11 +366,20 @@ async function loadSessionState(): Promise<PersistedSession | null> {
   return JSON.parse(await readFile(filePath, 'utf8')) as PersistedSession
 }
 
-async function saveSessionState(session: PersistedSession) {
+export async function saveSessionState(session: PersistedSession) {
   const json = JSON.stringify(session)
   validateSessionStateSize(Buffer.byteLength(json))
-  await mkdir(dirname(sessionPath()), { recursive: true })
-  await writeFile(sessionPath(), json, 'utf8')
+  const filePath = sessionPath()
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+
+  await mkdir(dirname(filePath), { recursive: true })
+  try {
+    await writeFile(tempPath, json, 'utf8')
+    await rename(tempPath, filePath)
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => undefined)
+    throw error
+  }
 }
 
 function sessionPath() {

@@ -247,7 +247,7 @@
   let persistenceReady = false
   let saveSessionTimer: number | null = null
   let compareComponentsPreloadCancel: (() => void) | null = null
-  let initialSessionFingerprint: string | null = null
+  let lastSavedSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
   let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
@@ -1363,6 +1363,7 @@
         ...createExplorerPane('Right'),
         roots,
       }
+      pickerLoading = false
 
       if (roots.length > 0) {
         const startupFolderOverride =
@@ -1372,14 +1373,16 @@
         if (startupTarget) {
           await applyStartupTarget(startupTarget)
         } else {
-          const leftRoot = await resolveInitialPanePath(
-            savedSession?.leftPane ?? null,
-            roots[0].path,
-          )
-          const rightRoot = await resolveInitialPanePath(
-            savedSession?.rightPane ?? null,
-            roots[1]?.path ?? roots[0].path,
-          )
+          const [leftRoot, rightRoot] = await Promise.all([
+            resolveInitialPanePath(
+              savedSession?.leftPane ?? null,
+              roots[0].path,
+            ),
+            resolveInitialPanePath(
+              savedSession?.rightPane ?? null,
+              roots[1]?.path ?? roots[0].path,
+            ),
+          ])
 
           await Promise.all([
             openDirectory('left', leftRoot),
@@ -1393,23 +1396,7 @@
         }
       }
 
-      initialSessionFingerprint = JSON.stringify(
-        buildPersistedSession({
-          mode,
-          viewerSettings,
-          treeSettings,
-          appearanceSettings,
-          ignoreWhitespace,
-          ignoreCase,
-          checkForUpdatesOnLaunch,
-          updateChannel,
-          lastUpdateCheckAt,
-          lastUpdateStatus: updateIndicatorState.status,
-          lastUpdateMetadata: updateIndicatorState.metadata,
-          leftPane: leftExplorer,
-          rightPane: rightExplorer,
-        }),
-      )
+      lastSavedSessionFingerprint = JSON.stringify(buildCurrentPersistedSession())
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
     } finally {
@@ -1443,7 +1430,10 @@
   async function applyStartupTarget(startupTarget: StartupTarget) {
     mode = startupTarget.kind
 
-    await openDirectoryForBothPanes(startupTarget.folderPath)
+    const opened = await openDirectoryForBothPanes(startupTarget.folderPath)
+    if (!opened) {
+      return
+    }
 
     selectTarget('left', startupTarget.targetPath, startupTarget.kind)
     selectTarget('right', startupTarget.targetPath, startupTarget.kind)
@@ -1879,16 +1869,22 @@
   async function submitPathInput(side: Side) {
     const pane = paneFor(side)
     const nextPath = pane.pathInput.trim()
+    const requestId = startPaneNavigationRequest(side)
 
     if (!nextPath) {
-      updatePane(side, (current) => ({
-        ...current,
-        pathInput: current.currentPath,
-      }))
+      if (paneNavigationRequestIsCurrent(side, requestId)) {
+        updatePane(side, (current) => ({
+          ...current,
+          pathInput: current.currentPath,
+        }))
+      }
       return
     }
 
     const info = await pathInfo(nextPath)
+    if (!paneNavigationRequestIsCurrent(side, requestId)) {
+      return
+    }
 
     if (!info.exists) {
       updatePane(side, (current) => ({
@@ -1899,14 +1895,16 @@
     }
 
     if (info.isDirectory) {
-      await openDirectory(side, info.path)
-      selectTarget(side, info.path, 'directory')
+      if (await openDirectory(side, info.path)) {
+        selectTarget(side, info.path, 'directory')
+      }
       return
     }
 
     if (info.isFile && info.parentPath) {
-      await openDirectory(side, info.parentPath)
-      selectTarget(side, info.path, 'file')
+      if (await openDirectory(side, info.parentPath)) {
+        selectTarget(side, info.path, 'file')
+      }
     }
   }
 
@@ -2304,16 +2302,8 @@
     void source
   }
 
-  function scheduleSessionSave() {
-    if (!persistenceReady) {
-      return
-    }
-
-    if (saveSessionTimer !== null) {
-      window.clearTimeout(saveSessionTimer)
-    }
-
-    const session = buildPersistedSession({
+  function buildCurrentPersistedSession() {
+    return buildPersistedSession({
       mode,
       viewerSettings,
       treeSettings,
@@ -2328,16 +2318,31 @@
       leftPane: leftExplorer,
       rightPane: rightExplorer,
     })
+  }
 
-    const sessionFingerprint = JSON.stringify(session)
-
-    if (initialSessionFingerprint !== null && sessionFingerprint === initialSessionFingerprint) {
+  function scheduleSessionSave() {
+    if (!persistenceReady) {
       return
     }
 
+    if (saveSessionTimer !== null) {
+      window.clearTimeout(saveSessionTimer)
+    }
+
     saveSessionTimer = window.setTimeout(() => {
-      void saveSessionState(session).catch(() => undefined)
       saveSessionTimer = null
+      const session = buildCurrentPersistedSession()
+      const sessionFingerprint = JSON.stringify(session)
+
+      if (sessionFingerprint === lastSavedSessionFingerprint) {
+        return
+      }
+
+      void saveSessionState(session)
+        .then(() => {
+          lastSavedSessionFingerprint = sessionFingerprint
+        })
+        .catch(() => undefined)
     }, SESSION_SAVE_DELAY_MS)
   }
 

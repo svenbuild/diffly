@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte'
   import EntryIcon from './EntryIcon.svelte'
 
   import type { ExplorerEntry } from './types'
@@ -25,6 +26,20 @@
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
 
+  const ROW_HEIGHT = 30
+  const ROW_OVERSCAN = 8
+
+  interface ExplorerRow {
+    entry: ExplorerEntry
+    key: string
+    kind: 'directory' | 'file'
+  }
+
+  let rowsHost: HTMLDivElement | null = null
+  let rowsScrollTop = 0
+  let rowsViewportHeight = 0
+  let resizeObserver: ResizeObserver | null = null
+
   $: selectionCount = pane.selectedTargetPaths?.length ?? (pane.selectedTargetPath ? 1 : 0)
   $: targetKindLabel = pane.selectedTargetKind === 'file'
     ? 'File'
@@ -38,6 +53,27 @@
   $: targetReady = Boolean(pane.selectedTargetPath)
   $: currentDirectoryCount = pane.currentListing?.directories.length ?? 0
   $: currentFileCount = pane.currentListing?.files.length ?? 0
+  $: selectedTargetPathSet = new Set(
+    pane.selectedTargetPaths?.length
+      ? pane.selectedTargetPaths
+      : pane.selectedTargetPath
+        ? [pane.selectedTargetPath]
+        : [],
+  )
+  $: explorerRows = buildExplorerRows(pane.currentListing?.directories ?? [], pane.currentListing?.files ?? [])
+  $: totalRowsHeight = explorerRows.length * ROW_HEIGHT
+  $: virtualStartIndex = Math.max(0, Math.floor(rowsScrollTop / ROW_HEIGHT) - ROW_OVERSCAN)
+  $: virtualVisibleCount = Math.max(
+    ROW_OVERSCAN * 2,
+    Math.ceil((rowsViewportHeight || 480) / ROW_HEIGHT) + ROW_OVERSCAN * 2,
+  )
+  $: virtualEndIndex = Math.min(explorerRows.length, virtualStartIndex + virtualVisibleCount)
+  $: virtualRows = explorerRows.slice(virtualStartIndex, virtualEndIndex)
+  $: virtualTopPadding = virtualStartIndex * ROW_HEIGHT
+  $: virtualBottomPadding = Math.max(0, totalRowsHeight - virtualTopPadding - virtualRows.length * ROW_HEIGHT)
+  $: if (rowsScrollTop > Math.max(0, totalRowsHeight - rowsViewportHeight)) {
+    rowsScrollTop = Math.max(0, totalRowsHeight - rowsViewportHeight)
+  }
 
   function compactPath(path: string) {
     const parts = path.split(/[\\/]+/).filter(Boolean)
@@ -49,6 +85,56 @@
     const root = /^[A-Za-z]:$/.test(parts[0]) ? `${parts[0]}\\` : ''
     return `${root}...\\${parts.slice(-3).join('\\')}`
   }
+
+  function buildExplorerRows(directories: ExplorerEntry[], files: ExplorerEntry[]): ExplorerRow[] {
+    return [
+      ...directories.map((entry) => ({
+        entry,
+        key: `directory:${entry.path}`,
+        kind: 'directory' as const,
+      })),
+      ...files.map((entry) => ({
+        entry,
+        key: `file:${entry.path}`,
+        kind: 'file' as const,
+      })),
+    ]
+  }
+
+  function syncRowsViewportHeight() {
+    rowsViewportHeight = rowsHost?.clientHeight ?? 0
+  }
+
+  function handleRowsScroll(event: Event) {
+    const element = event.currentTarget as HTMLDivElement
+    rowsScrollTop = element.scrollTop
+    rowsViewportHeight = element.clientHeight
+  }
+
+  function rowIsSelected(entry: ExplorerEntry) {
+    return selectedTargetPathSet.has(entry.path) ||
+      (selectedTargetPathSet.size === 0 && isTargetSelected(pane, entry))
+  }
+
+  $: if (rowsHost) {
+    syncRowsViewportHeight()
+  }
+
+  onMount(() => {
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(syncRowsViewportHeight)
+      if (rowsHost) {
+        resizeObserver.observe(rowsHost)
+      }
+    }
+
+    syncRowsViewportHeight()
+  })
+
+  onDestroy(() => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+  })
 </script>
 
 <section
@@ -187,53 +273,34 @@
       </div>
     </div>
 
-    <div class="list-rows">
+    <div class="list-rows" bind:this={rowsHost} on:scroll={handleRowsScroll}>
       {#if pickerLoading}
         <div class="empty-state">Loading drives...</div>
       {:else if pane.loading}
         <div class="empty-state">Loading folder...</div>
       {:else if pane.currentListing}
-        {#each pane.currentListing.directories as entry}
+        <div class="virtual-list-spacer" style:height={`${virtualTopPadding}px`}></div>
+        {#each virtualRows as row (row.key)}
           <button
-            class:selected={isTargetSelected(pane, entry)}
+            class:selected={rowIsSelected(row.entry)}
             class="entry-row"
             type="button"
-            on:click={(event) => selectListEntry(side, entry, event)}
-            on:dblclick={() => activateListEntry(side, entry)}
+            on:click={(event) => selectListEntry(side, row.entry, event)}
+            on:dblclick={() => activateListEntry(side, row.entry)}
           >
             <span class="entry-name">
-              <EntryIcon kind={entry.kind} open={false} />
-              <span class="entry-text">{entry.name}</span>
-              {#if isTargetSelected(pane, entry)}
+              <EntryIcon kind={row.entry.kind} open={false} />
+              <span class="entry-text">{row.entry.name}</span>
+              {#if rowIsSelected(row.entry)}
                 <span class="entry-badge">Target</span>
               {/if}
             </span>
-            <span class="entry-type">{entryTypeLabel(entry)}</span>
-            <span class="entry-date">{formatModified(entry.modifiedMs)}</span>
-            <span class="entry-meta">-</span>
+            <span class="entry-type">{entryTypeLabel(row.entry)}</span>
+            <span class="entry-date">{formatModified(row.entry.modifiedMs)}</span>
+            <span class="entry-meta">{row.kind === 'directory' ? '-' : formatSize(row.entry.size)}</span>
           </button>
         {/each}
-
-        {#each pane.currentListing.files as entry}
-          <button
-            class:selected={isTargetSelected(pane, entry)}
-            class="entry-row"
-            type="button"
-            on:click={(event) => selectListEntry(side, entry, event)}
-            on:dblclick={() => activateListEntry(side, entry)}
-          >
-            <span class="entry-name">
-              <EntryIcon kind={entry.kind} />
-              <span class="entry-text">{entry.name}</span>
-              {#if isTargetSelected(pane, entry)}
-                <span class="entry-badge">Target</span>
-              {/if}
-            </span>
-            <span class="entry-type">{entryTypeLabel(entry)}</span>
-            <span class="entry-date">{formatModified(entry.modifiedMs)}</span>
-            <span class="entry-meta">{formatSize(entry.size)}</span>
-          </button>
-        {/each}
+        <div class="virtual-list-spacer" style:height={`${virtualBottomPadding}px`}></div>
 
         {#if pane.currentListing.directories.length === 0 && pane.currentListing.files.length === 0}
           <div class="empty-state">Folder is empty.</div>
