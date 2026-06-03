@@ -55,6 +55,7 @@
   }
 
   interface CachedPlaceholderItem {
+    file: FileContents
     key: string
     version: number
   }
@@ -100,13 +101,21 @@
   export let scrollTargetRevision = 0
   export let toggleEntry: (relativePath: string) => void = () => {}
   export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
+  export let pauseDiffLoading: () => void = () => {}
 
   let host: HTMLDivElement | null = null
   let codeView: CodeView<DifflyCommentAnnotation> | null = null
   let workerPool: WorkerPoolManager | null = null
   let unsubscribeScroll: (() => void) | null = null
-  let visibleRequestFrame: number | null = null
+  let unsubscribeWheel: (() => void) | null = null
+  let wheelScrollFrame: number | null = null
+  let wheelScrollTargetTop = 0
+  let wheelScrollTargetLeft = 0
+  let immediateRenderFrame: number | null = null
+  let visibleRequestTimer: number | null = null
+  let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
+  let wheelHost: HTMLDivElement | null = null
   let lastRequestedVisibleKey = ''
   let lastRenderedItemListKey = ''
   let lastOptionsKey = ''
@@ -121,19 +130,23 @@
   let entryByPath = new Map<string, LoadedDirectoryDiff>()
   let placeholderPaths = new Set<string>()
   let loadingPaths = new Set<string>()
+  let pendingPlaceholderRequestPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
 
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
   const emptyAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
-  const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 4200
-  const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 9000
-  const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 5
-  const DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX = 420
+  const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 1800
+  const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 3600
+  const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 2.5
+  const DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX = 260
+  const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 220
   const DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS = 9000
   const DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS = 900
-  const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 56
+  const DIRECTORY_CODE_VIEW_WHEEL_LINE_PX = 40
+  const DIRECTORY_CODE_VIEW_WHEEL_LERP = 0.42
+  const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 31
   const DIRECTORY_PLACEHOLDER_MIN_LINES = 8
   const DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES = 240
   const DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES = 1200
@@ -181,6 +194,7 @@
       return
     }
 
+    pauseDiffLoading()
     clearManualScrollTargets(view as unknown as CodeViewScrollFixPatch)
     userScrollCorrectionSuppressedUntil =
       now + DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS
@@ -201,6 +215,137 @@
       programmaticScrollAllowedUntil,
       performance.now() + DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS,
     )
+  }
+
+  function normalizeWheelDelta(delta: number, mode: number) {
+    if (mode === WheelEvent.DOM_DELTA_LINE) {
+      return delta * DIRECTORY_CODE_VIEW_WHEEL_LINE_PX
+    }
+
+    if (mode === WheelEvent.DOM_DELTA_PAGE) {
+      return delta * (host?.clientHeight ?? window.innerHeight)
+    }
+
+    return delta
+  }
+
+  function canApplyWheelDelta(delta: number, position: number, max: number) {
+    return delta < 0 ? position > 0 : delta > 0 && position < max
+  }
+
+  function clampWheelTarget(value: number, max: number) {
+    return Math.min(max, Math.max(0, value))
+  }
+
+  function runWheelScrollFrame() {
+    wheelScrollFrame = null
+
+    if (!host) {
+      return
+    }
+
+    const topDelta = wheelScrollTargetTop - host.scrollTop
+    const leftDelta = wheelScrollTargetLeft - host.scrollLeft
+    const nextTop =
+      Math.abs(topDelta) < 0.75
+        ? wheelScrollTargetTop
+        : host.scrollTop + topDelta * DIRECTORY_CODE_VIEW_WHEEL_LERP
+    const nextLeft =
+      Math.abs(leftDelta) < 0.75
+        ? wheelScrollTargetLeft
+        : host.scrollLeft + leftDelta * DIRECTORY_CODE_VIEW_WHEEL_LERP
+
+    if (Math.abs(topDelta) >= 0.75) {
+      host.scrollTop = nextTop
+    } else if (host.scrollTop !== wheelScrollTargetTop) {
+      host.scrollTop = wheelScrollTargetTop
+    }
+
+    if (Math.abs(leftDelta) >= 0.75) {
+      host.scrollLeft = nextLeft
+    } else if (host.scrollLeft !== wheelScrollTargetLeft) {
+      host.scrollLeft = wheelScrollTargetLeft
+    }
+
+    if (
+      Math.abs(wheelScrollTargetTop - host.scrollTop) >= 0.75 ||
+      Math.abs(wheelScrollTargetLeft - host.scrollLeft) >= 0.75
+    ) {
+      wheelScrollFrame = window.requestAnimationFrame(runWheelScrollFrame)
+    }
+  }
+
+  function scheduleWheelScrollFrame() {
+    if (wheelScrollFrame !== null) {
+      return
+    }
+
+    wheelScrollFrame = window.requestAnimationFrame(runWheelScrollFrame)
+  }
+
+  function handleHostWheel(event: WheelEvent) {
+    if (!host || event.defaultPrevented || event.ctrlKey) {
+      return
+    }
+
+    const rawVerticalDelta = normalizeWheelDelta(event.deltaY, event.deltaMode)
+    const rawHorizontalDelta = normalizeWheelDelta(event.deltaX, event.deltaMode)
+    const verticalDelta =
+      event.shiftKey && rawHorizontalDelta === 0 ? 0 : rawVerticalDelta
+    const horizontalDelta =
+      rawHorizontalDelta || (event.shiftKey ? rawVerticalDelta : 0)
+    const maxTop = Math.max(0, host.scrollHeight - host.clientHeight)
+    const maxLeft = Math.max(0, host.scrollWidth - host.clientWidth)
+    const canScrollVertically = canApplyWheelDelta(verticalDelta, host.scrollTop, maxTop)
+    const canScrollHorizontally = canApplyWheelDelta(horizontalDelta, host.scrollLeft, maxLeft)
+
+    if (!canScrollVertically && !canScrollHorizontally) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (codeView) {
+      markUserScroll(codeView)
+    }
+
+    if (wheelScrollFrame === null) {
+      wheelScrollTargetTop = host.scrollTop
+      wheelScrollTargetLeft = host.scrollLeft
+    }
+
+    if (canScrollVertically) {
+      wheelScrollTargetTop = clampWheelTarget(wheelScrollTargetTop + verticalDelta, maxTop)
+    }
+
+    if (canScrollHorizontally) {
+      wheelScrollTargetLeft = clampWheelTarget(wheelScrollTargetLeft + horizontalDelta, maxLeft)
+    }
+
+    scheduleWheelScrollFrame()
+  }
+
+  function syncWheelHandling() {
+    if (wheelHost === host) {
+      return
+    }
+
+    unsubscribeWheel?.()
+    unsubscribeWheel = null
+    wheelHost = host
+
+    if (!host) {
+      return
+    }
+
+    const nextHost = host
+    nextHost.addEventListener('wheel', handleHostWheel, {
+      capture: true,
+      passive: false,
+    })
+    unsubscribeWheel = () => {
+      nextHost.removeEventListener('wheel', handleHostWheel, true)
+    }
   }
 
   function shouldSuppressScrollCorrection(
@@ -527,9 +672,11 @@
     const button = document.createElement('button')
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    const loadedEntry = entryByPath.get(itemId)
 
     button.type = 'button'
     button.className = 'diffly-codeview-collapse-button'
+    button.dataset.difflyEntryPath = itemId
     button.dataset.collapsed = collapsed ? 'true' : 'false'
     button.setAttribute('aria-label', collapsed ? 'Expand file diff' : 'Collapse file diff')
     button.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
@@ -549,6 +696,10 @@
       event.stopPropagation()
       toggleEntry(itemId)
     })
+
+    if (loadedEntry && !loadedEntry.diff?.text && !loadedEntry.loading && !loadedEntry.error) {
+      schedulePlaceholderEntryRequest(itemId)
+    }
 
     return button
   }
@@ -571,7 +722,7 @@
       metadata.textContent = 'Error'
       metadata.title = loadedEntry.error
     } else {
-      metadata.textContent = loadedEntry.loading
+      metadata.textContent = loadedEntry.loading || !loadedEntry.diff?.text
         ? 'Loading...'
         : statusLabel(loadedEntry.entry.status)
     }
@@ -589,6 +740,12 @@
     node.toggleAttribute('data-diffly-placeholder', placeholderPaths.has(itemId))
     node.toggleAttribute('data-diffly-loading', loadingPaths.has(itemId))
     node.toggleAttribute('data-diffly-error', Boolean(entryByPath.get(itemId)?.error))
+
+    const entry = entryByPath.get(itemId)
+    if (placeholderPaths.has(itemId) && entry && !entry.loading && !entry.error) {
+      schedulePlaceholderEntryRequest(itemId)
+    }
+
     scheduleVisibleEntryRequest()
   }
 
@@ -710,25 +867,26 @@
       entry.rightPath ?? '',
       entry.leftSize ?? '',
       entry.rightSize ?? '',
-      loadedEntry.loading ? '1' : '0',
       loadedEntry.error,
       estimatePlaceholderLineCount(entry),
       collapsedPaths.has(entry.relativePath) ? '1' : '0',
     ].join('\u0000')
   }
 
-  function placeholderVersion(loadedEntry: LoadedDirectoryDiff) {
+  function placeholderItem(loadedEntry: LoadedDirectoryDiff) {
     const path = loadedEntry.entry.relativePath
     const key = placeholderKey(loadedEntry)
     const cached = placeholderItems.get(path)
 
     if (cached?.key === key) {
-      return cached.version
+      return cached
     }
 
     const version = (cached?.version ?? 0) + 1
-    placeholderItems.set(path, { key, version })
-    return version
+    const file = buildPlaceholderFile(loadedEntry, key)
+    const item = { file, key, version }
+    placeholderItems.set(path, item)
+    return item
   }
 
   function clampPlaceholderLineCount(value: number, max: number) {
@@ -765,16 +923,16 @@
     return [label, ...Array.from({ length: lineCount - 1 }, () => '')].join('\n')
   }
 
-  function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff): FileContents {
+  function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff, key: string): FileContents {
     const { entry } = loadedEntry
-    const label = loadedEntry.error || (loadedEntry.loading ? 'Loading diff...' : 'Queued diff...')
+    const label = loadedEntry.error || 'Loading diff...'
     const lineCount = loadedEntry.error ? 1 : estimatePlaceholderLineCount(entry)
     const contents = buildPlaceholderContents(label, lineCount)
 
     return {
       name: entry.relativePath,
       contents,
-      cacheKey: ['placeholder', placeholderKey(loadedEntry), contents].join('\u0000'),
+      cacheKey: ['placeholder', key, contents.length].join('\u0000'),
       lang: 'text',
     }
   }
@@ -786,12 +944,13 @@
     const collapsed = collapsedPaths.has(entry.relativePath)
 
     if (!diff?.text) {
+      const placeholder = placeholderItem(loadedEntry)
       return {
         id: entry.relativePath,
         type: 'file',
-        file: buildPlaceholderFile(loadedEntry),
+        file: placeholder.file,
         collapsed,
-        version: placeholderVersion(loadedEntry),
+        version: placeholder.version,
       }
     }
 
@@ -901,15 +1060,15 @@
     }
   }
 
-  function scheduleVisibleEntryRequest() {
-    if (visibleRequestFrame !== null) {
-      return
+  function scheduleVisibleEntryRequest(delayMs = DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS) {
+    if (visibleRequestTimer !== null) {
+      window.clearTimeout(visibleRequestTimer)
     }
 
-    visibleRequestFrame = window.requestAnimationFrame(() => {
-      visibleRequestFrame = null
+    visibleRequestTimer = window.setTimeout(() => {
+      visibleRequestTimer = null
       requestRenderedEntries(codeView)
-    })
+    }, delayMs)
   }
 
   function requestRenderedEntries(view: CodeView<DifflyCommentAnnotation> | null) {
@@ -917,18 +1076,96 @@
       return
     }
 
-    const paths = view.getRenderedItems().map((item) => item.id)
+    const paths = collectRenderedEntryPaths(view)
     if (paths.length === 0) {
       return
     }
 
     const key = paths.join('\u0000')
-    if (key === lastRequestedVisibleKey) {
+    const hasPendingVisiblePlaceholder = paths.some((path) => {
+      const entry = entryByPath.get(path)
+      return entry && !entry.diff?.text && !entry.error
+    })
+
+    if (key === lastRequestedVisibleKey && !hasPendingVisiblePlaceholder) {
       return
     }
 
     lastRequestedVisibleKey = key
     requestVisibleEntries(paths)
+  }
+
+  function collectRenderedEntryPaths(view: CodeView<DifflyCommentAnnotation>) {
+    const paths: string[] = []
+    const seenPaths = new Set<string>()
+    const addPath = (path: string | undefined) => {
+      if (!path || seenPaths.has(path)) {
+        return
+      }
+
+      seenPaths.add(path)
+      paths.push(path)
+    }
+
+    for (const item of view.getRenderedItems()) {
+      addPath(item.id)
+    }
+
+    if (!host) {
+      return paths
+    }
+
+    host
+      .querySelectorAll<HTMLElement>('[data-diffly-entry-path]')
+      .forEach((element) => {
+        addPath(element.dataset.difflyEntryPath)
+      })
+
+    host.querySelectorAll<HTMLElement>('diffs-container').forEach((element) => {
+      element.shadowRoot
+        ?.querySelectorAll<HTMLElement>('[data-diffly-entry-path]')
+        .forEach((shadowElement) => {
+          addPath(shadowElement.dataset.difflyEntryPath)
+        })
+    })
+
+    return paths
+  }
+
+  function schedulePlaceholderEntryRequest(path: string) {
+    const nextPaths = new Set(pendingPlaceholderRequestPaths)
+    nextPaths.add(path)
+    pendingPlaceholderRequestPaths = nextPaths
+
+    if (placeholderRequestTimer !== null) {
+      window.clearTimeout(placeholderRequestTimer)
+    }
+
+    placeholderRequestTimer = window.setTimeout(() => {
+      placeholderRequestTimer = null
+      const paths = Array.from(pendingPlaceholderRequestPaths)
+      pendingPlaceholderRequestPaths = new Set()
+
+      if (paths.length > 0) {
+        requestVisibleEntries(paths)
+      }
+    }, DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS)
+  }
+
+  function scheduleImmediateRender(view: CodeView<DifflyCommentAnnotation>) {
+    if (immediateRenderFrame !== null) {
+      return
+    }
+
+    immediateRenderFrame = window.requestAnimationFrame(() => {
+      immediateRenderFrame = null
+      if (codeView !== view) {
+        return
+      }
+
+      view.render(true)
+      scheduleVisibleEntryRequest()
+    })
   }
 
   function shouldRenderScrollImmediately(
@@ -963,8 +1200,8 @@
       markUserScroll(view)
 
       if (shouldRenderScrollImmediately(scrollTop, view)) {
-        view.render(true)
-        requestRenderedEntries(view)
+        scheduleImmediateRender(view)
+        scheduleVisibleEntryRequest()
         return
       }
 
@@ -1081,6 +1318,9 @@
   }
 
   $: host,
+    syncWheelHandling()
+
+  $: host,
     entries,
     collapsedPaths,
     viewerSettings,
@@ -1099,9 +1339,24 @@
       window.clearTimeout(interactionMessageTimer)
     }
 
-    if (visibleRequestFrame !== null) {
-      window.cancelAnimationFrame(visibleRequestFrame)
-      visibleRequestFrame = null
+    if (wheelScrollFrame !== null) {
+      window.cancelAnimationFrame(wheelScrollFrame)
+      wheelScrollFrame = null
+    }
+
+    if (immediateRenderFrame !== null) {
+      window.cancelAnimationFrame(immediateRenderFrame)
+      immediateRenderFrame = null
+    }
+
+    if (visibleRequestTimer !== null) {
+      window.clearTimeout(visibleRequestTimer)
+      visibleRequestTimer = null
+    }
+
+    if (placeholderRequestTimer !== null) {
+      window.clearTimeout(placeholderRequestTimer)
+      placeholderRequestTimer = null
     }
 
     if (layoutRetryFrame !== null) {
@@ -1111,6 +1366,8 @@
 
     unsubscribeScroll?.()
     unsubscribeScroll = null
+    unsubscribeWheel?.()
+    unsubscribeWheel = null
     restoreScrollCorrectionGuard()
     codeView?.cleanUp()
     codeView = null

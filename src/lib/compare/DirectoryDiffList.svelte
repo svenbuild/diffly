@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem } from '../api'
   import type { AppearanceSettings } from '../theme'
@@ -53,9 +54,11 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 4
-  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 32
-  const DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS = 36
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 1
+  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 4
+  const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
+  const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
+  const DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS = 320
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -70,6 +73,8 @@
   let normalLoadQueueHead = 0
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
+  let loadPausedUntil = 0
+  let loadResumeTimer: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
 
@@ -124,6 +129,17 @@
 
   function getEntryState(path: string) {
     return entryStates.get(path) ?? null
+  }
+
+  function entryNeedsLoad(
+    entry: DirectoryEntryResult | null | undefined,
+  ): entry is DirectoryEntryResult {
+    if (!entry || entry.status === 'unsupported') {
+      return false
+    }
+
+    const state = getEntryState(entryKey(entry))
+    return !(state?.revision === revision && (state.diff || state.error || state.loading))
   }
 
   function isCollapsed(path: string) {
@@ -220,17 +236,11 @@
   }
 
   function scheduleEntryLoad(entry: DirectoryEntryResult | null | undefined, priority = false) {
-    if (!entry || entry.status === 'unsupported') {
+    if (!entryNeedsLoad(entry)) {
       return
     }
 
     const path = entryKey(entry)
-    const state = getEntryState(path)
-
-    if (state?.revision === revision && (state.diff || state.error || state.loading)) {
-      return
-    }
-
     if (loadQueueKeys.has(path)) {
       return
     }
@@ -245,6 +255,23 @@
     nextLoadQueueKeys.add(path)
     loadQueueKeys = nextLoadQueueKeys
     pumpLoadQueue()
+  }
+
+  function scheduleLoadResume() {
+    if (loadResumeTimer !== null) {
+      window.clearTimeout(loadResumeTimer)
+    }
+
+    const delay = Math.max(16, Math.ceil(loadPausedUntil - performance.now()))
+    loadResumeTimer = window.setTimeout(() => {
+      loadResumeTimer = null
+      pumpLoadQueue()
+    }, delay)
+  }
+
+  function pauseDirectoryDiffLoads(durationMs = DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS) {
+    loadPausedUntil = Math.max(loadPausedUntil, performance.now() + durationMs)
+    scheduleLoadResume()
   }
 
   function compactPriorityLoadQueue() {
@@ -298,6 +325,11 @@
   }
 
   function pumpLoadQueue() {
+    if (performance.now() < loadPausedUntil) {
+      scheduleLoadResume()
+      return
+    }
+
     while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
       const entry = takeNextQueuedEntry()
       if (!entry) {
@@ -317,7 +349,12 @@
     }
   }
 
-  function scheduleEntryWindow(path: string, priority = false) {
+  function collectEntryWindow(
+    path: string,
+    radius: number,
+    target: string[],
+    seenPaths: Set<string>,
+  ) {
     if (!path) {
       return
     }
@@ -327,15 +364,57 @@
       return
     }
 
-    const startIndex = Math.max(0, centerIndex - DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS)
+    const startIndex = Math.max(0, centerIndex - radius)
     const endIndex = Math.min(
       directoryEntries.length - 1,
-      centerIndex + DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS,
+      centerIndex + radius,
     )
 
     for (let index = startIndex; index <= endIndex; index += 1) {
-      scheduleEntryLoad(directoryEntries[index], priority && index === centerIndex)
+      const entry = directoryEntries[index]
+      const entryPath = entry.relativePath
+
+      if (seenPaths.has(entryPath) || !entryNeedsLoad(entry)) {
+        continue
+      }
+
+      seenPaths.add(entryPath)
+      target.push(entryPath)
     }
+  }
+
+  function scheduleEntryWindow(path: string, radius: number, priority = false) {
+    const paths: string[] = []
+    collectEntryWindow(path, radius, paths, new Set())
+
+    for (const entryPath of paths) {
+      scheduleEntryLoad(entryByPath.get(entryPath), priority && entryPath === path)
+    }
+  }
+
+  function replacePriorityLoadQueue(paths: string[]) {
+    const priorityPaths: string[] = []
+    const priorityPathSet = new Set<string>()
+
+    for (const path of paths) {
+      collectEntryWindow(
+        path,
+        DIRECTORY_DIFF_VISIBLE_LOAD_PADDING,
+        priorityPaths,
+        priorityPathSet,
+      )
+    }
+
+    const normalQueuedPaths = normalLoadQueue
+      .slice(normalLoadQueueHead)
+      .filter((path) => !priorityPathSet.has(path))
+
+    priorityLoadQueue = priorityPaths
+    normalLoadQueue = normalQueuedPaths
+    priorityLoadQueueHead = 0
+    normalLoadQueueHead = 0
+    loadQueueKeys = new Set([...priorityLoadQueue, ...normalLoadQueue])
+    pumpLoadQueue()
   }
 
   function scheduleInitialLoads() {
@@ -359,12 +438,13 @@
       : directoryEntries.find((entry) => entry.status !== 'unsupported')
 
     if (selectedEntry) {
-      scheduleEntryWindow(selectedEntry.relativePath, true)
+      scheduleEntryWindow(selectedEntry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
     }
     scheduleInitialLoads()
   }
 
   function requestVisibleEntries(paths: string[]) {
+    const visiblePaths: string[] = []
     const seenPaths = new Set<string>()
 
     for (const path of paths) {
@@ -373,7 +453,11 @@
       }
 
       seenPaths.add(path)
-      scheduleEntryWindow(path, true)
+      visiblePaths.push(path)
+    }
+
+    if (visiblePaths.length > 0) {
+      replacePriorityLoadQueue(visiblePaths)
     }
   }
 
@@ -388,7 +472,7 @@
     }
 
     if (!isCollapsed(entry.relativePath)) {
-      scheduleEntryWindow(entry.relativePath, true)
+      scheduleEntryWindow(entry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
     }
   }
 
@@ -482,6 +566,13 @@
     ].join('\u0000')
   }
 
+  onDestroy(() => {
+    if (loadResumeTimer !== null) {
+      window.clearTimeout(loadResumeTimer)
+      loadResumeTimer = null
+    }
+  })
+
   function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
     let timeoutId: number | null = null
     const timeoutPromise = new Promise<T>((_, reject) => {
@@ -557,6 +648,7 @@
         {scrollTargetRevision}
         toggleEntry={toggleEntryByPath}
         {requestVisibleEntries}
+        pauseDiffLoading={pauseDirectoryDiffLoads}
       />
     {:else if pendingEntryCount > 0}
       <div class="compare-viewer-state">
