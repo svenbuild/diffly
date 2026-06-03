@@ -234,6 +234,12 @@
   let directoryComparePairSlots: Array<Array<DirectoryEntryResult | null | undefined>> = []
   let directoryComparePairJobs: Array<{ jobId: string; pairIndex: number; done: boolean }> = []
   let directoryComparePairTimers: Array<number | null> = []
+  let directoryEntriesFlushFrame: number | null = null
+  let pendingDirectoryDefaultSelection: {
+    previousSelectedPath: string
+    revision: number
+    restoreScroll: DiffScrollSnapshot | null
+  } | null = null
   let paneNavigationScrollFrame: number | null = null
   let paneWheelScrollFrame: number | null = null
   let diffNavigationScrollFrame: number | null = null
@@ -825,8 +831,17 @@
     }
   }
 
+  function clearDirectoryEntriesFlushFrame() {
+    if (directoryEntriesFlushFrame !== null) {
+      window.cancelAnimationFrame(directoryEntriesFlushFrame)
+      directoryEntriesFlushFrame = null
+    }
+  }
+
   function stopDirectoryComparePolling(clearEntries = false) {
     clearDirectoryComparePollTimer()
+    clearDirectoryEntriesFlushFrame()
+    pendingDirectoryDefaultSelection = null
     activeDirectoryCompareJobId = ''
     directoryComparePairJobs = []
     directoryComparePairTimers = []
@@ -1108,7 +1123,37 @@
       slots[update.index] = update.entry
     }
 
+    scheduleDirectoryEntriesRebuild()
+  }
+
+  function scheduleDirectoryEntriesRebuild() {
+    if (directoryEntriesFlushFrame !== null) {
+      return
+    }
+
+    directoryEntriesFlushFrame = window.requestAnimationFrame(() => {
+      directoryEntriesFlushFrame = null
+      flushDirectoryEntriesFromPairs()
+    })
+  }
+
+  function requestDirectoryDefaultSelection(
+    previousSelectedPath: string,
+    revision: number,
+    restoreScroll: DiffScrollSnapshot | null,
+  ) {
+    pendingDirectoryDefaultSelection = {
+      previousSelectedPath,
+      revision,
+      restoreScroll,
+    }
+    scheduleDirectoryEntriesRebuild()
+  }
+
+  function flushDirectoryEntriesFromPairs() {
+    clearDirectoryEntriesFlushFrame()
     rebuildDirectoryEntriesFromPairs()
+    applyPendingDirectoryDefaultSelection()
   }
 
   function rebuildDirectoryEntriesFromPairs() {
@@ -1139,6 +1184,35 @@
 
     directoryEntries = aggregated
     syncFilteredDirectoryState(aggregated)
+  }
+
+  function applyPendingDirectoryDefaultSelection() {
+    const pending = pendingDirectoryDefaultSelection
+    pendingDirectoryDefaultSelection = null
+
+    if (
+      !pending ||
+      pending.revision !== compareRevision ||
+      detailLoading ||
+      activeDiff
+    ) {
+      return
+    }
+
+    const preservedEntry = pending.previousSelectedPath
+      ? filteredDirectoryEntries.find((entry) => entry.relativePath === pending.previousSelectedPath)
+      : undefined
+    const nextEntry =
+      preservedEntry ??
+      (filteredDirectoryEntries.length > 0 ? defaultDirectoryEntry(filteredDirectoryEntries) : null)
+
+    if (nextEntry) {
+      void selectEntry(
+        nextEntry,
+        pending.revision,
+        nextEntry.relativePath === pending.previousSelectedPath ? pending.restoreScroll : null,
+      )
+    }
   }
 
   function queuePairPoll(
@@ -1188,25 +1262,12 @@
       }
 
       applyDirectoryCompareUpdatesForPair(pairIndex, response.updates)
-
-      if (!detailLoading && !activeDiff) {
-        const preservedEntry = previousSelectedPath
-          ? filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
-          : undefined
-        const nextEntry =
-          preservedEntry ??
-          (filteredDirectoryEntries.length > 0 ? defaultDirectoryEntry(filteredDirectoryEntries) : null)
-
-        if (nextEntry) {
-          void selectEntry(
-            nextEntry,
-            revision,
-            nextEntry.relativePath === previousSelectedPath ? restoreScroll : null,
-          )
-        }
+      if (response.updates.length > 0) {
+        requestDirectoryDefaultSelection(previousSelectedPath, revision, restoreScroll)
       }
 
       if (response.done) {
+        flushDirectoryEntriesFromPairs()
         stillTracking.done = true
 
         if (response.error) {

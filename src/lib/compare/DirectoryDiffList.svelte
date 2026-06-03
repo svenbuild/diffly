@@ -1,5 +1,5 @@
 <script lang="ts">
-  import PierreDirectoryCodeView from './PierreDirectoryCodeView.svelte'
+  import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem } from '../api'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -23,6 +23,7 @@
     diff: FileDiffResult | null
     error: string
     loading: boolean
+    renderKey: string
   }
 
   export let directoryEntries: DirectoryEntryResult[] = []
@@ -60,7 +61,12 @@
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
   let entryByPath = new Map<string, DirectoryEntryResult>()
-  let loadQueue: string[] = []
+  let entryIndexByPath = new Map<string, number>()
+  let loadedEntryCache = new Map<string, LoadedDirectoryDiff>()
+  let priorityLoadQueue: string[] = []
+  let normalLoadQueue: string[] = []
+  let priorityLoadQueueHead = 0
+  let normalLoadQueueHead = 0
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
   let scrollTargetRevision = 0
@@ -96,8 +102,18 @@
 
     collapsedPaths = nextCollapsedPaths
     entryStates = nextStates
-    loadQueue = loadQueue.filter((path) => nextPaths.has(path))
-    loadQueueKeys = new Set(loadQueue)
+    priorityLoadQueue = priorityLoadQueue
+      .slice(priorityLoadQueueHead)
+      .filter((path) => nextPaths.has(path))
+    normalLoadQueue = normalLoadQueue
+      .slice(normalLoadQueueHead)
+      .filter((path) => nextPaths.has(path))
+    priorityLoadQueueHead = 0
+    normalLoadQueueHead = 0
+    loadQueueKeys = new Set([...priorityLoadQueue, ...normalLoadQueue])
+    loadedEntryCache = new Map(
+      Array.from(loadedEntryCache).filter(([path]) => nextPaths.has(path)),
+    )
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
@@ -215,33 +231,70 @@
       return
     }
 
-    const nextQueue = loadQueue.filter((queuedPath) => queuedPath !== path)
-    if (priority) {
-      nextQueue.unshift(path)
-    } else if (!loadQueueKeys.has(path)) {
-      nextQueue.push(path)
-    } else {
+    if (loadQueueKeys.has(path)) {
       return
     }
 
-    loadQueue = nextQueue
-    loadQueueKeys = new Set(nextQueue)
+    if (priority) {
+      priorityLoadQueue = [...priorityLoadQueue, path]
+    } else {
+      normalLoadQueue = [...normalLoadQueue, path]
+    }
+
+    const nextLoadQueueKeys = new Set(loadQueueKeys)
+    nextLoadQueueKeys.add(path)
+    loadQueueKeys = nextLoadQueueKeys
     pumpLoadQueue()
   }
 
+  function compactPriorityLoadQueue() {
+    if (priorityLoadQueueHead > 64 && priorityLoadQueueHead * 2 > priorityLoadQueue.length) {
+      priorityLoadQueue = priorityLoadQueue.slice(priorityLoadQueueHead)
+      priorityLoadQueueHead = 0
+    }
+  }
+
+  function compactNormalLoadQueue() {
+    if (normalLoadQueueHead > 64 && normalLoadQueueHead * 2 > normalLoadQueue.length) {
+      normalLoadQueue = normalLoadQueue.slice(normalLoadQueueHead)
+      normalLoadQueueHead = 0
+    }
+  }
+
+  function takeQueuedPath() {
+    if (priorityLoadQueueHead < priorityLoadQueue.length) {
+      const path = priorityLoadQueue[priorityLoadQueueHead]
+      priorityLoadQueueHead += 1
+      compactPriorityLoadQueue()
+      return path
+    }
+
+    if (normalLoadQueueHead < normalLoadQueue.length) {
+      const path = normalLoadQueue[normalLoadQueueHead]
+      normalLoadQueueHead += 1
+      compactNormalLoadQueue()
+      return path
+    }
+
+    return null
+  }
+
   function takeNextQueuedEntry() {
-    while (loadQueue.length > 0) {
-      const [nextPath, ...remainingQueue] = loadQueue
-      loadQueue = remainingQueue
-      loadQueueKeys = new Set(remainingQueue)
+    while (true) {
+      const nextPath = takeQueuedPath()
+      if (!nextPath) {
+        return null
+      }
+
+      const nextLoadQueueKeys = new Set(loadQueueKeys)
+      nextLoadQueueKeys.delete(nextPath)
+      loadQueueKeys = nextLoadQueueKeys
 
       const entry = entryByPath.get(nextPath)
       if (entry && entry.status !== 'unsupported') {
         return entry
       }
     }
-
-    return null
   }
 
   function pumpLoadQueue() {
@@ -269,7 +322,7 @@
       return
     }
 
-    const centerIndex = directoryEntries.findIndex((entry) => entry.relativePath === path)
+    const centerIndex = entryIndexByPath.get(path) ?? -1
     if (centerIndex < 0) {
       return
     }
@@ -305,10 +358,10 @@
       ? entryByPath.get(selectedRelativePath)
       : directoryEntries.find((entry) => entry.status !== 'unsupported')
 
-    scheduleInitialLoads()
     if (selectedEntry) {
       scheduleEntryWindow(selectedEntry.relativePath, true)
     }
+    scheduleInitialLoads()
   }
 
   function requestVisibleEntries(paths: string[]) {
@@ -320,8 +373,7 @@
       }
 
       seenPaths.add(path)
-      scheduleEntryWindow(path)
-      scheduleEntryLoad(entryByPath.get(path), true)
+      scheduleEntryWindow(path, true)
     }
   }
 
@@ -360,18 +412,34 @@
 
   function rebuildVisibleEntries() {
     const nextTextEntries: LoadedDirectoryDiff[] = []
+    const nextLoadedEntryCache = new Map<string, LoadedDirectoryDiff>()
     let nextPendingEntryCount = 0
 
     for (const entry of directoryEntries) {
       const state = getEntryState(entry.relativePath)
+      const renderKey = buildLoadedEntryRenderKey(entry, state)
+      const cached = loadedEntryCache.get(entry.relativePath)
+      const pushLoadedEntry = (
+        diff: FileDiffResult | null,
+        error: string,
+        itemLoading: boolean,
+      ) => {
+        const nextEntry =
+          cached?.renderKey === renderKey
+            ? cached
+            : {
+                entry,
+                diff,
+                error,
+                loading: itemLoading,
+                renderKey,
+              }
+        nextLoadedEntryCache.set(entry.relativePath, nextEntry)
+        nextTextEntries.push(nextEntry)
+      }
 
       if (entry.status === 'unsupported') {
-        nextTextEntries.push({
-          entry,
-          diff: null,
-          error: 'No text diff is available for this file.',
-          loading: false,
-        })
+        pushLoadedEntry(null, 'No text diff is available for this file.', false)
         continue
       }
 
@@ -380,31 +448,39 @@
       }
 
       if (state?.diff?.contentKind === 'text' && state.diff.text) {
-        nextTextEntries.push({
-          entry,
-          diff: state.diff,
-          error: '',
-          loading: state.loading,
-        })
+        pushLoadedEntry(state.diff, '', state.loading)
       } else if (state?.error || (state?.diff && state.diff.contentKind !== 'text')) {
-        nextTextEntries.push({
-          entry,
-          diff: null,
-          error: state.error || 'No text diff is available for this file.',
-          loading: false,
-        })
+        pushLoadedEntry(null, state.error || 'No text diff is available for this file.', false)
       } else {
-        nextTextEntries.push({
-          entry,
-          diff: null,
-          error: '',
-          loading: state?.loading ?? false,
-        })
+        pushLoadedEntry(null, '', state?.loading ?? false)
       }
     }
 
+    loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
     pendingEntryCount = nextPendingEntryCount
+  }
+
+  function buildLoadedEntryRenderKey(
+    entry: DirectoryEntryResult,
+    state: EntryDiffState | null,
+  ) {
+    const diff = state?.diff
+    const text = diff?.text
+    return [
+      revision,
+      entry.relativePath,
+      entry.status,
+      entry.leftPath ?? '',
+      entry.rightPath ?? '',
+      entry.leftSize ?? '',
+      entry.rightSize ?? '',
+      state?.loading ? 'loading' : 'idle',
+      state?.error ?? '',
+      diff?.contentKind ?? '',
+      text?.leftCacheKey ?? text?.leftSha256 ?? text?.leftText.length ?? '',
+      text?.rightCacheKey ?? text?.rightSha256 ?? text?.rightText.length ?? '',
+    ].join('\u0000')
   }
 
   function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -428,7 +504,10 @@
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
       loadGeneration += 1
-      loadQueue = []
+      priorityLoadQueue = []
+      normalLoadQueue = []
+      priorityLoadQueueHead = 0
+      normalLoadQueueHead = 0
       loadQueueKeys = new Set()
       activeLoadCount = 0
     }
@@ -436,6 +515,7 @@
   }
 
   $: entryByPath = new Map(directoryEntries.map((entry) => [entry.relativePath, entry]))
+  $: entryIndexByPath = new Map(directoryEntries.map((entry, index) => [entry.relativePath, index]))
 
   $: {
     directoryEntries
@@ -444,7 +524,13 @@
     rebuildVisibleEntries()
   }
 
-  $: directoryEntries, entryByPath, selectedRelativePath, revision, loadGeneration, scheduleActiveLoads()
+  $: directoryEntries,
+    entryByPath,
+    entryIndexByPath,
+    selectedRelativePath,
+    revision,
+    loadGeneration,
+    scheduleActiveLoads()
 
   $: selectedRelativePath, scrollToEntry(selectedRelativePath)
 </script>
@@ -461,7 +547,7 @@
     </div>
   {:else}
     {#if textEntries.length > 0}
-      <PierreDirectoryCodeView
+      <PierreDirectoryVirtualDiffView
         entries={textEntries}
         {collapsedPaths}
         {selectedRelativePath}
