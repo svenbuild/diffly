@@ -181,6 +181,11 @@ async function main() {
   await generateFixtures()
 
   const backend = await import(`${pathToFileURL(BUNDLE_PATH).href}?v=${Date.now()}`)
+  const coldDirectoryResult = await measure('directory cold', ITERATIONS, async () => {
+    backend.clearDirectoryCompareCache()
+    const response = await backend.comparePaths(LEFT_ROOT, RIGHT_ROOT, 'directory', compareOptions)
+    return `${response.entries.length} changed entries`
+  })
   const directoryResult = await measure('directory compare', ITERATIONS, async () => {
     const response = await backend.comparePaths(LEFT_ROOT, RIGHT_ROOT, 'directory', compareOptions)
     return `${response.entries.length} changed entries`
@@ -196,6 +201,7 @@ async function main() {
   })
 
   console.log(`fixtures: ${FILE_COUNT} generated entries per side, ${ITERATIONS} measured iterations, ${WARMUPS} warmups`)
+  printResult(coldDirectoryResult)
   printResult(directoryResult)
   printResult(fileResult)
 }

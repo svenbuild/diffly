@@ -110,9 +110,6 @@
   const THEME_SWITCH_DURATION_MS = 140
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
-  const DIRECTORY_DETAIL_PRELOAD_CONCURRENCY = 2
-  const DIRECTORY_DETAIL_PRELOAD_ATTEMPTS = 3
-  const DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS = 30000
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
   const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
@@ -218,6 +215,7 @@
   let directoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntryPaths = new Set<string>()
+  let directoryRenderableEntryCount = 0
   let selectedRelativePath = ''
   let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
@@ -252,14 +250,18 @@
   let initialSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
   let activeDetailRequestId = 0
-  let directoryDetailPreloadGeneration = 0
-  let directoryDetailPreloadSignature = ''
   let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareSidebarResizeActive = false
+  let compareSidebarResizeFrame: number | null = null
+  let pendingCompareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareDirtyReason: CompareDirtyReason | null = null
   let compareNeedsRefresh = false
   let leftExplorer = createExplorerPane('Left')
   let rightExplorer = createExplorerPane('Right')
+  let paneNavigationRequestIds: Record<Side, number> = {
+    left: 0,
+    right: 0,
+  }
   let visibleDiffHunkCount = 0
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
@@ -468,6 +470,11 @@
   }
 
   function stopCompareSidebarResize() {
+    if (compareSidebarResizeFrame !== null) {
+      window.cancelAnimationFrame(compareSidebarResizeFrame)
+      compareSidebarResizeFrame = null
+    }
+    compareSidebarWidth = pendingCompareSidebarWidth
     compareSidebarResizeActive = false
   }
 
@@ -476,10 +483,19 @@
       return
     }
 
-    compareSidebarWidth = clampCompareSidebarWidth(clientX)
+    pendingCompareSidebarWidth = clampCompareSidebarWidth(clientX)
+    if (compareSidebarResizeFrame !== null) {
+      return
+    }
+
+    compareSidebarResizeFrame = window.requestAnimationFrame(() => {
+      compareSidebarResizeFrame = null
+      compareSidebarWidth = pendingCompareSidebarWidth
+    })
   }
 
   function resetCompareSidebarWidth() {
+    pendingCompareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
     compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
     stopCompareSidebarResize()
   }
@@ -608,7 +624,6 @@
 
       removeLaunchContextListener()
       diffCache.cancelBackgroundPreload()
-      cancelDirectoryDetailPreload()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -620,6 +635,10 @@
 
       if (paneWheelScrollFrame !== null) {
         window.cancelAnimationFrame(paneWheelScrollFrame)
+      }
+
+      if (compareSidebarResizeFrame !== null) {
+        window.cancelAnimationFrame(compareSidebarResizeFrame)
       }
 
       clearDirectoryComparePollTimer()
@@ -865,10 +884,6 @@
     diffCache.cancelBackgroundPreload()
   }
 
-  function cancelDirectoryDetailPreload() {
-    directoryDetailPreloadGeneration += 1
-  }
-
   function clearDirectoryComparePollTimer() {
     if (directoryComparePollTimer !== null) {
       window.clearTimeout(directoryComparePollTimer)
@@ -907,6 +922,7 @@
       directoryCompareEntrySlots = []
       directoryComparePairs = []
       directoryComparePairSlots = []
+      directoryRenderableEntryCount = 0
     }
 
     for (const jobId of jobIds) {
@@ -1051,79 +1067,6 @@
     })
   }
 
-  async function preloadDirectoryEntryDiff(
-    entry: DirectoryEntryResult,
-    revision: number,
-    generation: number,
-  ) {
-    let lastError: unknown = null
-
-    for (let attempt = 1; attempt <= DIRECTORY_DETAIL_PRELOAD_ATTEMPTS; attempt += 1) {
-      if (generation !== directoryDetailPreloadGeneration || revision !== compareRevision) {
-        return
-      }
-
-      try {
-        await withDirectoryPreloadTimeout(
-          getOrCreateDetailDiffPromise(entry.relativePath, revision, { force: attempt > 1 }),
-          DIRECTORY_DETAIL_PRELOAD_TIMEOUT_MS,
-        )
-        return
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    throw lastError
-  }
-
-  function withDirectoryPreloadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-    let timeoutId: number | null = null
-    const timeoutPromise = new Promise<T>((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        reject(new Error('Timed out while preloading this file diff.'))
-      }, timeoutMs)
-    })
-
-    return Promise.race([promise, timeoutPromise]).finally(() => {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-      }
-    })
-  }
-
-  function startDirectoryDetailPreload(entries: DirectoryEntryResult[], revision = compareRevision) {
-    cancelDirectoryDetailPreload()
-
-    if (mode !== 'directory' || entries.length === 0 || !leftPath || !rightPath) {
-      return
-    }
-
-    const generation = directoryDetailPreloadGeneration
-    const queue = [...entries]
-    const workerCount = Math.min(DIRECTORY_DETAIL_PRELOAD_CONCURRENCY, queue.length)
-
-    const runWorker = async () => {
-      while (generation === directoryDetailPreloadGeneration && revision === compareRevision) {
-        const entry = queue.shift()
-
-        if (!entry) {
-          return
-        }
-
-        try {
-          await preloadDirectoryEntryDiff(entry, revision, generation)
-        } catch {
-          // The visible directory diff list reports per-file errors on demand.
-        }
-      }
-    }
-
-    for (let index = 0; index < workerCount; index += 1) {
-      void runWorker()
-    }
-  }
-
   function captureDiffScrollSnapshot(): DiffScrollSnapshot | null {
     if (!activeDiff || activeDiff.contentKind !== 'text') {
       return null
@@ -1204,6 +1147,13 @@
     revision: number,
     restoreScroll: DiffScrollSnapshot | null,
   ) {
+    if (
+      selectedRelativePath &&
+      (!previousSelectedPath || selectedRelativePath === previousSelectedPath)
+    ) {
+      return
+    }
+
     pendingDirectoryDefaultSelection = {
       previousSelectedPath,
       revision,
@@ -1378,6 +1328,15 @@
 
   function updatePane(side: Side, updater: (pane: ExplorerPaneState) => ExplorerPaneState) {
     setPane(side, updater(paneFor(side)))
+  }
+
+  function startPaneNavigationRequest(side: Side) {
+    paneNavigationRequestIds[side] += 1
+    return paneNavigationRequestIds[side]
+  }
+
+  function paneNavigationRequestIsCurrent(side: Side, requestId: number) {
+    return paneNavigationRequestIds[side] === requestId
   }
 
   async function initializePickers() {
@@ -1626,6 +1585,8 @@
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
     filteredDirectoryEntries = []
+    filteredDirectoryEntryPaths = new Set()
+    directoryRenderableEntryCount = 0
     selectedRelativePath = ''
     activeDiff = null
     errorMessage = ''
@@ -1708,6 +1669,8 @@
       return
     }
 
+    startPaneNavigationRequest('left')
+    startPaneNavigationRequest('right')
     const nextLeftPane = retitlePane(rightExplorer, leftExplorer.title)
     const nextRightPane = retitlePane(leftExplorer, rightExplorer.title)
 
@@ -1733,20 +1696,25 @@
     }
 
     if (info.isDirectory) {
-      await openDirectory(side, info.path)
-      selectTarget(side, info.path, 'directory')
+      if (await openDirectory(side, info.path)) {
+        selectTarget(side, info.path, 'directory')
+      }
       return
     }
 
     if (info.isFile) {
       if (info.parentPath) {
-        await openDirectory(side, info.parentPath)
+        const opened = await openDirectory(side, info.parentPath)
+        if (!opened) {
+          return
+        }
       }
       selectTarget(side, info.path, 'file')
     }
   }
 
   async function openDirectory(side: Side, path: string, historyMode: 'push' | 'keep' = 'push') {
+    const requestId = startPaneNavigationRequest(side)
     updatePane(side, (pane) => ({
       ...pane,
       loading: true,
@@ -1757,6 +1725,11 @@
       const pane = paneFor(side)
       const cached = pane.listings[path]
       const listing = cached ?? (await listDirectory(path))
+
+      if (!paneNavigationRequestIsCurrent(side, requestId)) {
+        return false
+      }
+
       const historyState = buildNextHistoryState(pane, path, historyMode)
 
       updatePane(side, (current) => ({
@@ -1771,16 +1744,25 @@
         },
         loading: false,
       }))
+      return true
     } catch (error) {
+      if (!paneNavigationRequestIsCurrent(side, requestId)) {
+        return false
+      }
+
       updatePane(side, (pane) => ({
         ...pane,
         loading: false,
         error: error instanceof Error ? error.message : 'Unable to open the folder.',
       }))
+      return false
     }
   }
 
   async function openDirectoryForBothPanes(path: string, historyMode: 'push' | 'keep' = 'push') {
+    const leftRequestId = startPaneNavigationRequest('left')
+    const rightRequestId = startPaneNavigationRequest('right')
+
     leftExplorer = {
       ...leftExplorer,
       loading: true,
@@ -1797,6 +1779,14 @@
         leftExplorer.listings[path] ??
         rightExplorer.listings[path] ??
         await listDirectory(path)
+
+      if (
+        !paneNavigationRequestIsCurrent('left', leftRequestId) ||
+        !paneNavigationRequestIsCurrent('right', rightRequestId)
+      ) {
+        return false
+      }
+
       const leftHistoryState = buildNextHistoryState(leftExplorer, path, historyMode)
       const rightHistoryState = buildNextHistoryState(rightExplorer, path, historyMode)
 
@@ -1824,7 +1814,15 @@
         },
         loading: false,
       }
+      return true
     } catch (error) {
+      if (
+        !paneNavigationRequestIsCurrent('left', leftRequestId) ||
+        !paneNavigationRequestIsCurrent('right', rightRequestId)
+      ) {
+        return false
+      }
+
       const message = error instanceof Error ? error.message : 'Unable to open the folder.'
       leftExplorer = {
         ...leftExplorer,
@@ -1836,6 +1834,7 @@
         loading: false,
         error: message,
       }
+      return false
     }
   }
 
@@ -1851,7 +1850,10 @@
       return
     }
 
-    await openDirectory(side, pane.history[nextIndex], 'keep')
+    const opened = await openDirectory(side, pane.history[nextIndex], 'keep')
+    if (!opened) {
+      return
+    }
 
     updatePane(side, (current) => ({
       ...current,
@@ -2029,6 +2031,7 @@
     const previousSelectedPath = selectedRelativePath
     const restoreScroll = captureDiffScrollSnapshot()
     let directoryPollingStarted = false
+    let requestRevision = compareRevision
 
     loading = true
     detailLoading = false
@@ -2042,7 +2045,8 @@
     try {
       if (mode === 'directory') {
         compareRevision += 1
-        const revision = compareRevision
+        requestRevision = compareRevision
+        const revision = requestRevision
         diffCache.clearDetailDiffs()
         activeCompareOptions = { ...nextCompareOptions }
         compareDirtyReason = null
@@ -2069,6 +2073,9 @@
         )
 
         if (revision !== compareRevision) {
+          for (const response of startResults) {
+            void cancelDirectoryCompare(response.jobId).catch(() => undefined)
+          }
           return
         }
 
@@ -2095,13 +2102,20 @@
         return
       }
 
+      compareRevision += 1
+      requestRevision = compareRevision
+      const revision = requestRevision
       const response = await comparePaths(
         nextLeftPath,
         nextRightPath,
         mode,
         nextCompareOptions,
       )
-      compareRevision += 1
+
+      if (revision !== compareRevision) {
+        return
+      }
+
       diffCache.clearDetailDiffs()
       activeCompareOptions = { ...nextCompareOptions }
       compareDirtyReason = null
@@ -2131,9 +2145,11 @@
         cancelBackgroundDiffPreload()
       }
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'Compare failed.'
+      if (requestRevision === compareRevision) {
+        errorMessage = error instanceof Error ? error.message : 'Compare failed.'
+      }
     } finally {
-      if (!directoryPollingStarted) {
+      if (!directoryPollingStarted && requestRevision === compareRevision) {
         loading = false
       }
     }
@@ -2207,31 +2223,6 @@
     }
   }
 
-  async function loadEntryDiff(
-    entry: DirectoryEntryResult,
-    revision = compareRevision,
-    options: { force?: boolean } = {},
-  ) {
-    return getOrCreateDetailDiffPromise(entry.relativePath, revision, options)
-  }
-
-  $: {
-    const nextDirectoryPreloadSignature =
-      mode === 'directory' && directoryEntries.length > 0
-        ? [
-            compareRevision,
-            activeCompareOptions.ignoreWhitespace ? '1' : '0',
-            activeCompareOptions.ignoreCase ? '1' : '0',
-            directoryEntries.map((entry) => entry.relativePath).join('\u0000'),
-          ].join('\u0001')
-        : ''
-
-    if (nextDirectoryPreloadSignature !== directoryDetailPreloadSignature) {
-      directoryDetailPreloadSignature = nextDirectoryPreloadSignature
-      cancelDirectoryDetailPreload()
-    }
-  }
-
   function visibleDirectoryEntries() {
     return filteredDirectoryEntries.length > 0 ? filteredDirectoryEntries : directoryEntries
   }
@@ -2257,8 +2248,19 @@
   }
 
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
+    const entryPaths = new Set<string>()
+    let renderableCount = 0
+
+    for (const entry of entries) {
+      entryPaths.add(entry.relativePath)
+      if (entry.status !== 'unsupported') {
+        renderableCount += 1
+      }
+    }
+
     filteredDirectoryEntries = entries
-    filteredDirectoryEntryPaths = new Set(entries.map((entry) => entry.relativePath))
+    filteredDirectoryEntryPaths = entryPaths
+    directoryRenderableEntryCount = renderableCount
     ensureDirectorySelection(entries)
   }
 
@@ -2433,7 +2435,7 @@
   }
 
   $: textDiffActive = mode === 'directory'
-    ? directoryEntries.some((entry) => entry.status !== 'unsupported')
+    ? directoryRenderableEntryCount > 0
     : activeDiff?.contentKind === 'text'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false

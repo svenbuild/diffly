@@ -64,6 +64,7 @@
   let loadGeneration = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
+  let pendingEntryStateUpdates = new Map<string, EntryDiffState>()
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let entryIndexByPath = new Map<string, number>()
   let loadedEntryCache = new Map<string, LoadedDirectoryDiff>()
@@ -75,11 +76,47 @@
   let activeLoadCount = 0
   let loadPausedUntil = 0
   let loadResumeTimer: number | null = null
+  let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
+  }
+
+  function entryStateIsCurrent(state: EntryDiffState) {
+    return state.revision === revision && (!state.loading || state.generation === loadGeneration)
+  }
+
+  function cancelEntryStateFlush() {
+    if (entryStateFlushFrame !== null) {
+      window.cancelAnimationFrame(entryStateFlushFrame)
+      entryStateFlushFrame = null
+    }
+  }
+
+  function flushEntryStateUpdates() {
+    entryStateFlushFrame = null
+
+    if (pendingEntryStateUpdates.size === 0) {
+      return
+    }
+
+    const nextStates = new Map(entryStates)
+    for (const [path, state] of pendingEntryStateUpdates) {
+      nextStates.set(path, state)
+    }
+
+    pendingEntryStateUpdates = new Map()
+    entryStates = nextStates
+  }
+
+  function scheduleEntryStateFlush() {
+    if (entryStateFlushFrame !== null) {
+      return
+    }
+
+    entryStateFlushFrame = window.requestAnimationFrame(flushEntryStateUpdates)
   }
 
   function syncEntryCollections() {
@@ -91,11 +128,13 @@
       const key = entryKey(entry)
 
       const state = entryStates.get(key)
-      if (
-        state?.revision === revision &&
-        (!state.loading || state.generation === loadGeneration)
-      ) {
+      if (state && entryStateIsCurrent(state)) {
         nextStates.set(key, state)
+      }
+
+      const pendingState = pendingEntryStateUpdates.get(key)
+      if (pendingState && entryStateIsCurrent(pendingState)) {
+        nextStates.set(key, pendingState)
       }
     }
 
@@ -107,6 +146,8 @@
 
     collapsedPaths = nextCollapsedPaths
     entryStates = nextStates
+    pendingEntryStateUpdates = new Map()
+    cancelEntryStateFlush()
     priorityLoadQueue = priorityLoadQueue
       .slice(priorityLoadQueueHead)
       .filter((path) => nextPaths.has(path))
@@ -122,13 +163,12 @@
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
-    const nextStates = new Map(entryStates)
-    nextStates.set(path, state)
-    entryStates = nextStates
+    pendingEntryStateUpdates.set(path, state)
+    scheduleEntryStateFlush()
   }
 
   function getEntryState(path: string) {
-    return entryStates.get(path) ?? null
+    return pendingEntryStateUpdates.get(path) ?? entryStates.get(path) ?? null
   }
 
   function entryNeedsLoad(
@@ -571,6 +611,7 @@
       window.clearTimeout(loadResumeTimer)
       loadResumeTimer = null
     }
+    cancelEntryStateFlush()
   })
 
   function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {

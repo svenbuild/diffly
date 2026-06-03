@@ -11,7 +11,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import type {
   CompareOptions,
   CompareResponse,
@@ -34,7 +34,9 @@ const MAX_TEXT_BYTES = 1024 * 1024
 const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
-const DIRECTORY_COMPARE_CONCURRENCY = 8
+const DIRECTORY_COMPARE_CONCURRENCY = 16
+const DIRECTORY_WALK_CONCURRENCY = 16
+const DIRECTORY_CACHE_LIMIT = 8
 const DIRECTORY_POLL_UPDATE_LIMIT = 512
 const DIRECTORY_JOB_RETENTION_MS = 60_000
 const LIST_DIRECTORY_STAT_CONCURRENCY = 32
@@ -85,7 +87,7 @@ interface DirectoryCacheSession {
 }
 
 let launchContext: LaunchContext | null | undefined
-let directoryCache: DirectoryCacheSession | null = null
+const directoryCache = new Map<string, DirectoryCacheSession>()
 const directoryJobs = new Map<string, DirectoryJob>()
 const windowLaunchContexts = new Map<number, LaunchContext | null>()
 let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
@@ -472,7 +474,7 @@ export async function comparePaths(
   }
 }
 
-async function startDirectoryCompare(leftPath: string, rightPath: string, options: CompareOptions) {
+export async function startDirectoryCompare(leftPath: string, rightPath: string, options: CompareOptions) {
   pruneDirectoryJobs()
   const jobId = randomUUID()
   const job: DirectoryJob = {
@@ -490,7 +492,7 @@ async function startDirectoryCompare(leftPath: string, rightPath: string, option
   return { jobId }
 }
 
-function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
+export function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
   pruneDirectoryJobs()
   const job = directoryJobs.get(jobId)
   if (!job) {
@@ -518,7 +520,7 @@ function pollDirectoryCompare(jobId: string): PollDirectoryCompareResponse {
   }
 }
 
-function cancelDirectoryCompare(jobId: string) {
+export function cancelDirectoryCompare(jobId: string) {
   const job = directoryJobs.get(jobId)
   if (!job) {
     return false
@@ -541,6 +543,34 @@ function pruneDirectoryJobs() {
   }
 }
 
+function getCachedDirectoryEntries(cacheKey: string) {
+  const cached = directoryCache.get(cacheKey)
+  if (!cached) {
+    return new Map<string, CachedDirectoryEntry>()
+  }
+
+  directoryCache.delete(cacheKey)
+  directoryCache.set(cacheKey, cached)
+  return cached.entries
+}
+
+function setCachedDirectoryEntries(cacheKey: string, entries: Map<string, CachedDirectoryEntry>) {
+  directoryCache.delete(cacheKey)
+  directoryCache.set(cacheKey, { key: cacheKey, entries })
+
+  while (directoryCache.size > DIRECTORY_CACHE_LIMIT) {
+    const oldestKey = directoryCache.keys().next().value
+    if (oldestKey === undefined) {
+      return
+    }
+    directoryCache.delete(oldestKey)
+  }
+}
+
+export function clearDirectoryCompareCache() {
+  directoryCache.clear()
+}
+
 async function runDirectoryJob(
   job: DirectoryJob,
   leftPath: string,
@@ -557,7 +587,9 @@ async function runDirectoryJob(
         return
       }
       job.completedCount += 1
-      job.updates.push({ index, entry })
+      if (entry) {
+        job.updates.push({ index, entry })
+      }
     }, (total) => {
       job.totalCount = total
     }, () => job.cancelled)
@@ -610,7 +642,7 @@ async function compareDirectories(
 
   const allPaths = Array.from(new Set([...leftFiles.keys(), ...rightFiles.keys()])).sort()
   const cacheKey = JSON.stringify({ leftPath, rightPath, ...options })
-  const previousEntries = directoryCache?.key === cacheKey ? directoryCache.entries : new Map()
+  const previousEntries = getCachedDirectoryEntries(cacheKey)
   const nextEntries = new Map<string, CachedDirectoryEntry>()
   const resultSlots: Array<DirectoryEntryResult | null> = new Array(allPaths.length).fill(null)
   let nextIndex = 0
@@ -637,7 +669,12 @@ async function compareDirectories(
         options,
         previousEntries.get(relativePath),
         nextEntries,
+        isCancelled,
       )
+
+      if (isCancelled?.()) {
+        return
+      }
 
       resultSlots[index] = entry
       if (!isCancelled?.()) {
@@ -649,36 +686,86 @@ async function compareDirectories(
   const workerCount = Math.min(DIRECTORY_COMPARE_CONCURRENCY, allPaths.length)
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()))
 
+  if (isCancelled?.()) {
+    return []
+  }
+
   const results = resultSlots.filter((entry): entry is DirectoryEntryResult => entry !== null)
-  directoryCache = { key: cacheKey, entries: nextEntries }
+  setCachedDirectoryEntries(cacheKey, nextEntries)
   return results
 }
 
 async function collectDirectoryFiles(root: string, isCancelled?: () => boolean) {
   const files = new Map<string, string>()
+  const pending: Array<{ absolutePath: string; relativePath: string }> = [
+    { absolutePath: root, relativePath: '' },
+  ]
+  let pendingHead = 0
+  let activeCount = 0
+  let done = false
 
-  async function walk(current: string) {
-    if (isCancelled?.()) {
-      return
-    }
-
-    const entries = await readdir(current, { withFileTypes: true })
-    for (const entry of entries) {
+  return new Promise<Map<string, string>>((resolveFiles, rejectFiles) => {
+    const pump = () => {
       if (isCancelled?.()) {
+        done = true
+        resolveFiles(files)
         return
       }
 
-      const fullPath = join(current, entry.name)
-      if (entry.isDirectory()) {
-        await walk(fullPath)
-      } else if (entry.isFile()) {
-        files.set(relative(root, fullPath).split(sep).join('/'), fullPath)
+      while (!done && activeCount < DIRECTORY_WALK_CONCURRENCY && pendingHead < pending.length) {
+        const current = pending[pendingHead]
+        pendingHead += 1
+        if (!current) {
+          continue
+        }
+
+        activeCount += 1
+        void readdir(current.absolutePath, { withFileTypes: true })
+          .then((entries) => {
+            if (isCancelled?.()) {
+              return
+            }
+
+            for (const entry of entries) {
+              if (isCancelled?.()) {
+                return
+              }
+
+              const absolutePath = join(current.absolutePath, entry.name)
+              const relativePath = current.relativePath
+                ? `${current.relativePath}/${entry.name}`
+                : entry.name
+
+              if (entry.isDirectory()) {
+                pending.push({ absolutePath, relativePath })
+              } else if (entry.isFile()) {
+                files.set(relativePath, absolutePath)
+              }
+            }
+          })
+          .catch((error) => {
+            done = true
+            rejectFiles(error)
+          })
+          .finally(() => {
+            activeCount -= 1
+            if (done) {
+              return
+            }
+
+            if (activeCount === 0 && pendingHead >= pending.length) {
+              done = true
+              resolveFiles(files)
+              return
+            }
+
+            pump()
+          })
       }
     }
-  }
 
-  await walk(root)
-  return files
+    pump()
+  })
 }
 
 async function compareDirectoryEntry(
@@ -688,9 +775,18 @@ async function compareDirectoryEntry(
   options: CompareOptions,
   cached: CachedDirectoryEntry | undefined,
   nextEntries: Map<string, CachedDirectoryEntry>,
+  isCancelled?: () => boolean,
 ): Promise<DirectoryEntryResult | null> {
+  if (isCancelled?.()) {
+    return null
+  }
+
   const leftIdentity = leftPath ? await fileIdentity(leftPath) : null
   const rightIdentity = rightPath ? await fileIdentity(rightPath) : null
+
+  if (isCancelled?.()) {
+    return null
+  }
 
   if (
     cached &&
@@ -772,6 +868,16 @@ async function computeDirectoryEntry(
   const leftKind = detectFileKind(leftPath, leftIdentity.size, leftSample)
   const rightKind = detectFileKind(rightPath, rightIdentity.size, rightSample)
 
+  if (leftIdentity.size === rightIdentity.size) {
+    const samplesEqual = bytesEqual(leftSample, rightSample)
+    if (samplesEqual && leftIdentity.size <= leftSample.byteLength) {
+      return null
+    }
+    if (samplesEqual && await filesEqual(leftPath, rightPath, leftSample.byteLength)) {
+      return null
+    }
+  }
+
   if (leftKind === 'text' && rightKind === 'text' && (options.ignoreWhitespace || options.ignoreCase)) {
     if (
       leftIdentity.size <= MAX_TEXT_BYTES &&
@@ -784,14 +890,6 @@ async function computeDirectoryEntry(
       if (normalizeCompareText(leftText, options) === normalizeCompareText(rightText, options)) {
         return null
       }
-    }
-  } else if (leftIdentity.size === rightIdentity.size) {
-    const samplesEqual = bytesEqual(leftSample, rightSample)
-    if (samplesEqual && leftIdentity.size <= leftSample.byteLength) {
-      return null
-    }
-    if (samplesEqual && await filesEqual(leftPath, rightPath, leftSample.byteLength)) {
-      return null
     }
   }
 

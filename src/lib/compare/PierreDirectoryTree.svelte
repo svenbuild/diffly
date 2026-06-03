@@ -21,9 +21,16 @@
   let renderedStructureKey = ''
   let renderedPathKey = ''
   let renderedStatusKey = ''
+  let currentStructureKey = ''
+  let lastSyncedSelectionPath = ''
 
   $: visibleEntries = directoryEntries
   $: entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
+  $: currentStructureKey = JSON.stringify({
+    treeSettings,
+    appearanceSettings,
+    resolvedThemeMode,
+  })
 
   function resolveDensity(settings: CompareTreeSettings) {
     return settings.density === 'custom'
@@ -99,14 +106,6 @@
     }
   }
 
-  function treeStructureKey() {
-    return JSON.stringify({
-      treeSettings,
-      appearanceSettings,
-      resolvedThemeMode,
-    })
-  }
-
   function pathKey(entries: DirectoryEntryResult[]) {
     return entries.map((entry) => entry.relativePath).join('\u0000')
   }
@@ -119,6 +118,7 @@
     renderedStructureKey = ''
     renderedPathKey = ''
     renderedStatusKey = ''
+    lastSyncedSelectionPath = ''
   }
 
   function selectCurrentPath(scrollToSelection = true) {
@@ -130,6 +130,7 @@
       for (const selectedPath of fileTree.getSelectedPaths()) {
         fileTree.getItem(selectedPath)?.deselect()
       }
+      lastSyncedSelectionPath = ''
       return
     }
 
@@ -148,8 +149,10 @@
       item.select()
     }
 
+    const shouldScroll = scrollToSelection && selectedRelativePath !== lastSyncedSelectionPath
+    lastSyncedSelectionPath = selectedRelativePath
     fileTree.focusPath(selectedRelativePath)
-    if (scrollToSelection) {
+    if (shouldScroll) {
       fileTree.scrollToPath(selectedRelativePath, { focus: false, offset: 'nearest' })
     }
   }
@@ -167,7 +170,7 @@
     }
 
     const paths = visibleEntries.map((entry) => entry.relativePath)
-    const nextStructureKey = treeStructureKey()
+    const nextStructureKey = currentStructureKey
     const nextPathKey = pathKey(visibleEntries)
     const nextStatusKey = statusKey(visibleEntries)
 
@@ -178,6 +181,7 @@
       renderedStructureKey = nextStructureKey
       renderedPathKey = nextPathKey
       renderedStatusKey = nextStatusKey
+      lastSyncedSelectionPath = ''
       selectCurrentPath()
       return
     }
@@ -195,7 +199,7 @@
       renderedStatusKey = nextStatusKey
     }
 
-    selectCurrentPath()
+    selectCurrentPath(selectedRelativePath !== lastSyncedSelectionPath)
   }
 
   $: host, visibleEntries, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
