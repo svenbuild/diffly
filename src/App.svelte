@@ -231,6 +231,9 @@
   }
   let directoryComparePairs: DirectoryComparePair[] = []
   let directoryComparePairSlots: Array<Array<DirectoryEntryResult | null | undefined>> = []
+  let directoryComparePairChangedIndices: number[][] = []
+  let directoryComparePairIndexSets: Array<Set<number>> = []
+  let directoryComparePairIndexOrderDirty: boolean[] = []
   let directoryComparePairJobs: Array<{ jobId: string; pairIndex: number; done: boolean }> = []
   let directoryComparePairTimers: Array<number | null> = []
   let directoryEntriesFlushFrame: number | null = null
@@ -922,6 +925,9 @@
       directoryCompareEntrySlots = []
       directoryComparePairs = []
       directoryComparePairSlots = []
+      directoryComparePairChangedIndices = []
+      directoryComparePairIndexSets = []
+      directoryComparePairIndexOrderDirty = []
       directoryRenderableEntryCount = 0
     }
 
@@ -1120,9 +1126,33 @@
       return
     }
 
+    const changedIndices =
+      directoryComparePairChangedIndices[pairIndex] ?? []
+    const changedIndexSet =
+      directoryComparePairIndexSets[pairIndex] ?? new Set<number>()
+    directoryComparePairChangedIndices[pairIndex] = changedIndices
+    directoryComparePairIndexSets[pairIndex] = changedIndexSet
+
     for (const update of updates) {
       if (update.index >= slots.length) {
         slots.length = update.index + 1
+      }
+
+      if (!update.entry) {
+        slots[update.index] = null
+        if (changedIndexSet.delete(update.index)) {
+          const removeIndex = changedIndices.indexOf(update.index)
+          if (removeIndex >= 0) {
+            changedIndices.splice(removeIndex, 1)
+          }
+        }
+        continue
+      }
+
+      if (!changedIndexSet.has(update.index)) {
+        changedIndexSet.add(update.index)
+        changedIndices.push(update.index)
+        directoryComparePairIndexOrderDirty[pairIndex] = true
       }
 
       slots[update.index] = update.entry
@@ -1172,13 +1202,20 @@
     const isMulti = isMultiPairCompare()
     const aggregated: DirectoryEntryResult[] = []
 
-    for (const [pairIndex, slots] of directoryComparePairSlots.entries()) {
+    for (const [pairIndex, changedIndices] of directoryComparePairChangedIndices.entries()) {
+      const slots = directoryComparePairSlots[pairIndex]
       const pair = directoryComparePairs[pairIndex]
-      if (!pair) {
+      if (!pair || !slots) {
         continue
       }
 
-      for (const entry of slots) {
+      if (directoryComparePairIndexOrderDirty[pairIndex]) {
+        changedIndices.sort((left, right) => left - right)
+        directoryComparePairIndexOrderDirty[pairIndex] = false
+      }
+
+      for (const index of changedIndices) {
+        const entry = slots[index]
         if (!entry) {
           continue
         }
@@ -2057,6 +2094,9 @@
         const pairs = buildDirectoryComparePairs(leftSelected, rightSelected)
         directoryComparePairs = pairs
         directoryComparePairSlots = pairs.map(() => [])
+        directoryComparePairChangedIndices = pairs.map(() => [])
+        directoryComparePairIndexSets = pairs.map(() => new Set<number>())
+        directoryComparePairIndexOrderDirty = pairs.map(() => false)
         directoryComparePairTimers = pairs.map(() => null)
         directoryComparePairJobs = pairs.map((_, pairIndex) => ({
           jobId: '',

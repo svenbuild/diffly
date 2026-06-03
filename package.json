@@ -14,6 +14,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.electron.json --noEmit",
     "test": "npm run check",
     "perf:backend": "node scripts/perf-backend.mjs",
+    "perf:directory-aggregation": "node scripts/perf-directory-aggregation.mjs",
     "perf:directory-stream": "node scripts/perf-directory-stream.mjs",
     "perf:explorer": "node scripts/perf-explorer.mjs",
     "electron:dev": "electron-vite dev",

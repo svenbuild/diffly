@@ -190,7 +190,18 @@ async function main() {
     const response = await backend.comparePaths(LEFT_ROOT, RIGHT_ROOT, 'directory', compareOptions)
     return `${response.entries.length} changed entries`
   })
-  const fileResult = await measure('large file compare', ITERATIONS, async () => {
+  const fileColdResult = await measure('large file cold', ITERATIONS, async () => {
+    backend.clearFileDiffCache()
+    const response = await backend.comparePaths(
+      join(LEFT_ROOT, 'large-file.txt'),
+      join(RIGHT_ROOT, 'large-file.txt'),
+      'file',
+      compareOptions,
+    )
+    return response.result.contentKind
+  })
+  backend.clearFileDiffCache()
+  const fileCachedResult = await measure('large file cached', ITERATIONS, async () => {
     const response = await backend.comparePaths(
       join(LEFT_ROOT, 'large-file.txt'),
       join(RIGHT_ROOT, 'large-file.txt'),
@@ -203,7 +214,8 @@ async function main() {
   console.log(`fixtures: ${FILE_COUNT} generated entries per side, ${ITERATIONS} measured iterations, ${WARMUPS} warmups`)
   printResult(coldDirectoryResult)
   printResult(directoryResult)
-  printResult(fileResult)
+  printResult(fileColdResult)
+  printResult(fileCachedResult)
 }
 
 main().catch((error) => {

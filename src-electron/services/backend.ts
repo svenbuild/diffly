@@ -39,6 +39,8 @@ const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
 const DIRECTORY_COMPARE_CONCURRENCY = 16
 const DIRECTORY_WALK_CONCURRENCY = 16
 const DIRECTORY_CACHE_LIMIT = 8
+const FILE_DIFF_CACHE_LIMIT = 32
+const FILE_DIFF_CACHE_MAX_BYTES = 48 * 1024 * 1024
 const DIRECTORY_POLL_UPDATE_LIMIT = 512
 const DIRECTORY_JOB_RETENTION_MS = 60_000
 const LIST_DIRECTORY_STAT_CONCURRENCY = 64
@@ -85,6 +87,13 @@ interface CachedDirectoryEntry {
   result: DirectoryEntryResult | null
 }
 
+interface CachedFileDiffEntry {
+  bytes: number
+  left: FileIdentity | null
+  result: FileDiffResult
+  right: FileIdentity | null
+}
+
 interface DirectoryCacheSession {
   key: string
   entries: Map<string, CachedDirectoryEntry>
@@ -103,9 +112,11 @@ interface CachedDirectoryListing {
 
 let launchContext: LaunchContext | null | undefined
 const directoryCache = new Map<string, DirectoryCacheSession>()
+const fileDiffCache = new Map<string, CachedFileDiffEntry>()
 const directoryListingCache = new Map<string, CachedDirectoryListing>()
 const directoryJobs = new Map<string, DirectoryJob>()
 const windowLaunchContexts = new Map<number, LaunchContext | null>()
+let fileDiffCacheBytes = 0
 let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
 
 export function registerIpcHandlers() {
@@ -632,6 +643,99 @@ export function clearDirectoryCompareCache() {
   directoryCache.clear()
 }
 
+export function clearFileDiffCache() {
+  fileDiffCache.clear()
+  fileDiffCacheBytes = 0
+}
+
+function getCachedFileDiff(
+  cacheKey: string,
+  leftIdentity: FileIdentity | null,
+  rightIdentity: FileIdentity | null,
+) {
+  const cached = fileDiffCache.get(cacheKey)
+  if (
+    !cached ||
+    !identityEquals(cached.left, leftIdentity) ||
+    !identityEquals(cached.right, rightIdentity)
+  ) {
+    return null
+  }
+
+  fileDiffCache.delete(cacheKey)
+  fileDiffCache.set(cacheKey, cached)
+  return cached.result
+}
+
+function setCachedFileDiff(
+  cacheKey: string,
+  leftIdentity: FileIdentity | null,
+  rightIdentity: FileIdentity | null,
+  result: FileDiffResult,
+) {
+  const previous = fileDiffCache.get(cacheKey)
+  if (previous) {
+    fileDiffCacheBytes -= previous.bytes
+    fileDiffCache.delete(cacheKey)
+  }
+
+  const bytes = estimatedFileDiffBytes(result)
+  fileDiffCache.set(cacheKey, {
+    bytes,
+    left: leftIdentity,
+    result,
+    right: rightIdentity,
+  })
+  fileDiffCacheBytes += bytes
+
+  while (
+    fileDiffCache.size > FILE_DIFF_CACHE_LIMIT ||
+    fileDiffCacheBytes > FILE_DIFF_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = fileDiffCache.keys().next().value
+    if (oldestKey === undefined) {
+      return
+    }
+
+    const oldest = fileDiffCache.get(oldestKey)
+    if (oldest) {
+      fileDiffCacheBytes -= oldest.bytes
+    }
+    fileDiffCache.delete(oldestKey)
+  }
+}
+
+function buildFileDiffCacheKey(
+  leftPath: string,
+  rightPath: string,
+  leftLabel: string,
+  rightLabel: string,
+  options: CompareOptions,
+) {
+  return [
+    leftPath,
+    rightPath,
+    leftLabel,
+    rightLabel,
+    options.ignoreWhitespace ? '1' : '0',
+    options.ignoreCase ? '1' : '0',
+  ].join('\u0000')
+}
+
+function estimatedFileDiffBytes(result: FileDiffResult) {
+  const text = result.text
+  return (
+    512 +
+    Buffer.byteLength(result.summary, 'utf8') +
+    Buffer.byteLength(result.leftLabel, 'utf8') +
+    Buffer.byteLength(result.rightLabel, 'utf8') +
+    (text
+      ? Buffer.byteLength(text.leftText, 'utf8') +
+        Buffer.byteLength(text.rightText, 'utf8')
+      : 0)
+  )
+}
+
 async function runDirectoryJob(
   job: DirectoryJob,
   leftPath: string,
@@ -1007,17 +1111,38 @@ async function buildFileDiff(
   rightPath: string,
   leftLabel: string,
   rightLabel: string,
-  _options: CompareOptions,
+  options: CompareOptions,
 ): Promise<FileDiffResult> {
+  const [leftSnapshot, rightSnapshot] = await Promise.all([
+    loadFileSnapshot(leftPath),
+    loadFileSnapshot(rightPath),
+  ])
+  const cacheKey = buildFileDiffCacheKey(
+    leftPath,
+    rightPath,
+    leftLabel,
+    rightLabel,
+    options,
+  )
+  const cached = getCachedFileDiff(
+    cacheKey,
+    leftSnapshot.identity,
+    rightSnapshot.identity,
+  )
+
+  if (cached) {
+    return cached
+  }
+
   const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath),
-    loadFile(rightPath),
+    loadFile(leftPath, leftSnapshot.info),
+    loadFile(rightPath, rightSnapshot.info),
   ])
   const summary = buildSummary(leftLoaded, rightLoaded)
 
   if (canBuildTextDiff(leftLoaded, rightLoaded)) {
     const textPayload = buildTextPayload(leftLoaded, rightLoaded)
-    return {
+    const result: FileDiffResult = {
       contentKind: 'text',
       summary,
       leftLabel,
@@ -1025,9 +1150,11 @@ async function buildFileDiff(
       text: textPayload,
       unsupported: null,
     }
+    setCachedFileDiff(cacheKey, leftSnapshot.identity, rightSnapshot.identity, result)
+    return result
   }
 
-  return {
+  const result: FileDiffResult = {
     contentKind: 'unsupported',
     summary,
     leftLabel,
@@ -1035,6 +1162,8 @@ async function buildFileDiff(
     text: null,
     unsupported: buildUnsupportedPayload(leftPath, rightPath, leftLoaded, rightLoaded),
   }
+  setCachedFileDiff(cacheKey, leftSnapshot.identity, rightSnapshot.identity, result)
+  return result
 }
 
 function canBuildTextDiff(left: LoadedFile, right: LoadedFile) {
@@ -1044,11 +1173,32 @@ function canBuildTextDiff(left: LoadedFile, right: LoadedFile) {
   )
 }
 
-async function loadFile(pathValue: string): Promise<LoadedFile> {
-  let info
+async function loadFileSnapshot(pathValue: string) {
   try {
-    info = await stat(pathValue)
+    const info = await stat(pathValue)
+    return {
+      identity: { size: info.size, modifiedMs: Math.trunc(info.mtimeMs) },
+      info,
+    }
   } catch {
+    return {
+      identity: null,
+      info: null,
+    }
+  }
+}
+
+async function loadFile(pathValue: string, knownInfo?: Stats | null): Promise<LoadedFile> {
+  let info = knownInfo
+  if (info === undefined) {
+    try {
+      info = await stat(pathValue)
+    } catch {
+      info = null
+    }
+  }
+
+  if (!info) {
     return {
       kind: 'missing',
       path: pathValue,
