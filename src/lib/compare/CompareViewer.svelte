@@ -16,6 +16,7 @@
   export let activeDiff: FileDiffResult | null
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
+  export let scrollTargetRevision = 0
   export let loading = false
   export let detailLoading = false
   export let viewerSettings: CompareViewerSettings
@@ -45,6 +46,7 @@
     <DirectoryDiffList
       {directoryEntries}
       {selectedRelativePath}
+      {scrollTargetRevision}
       {loading}
       {viewerSettings}
       {appearanceSettings}

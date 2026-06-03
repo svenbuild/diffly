@@ -2964,9 +2964,16 @@ h2 {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
   background: var(--editor-bg);
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.directory-code-view-host > *,
+.directory-code-view-host diffs-container {
+  overflow-anchor: none;
 }
 
 .directory-code-view-host::-webkit-scrollbar {

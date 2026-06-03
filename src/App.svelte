@@ -219,6 +219,7 @@
   let directoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntries: DirectoryEntryResult[] = []
   let selectedRelativePath = ''
+  let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
   let compareRevision = 0
   let activeDirectoryCompareJobId = ''
@@ -1966,6 +1967,7 @@
     const nextCompareOptions = getPendingCompareOptions()
     const previousSelectedPath = selectedRelativePath
     const restoreScroll = captureDiffScrollSnapshot()
+    let directoryPollingStarted = false
 
     loading = true
     detailLoading = false
@@ -2028,6 +2030,7 @@
             restoreScroll,
           )
         }
+        directoryPollingStarted = true
         return
       }
 
@@ -2069,7 +2072,9 @@
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Compare failed.'
     } finally {
-      loading = false
+      if (!directoryPollingStarted) {
+        loading = false
+      }
     }
   }
 
@@ -2081,6 +2086,9 @@
     if (mode === 'directory') {
       if (revision === compareRevision) {
         selectedRelativePath = entry.relativePath
+        if (arguments.length <= 1) {
+          directoryScrollTargetRevision += 1
+        }
         errorMessage = ''
       }
       return
@@ -2163,8 +2171,40 @@
     }
   }
 
+  function visibleDirectoryEntries() {
+    return filteredDirectoryEntries.length > 0 ? filteredDirectoryEntries : directoryEntries
+  }
+
+  function ensureDirectorySelection(entries: DirectoryEntryResult[] = visibleDirectoryEntries()) {
+    if (screen !== 'compare' || mode !== 'directory' || entries.length === 0) {
+      return
+    }
+
+    if (
+      selectedRelativePath &&
+      entries.some((entry) => entry.relativePath === selectedRelativePath)
+    ) {
+      return
+    }
+
+    const nextEntry = defaultDirectoryEntry(entries)
+    if (nextEntry) {
+      selectedRelativePath = nextEntry.relativePath
+    }
+  }
+
   function syncFilteredDirectoryState(entries: DirectoryEntryResult[] = directoryEntries) {
     filteredDirectoryEntries = entries
+    ensureDirectorySelection(entries)
+  }
+
+  $: {
+    screen
+    mode
+    selectedRelativePath
+    filteredDirectoryEntries
+    directoryEntries
+    ensureDirectorySelection()
   }
 
   function cancelPaneNavigationScroll() {
@@ -2269,7 +2309,11 @@
 
   function getCurrentFileLabel() {
     if (mode === 'directory') {
-      return selectedRelativePath ? formatRelativePathLabel(selectedRelativePath) : 'No file selected'
+      const entry = selectedRelativePath
+        ? selectedRelativePath
+        : defaultDirectoryEntry(visibleDirectoryEntries())?.relativePath
+
+      return entry ? formatRelativePathLabel(entry) : 'No file selected'
     }
 
     if (!activeDiff) {
@@ -2284,7 +2328,11 @@
 
   function getPaneLabel(side: Side) {
     if (mode === 'directory') {
-      return selectedRelativePath ? formatRelativePathLabel(selectedRelativePath) : ''
+      const entry = selectedRelativePath
+        ? selectedRelativePath
+        : defaultDirectoryEntry(visibleDirectoryEntries())?.relativePath
+
+      return entry ? formatRelativePathLabel(entry) : ''
     }
 
     if (!activeDiff) {
@@ -2300,16 +2348,24 @@
     rightCompareRoot = buildCompareRootDisplay(rightPath, rightSegments)
   }
 
-  $: diffHeaderContext = {
-    currentFileLabel: getCurrentFileLabel(),
-    leftPaneLabel: getPaneLabel('left'),
-    rightPaneLabel: getPaneLabel('right'),
-    leftAbsolutePath: activeDiff?.leftLabel ?? '',
-    rightAbsolutePath: activeDiff?.rightLabel ?? '',
-    leftRootLabel: `${leftCompareRoot.prefix}${leftCompareRoot.suffix}`,
-    rightRootLabel: `${rightCompareRoot.prefix}${rightCompareRoot.suffix}`,
-    leftRootFullPath: leftCompareRoot.fullPath,
-    rightRootFullPath: rightCompareRoot.fullPath,
+  $: {
+    mode
+    selectedRelativePath
+    activeDiff
+    directoryEntries
+    filteredDirectoryEntries
+
+    diffHeaderContext = {
+      currentFileLabel: getCurrentFileLabel(),
+      leftPaneLabel: getPaneLabel('left'),
+      rightPaneLabel: getPaneLabel('right'),
+      leftAbsolutePath: activeDiff?.leftLabel ?? '',
+      rightAbsolutePath: activeDiff?.rightLabel ?? '',
+      leftRootLabel: `${leftCompareRoot.prefix}${leftCompareRoot.suffix}`,
+      rightRootLabel: `${rightCompareRoot.prefix}${rightCompareRoot.suffix}`,
+      leftRootFullPath: leftCompareRoot.fullPath,
+      rightRootFullPath: rightCompareRoot.fullPath,
+    }
   }
 
   $: textDiffActive = mode === 'directory'
@@ -2720,6 +2776,7 @@
         {activeDiff}
         {directoryEntries}
         {selectedRelativePath}
+        scrollTargetRevision={directoryScrollTargetRevision}
         {loading}
         {detailLoading}
         {viewerSettings}

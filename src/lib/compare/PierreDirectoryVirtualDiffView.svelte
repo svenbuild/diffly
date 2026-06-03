@@ -65,6 +65,31 @@
     }
   }
 
+  type CodeViewScrollFixPatch = {
+    __difflyOriginalApplyScrollFix?: (
+      targetScrollTop: number,
+      syncedScrollTop: number,
+      windowSpecs?: unknown,
+    ) => void
+    __difflyOriginalSetItems?: (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => void
+    __difflyScrollGuardInstalled?: boolean
+    applyScrollFix?: (
+      targetScrollTop: number,
+      syncedScrollTop: number,
+      windowSpecs?: unknown,
+    ) => void
+    pendingLayoutAnchor?: unknown
+    pendingScrollTarget?: unknown
+    renderState?: {
+      scrollTop: number
+    }
+    scrollAnimation?: unknown
+    scrollDirty?: boolean
+    scrollPageOffset?: number
+    scrollTop?: number
+    setItems?: (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => void
+  }
+
   export let entries: LoadedDirectoryDiff[] = []
   export let collapsedPaths = new Set<string>()
   export let selectedRelativePath = ''
@@ -86,6 +111,9 @@
   let lastRenderedItemListKey = ''
   let lastOptionsKey = ''
   let lastWorkerOptionsKey = ''
+  let appliedScrollTargetRevision = 0
+  let userScrollCorrectionSuppressedUntil = 0
+  let programmaticScrollAllowedUntil = 0
   let renderRevision = 0
   let selectedLineSelection: CodeViewLineSelection | null = null
   let commentId = 0
@@ -99,10 +127,156 @@
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
   const emptyAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
+  const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 4200
+  const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 9000
+  const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 5
+  const DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX = 420
+  const DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS = 9000
+  const DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS = 900
+  const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 56
+  const DIRECTORY_PLACEHOLDER_MIN_LINES = 8
+  const DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES = 240
+  const DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES = 1200
 
   function workerPoolSize() {
     const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
     return Math.max(2, Math.min(6, Math.floor(cores / 2)))
+  }
+
+  function directoryCodeViewOverscrollSize() {
+    const viewportHeight = host?.clientHeight || window.innerHeight || 800
+
+    return Math.min(
+      DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX,
+      Math.max(
+        DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX,
+        Math.round(viewportHeight * DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS),
+      ),
+    )
+  }
+
+  function syncCodeViewVirtualization(view: CodeView<DifflyCommentAnnotation>) {
+    installScrollCorrectionGuard(view)
+
+    const overscrollSize = directoryCodeViewOverscrollSize()
+    if (view.config.overscrollSize !== overscrollSize) {
+      view.config.overscrollSize = overscrollSize
+      lastRequestedVisibleKey = ''
+    }
+
+    if (view.config.intersectionObserverMargin < overscrollSize) {
+      view.config.intersectionObserverMargin = overscrollSize
+    }
+  }
+
+  function clearManualScrollTargets(view: CodeViewScrollFixPatch) {
+    view.pendingLayoutAnchor = undefined
+    view.pendingScrollTarget = undefined
+    view.scrollAnimation = undefined
+  }
+
+  function markUserScroll(view: CodeView<DifflyCommentAnnotation>) {
+    const now = performance.now()
+    if (now < programmaticScrollAllowedUntil) {
+      return
+    }
+
+    clearManualScrollTargets(view as unknown as CodeViewScrollFixPatch)
+    userScrollCorrectionSuppressedUntil =
+      now + DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS
+  }
+
+  function extendManualScrollStabilityWindow() {
+    const now = performance.now()
+    if (now >= userScrollCorrectionSuppressedUntil || now < programmaticScrollAllowedUntil) {
+      return
+    }
+
+    userScrollCorrectionSuppressedUntil =
+      now + DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS
+  }
+
+  function allowProgrammaticScroll() {
+    programmaticScrollAllowedUntil = Math.max(
+      programmaticScrollAllowedUntil,
+      performance.now() + DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS,
+    )
+  }
+
+  function shouldSuppressScrollCorrection(
+    view: CodeViewScrollFixPatch,
+    targetScrollTop: number,
+    syncedScrollTop: number,
+  ) {
+    const now = performance.now()
+    if (now >= userScrollCorrectionSuppressedUntil || now < programmaticScrollAllowedUntil) {
+      return false
+    }
+
+    const delta = Math.abs(targetScrollTop - syncedScrollTop)
+    return delta > 0.5
+  }
+
+  function currentLogicalScrollTop(view: CodeViewScrollFixPatch) {
+    const pageOffset = typeof view.scrollPageOffset === 'number'
+      ? view.scrollPageOffset
+      : 0
+
+    return (host?.scrollTop ?? 0) + pageOffset
+  }
+
+  function installScrollCorrectionGuard(view: CodeView<DifflyCommentAnnotation>) {
+    const patched = view as unknown as CodeViewScrollFixPatch
+    if (patched.__difflyScrollGuardInstalled || !patched.applyScrollFix || !patched.setItems) {
+      return
+    }
+
+    const originalApplyScrollFix = patched.applyScrollFix.bind(view)
+    const originalSetItems = patched.setItems.bind(view)
+    patched.__difflyOriginalApplyScrollFix = originalApplyScrollFix
+    patched.__difflyOriginalSetItems = originalSetItems
+    patched.__difflyScrollGuardInstalled = true
+
+    patched.setItems = (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => {
+      const now = performance.now()
+      extendManualScrollStabilityWindow()
+      if (now < userScrollCorrectionSuppressedUntil && now >= programmaticScrollAllowedUntil) {
+        clearManualScrollTargets(patched)
+      }
+      originalSetItems(items)
+    }
+
+    patched.applyScrollFix = (
+      targetScrollTop: number,
+      syncedScrollTop: number,
+      windowSpecs?: unknown,
+    ) => {
+      if (shouldSuppressScrollCorrection(patched, targetScrollTop, syncedScrollTop)) {
+        const scrollTop = currentLogicalScrollTop(patched)
+        clearManualScrollTargets(patched)
+        patched.scrollDirty = false
+        patched.scrollTop = scrollTop
+        if (patched.renderState) {
+          patched.renderState.scrollTop = scrollTop
+        }
+        return
+      }
+
+      originalApplyScrollFix(targetScrollTop, syncedScrollTop, windowSpecs)
+    }
+  }
+
+  function restoreScrollCorrectionGuard() {
+    const patched = codeView as unknown as CodeViewScrollFixPatch | null
+    if (!patched?.__difflyOriginalApplyScrollFix) {
+      return
+    }
+
+    patched.applyScrollFix = patched.__difflyOriginalApplyScrollFix
+    patched.setItems = patched.__difflyOriginalSetItems
+    patched.__difflyOriginalApplyScrollFix = undefined
+    patched.__difflyOriginalSetItems = undefined
+    patched.__difflyScrollGuardInstalled = false
   }
 
   function workerPoolOptions(): WorkerPoolOptions {
@@ -538,6 +712,7 @@
       entry.rightSize ?? '',
       loadedEntry.loading ? '1' : '0',
       loadedEntry.error,
+      estimatePlaceholderLineCount(entry),
       collapsedPaths.has(entry.relativePath) ? '1' : '0',
     ].join('\u0000')
   }
@@ -556,9 +731,45 @@
     return version
   }
 
+  function clampPlaceholderLineCount(value: number, max: number) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return 1
+    }
+
+    return Math.max(
+      DIRECTORY_PLACEHOLDER_MIN_LINES,
+      Math.min(max, Math.ceil(value)),
+    )
+  }
+
+  function estimatePlaceholderLineCount(entry: DirectoryEntryResult) {
+    const maxSize = Math.max(entry.leftSize ?? 0, entry.rightSize ?? 0)
+    if (maxSize <= 0) {
+      return 1
+    }
+
+    const estimatedLines = maxSize / DIRECTORY_PLACEHOLDER_BYTES_PER_LINE
+    const maxLines =
+      entry.status === 'modified'
+        ? DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES
+        : DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES
+
+    return clampPlaceholderLineCount(estimatedLines, maxLines)
+  }
+
+  function buildPlaceholderContents(label: string, lineCount: number) {
+    if (lineCount <= 1) {
+      return label
+    }
+
+    return [label, ...Array.from({ length: lineCount - 1 }, () => '')].join('\n')
+  }
+
   function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff): FileContents {
     const { entry } = loadedEntry
-    const contents = loadedEntry.error || (loadedEntry.loading ? 'Loading diff...' : '')
+    const label = loadedEntry.error || (loadedEntry.loading ? 'Loading diff...' : 'Queued diff...')
+    const lineCount = loadedEntry.error ? 1 : estimatePlaceholderLineCount(entry)
+    const contents = buildPlaceholderContents(label, lineCount)
 
     return {
       name: entry.relativePath,
@@ -697,23 +908,50 @@
 
     visibleRequestFrame = window.requestAnimationFrame(() => {
       visibleRequestFrame = null
-      if (!codeView) {
-        return
-      }
-
-      const paths = codeView.getRenderedItems().map((item) => item.id)
-      if (paths.length === 0) {
-        return
-      }
-
-      const key = paths.join('\u0000')
-      if (key === lastRequestedVisibleKey) {
-        return
-      }
-
-      lastRequestedVisibleKey = key
-      requestVisibleEntries(paths)
+      requestRenderedEntries(codeView)
     })
+  }
+
+  function requestRenderedEntries(view: CodeView<DifflyCommentAnnotation> | null) {
+    if (!view) {
+      return
+    }
+
+    const paths = view.getRenderedItems().map((item) => item.id)
+    if (paths.length === 0) {
+      return
+    }
+
+    const key = paths.join('\u0000')
+    if (key === lastRequestedVisibleKey) {
+      return
+    }
+
+    lastRequestedVisibleKey = key
+    requestVisibleEntries(paths)
+  }
+
+  function shouldRenderScrollImmediately(
+    scrollTop: number,
+    view: CodeView<DifflyCommentAnnotation>,
+  ) {
+    const height = host?.clientHeight ?? window.innerHeight ?? 0
+    if (height <= 0) {
+      return false
+    }
+
+    const { top, bottom } = view.getWindowSpecs()
+    if (bottom <= top) {
+      return true
+    }
+
+    const margin = Math.max(
+      DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX,
+      Math.min(directoryCodeViewOverscrollSize() * 0.35, height),
+    )
+    const viewportBottom = scrollTop + height
+
+    return scrollTop < top + margin || viewportBottom > bottom - margin
   }
 
   function syncScrollSubscription() {
@@ -721,7 +959,15 @@
       return
     }
 
-    unsubscribeScroll = codeView.subscribeToScroll(() => {
+    unsubscribeScroll = codeView.subscribeToScroll((scrollTop, view) => {
+      markUserScroll(view)
+
+      if (shouldRenderScrollImmediately(scrollTop, view)) {
+        view.render(true)
+        requestRenderedEntries(view)
+        return
+      }
+
       scheduleVisibleEntryRequest()
     })
   }
@@ -781,13 +1027,17 @@
 
     if (!codeView) {
       codeView = new CodeView<DifflyCommentAnnotation>(options, getWorkerPool())
+      syncCodeViewVirtualization(codeView)
       codeView.setup(host)
       lastOptionsKey = nextOptionsKey
       syncScrollSubscription()
     } else if (nextOptionsKey !== lastOptionsKey) {
+      syncCodeViewVirtualization(codeView)
       lastOptionsKey = nextOptionsKey
       codeView.setOptions(options)
       lastRequestedVisibleKey = ''
+    } else {
+      syncCodeViewVirtualization(codeView)
     }
 
     if (itemListKey !== lastRenderedItemListKey) {
@@ -804,12 +1054,25 @@
   }
 
   async function scrollToSelectedEntry() {
+    const targetRevision = scrollTargetRevision
+    const targetPath = selectedRelativePath
+
+    if (targetRevision <= 0 || targetRevision === appliedScrollTargetRevision || !targetPath) {
+      return
+    }
+
+    appliedScrollTargetRevision = targetRevision
     await tick()
 
-    if (selectedRelativePath && codeView?.getItem(selectedRelativePath)) {
+    if (targetRevision !== scrollTargetRevision || targetPath !== selectedRelativePath) {
+      return
+    }
+
+    if (codeView?.getItem(targetPath)) {
+      allowProgrammaticScroll()
       codeView.scrollTo({
         type: 'item',
-        id: selectedRelativePath,
+        id: targetPath,
         align: 'start',
         behavior: 'instant',
       })
@@ -827,7 +1090,7 @@
     commentAnnotations,
     void syncCodeView()
 
-  $: selectedRelativePath, scrollTargetRevision, void scrollToSelectedEntry()
+  $: scrollTargetRevision, void scrollToSelectedEntry()
 
   onDestroy(() => {
     renderRevision += 1
@@ -848,6 +1111,7 @@
 
     unsubscribeScroll?.()
     unsubscribeScroll = null
+    restoreScrollCorrectionGuard()
     codeView?.cleanUp()
     codeView = null
     workerPool?.terminate()

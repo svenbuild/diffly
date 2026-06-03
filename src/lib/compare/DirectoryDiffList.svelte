@@ -33,6 +33,7 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
+  export let scrollTargetRevision = 0
   export let revision = 0
   export let leftPath = ''
   export let rightPath = ''
@@ -52,9 +53,9 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
-  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 12
-  const DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS = 8
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 4
+  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 32
+  const DIRECTORY_DIFF_VISIBLE_LOAD_RADIUS = 36
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -69,7 +70,6 @@
   let normalLoadQueueHead = 0
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
-  let scrollTargetRevision = 0
   let textEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
 
@@ -377,7 +377,7 @@
     }
   }
 
-  function scrollToEntry(path: string) {
+  function scheduleSelectedEntryWindow(path: string) {
     if (!path) {
       return
     }
@@ -387,7 +387,6 @@
       return
     }
 
-    scrollTargetRevision += 1
     if (!isCollapsed(entry.relativePath)) {
       scheduleEntryWindow(entry.relativePath, true)
     }
@@ -532,7 +531,7 @@
     loadGeneration,
     scheduleActiveLoads()
 
-  $: selectedRelativePath, scrollToEntry(selectedRelativePath)
+  $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
 </script>
 
 <section class="directory-diff-list">
