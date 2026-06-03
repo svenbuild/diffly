@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { FileDiff, areOptionsEqual } from '@pierre/diffs'
+  import {
+    WorkerPoolManager,
+    type WorkerInitializationRenderOptions,
+    type WorkerPoolOptions,
+  } from '@pierre/diffs/worker'
+  import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
   import type {
     DiffLineAnnotation,
     DiffTokenEventBaseProps,
@@ -31,6 +37,7 @@
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
+  let workerPool: WorkerPoolManager | null = null
   let renderedOptions: FileDiffOptions<DifflyCommentAnnotation> | null = null
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
@@ -40,8 +47,14 @@
   let interactionMessageTimer: number | null = null
   let renderedTextKey = ''
   let renderedAnnotationsKey = ''
+  let lastWorkerOptionsKey = ''
   let leftFileCache: { key: string; file: FileContents } | null = null
   let rightFileCache: { key: string; file: FileContents } | null = null
+
+  function workerPoolSize() {
+    const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
+    return Math.max(2, Math.min(6, Math.floor(cores / 2)))
+  }
 
   function fileName(label: string) {
     return label.split(/[\\/]/).pop() || label || 'file.txt'
@@ -265,6 +278,64 @@
     return file
   }
 
+  function workerPoolOptions(): WorkerPoolOptions {
+    return {
+      workerFactory: () => new DiffsWorker(),
+      poolSize: workerPoolSize(),
+      totalASTLRUCacheSize: 160,
+    }
+  }
+
+  function workerRenderOptions(): WorkerInitializationRenderOptions {
+    return {
+      theme: resolvePierreDiffTheme(appearanceSettings),
+      useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
+      lineDiffType: viewerSettings.lineDiffType,
+      maxLineDiffLength: viewerSettings.maxLineDiffLength,
+      tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
+      preferredHighlighter: viewerSettings.preferredHighlighter,
+    }
+  }
+
+  function workerOptionsKey() {
+    const options = workerRenderOptions()
+    const theme =
+      typeof options.theme === 'string'
+        ? options.theme
+        : `${options.theme?.light ?? ''}:${options.theme?.dark ?? ''}`
+
+    return [
+      theme,
+      options.useTokenTransformer ? '1' : '0',
+      options.lineDiffType,
+      options.maxLineDiffLength,
+      options.tokenizeMaxLineLength,
+      options.preferredHighlighter,
+    ].join('\u0000')
+  }
+
+  function getWorkerPool() {
+    if (!workerPool) {
+      lastWorkerOptionsKey = workerOptionsKey()
+      workerPool = new WorkerPoolManager(workerPoolOptions(), workerRenderOptions())
+    }
+
+    return workerPool
+  }
+
+  function syncWorkerRenderOptions() {
+    const nextKey = workerOptionsKey()
+    const manager = getWorkerPool()
+    if (nextKey === lastWorkerOptionsKey) {
+      return
+    }
+
+    lastWorkerOptionsKey = nextKey
+    void manager.setRenderOptions(workerRenderOptions()).catch((error) => {
+      console.error('Unable to update Pierre diff worker options', error)
+    })
+  }
+
   async function renderDiff() {
     if (!host) {
       return
@@ -277,6 +348,7 @@
       return
     }
 
+    syncWorkerRenderOptions()
     const nextOptions = buildOptions()
     const nextTextKey = textKey()
     const textChanged = nextTextKey !== renderedTextKey
@@ -293,7 +365,7 @@
     const annotationsChanged = nextAnnotationsKey !== renderedAnnotationsKey
 
     if (!fileDiff) {
-      fileDiff = new FileDiff<DifflyCommentAnnotation>(nextOptions)
+      fileDiff = new FileDiff<DifflyCommentAnnotation>(nextOptions, getWorkerPool())
     } else if (forceRender) {
       fileDiff.setOptions(nextOptions)
     }
@@ -332,6 +404,8 @@
     }
     fileDiff?.cleanUp()
     fileDiff = null
+    workerPool?.terminate()
+    workerPool = null
     renderedOptions = null
   })
 </script>
