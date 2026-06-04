@@ -1017,7 +1017,7 @@
 
   function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff, key: string): FileContents {
     const { entry } = loadedEntry
-    const label = loadedEntry.error || (loadedEntry.diff?.text ? 'Diff ready' : 'Loading diff...')
+    const label = loadedEntry.error || (loadedEntry.diff?.text ? 'Preparing diff...' : 'Loading diff...')
     const lineCount = loadedEntry.error ? 1 : estimatePlaceholderLineCount(entry)
     const contents = buildPlaceholderContents(label, lineCount)
 

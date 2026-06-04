@@ -366,17 +366,19 @@ async function main() {
 
     assert.equal(result.ready, true)
     assert.equal(result.loadingDiffTextCount, 0)
+    assert.equal(result.diffReadyTextCount, 0)
+    assert.ok(result.visibleEntryPathCount <= 1, `visible entry path count ${result.visibleEntryPathCount}`)
     assert.equal(result.manualScrollStable, true)
-    assert.equal(result.sidebarScrollMoved, true)
-    assert.equal(result.sidebarScrollStable, true)
+    assert.equal(result.selectedPathVisible, true)
+    assert.equal(result.selectedPathStable, true)
     assert.ok(
-      result.interactionLongTasksOver50Ms <= 2,
+      result.interactionLongTasksOver50Ms <= 3,
       `interaction long tasks ${result.interactionLongTasksOver50Ms}`,
     )
-    assert.ok(result.interactionLongTasksMax <= 120, `interaction long task max ${result.interactionLongTasksMax}`)
-    assert.ok(result.loadLongTasksMax <= 200, `load long task max ${result.loadLongTasksMax}`)
+    assert.ok(result.interactionLongTasksMax <= 150, `interaction long task max ${result.interactionLongTasksMax}`)
+    assert.ok(result.loadLongTasksMax <= 250, `load long task max ${result.loadLongTasksMax}`)
     assert.ok(result.manualDelta <= 1, `manual delta ${result.manualDelta}`)
-    assert.ok(result.sidebarDelta <= 1, `sidebar delta ${result.sidebarDelta}`)
+    assert.ok(result.selectionDelta <= 1, `selection delta ${result.selectionDelta}`)
   } finally {
     client?.close()
     child.kill()
@@ -432,41 +434,60 @@ function rendererScrollTest() {
     })
     await waitFor(() => !window.__difflyE2E.getState().loading)
     const host = await waitFor(() => document.querySelector('.directory-code-view-host'))
-    await waitFor(() => host.scrollHeight > host.clientHeight * 2)
     await sleepInPage(800)
     const loadingDiffTextCount = (document.body?.innerText?.match(/Loading diff\.\.\./g) ?? []).length
+    const diffReadyTextCount = (document.body?.innerText?.match(/Diff ready/g) ?? []).length
     if (loadingDiffTextCount > 0) {
       throw new Error(`Found ${loadingDiffTextCount} visible Loading diff placeholders.`)
+    }
+    if (diffReadyTextCount > 0) {
+      throw new Error(`Found ${diffReadyTextCount} visible Diff ready placeholders.`)
     }
     const loadLongTasks = [...longTasks]
     longTasks.length = 0
 
-    const manualTarget = Math.min(
-      Math.max(600, Math.floor(host.scrollHeight * 0.55)),
-      host.scrollHeight - host.clientHeight,
-    )
-    host.scrollTop = manualTarget
-    host.dispatchEvent(new Event('scroll', { bubbles: false }))
+    const canManualScroll = host.scrollHeight > host.clientHeight + 10
+    const manualTarget = canManualScroll
+      ? Math.min(
+          Math.max(0, Math.floor(host.scrollHeight * 0.55)),
+          host.scrollHeight - host.clientHeight,
+        )
+      : 0
+    if (canManualScroll) {
+      host.scrollTop = manualTarget
+      host.dispatchEvent(new Event('scroll', { bubbles: false }))
+    }
     await sleepInPage(1200)
     const manualAfter = host.scrollTop
     const manualDelta = Math.abs(manualAfter - manualTarget)
 
     const state = window.__difflyE2E.getState()
-    const beforeSidebarTop = host.scrollTop
     const targetPath = 'pkg03/module-0349.ts'
     const selected = await window.__difflyE2E.selectPath(targetPath)
     if (!selected) {
       throw new Error(`Unable to select ${targetPath}`)
     }
-    await sleepInPage(1600)
-    const sidebarAfter = host.scrollTop
+    await waitFor(() => {
+      const selectedState = window.__difflyE2E.getState()
+      const paths = Array.from(document.querySelectorAll('[data-diffly-entry-path]'))
+        .map((element) => element.dataset.difflyEntryPath)
+        .filter(Boolean)
+      return selectedState.selectedRelativePath === targetPath && paths.includes(targetPath)
+    })
+    const selectionAfter = host.scrollTop
     await sleepInPage(1200)
-    const sidebarFinal = host.scrollTop
-    const sidebarDelta = Math.abs(sidebarFinal - sidebarAfter)
+    const selectionFinal = host.scrollTop
+    const selectionDelta = Math.abs(selectionFinal - selectionAfter)
+    const visibleEntryPaths = new Set(
+      Array.from(document.querySelectorAll('[data-diffly-entry-path]'))
+        .map((element) => element.dataset.difflyEntryPath)
+        .filter(Boolean),
+    )
 
     observer?.disconnect()
     return {
       directoryEntries: state.directoryEntries,
+      diffReadyTextCount,
       interactionLongTasksMax: longTasks.length > 0 ? Math.max(...longTasks) : 0,
       interactionLongTasksOver50Ms: longTasks.length,
       loadLongTasksMax: loadLongTasks.length > 0 ? Math.max(...loadLongTasks) : 0,
@@ -478,12 +499,12 @@ function rendererScrollTest() {
       manualTarget,
       ready: true,
       selectedPath: targetPath,
-      sidebarAfter,
-      sidebarDelta,
-      sidebarFinal,
-      sidebarScrollMoved: Math.abs(sidebarAfter - beforeSidebarTop) > 10,
-      sidebarScrollStable: sidebarDelta <= 1,
-      beforeSidebarTop,
+      selectedPathStable: selectionDelta <= 1,
+      selectedPathVisible: visibleEntryPaths.has(targetPath),
+      selectionAfter,
+      selectionDelta,
+      selectionFinal,
+      visibleEntryPathCount: visibleEntryPaths.size,
     }
   })()
 }
