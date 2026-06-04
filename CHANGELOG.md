@@ -158,9 +158,8 @@ This release covers all changes from `v0.1.5` through `v0.2.0`.
 ### Validation
 
 - `npm run check`
-- `npm run verify:scroll-guard`
-- `npm run verify:electron-scroll`
-- `npm run perf:directory-fixture`
+- `npm run build`
+- `npm run electron:package`
 
 ### Complete Commit List Since v0.1.5
 

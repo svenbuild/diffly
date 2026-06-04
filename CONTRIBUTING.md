@@ -23,9 +23,8 @@ Before publishing a tagged release, update `package.json`, `package-lock.json`, 
 
 ```bash
 npm run check
-npm run verify:scroll-guard
-npm run verify:electron-scroll
-npm run perf:directory-fixture
+npm run build
+npm run electron:package
 ```
 
 Publish releases from `main` with a `v*` tag. The GitHub release workflow builds and publishes the Windows installer and portable artifact.
