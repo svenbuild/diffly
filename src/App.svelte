@@ -271,6 +271,9 @@
   let compareComponentsPreloadCancel: (() => void) | null = null
   let lastSavedSessionFingerprint: string | null = null
   let themeTransitionTimer: number | null = null
+  let compareSurfaceTransitionFrame: number | null = null
+  let compareSurfaceTransitionTimer: number | null = null
+  let compareSurfaceTransitioning = false
   let activeDetailRequestId = 0
   let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareSidebarResizeActive = false
@@ -601,6 +604,31 @@
     compareComponentsPreloadCancel = () => globalThis.clearTimeout(handle)
   }
 
+  function pulseCompareSurface() {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (compareSurfaceTransitionTimer !== null) {
+      window.clearTimeout(compareSurfaceTransitionTimer)
+    }
+
+    if (compareSurfaceTransitionFrame !== null) {
+      window.cancelAnimationFrame(compareSurfaceTransitionFrame)
+    }
+
+    compareSurfaceTransitioning = false
+
+    compareSurfaceTransitionFrame = window.requestAnimationFrame(() => {
+      compareSurfaceTransitionFrame = null
+      compareSurfaceTransitioning = true
+      compareSurfaceTransitionTimer = window.setTimeout(() => {
+        compareSurfaceTransitioning = false
+        compareSurfaceTransitionTimer = null
+      }, 180)
+    })
+  }
+
   function readE2ECompareTarget(): E2ECompareTarget | null {
     if (typeof window === 'undefined') {
       return null
@@ -687,6 +715,14 @@
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
+      }
+
+      if (compareSurfaceTransitionTimer !== null) {
+        window.clearTimeout(compareSurfaceTransitionTimer)
+      }
+
+      if (compareSurfaceTransitionFrame !== null) {
+        window.cancelAnimationFrame(compareSurfaceTransitionFrame)
       }
 
       if (paneNavigationScrollFrame !== null) {
@@ -2176,6 +2212,7 @@
     loading = true
     detailLoading = false
     errorMessage = ''
+    pulseCompareSurface()
     activeDetailRequestId += 1
     cancelBackgroundDiffPreload()
     stopDirectoryComparePolling(true)
@@ -2307,6 +2344,9 @@
   ) {
     if (mode === 'directory') {
       if (revision === compareRevision) {
+        if (selectedRelativePath !== entry.relativePath) {
+          pulseCompareSurface()
+        }
         selectedRelativePath = entry.relativePath
         if (arguments.length <= 1) {
           directoryScrollTargetRevision += 1
@@ -2331,6 +2371,7 @@
     selectedRelativePath = entry.relativePath
     detailLoading = true
     errorMessage = ''
+    pulseCompareSurface()
 
     // Bump the preload generation so existing workers exit after their current
     // IPC resolves. They won't pile up thanks to the bounded worker pool; the
@@ -2714,6 +2755,8 @@
       <div class="setup-bar-actions">
         <button
           class="primary setup-compare-button"
+          class:compare-action-busy={loading}
+          aria-busy={loading}
           disabled={!pickerCanCompare || loading}
           title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
           type="button"
@@ -2783,7 +2826,11 @@
       {/snippet}
 
       {#snippet middle()}
-      <div class="compare-editor-context" aria-label="Compare context">
+      <div
+        class:compare-context-updating={compareSurfaceTransitioning}
+        class="compare-editor-context"
+        aria-label="Compare context"
+      >
         <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
           {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
         </strong>
@@ -2903,6 +2950,7 @@
           <button
             aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
             aria-busy={loading}
+            class:compare-action-busy={loading}
             class:pending-refresh={compareNeedsRefresh}
             class="secondary toolbar-button icon-button refresh-button"
             title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
@@ -3026,6 +3074,7 @@
           {leftPath}
           {rightPath}
           compareOptions={activeCompareOptions}
+          transitionActive={compareSurfaceTransitioning}
           resolveEntryBases={getDetailBasesForPath}
         />
       {:else}

@@ -30,6 +30,7 @@
     ignoreWhitespace: false,
     ignoreCase: false,
   }
+  export let transitionActive = false
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
     rightBase: string
@@ -41,7 +42,7 @@
   })
 </script>
 
-<section class="compare-viewer">
+<section class:compare-viewer-transitioning={transitionActive} class="compare-viewer">
   {#if mode === 'directory'}
     <DirectoryDiffList
       {directoryEntries}

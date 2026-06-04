@@ -373,7 +373,8 @@ button {
     background-color 140ms ease,
     border-color 140ms ease,
     color 140ms ease,
-    box-shadow 140ms ease;
+    box-shadow 140ms ease,
+    transform 120ms ease;
 }
 
 button:hover:not(:disabled) {
@@ -384,6 +385,7 @@ button:hover:not(:disabled) {
 
 button:active:not(:disabled) {
   box-shadow: none;
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -581,6 +583,10 @@ h2 {
 .compare-editor-context span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.compare-editor-context.compare-context-updating {
+  opacity: 0.82;
 }
 
 .setup-bar-actions {
@@ -1008,6 +1014,11 @@ h2 {
 
 .setup-compare-button {
   min-width: 104px;
+}
+
+.setup-compare-button.compare-action-busy {
+  border-color: color-mix(in srgb, var(--accent-strong) 72%, var(--accent));
+  background: color-mix(in srgb, var(--accent) 84%, var(--surface-strong));
 }
 
 .setup-warning {
@@ -5178,6 +5189,11 @@ button.filter-chip.tooLarge:focus-visible {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, var(--border));
 }
 
+.refresh-button.compare-action-busy {
+  border-color: color-mix(in srgb, var(--accent-strong) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 74%, var(--surface));
+}
+
 .refresh-icon-slot {
   width: 18px;
   height: 18px;
@@ -5274,6 +5290,11 @@ button.filter-chip.tooLarge:focus-visible {
     animation: t-settings-panel-reveal var(--t-panel-duration) var(--t-panel-ease) both;
   }
 
+  .compare-viewer.compare-viewer-transitioning > *,
+  .compare-editor-context.compare-context-updating {
+    animation: t-compare-content-fade 160ms ease-out both;
+  }
+
   body,
   button,
   input,
@@ -5326,6 +5347,16 @@ button.filter-chip.tooLarge:focus-visible {
 
   .refresh-spinner.visible {
     animation: spin 700ms linear infinite;
+  }
+}
+
+@keyframes t-compare-content-fade {
+  from {
+    opacity: 0.68;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 
