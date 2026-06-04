@@ -211,6 +211,7 @@
       window.cancelAnimationFrame(wheelScrollFrame)
       wheelScrollFrame = null
     }
+    wheelScrollActiveUntil = 0
   }
 
   function markUserScroll(view: CodeView<DifflyCommentAnnotation>, force = false) {
@@ -433,13 +434,19 @@
     }
 
     const nextHost = host
-    nextHost.addEventListener('scroll', handleHostNativeScroll, { passive: true })
-    nextHost.addEventListener('pointerdown', handleHostPointerDown, { passive: true })
+    nextHost.addEventListener('scroll', handleHostNativeScroll, {
+      capture: true,
+      passive: true,
+    })
+    nextHost.addEventListener('pointerdown', handleHostPointerDown, {
+      capture: true,
+      passive: true,
+    })
     unsubscribeNativeScroll = () => {
-      nextHost.removeEventListener('scroll', handleHostNativeScroll)
+      nextHost.removeEventListener('scroll', handleHostNativeScroll, true)
     }
     unsubscribePointerDown = () => {
-      nextHost.removeEventListener('pointerdown', handleHostPointerDown)
+      nextHost.removeEventListener('pointerdown', handleHostPointerDown, true)
     }
   }
 
