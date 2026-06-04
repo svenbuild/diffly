@@ -123,11 +123,15 @@ const detailConcurrencyOne = await measure('detail loads concurrency 1', detailP
 const detailConcurrencyTwo = await measure('detail loads concurrency 2', detailPaths, (allPaths) =>
   runDetailLoads(allPaths, 2),
 )
-const detailSpeedup = detailConcurrencyOne.median / Math.max(0.001, detailConcurrencyTwo.median)
+const detailConcurrencyEight = await measure('detail loads concurrency 8', detailPaths, (allPaths) =>
+  runDetailLoads(allPaths, 8),
+)
+const detailSpeedup = detailConcurrencyOne.median / Math.max(0.001, detailConcurrencyEight.median)
 
 console.log(`fixture roots: ${LEFT_ROOT} <-> ${RIGHT_ROOT}`)
 console.log(`fixtures: ${paths.length} relative paths, ${ITERATIONS} measured iterations, ${WARMUPS} warmups`)
 console.log(`detail fixtures: ${detailPaths.length} paired text loads from visible queue`)
 printResult(detailConcurrencyOne)
 printResult(detailConcurrencyTwo)
+printResult(detailConcurrencyEight)
 console.log(`median detail-load speedup: ${detailSpeedup.toFixed(1)}x`)

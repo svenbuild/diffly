@@ -54,11 +54,13 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
-  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 4
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
+  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 96
+  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 24
+  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
   const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
   const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
-  const DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS = 320
+  const DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS = 80
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -79,6 +81,8 @@
   let activeLoadCount = 0
   let loadPausedUntil = 0
   let loadResumeTimer: number | null = null
+  let backgroundLoadTimer: number | null = null
+  let backgroundLoadCursor = 0
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
@@ -321,6 +325,47 @@
     pumpLoadQueue()
   }
 
+  function cancelBackgroundLoadScheduling() {
+    if (backgroundLoadTimer !== null) {
+      window.clearTimeout(backgroundLoadTimer)
+      backgroundLoadTimer = null
+    }
+  }
+
+  function scheduleBackgroundLoadPump() {
+    if (backgroundLoadTimer !== null) {
+      return
+    }
+
+    backgroundLoadTimer = window.setTimeout(() => {
+      backgroundLoadTimer = null
+      enqueueBackgroundLoads()
+    }, DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS)
+  }
+
+  function enqueueBackgroundLoads() {
+    let queuedCount = 0
+
+    while (
+      backgroundLoadCursor < directoryEntries.length &&
+      queuedCount < DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH
+    ) {
+      const entry = directoryEntries[backgroundLoadCursor]
+      backgroundLoadCursor += 1
+
+      if (!entryNeedsLoad(entry)) {
+        continue
+      }
+
+      scheduleEntryLoad(entry)
+      queuedCount += 1
+    }
+
+    if (backgroundLoadCursor < directoryEntries.length) {
+      scheduleBackgroundLoadPump()
+    }
+  }
+
   function scheduleLoadResume() {
     if (loadResumeTimer !== null) {
       window.clearTimeout(loadResumeTimer)
@@ -370,8 +415,12 @@
     return null
   }
 
-  function takeNextQueuedEntry() {
+  function takeNextQueuedEntry(priorityOnly = false) {
     while (true) {
+      if (priorityOnly && priorityLoadQueueHead >= priorityLoadQueue.length) {
+        return null
+      }
+
       const nextPath = takeQueuedPath()
       if (!nextPath) {
         return null
@@ -387,14 +436,14 @@
   }
 
   function pumpLoadQueue() {
-    if (performance.now() < loadPausedUntil) {
-      scheduleLoadResume()
-      return
-    }
+    const priorityOnly = performance.now() < loadPausedUntil
 
     while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
-      const entry = takeNextQueuedEntry()
+      const entry = takeNextQueuedEntry(priorityOnly)
       if (!entry) {
+        if (priorityOnly) {
+          scheduleLoadResume()
+        }
         return
       }
 
@@ -687,6 +736,7 @@
       window.clearTimeout(loadResumeTimer)
       loadResumeTimer = null
     }
+    cancelBackgroundLoadScheduling()
     cancelEntryStateFlush()
   })
 
@@ -717,6 +767,8 @@
       normalLoadQueueHead = 0
       loadQueueKeys = new Set()
       activeLoadCount = 0
+      backgroundLoadCursor = 0
+      cancelBackgroundLoadScheduling()
     }
     syncEntryCollections()
   }
@@ -728,6 +780,12 @@
     revision,
     loadGeneration,
     scheduleActiveLoads()
+
+  $: directoryEntries,
+    entryByPath,
+    revision,
+    loadGeneration,
+    scheduleBackgroundLoadPump()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
 </script>
