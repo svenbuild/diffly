@@ -838,6 +838,13 @@
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
       themeType: resolvedThemeMode,
+      // The virtualizer estimates off-screen row heights from this metric
+      // (default 20px) and corrects the scroll position once rows are measured.
+      // We override the rendered line-height via unsafeCSS to codeFontSize + 5,
+      // so without a matching metric every scroll re-anchors — which feels like
+      // an extra scroll being appended after yours. Keep in sync with
+      // --diffs-line-height in buildPierreDiffUnsafeCss.
+      itemMetrics: { lineHeight: appearanceSettings.codeFontSize + 5 },
       diffStyle: viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle,
       overflow: viewerSettings.codeOverflow,
       diffIndicators: viewerSettings.diffIndicators,
