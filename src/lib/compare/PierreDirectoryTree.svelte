@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { FileTree, prepareFileTreeInput, preparePresortedFileTreeInput } from '@pierre/trees'
   import type { FileTreeOptions, GitStatusEntry } from '@pierre/trees'
   import type { AppearanceSettings } from '../theme'
@@ -23,6 +23,9 @@
   let renderedEntriesRevision = -1
   let currentStructureKey = ''
   let lastSyncedSelectionPath = ''
+  let hostResizeObserver: ResizeObserver | null = null
+  let observedHost: HTMLDivElement | null = null
+  let hostViewportHeight = 0
 
   $: visibleEntries = directoryEntries
   let entryByPath = new Map<string, DirectoryEntryResult>()
@@ -67,6 +70,7 @@
 
   function buildOptions(paths: string[], selectedPath: string): FileTreeOptions {
     return {
+      paths,
       preparedInput: buildPreparedInput(paths, treeSettings),
       density: resolveDensity(treeSettings),
       flattenEmptyDirectories: treeSettings.flattenEmptyDirectories,
@@ -103,6 +107,38 @@
           void selectEntry(entry)
         }
       },
+    }
+  }
+
+  function measureHostViewport() {
+    if (!host) {
+      return 0
+    }
+
+    const hostRect = host.getBoundingClientRect()
+    const panelRect = host.parentElement?.getBoundingClientRect()
+    const nextHeight = Math.floor(panelRect?.height || hostRect.height || 0)
+    if (nextHeight > 0 && nextHeight !== hostViewportHeight) {
+      hostViewportHeight = nextHeight
+      host.style.height = `${nextHeight}px`
+    }
+
+    return nextHeight
+  }
+
+  function syncHostObserver() {
+    if (!hostResizeObserver || host === observedHost) {
+      return
+    }
+
+    if (observedHost) {
+      hostResizeObserver.unobserve(observedHost)
+    }
+
+    observedHost = host
+    if (observedHost) {
+      hostResizeObserver.observe(observedHost)
+      measureHostViewport()
     }
   }
 
@@ -160,6 +196,15 @@
       return
     }
 
+    const measuredHeight = measureHostViewport()
+    if (measuredHeight <= 0) {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+      if (!host || version !== renderVersion) {
+        return
+      }
+      measureHostViewport()
+    }
+
     entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
     const paths = visibleEntries.map((entry) => entry.relativePath)
     const nextStructureKey = currentStructureKey
@@ -169,6 +214,7 @@
       fileTree?.cleanUp()
       fileTree = new FileTree(buildOptions(paths, selectedRelativePath))
       fileTree.render({ containerWrapper: host })
+      measureHostViewport()
       renderedStructureKey = nextStructureKey
       renderedEntriesRevision = entriesRevision
       lastSyncedSelectionPath = ''
@@ -189,9 +235,19 @@
   }
 
   $: host, visibleEntries, entriesRevision, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
+  $: host, syncHostObserver()
   $: selectedRelativePath, selectCurrentPath()
 
+  onMount(() => {
+    hostResizeObserver = new ResizeObserver(() => {
+      measureHostViewport()
+    })
+    syncHostObserver()
+  })
+
   onDestroy(() => {
+    hostResizeObserver?.disconnect()
+    hostResizeObserver = null
     fileTree?.cleanUp()
     fileTree = null
     resetRenderedKeys()
