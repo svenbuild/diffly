@@ -3284,6 +3284,173 @@ h2 {
   min-height: 0;
 }
 
+.directory-tree-fallback {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.directory-tree-fallback-search {
+  flex: 0 0 auto;
+  width: calc(100% - 4px);
+  min-width: 0;
+  min-height: 30px;
+  margin: 4px 0 6px 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  background: color-mix(in srgb, var(--surface) 88%, var(--editor-bg));
+  color: var(--text);
+  font: 500 12px/1 var(--ui-font);
+}
+
+.directory-tree-fallback-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.directory-tree-fallback-list {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.directory-tree-fallback-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.directory-tree-fallback-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.directory-tree-fallback-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.directory-tree-fallback-spacer {
+  position: relative;
+  min-width: 0;
+}
+
+.directory-tree-fallback-row {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  left: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 8px 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: 500 12px/1 var(--ui-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-tree-fallback-row:hover {
+  background: color-mix(in srgb, var(--accent-soft) 32%, transparent);
+}
+
+.directory-tree-fallback-row.selected {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--text);
+}
+
+.directory-tree-fallback-row.directory .directory-tree-fallback-label {
+  font-weight: 600;
+}
+
+.directory-tree-fallback-icon {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.directory-tree-fallback-icon::before {
+  content: 'F';
+}
+
+.directory-tree-fallback-icon.directory {
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.directory-tree-fallback-icon.directory::before {
+  content: none;
+}
+
+.directory-tree-fallback-row.directory:hover .directory-tree-fallback-icon.directory {
+  color: var(--text);
+}
+
+.directory-tree-fallback-icon[data-status='modified']::before {
+  content: 'M';
+}
+
+.directory-tree-fallback-icon[data-status='leftOnly'] {
+  background: color-mix(in srgb, var(--del-text) 18%, transparent);
+  color: var(--del-text);
+}
+
+.directory-tree-fallback-icon[data-status='leftOnly']::before {
+  content: '-';
+}
+
+.directory-tree-fallback-icon[data-status='rightOnly'] {
+  background: color-mix(in srgb, var(--add-text) 18%, transparent);
+  color: var(--add-text);
+}
+
+.directory-tree-fallback-icon[data-status='rightOnly']::before {
+  content: '+';
+}
+
+.directory-tree-fallback-label {
+  display: block;
+  min-width: 0;
+}
+
+.directory-tree-fallback-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-tree-fallback-status {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .file-browser,
 .viewer {
   padding: 0;
