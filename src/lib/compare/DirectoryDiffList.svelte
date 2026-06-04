@@ -55,12 +55,11 @@
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
-  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 96
-  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 24
+  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
+  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 0
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
   const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
   const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
-  const DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS = 80
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -79,13 +78,14 @@
   let normalLoadQueueHead = 0
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
-  let loadPausedUntil = 0
   let loadResumeTimer: number | null = null
   let backgroundLoadTimer: number | null = null
   let backgroundLoadCursor = 0
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
+  let renderableTextEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
+  let unresolvedEntryCount = 0
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -371,15 +371,13 @@
       window.clearTimeout(loadResumeTimer)
     }
 
-    const delay = Math.max(16, Math.ceil(loadPausedUntil - performance.now()))
     loadResumeTimer = window.setTimeout(() => {
       loadResumeTimer = null
       pumpLoadQueue()
-    }, delay)
+    }, 16)
   }
 
-  function pauseDirectoryDiffLoads(durationMs = DIRECTORY_DIFF_SCROLL_LOAD_PAUSE_MS) {
-    loadPausedUntil = Math.max(loadPausedUntil, performance.now() + durationMs)
+  function pauseDirectoryDiffLoads() {
     scheduleLoadResume()
   }
 
@@ -436,7 +434,7 @@
   }
 
   function pumpLoadQueue() {
-    const priorityOnly = performance.now() < loadPausedUntil
+    const priorityOnly = false
 
     while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
       const entry = takeNextQueuedEntry(priorityOnly)
@@ -644,15 +642,47 @@
     return Boolean(state && entryStateIsCurrent(state) && state.loading)
   }
 
+  function entryStateIsResolved(
+    entry: DirectoryEntryResult,
+    state: EntryDiffState | null | undefined,
+  ) {
+    if (entry.status === 'unsupported') {
+      return true
+    }
+
+    return Boolean(
+      state &&
+        entryStateIsCurrent(state) &&
+        !state.loading &&
+        (state.diff || state.error),
+    )
+  }
+
+  function loadedEntryIsRenderable(loadedEntry: LoadedDirectoryDiff) {
+    return Boolean(
+      loadedEntry.diff?.text ||
+        loadedEntry.error ||
+        loadedEntry.entry.status === 'unsupported',
+    )
+  }
+
+  function updateRenderableTextEntries(nextTextEntries = textEntries) {
+    renderableTextEntries = nextTextEntries.filter(loadedEntryIsRenderable)
+  }
+
   function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     const nextLoadedEntryCache = new Map<string, LoadedDirectoryDiff>()
     let nextPendingEntryCount = 0
+    let nextUnresolvedEntryCount = 0
 
     for (const entry of directoryEntries) {
       const state = states.get(entry.relativePath) ?? null
       if (entryStateIsPending(state)) {
         nextPendingEntryCount += 1
+      }
+      if (!entryStateIsResolved(entry, state)) {
+        nextUnresolvedEntryCount += 1
       }
 
       const loadedEntry = buildLoadedEntry(entry, state)
@@ -662,7 +692,9 @@
 
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
+    updateRenderableTextEntries(nextTextEntries)
     pendingEntryCount = nextPendingEntryCount
+    unresolvedEntryCount = nextUnresolvedEntryCount
   }
 
   function updateVisibleEntriesForStatePaths(
@@ -677,6 +709,7 @@
     const nextTextEntries = [...textEntries]
     const nextLoadedEntryCache = new Map(loadedEntryCache)
     let nextPendingEntryCount = pendingEntryCount
+    let nextUnresolvedEntryCount = unresolvedEntryCount
     let changed = false
 
     for (const path of paths) {
@@ -687,10 +720,15 @@
       }
 
       const previousPending = entryStateIsPending(previousStates.get(path))
+      const previousResolved = entryStateIsResolved(entry, previousStates.get(path))
       const nextState = nextStates.get(path) ?? null
       const nextPending = entryStateIsPending(nextState)
+      const nextResolved = entryStateIsResolved(entry, nextState)
       if (previousPending !== nextPending) {
         nextPendingEntryCount += nextPending ? 1 : -1
+      }
+      if (previousResolved !== nextResolved) {
+        nextUnresolvedEntryCount += nextResolved ? -1 : 1
       }
 
       const loadedEntry = buildLoadedEntry(entry, nextState, nextLoadedEntryCache.get(path))
@@ -704,8 +742,10 @@
     }
 
     pendingEntryCount = Math.max(0, nextPendingEntryCount)
+    unresolvedEntryCount = Math.max(0, nextUnresolvedEntryCount)
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
+    updateRenderableTextEntries(nextTextEntries)
     publishChangedEntryPaths(paths)
   }
 
@@ -801,9 +841,9 @@
       <p>No file changes.</p>
     </div>
   {:else}
-    {#if textEntries.length > 0}
+    {#if renderableTextEntries.length > 0}
       <PierreDirectoryVirtualDiffView
-        entries={textEntries}
+        entries={renderableTextEntries}
         {collapsedPaths}
         {selectedRelativePath}
         {viewerSettings}
@@ -818,7 +858,7 @@
         {requestVisibleEntries}
         pauseDiffLoading={pauseDirectoryDiffLoads}
       />
-    {:else if pendingEntryCount > 0}
+    {:else if pendingEntryCount > 0 || unresolvedEntryCount > 0}
       <div class="compare-viewer-state">
         <span class="refresh-spinner visible"></span>
         <p>Loading diffs...</p>

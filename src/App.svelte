@@ -132,9 +132,27 @@
     kind: PathKind
   }
 
+  interface E2ECompareTarget {
+    leftPath: string
+    rightPath: string
+  }
+
+  interface E2EHarness {
+    getState(): {
+      directoryEntries: number
+      errorMessage: string
+      loading: boolean
+      mode: CompareMode
+      screen: Screen
+      selectedRelativePath: string
+    }
+    selectPath(relativePath: string): Promise<boolean>
+  }
+
   export let initialSession: PersistedSession | null = null
   export let startupFolderPath: string | null = null
   let pendingStartupOverridePath: string | null = null
+  let e2eHarnessEnabled = false
 
   let screen: Screen = 'setup'
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
@@ -583,6 +601,44 @@
     compareComponentsPreloadCancel = () => globalThis.clearTimeout(handle)
   }
 
+  function readE2ECompareTarget(): E2ECompareTarget | null {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const left = params.get('difflyE2ELeft')?.trim()
+    const right = params.get('difflyE2ERight')?.trim()
+
+    return left && right ? { leftPath: left, rightPath: right } : null
+  }
+
+  function syncE2EHarness() {
+    if (!e2eHarnessEnabled || typeof window === 'undefined') {
+      return
+    }
+
+    ;(window as unknown as { __difflyE2E?: E2EHarness }).__difflyE2E = {
+      getState: () => ({
+        directoryEntries: directoryEntries.length,
+        errorMessage,
+        loading,
+        mode,
+        screen,
+        selectedRelativePath,
+      }),
+      selectPath: async (relativePath: string) => {
+        const entry = directoryEntries.find((candidate) => candidate.relativePath === relativePath)
+        if (!entry) {
+          return false
+        }
+
+        await selectEntry(entry)
+        return true
+      },
+    }
+  }
+
   onMount(() => {
     const colorSchemeQuery =
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -653,6 +709,10 @@
 
       if (diffNavigationIdleTimer !== null) {
         window.clearTimeout(diffNavigationIdleTimer)
+      }
+
+      if (e2eHarnessEnabled) {
+        delete (window as unknown as { __difflyE2E?: E2EHarness }).__difflyE2E
       }
     }
   })
@@ -1405,6 +1465,13 @@
       }
       pickerLoading = false
 
+      const e2eCompareTarget = readE2ECompareTarget()
+      if (e2eCompareTarget) {
+        await applyE2ECompareTarget(e2eCompareTarget)
+        lastSavedSessionFingerprint = JSON.stringify(buildCurrentPersistedSession())
+        return
+      }
+
       if (roots.length > 0) {
         const startupFolderOverride =
           startupFolderPath ?? await readStartupFolderOverride().catch(() => null)
@@ -1478,6 +1545,34 @@
     selectTarget('left', startupTarget.targetPath, startupTarget.kind)
     selectTarget('right', startupTarget.targetPath, startupTarget.kind)
   }
+
+  async function applyE2ECompareTarget(target: E2ECompareTarget) {
+    e2eHarnessEnabled = true
+    mode = 'directory'
+
+    const [leftOpened, rightOpened] = await Promise.all([
+      openDirectory('left', target.leftPath, 'keep'),
+      openDirectory('right', target.rightPath, 'keep'),
+    ])
+
+    if (!leftOpened || !rightOpened) {
+      errorMessage = 'Unable to initialize E2E compare target.'
+      return
+    }
+
+    selectTarget('left', target.leftPath, 'directory')
+    selectTarget('right', target.rightPath, 'directory')
+    await loadCompareComponents()
+    await runCompare()
+  }
+
+  $: e2eHarnessEnabled,
+    directoryEntries,
+    loading,
+    mode,
+    screen,
+    selectedRelativePath,
+    syncE2EHarness()
 
   function applyPersistedSession(session: PersistedSession | null) {
     if (!session) {

@@ -126,6 +126,9 @@ const detailConcurrencyTwo = await measure('detail loads concurrency 2', detailP
 const detailConcurrencyEight = await measure('detail loads concurrency 8', detailPaths, (allPaths) =>
   runDetailLoads(allPaths, 8),
 )
+const detailConcurrencySixteen = await measure('detail loads concurrency 16', detailPaths, (allPaths) =>
+  runDetailLoads(allPaths, 16),
+)
 const detailSpeedup = detailConcurrencyOne.median / Math.max(0.001, detailConcurrencyEight.median)
 
 console.log(`fixture roots: ${LEFT_ROOT} <-> ${RIGHT_ROOT}`)
@@ -134,4 +137,5 @@ console.log(`detail fixtures: ${detailPaths.length} paired text loads from visib
 printResult(detailConcurrencyOne)
 printResult(detailConcurrencyTwo)
 printResult(detailConcurrencyEight)
+printResult(detailConcurrencySixteen)
 console.log(`median detail-load speedup: ${detailSpeedup.toFixed(1)}x`)

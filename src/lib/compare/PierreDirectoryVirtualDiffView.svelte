@@ -114,7 +114,6 @@
   let wheelScrollTargetTop = 0
   let wheelScrollTargetLeft = 0
   let wheelScrollActiveUntil = 0
-  let immediateRenderFrame: number | null = null
   let visibleRequestTimer: number | null = null
   let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
@@ -126,12 +125,14 @@
   let lastWorkerOptionsKey = ''
   let lastEntryStructureRevision = -1
   let lastChangedEntryRevision = 0
+  let lastDiffRenderPathRevision = 0
   let lastCollapsedPaths: Set<string> | null = null
   let lastCommentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>> | null = null
   let appliedScrollTargetRevision = 0
   let userScrollCorrectionSuppressedUntil = 0
   let programmaticScrollAllowedUntil = 0
   let renderRevision = 0
+  let diffRenderPathRevision = 0
   let selectedLineSelection: CodeViewLineSelection | null = null
   let commentId = 0
   let commentAnnotations = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
@@ -139,6 +140,7 @@
   let placeholderPaths = new Set<string>()
   let loadingPaths = new Set<string>()
   let pendingPlaceholderRequestPaths = new Set<string>()
+  let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
 
@@ -150,16 +152,17 @@
   let itemIndexByPath = new Map<string, number>()
   let itemInputIndexByPath = new Map<string, number>()
   let itemKeyByPath = new Map<string, string>()
-  const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 1800
-  const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 3600
-  const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 2.5
-  const DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX = 260
-  const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 220
+  const DIRECTORY_CODE_VIEW_MIN_OVERSCROLL_PX = 900
+  const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 1800
+  const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 1.25
+  const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 5000
   const DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS = 9000
   const DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS = 900
   const DIRECTORY_CODE_VIEW_WHEEL_LINE_PX = 40
   const DIRECTORY_CODE_VIEW_WHEEL_LERP = 0.42
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
+  const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
+  const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
   const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 31
   const DIRECTORY_PLACEHOLDER_MIN_LINES = 8
   const DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES = 240
@@ -950,6 +953,7 @@
       entry.leftSize ?? '',
       entry.rightSize ?? '',
       loadedEntry.error,
+      loadedEntry.diff?.text ? 'ready' : 'loading',
       estimatePlaceholderLineCount(entry),
       collapsedPaths.has(entry.relativePath) ? '1' : '0',
     ].join('\u0000')
@@ -1013,7 +1017,7 @@
 
   function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff, key: string): FileContents {
     const { entry } = loadedEntry
-    const label = loadedEntry.error || 'Loading diff...'
+    const label = loadedEntry.error || (loadedEntry.diff?.text ? 'Diff ready' : 'Loading diff...')
     const lineCount = loadedEntry.error ? 1 : estimatePlaceholderLineCount(entry)
     const contents = buildPlaceholderContents(label, lineCount)
 
@@ -1031,7 +1035,7 @@
     const { entry, diff } = loadedEntry
     const collapsed = collapsedPaths.has(entry.relativePath)
 
-    if (!diff?.text) {
+    if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
       const placeholder = placeholderItem(loadedEntry)
       return {
         id: entry.relativePath,
@@ -1111,6 +1115,80 @@
         placeholderItems.delete(path)
       }
     }
+
+    for (const path of diffRenderPaths) {
+      if (!activePaths.has(path)) {
+        diffRenderPaths.delete(path)
+      }
+    }
+  }
+
+  function seedInitialDiffRenderPaths() {
+    if (entries.length === 0) {
+      return
+    }
+
+    let changed = false
+    const nextDiffRenderPaths = new Set(diffRenderPaths)
+    const addPath = (path: string) => {
+      const loadedEntry = entries.find((candidate) => candidate.entry.relativePath === path)
+      if (!loadedEntry?.diff?.text || nextDiffRenderPaths.has(path)) {
+        return
+      }
+
+      nextDiffRenderPaths.add(path)
+      changed = true
+    }
+
+    if (selectedRelativePath && nextDiffRenderPaths.size === 0) {
+      addPath(selectedRelativePath)
+    }
+
+    for (
+      let index = 0;
+      index < entries.length && nextDiffRenderPaths.size < DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT;
+      index += 1
+    ) {
+      const loadedEntry = entries[index]
+      if (loadedEntry.diff?.text) {
+        addPath(loadedEntry.entry.relativePath)
+      }
+    }
+
+    if (changed) {
+      diffRenderPaths = nextDiffRenderPaths
+      diffRenderPathRevision += 1
+    }
+  }
+
+  function promoteRenderedDiffPaths(paths: string[]) {
+    if (paths.length === 0) {
+      return false
+    }
+
+    let changed = false
+    const nextDiffRenderPaths = new Set(diffRenderPaths)
+    let promotedCount = 0
+    for (const path of paths) {
+      if (promotedCount >= DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH) {
+        break
+      }
+
+      const loadedEntry = entryByPath.get(path)
+      if (loadedEntry?.diff?.text && !nextDiffRenderPaths.has(path)) {
+        nextDiffRenderPaths.add(path)
+        changed = true
+        promotedCount += 1
+      }
+    }
+
+    if (!changed) {
+      return false
+    }
+
+    diffRenderPaths = nextDiffRenderPaths
+    diffRenderPathRevision += 1
+    return true
   }
 
   function buildItems() {
@@ -1129,7 +1207,7 @@
       nextEntryByPath.set(entry.relativePath, loadedEntry)
       nextItemInputIndexByPath.set(entry.relativePath, entryInputIndex)
 
-      if (!diff?.text) {
+      if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
         nextPlaceholderPaths.add(entry.relativePath)
       }
 
@@ -1200,7 +1278,7 @@
       ensureCollections()
       nextEntryByPath.set(path, loadedEntry)
 
-      if (loadedEntry.diff?.text) {
+      if (loadedEntry.diff?.text && diffRenderPaths.has(path)) {
         nextPlaceholderPaths.delete(path)
       } else {
         nextPlaceholderPaths.add(path)
@@ -1275,8 +1353,13 @@
     const key = paths.join('\u0000')
     const hasPendingVisiblePlaceholder = paths.some((path) => {
       const entry = entryByPath.get(path)
-      return entry && !entry.diff?.text && !entry.error
+      return entry && !entry.error && (!entry.diff?.text || !diffRenderPaths.has(path))
     })
+
+    if (promoteRenderedDiffPaths(paths)) {
+      void syncCodeView()
+      return
+    }
 
     if (key === lastRequestedVisibleKey && !hasPendingVisiblePlaceholder) {
       return
@@ -1341,59 +1424,13 @@
     }, DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS)
   }
 
-  function scheduleImmediateRender(view: CodeView<DifflyCommentAnnotation>) {
-    if (immediateRenderFrame !== null) {
-      return
-    }
-
-    immediateRenderFrame = window.requestAnimationFrame(() => {
-      immediateRenderFrame = null
-      if (codeView !== view) {
-        return
-      }
-
-      view.render(true)
-      scheduleVisibleEntryRequest()
-    })
-  }
-
-  function shouldRenderScrollImmediately(
-    scrollTop: number,
-    view: CodeView<DifflyCommentAnnotation>,
-  ) {
-    const height = host?.clientHeight ?? window.innerHeight ?? 0
-    if (height <= 0) {
-      return false
-    }
-
-    const { top, bottom } = view.getWindowSpecs()
-    if (bottom <= top) {
-      return true
-    }
-
-    const margin = Math.max(
-      DIRECTORY_CODE_VIEW_IMMEDIATE_RENDER_MARGIN_PX,
-      Math.min(directoryCodeViewOverscrollSize() * 0.35, height),
-    )
-    const viewportBottom = scrollTop + height
-
-    return scrollTop < top + margin || viewportBottom > bottom - margin
-  }
-
   function syncScrollSubscription() {
     if (!codeView || unsubscribeScroll) {
       return
     }
 
-    unsubscribeScroll = codeView.subscribeToScroll((scrollTop, view) => {
+    unsubscribeScroll = codeView.subscribeToScroll((_, view) => {
       markUserScroll(view)
-
-      if (shouldRenderScrollImmediately(scrollTop, view)) {
-        scheduleImmediateRender(view)
-        scheduleVisibleEntryRequest()
-        return
-      }
-
       scheduleVisibleEntryRequest()
     })
   }
@@ -1453,11 +1490,14 @@
     const structureChanged = entryStructureRevision !== lastEntryStructureRevision
     const collapsedChanged = collapsedPaths !== lastCollapsedPaths
     const annotationsChanged = commentAnnotations !== lastCommentAnnotations
+    seedInitialDiffRenderPaths()
+    const diffRenderPathsChanged = diffRenderPathRevision !== lastDiffRenderPathRevision
     const canPatchChangedItems =
       codeView &&
       !structureChanged &&
       !collapsedChanged &&
       !annotationsChanged &&
+      !diffRenderPathsChanged &&
       changedEntryRevision !== lastChangedEntryRevision &&
       changedEntryPaths.length > 0
 
@@ -1490,10 +1530,12 @@
       structureChanged ||
       collapsedChanged ||
       annotationsChanged ||
+      diffRenderPathsChanged ||
       changedEntryRevision !== lastChangedEntryRevision
     const items = buildItems()
     lastEntryStructureRevision = entryStructureRevision
     lastChangedEntryRevision = changedEntryRevision
+    lastDiffRenderPathRevision = diffRenderPathRevision
     lastCollapsedPaths = collapsedPaths
     lastCommentAnnotations = commentAnnotations
 
@@ -1518,7 +1560,6 @@
       return
     }
 
-    appliedScrollTargetRevision = targetRevision
     await tick()
 
     if (targetRevision !== scrollTargetRevision || targetPath !== selectedRelativePath) {
@@ -1526,6 +1567,7 @@
     }
 
     if (codeView?.getItem(targetPath)) {
+      appliedScrollTargetRevision = targetRevision
       allowProgrammaticScroll()
       codeView.scrollTo({
         type: 'item',
@@ -1566,11 +1608,6 @@
     if (wheelScrollFrame !== null) {
       window.cancelAnimationFrame(wheelScrollFrame)
       wheelScrollFrame = null
-    }
-
-    if (immediateRenderFrame !== null) {
-      window.cancelAnimationFrame(immediateRenderFrame)
-      immediateRenderFrame = null
     }
 
     if (visibleRequestTimer !== null) {
