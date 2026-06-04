@@ -59,6 +59,8 @@ Long-term maintainability is a core priority.
 
 ## Git Workflow
 
+CLAUDE: DONT INCLUDE YOURSELF IN THE COMMITS!!!!
+
 ### Branching
 
 - Manage git proactively.
