@@ -25,6 +25,12 @@
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
+  import {
+    applySuppressedScrollCorrection,
+    clearScrollCorrectionTargets,
+    shouldSuppressManualScrollCorrection,
+    type ScrollCorrectionGuardView,
+  } from './scroll-correction-guard'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -66,7 +72,7 @@
     }
   }
 
-  type CodeViewScrollFixPatch = {
+  type CodeViewScrollFixPatch = ScrollCorrectionGuardView & {
     __difflyOriginalApplyScrollFix?: (
       targetScrollTop: number,
       syncedScrollTop: number,
@@ -79,15 +85,6 @@
       syncedScrollTop: number,
       windowSpecs?: unknown,
     ) => void
-    pendingLayoutAnchor?: unknown
-    pendingScrollTarget?: unknown
-    renderState?: {
-      scrollTop: number
-    }
-    scrollAnimation?: unknown
-    scrollDirty?: boolean
-    scrollPageOffset?: number
-    scrollTop?: number
     setItems?: (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => void
   }
 
@@ -201,9 +198,7 @@
   }
 
   function clearManualScrollTargets(view: CodeViewScrollFixPatch) {
-    view.pendingLayoutAnchor = undefined
-    view.pendingScrollTarget = undefined
-    view.scrollAnimation = undefined
+    clearScrollCorrectionTargets(view)
   }
 
   function cancelWheelScrollFrame() {
@@ -451,25 +446,16 @@
   }
 
   function shouldSuppressScrollCorrection(
-    view: CodeViewScrollFixPatch,
     targetScrollTop: number,
     syncedScrollTop: number,
   ) {
-    const now = performance.now()
-    if (now >= userScrollCorrectionSuppressedUntil || now < programmaticScrollAllowedUntil) {
-      return false
-    }
-
-    const delta = Math.abs(targetScrollTop - syncedScrollTop)
-    return delta > 0.5
-  }
-
-  function currentLogicalScrollTop(view: CodeViewScrollFixPatch) {
-    const pageOffset = typeof view.scrollPageOffset === 'number'
-      ? view.scrollPageOffset
-      : 0
-
-    return (host?.scrollTop ?? 0) + pageOffset
+    return shouldSuppressManualScrollCorrection({
+      now: performance.now(),
+      programmaticScrollAllowedUntil,
+      syncedScrollTop,
+      targetScrollTop,
+      userScrollCorrectionSuppressedUntil,
+    })
   }
 
   function installScrollCorrectionGuard(view: CodeView<DifflyCommentAnnotation>) {
@@ -498,14 +484,8 @@
       syncedScrollTop: number,
       windowSpecs?: unknown,
     ) => {
-      if (shouldSuppressScrollCorrection(patched, targetScrollTop, syncedScrollTop)) {
-        const scrollTop = currentLogicalScrollTop(patched)
-        clearManualScrollTargets(patched)
-        patched.scrollDirty = false
-        patched.scrollTop = scrollTop
-        if (patched.renderState) {
-          patched.renderState.scrollTop = scrollTop
-        }
+      if (shouldSuppressScrollCorrection(targetScrollTop, syncedScrollTop)) {
+        applySuppressedScrollCorrection(patched, host?.scrollTop ?? 0)
         return
       }
 
