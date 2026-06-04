@@ -110,15 +110,20 @@
   let codeView: CodeView<DifflyCommentAnnotation> | null = null
   let workerPool: WorkerPoolManager | null = null
   let unsubscribeScroll: (() => void) | null = null
+  let unsubscribeNativeScroll: (() => void) | null = null
+  let unsubscribePointerDown: (() => void) | null = null
   let unsubscribeWheel: (() => void) | null = null
   let wheelScrollFrame: number | null = null
   let wheelScrollTargetTop = 0
   let wheelScrollTargetLeft = 0
+  let wheelScrollActiveUntil = 0
   let immediateRenderFrame: number | null = null
   let visibleRequestTimer: number | null = null
   let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
   let wheelHost: HTMLDivElement | null = null
+  let scrollHost: HTMLDivElement | null = null
+  let pointerHost: HTMLDivElement | null = null
   let lastRequestedVisibleKey = ''
   let lastOptionsKey = ''
   let lastWorkerOptionsKey = ''
@@ -201,10 +206,21 @@
     view.scrollAnimation = undefined
   }
 
-  function markUserScroll(view: CodeView<DifflyCommentAnnotation>) {
+  function cancelWheelScrollFrame() {
+    if (wheelScrollFrame !== null) {
+      window.cancelAnimationFrame(wheelScrollFrame)
+      wheelScrollFrame = null
+    }
+  }
+
+  function markUserScroll(view: CodeView<DifflyCommentAnnotation>, force = false) {
     const now = performance.now()
-    if (now < programmaticScrollAllowedUntil) {
+    if (!force && now < programmaticScrollAllowedUntil) {
       return
+    }
+
+    if (force) {
+      programmaticScrollAllowedUntil = 0
     }
 
     pauseDiffLoading()
@@ -228,6 +244,19 @@
       programmaticScrollAllowedUntil,
       performance.now() + DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS,
     )
+  }
+
+  function releaseProgrammaticScroll(view: CodeView<DifflyCommentAnnotation>) {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (codeView !== view) {
+          return
+        }
+
+        programmaticScrollAllowedUntil = 0
+        clearManualScrollTargets(view as unknown as CodeViewScrollFixPatch)
+      })
+    })
   }
 
   function normalizeWheelDelta(delta: number, mode: number) {
@@ -257,6 +286,7 @@
       return
     }
 
+    wheelScrollActiveUntil = performance.now() + 80
     const topDelta = wheelScrollTargetTop - host.scrollTop
     const leftDelta = wheelScrollTargetLeft - host.scrollLeft
     const nextTop =
@@ -317,6 +347,7 @@
     }
 
     event.preventDefault()
+    wheelScrollActiveUntil = performance.now() + 120
 
     if (codeView) {
       markUserScroll(codeView)
@@ -358,6 +389,57 @@
     })
     unsubscribeWheel = () => {
       nextHost.removeEventListener('wheel', handleHostWheel, true)
+    }
+  }
+
+  function handleHostPointerDown() {
+    if (!codeView) {
+      return
+    }
+
+    cancelWheelScrollFrame()
+    markUserScroll(codeView, true)
+  }
+
+  function handleHostNativeScroll() {
+    if (!codeView) {
+      return
+    }
+
+    if (wheelScrollFrame !== null || performance.now() < wheelScrollActiveUntil) {
+      markUserScroll(codeView)
+      scheduleVisibleEntryRequest()
+      return
+    }
+
+    markUserScroll(codeView, true)
+    scheduleVisibleEntryRequest()
+  }
+
+  function syncNativeScrollHandling() {
+    if (scrollHost === host && pointerHost === host) {
+      return
+    }
+
+    unsubscribeNativeScroll?.()
+    unsubscribePointerDown?.()
+    unsubscribeNativeScroll = null
+    unsubscribePointerDown = null
+    scrollHost = host
+    pointerHost = host
+
+    if (!host) {
+      return
+    }
+
+    const nextHost = host
+    nextHost.addEventListener('scroll', handleHostNativeScroll, { passive: true })
+    nextHost.addEventListener('pointerdown', handleHostPointerDown, { passive: true })
+    unsubscribeNativeScroll = () => {
+      nextHost.removeEventListener('scroll', handleHostNativeScroll)
+    }
+    unsubscribePointerDown = () => {
+      nextHost.removeEventListener('pointerdown', handleHostPointerDown)
     }
   }
 
@@ -1464,12 +1546,16 @@
         align: 'start',
         behavior: 'instant',
       })
+      releaseProgrammaticScroll(codeView)
       scheduleVisibleEntryRequest()
     }
   }
 
   $: host,
     syncWheelHandling()
+
+  $: host,
+    syncNativeScrollHandling()
 
   $: host,
     entries,
@@ -1517,6 +1603,10 @@
 
     unsubscribeScroll?.()
     unsubscribeScroll = null
+    unsubscribeNativeScroll?.()
+    unsubscribeNativeScroll = null
+    unsubscribePointerDown?.()
+    unsubscribePointerDown = null
     unsubscribeWheel?.()
     unsubscribeWheel = null
     restoreScrollCorrectionGuard()
