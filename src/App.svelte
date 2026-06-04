@@ -213,6 +213,7 @@
   let pickerLoading = false
   let errorMessage = ''
   let directoryEntries: DirectoryEntryResult[] = []
+  let directoryEntriesRevision = 0
   let filteredDirectoryEntries: DirectoryEntryResult[] = []
   let filteredDirectoryEntryPaths = new Set<string>()
   let directoryRenderableEntryCount = 0
@@ -929,6 +930,7 @@
       directoryComparePairIndexSets = []
       directoryComparePairIndexOrderDirty = []
       directoryRenderableEntryCount = 0
+      directoryEntriesRevision += 1
     }
 
     for (const jobId of jobIds) {
@@ -1232,6 +1234,7 @@
     }
 
     directoryEntries = aggregated
+    directoryEntriesRevision += 1
     syncFilteredDirectoryState(aggregated)
   }
 
@@ -1614,6 +1617,7 @@
     leftExplorer = sanitizePaneForMode(leftExplorer, nextMode)
     rightExplorer = sanitizePaneForMode(rightExplorer, nextMode)
     directoryEntries = []
+    directoryEntriesRevision += 1
     filteredDirectoryEntries = []
     filteredDirectoryEntryPaths = new Set()
     directoryRenderableEntryCount = 0
@@ -2093,6 +2097,7 @@
         compareDirtyReason = null
         screen = 'compare'
         directoryEntries = []
+        directoryEntriesRevision += 1
         syncFilteredDirectoryState([])
         selectedRelativePath = ''
         activeDiff = null
@@ -2167,6 +2172,7 @@
 
       if (response.kind === 'directory') {
         directoryEntries = response.entries
+        directoryEntriesRevision += 1
         syncFilteredDirectoryState(response.entries)
 
         const preservedEntry = filteredDirectoryEntries.find(
@@ -2880,6 +2886,7 @@
             this={PierreDirectoryTreeComponent}
             {loading}
             {directoryEntries}
+            entriesRevision={directoryEntriesRevision}
             {selectedRelativePath}
             {statusLabel}
             {treeSettings}

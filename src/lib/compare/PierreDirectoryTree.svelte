@@ -8,6 +8,7 @@
 
   export let loading = false
   export let directoryEntries: DirectoryEntryResult[] = []
+  export let entriesRevision = 0
   export let selectedRelativePath = ''
   export let statusLabel: Record<EntryStatus, string>
   export let treeSettings: CompareTreeSettings
@@ -19,13 +20,12 @@
   let fileTree: FileTree | null = null
   let renderVersion = 0
   let renderedStructureKey = ''
-  let renderedPathKey = ''
-  let renderedStatusKey = ''
+  let renderedEntriesRevision = -1
   let currentStructureKey = ''
   let lastSyncedSelectionPath = ''
 
   $: visibleEntries = directoryEntries
-  $: entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
+  let entryByPath = new Map<string, DirectoryEntryResult>()
   $: currentStructureKey = JSON.stringify({
     treeSettings,
     appearanceSettings,
@@ -106,18 +106,9 @@
     }
   }
 
-  function pathKey(entries: DirectoryEntryResult[]) {
-    return entries.map((entry) => entry.relativePath).join('\u0000')
-  }
-
-  function statusKey(entries: DirectoryEntryResult[]) {
-    return entries.map((entry) => `${entry.relativePath}:${entry.status}`).join('\u0000')
-  }
-
   function resetRenderedKeys() {
     renderedStructureKey = ''
-    renderedPathKey = ''
-    renderedStatusKey = ''
+    renderedEntriesRevision = -1
     lastSyncedSelectionPath = ''
   }
 
@@ -169,40 +160,35 @@
       return
     }
 
+    entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
     const paths = visibleEntries.map((entry) => entry.relativePath)
     const nextStructureKey = currentStructureKey
-    const nextPathKey = pathKey(visibleEntries)
-    const nextStatusKey = statusKey(visibleEntries)
+    const entriesChanged = entriesRevision !== renderedEntriesRevision
 
     if (!fileTree || nextStructureKey !== renderedStructureKey) {
       fileTree?.cleanUp()
       fileTree = new FileTree(buildOptions(paths, selectedRelativePath))
       fileTree.render({ containerWrapper: host })
       renderedStructureKey = nextStructureKey
-      renderedPathKey = nextPathKey
-      renderedStatusKey = nextStatusKey
+      renderedEntriesRevision = entriesRevision
       lastSyncedSelectionPath = ''
       selectCurrentPath()
       return
     }
 
-    if (nextPathKey !== renderedPathKey) {
+    if (entriesChanged) {
       fileTree.resetPaths(paths, {
         preparedInput: buildPreparedInput(paths, treeSettings),
         initialExpandedPaths: treeSettings.initialExpandedPaths,
       })
-      renderedPathKey = nextPathKey
-    }
-
-    if (nextStatusKey !== renderedStatusKey) {
       fileTree.setGitStatus(buildGitStatus(visibleEntries))
-      renderedStatusKey = nextStatusKey
+      renderedEntriesRevision = entriesRevision
     }
 
     selectCurrentPath(selectedRelativePath !== lastSyncedSelectionPath)
   }
 
-  $: host, visibleEntries, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
+  $: host, visibleEntries, entriesRevision, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
   $: selectedRelativePath, selectCurrentPath()
 
   onDestroy(() => {

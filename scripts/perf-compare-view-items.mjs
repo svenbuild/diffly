@@ -117,7 +117,7 @@ function itemKey(item) {
   return `${item.id}:${item.type}:${item.version ?? 0}`
 }
 
-function fullBuild(entries, itemCache = new Map()) {
+function fullBuildWithJoinedKey(entries, itemCache = new Map()) {
   const items = []
   const itemKeyParts = []
   const entryByPath = new Map()
@@ -150,16 +150,45 @@ function fullBuild(entries, itemCache = new Map()) {
   }
 }
 
+function fullBuildRevisionGated(entries, itemCache = new Map()) {
+  const items = []
+  const entryByPath = new Map()
+  const placeholderPaths = new Set()
+  const loadingPaths = new Set()
+
+  for (const loadedEntry of entries) {
+    const path = loadedEntry.entry.relativePath
+    entryByPath.set(path, loadedEntry)
+
+    if (!loadedEntry.diff?.text) {
+      placeholderPaths.add(path)
+    }
+
+    if (loadedEntry.loading) {
+      loadingPaths.add(path)
+    }
+
+    items.push(itemFor(loadedEntry, itemCache))
+  }
+
+  return {
+    entryByPath,
+    items,
+    loadingPaths,
+    placeholderPaths,
+  }
+}
+
 function runFullRebuildScenario(updatePaths) {
   let entries = makeLoadedEntries()
-  let snapshot = fullBuild(entries)
+  let snapshot = fullBuildWithJoinedKey(entries)
   const itemCache = new Map()
 
   for (const [updateNumber, path] of updatePaths.entries()) {
     const entryIndex = updateNumber
     entries = [...entries]
     entries[entryIndex] = loadedWithDiff(entries[entryIndex], updateNumber)
-    snapshot = fullBuild(entries, itemCache)
+    snapshot = fullBuildWithJoinedKey(entries, itemCache)
 
     if (!snapshot.itemListKey.includes(path)) {
       throw new Error(`Full rebuild lost ${path}`)
@@ -169,10 +198,29 @@ function runFullRebuildScenario(updatePaths) {
   return snapshot.items.length
 }
 
+function runRevisionGatedRebuildScenario(updatePaths) {
+  let entries = makeLoadedEntries()
+  let snapshot = fullBuildRevisionGated(entries)
+  const itemCache = new Map()
+
+  for (const [updateNumber] of updatePaths.entries()) {
+    const entryIndex = updateNumber
+    entries = [...entries]
+    entries[entryIndex] = loadedWithDiff(entries[entryIndex], updateNumber)
+    snapshot = fullBuildRevisionGated(entries, itemCache)
+  }
+
+  if (snapshot.entryByPath.size !== FILE_COUNT) {
+    throw new Error('Revision-gated rebuild lost entries')
+  }
+
+  return snapshot.items.length
+}
+
 function runIncrementalPatchScenario(updatePaths) {
   const entries = makeLoadedEntries()
   const itemCache = new Map()
-  const snapshot = fullBuild(entries, itemCache)
+  const snapshot = fullBuildRevisionGated(entries, itemCache)
   const itemIndexByPath = new Map(snapshot.items.map((item, index) => [item.id, index]))
   const inputIndexByPath = new Map(entries.map((loadedEntry, index) => [loadedEntry.entry.relativePath, index]))
   const itemKeyByPath = new Map(snapshot.items.map((item) => [item.id, itemKey(item)]))
@@ -209,6 +257,98 @@ function runIncrementalPatchScenario(updatePaths) {
 
   if (entryByPath.size !== FILE_COUNT) {
     throw new Error('Incremental patch lost entries')
+  }
+
+  return items.length
+}
+
+function simulateSetItemsReconcile(previousItems, nextItems) {
+  const previousById = new Map(previousItems.map((item) => [item.id, item]))
+  const nextIdToItem = new Map()
+  let changed = 0
+
+  for (const item of nextItems) {
+    if (nextIdToItem.has(item.id)) {
+      throw new Error(`Duplicate item ${item.id}`)
+    }
+
+    const previous = previousById.get(item.id)
+    if (!previous || previous.type !== item.type || itemKey(previous) !== itemKey(item)) {
+      changed += 1
+    }
+    nextIdToItem.set(item.id, item)
+  }
+
+  return changed
+}
+
+function runBatchedPatchScenario(updatePaths) {
+  const entries = makeLoadedEntries()
+  const itemCache = new Map()
+  const snapshot = fullBuildRevisionGated(entries, itemCache)
+  const itemIndexByPath = new Map(snapshot.items.map((item, index) => [item.id, index]))
+  const inputIndexByPath = new Map(entries.map((loadedEntry, index) => [loadedEntry.entry.relativePath, index]))
+  const itemKeyByPath = new Map(snapshot.items.map((item) => [item.id, itemKey(item)]))
+
+  let items = snapshot.items
+  let entryByPath = snapshot.entryByPath
+  let placeholderPaths = snapshot.placeholderPaths
+  let loadingPaths = snapshot.loadingPaths
+  let nextItems = items
+  let nextEntryByPath = entryByPath
+  let nextPlaceholderPaths = placeholderPaths
+  let nextLoadingPaths = loadingPaths
+  let copied = false
+
+  const ensureCopies = () => {
+    if (copied) {
+      return
+    }
+
+    nextItems = [...items]
+    nextEntryByPath = new Map(entryByPath)
+    nextPlaceholderPaths = new Set(placeholderPaths)
+    nextLoadingPaths = new Set(loadingPaths)
+    copied = true
+  }
+
+  for (const [updateNumber, path] of updatePaths.entries()) {
+    const inputIndex = inputIndexByPath.get(path)
+    const itemIndex = itemIndexByPath.get(path)
+
+    if (inputIndex === undefined || itemIndex === undefined) {
+      throw new Error(`Missing index for ${path}`)
+    }
+
+    entries[inputIndex] = loadedWithDiff(entries[inputIndex], updateNumber)
+    const item = itemFor(entries[inputIndex], itemCache)
+    const nextItemKey = itemKey(item)
+
+    if (nextItemKey === itemKeyByPath.get(path)) {
+      continue
+    }
+
+    ensureCopies()
+    nextItems[itemIndex] = item
+    nextEntryByPath.set(path, entries[inputIndex])
+    nextPlaceholderPaths.delete(path)
+    nextLoadingPaths.delete(path)
+    itemKeyByPath.set(path, nextItemKey)
+  }
+
+  if (copied) {
+    const reconciled = simulateSetItemsReconcile(items, nextItems)
+    if (reconciled === 0) {
+      throw new Error('Batched patch did not reconcile any item changes')
+    }
+    items = nextItems
+    entryByPath = nextEntryByPath
+    placeholderPaths = nextPlaceholderPaths
+    loadingPaths = nextLoadingPaths
+  }
+
+  if (entryByPath.size !== FILE_COUNT) {
+    throw new Error('Batched patch lost entries')
   }
 
   return items.length
@@ -267,14 +407,22 @@ const initialEntries = makeLoadedEntries()
 const updatePaths = initialEntries
   .slice(0, Math.min(UPDATE_COUNT, initialEntries.length))
   .map((loadedEntry) => loadedEntry.entry.relativePath)
-const fullRebuild = measure('full CodeView item rebuild', updatePaths, runFullRebuildScenario)
-const incrementalPatch = measure('incremental CodeView patch', updatePaths, runIncrementalPatchScenario)
-const speedup = fullRebuild.median / Math.max(0.001, incrementalPatch.median)
+const fullRebuild = measure('legacy joined-key rebuild', updatePaths, runFullRebuildScenario)
+const revisionGatedRebuild = measure('revision-gated rebuild', updatePaths, runRevisionGatedRebuildScenario)
+const incrementalPatch = measure('per-update CodeView patch', updatePaths, runIncrementalPatchScenario)
+const batchedPatch = measure('batched CodeView patch', updatePaths, runBatchedPatchScenario)
+const speedup = fullRebuild.median / Math.max(0.001, batchedPatch.median)
+const rebuildSpeedup = fullRebuild.median / Math.max(0.001, revisionGatedRebuild.median)
+const patchSpeedup = incrementalPatch.median / Math.max(0.001, batchedPatch.median)
 
 console.log(`fixtures: ${FILE_COUNT} directory entries, ${updatePaths.length} loaded diff updates, ${ITERATIONS} measured iterations, ${WARMUPS} warmups`)
 printResult(fullRebuild)
+printResult(revisionGatedRebuild)
 printResult(incrementalPatch)
-console.log(`median speedup: ${speedup.toFixed(1)}x`)
+printResult(batchedPatch)
+console.log(`median rebuild speedup: ${rebuildSpeedup.toFixed(1)}x`)
+console.log(`median patch batching speedup: ${patchSpeedup.toFixed(1)}x`)
+console.log(`median end-to-end speedup: ${speedup.toFixed(1)}x`)
 
 if (speedup < MIN_SPEEDUP) {
   console.error(`Expected at least ${MIN_SPEEDUP.toFixed(1)}x median speedup.`)

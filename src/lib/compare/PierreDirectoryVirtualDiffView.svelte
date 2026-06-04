@@ -120,7 +120,6 @@
   let layoutRetryFrame: number | null = null
   let wheelHost: HTMLDivElement | null = null
   let lastRequestedVisibleKey = ''
-  let lastRenderedItemListKey = ''
   let lastOptionsKey = ''
   let lastWorkerOptionsKey = ''
   let lastEntryStructureRevision = -1
@@ -145,6 +144,7 @@
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
   const emptyAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
   let renderedItems: Array<CodeViewItem<DifflyCommentAnnotation>> = []
+  let hasRenderedItems = false
   let itemIndexByPath = new Map<string, number>()
   let itemInputIndexByPath = new Map<string, number>()
   let itemKeyByPath = new Map<string, string>()
@@ -157,10 +157,12 @@
   const DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS = 900
   const DIRECTORY_CODE_VIEW_WHEEL_LINE_PX = 40
   const DIRECTORY_CODE_VIEW_WHEEL_LERP = 0.42
+  const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 8
   const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 31
   const DIRECTORY_PLACEHOLDER_MIN_LINES = 8
   const DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES = 240
   const DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES = 1200
+  const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
     const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
@@ -931,7 +933,13 @@
       return label
     }
 
-    return [label, ...Array.from({ length: lineCount - 1 }, () => '')].join('\n')
+    let suffix = placeholderBlankLineSuffixes.get(lineCount)
+    if (suffix === undefined) {
+      suffix = '\n'.repeat(lineCount - 1)
+      placeholderBlankLineSuffixes.set(lineCount, suffix)
+    }
+
+    return `${label}${suffix}`
   }
 
   function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff, key: string): FileContents {
@@ -1038,7 +1046,6 @@
 
   function buildItems() {
     const items: Array<CodeViewItem<DifflyCommentAnnotation>> = []
-    const itemKeyParts: string[] = []
     const nextItemIndexByPath = new Map<string, number>()
     const nextItemInputIndexByPath = new Map<string, number>()
     const nextItemKeyByPath = new Map<string, string>()
@@ -1067,7 +1074,6 @@
         nextItemIndexByPath.set(entry.relativePath, items.length)
         nextItemKeyByPath.set(entry.relativePath, itemKey)
         items.push(item)
-        itemKeyParts.push(itemKey)
       }
     }
 
@@ -1080,10 +1086,7 @@
     itemInputIndexByPath = nextItemInputIndexByPath
     itemKeyByPath = nextItemKeyByPath
 
-    return {
-      itemListKey: itemKeyParts.join('\u0000'),
-      items,
-    }
+    return items
   }
 
   function syncChangedItems(paths: string[]) {
@@ -1108,7 +1111,11 @@
       }
     }
 
-    for (const path of new Set(paths)) {
+    const uniquePaths = paths.length === 1 ? paths : Array.from(new Set(paths))
+    const shouldBatchCodeViewUpdate =
+      uniquePaths.length >= DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD
+
+    for (const path of uniquePaths) {
       const itemIndex = itemIndexByPath.get(path)
       const inputIndex = itemInputIndexByPath.get(path)
 
@@ -1146,7 +1153,7 @@
         continue
       }
 
-      if (!codeView.updateItem(item)) {
+      if (!shouldBatchCodeViewUpdate && !codeView.updateItem(item)) {
         return false
       }
 
@@ -1167,6 +1174,11 @@
     placeholderPaths = nextPlaceholderPaths
     loadingPaths = nextLoadingPaths
     itemKeyByPath = nextItemKeyByPath
+
+    if (shouldBatchCodeViewUpdate) {
+      codeView.setItems(nextRenderedItems)
+    }
+
     return true
   }
 
@@ -1243,9 +1255,7 @@
   }
 
   function schedulePlaceholderEntryRequest(path: string) {
-    const nextPaths = new Set(pendingPlaceholderRequestPaths)
-    nextPaths.add(path)
-    pendingPlaceholderRequestPaths = nextPaths
+    pendingPlaceholderRequestPaths.add(path)
 
     if (placeholderRequestTimer !== null) {
       window.clearTimeout(placeholderRequestTimer)
@@ -1406,14 +1416,20 @@
       return
     }
 
-    const { itemListKey, items } = buildItems()
+    const shouldSetItems =
+      !hasRenderedItems ||
+      structureChanged ||
+      collapsedChanged ||
+      annotationsChanged ||
+      changedEntryRevision !== lastChangedEntryRevision
+    const items = buildItems()
     lastEntryStructureRevision = entryStructureRevision
     lastChangedEntryRevision = changedEntryRevision
     lastCollapsedPaths = collapsedPaths
     lastCommentAnnotations = commentAnnotations
 
-    if (itemListKey !== lastRenderedItemListKey) {
-      lastRenderedItemListKey = itemListKey
+    if (shouldSetItems) {
+      hasRenderedItems = true
       lastRequestedVisibleKey = ''
       codeView.setItems(items)
     }
@@ -1506,6 +1522,7 @@
     restoreScrollCorrectionGuard()
     codeView?.cleanUp()
     codeView = null
+    hasRenderedItems = false
     workerPool?.terminate()
     workerPool = null
   })

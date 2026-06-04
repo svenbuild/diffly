@@ -14,6 +14,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.electron.json --noEmit",
     "test": "npm run check",
     "perf:compare-view-items": "node scripts/perf-compare-view-items.mjs",
+    "perf:directory-fixture": "node scripts/perf-directory-fixture.mjs",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "electron:package": "npm run build && electron-builder --win nsis portable --config.npmRebuild=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",

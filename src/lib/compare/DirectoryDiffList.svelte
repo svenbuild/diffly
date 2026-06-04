@@ -54,7 +54,7 @@
 
   const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
   const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 1
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 2
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 4
   const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
   const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
@@ -312,14 +312,12 @@
     }
 
     if (priority) {
-      priorityLoadQueue = [...priorityLoadQueue, path]
+      priorityLoadQueue.push(path)
     } else {
-      normalLoadQueue = [...normalLoadQueue, path]
+      normalLoadQueue.push(path)
     }
 
-    const nextLoadQueueKeys = new Set(loadQueueKeys)
-    nextLoadQueueKeys.add(path)
-    loadQueueKeys = nextLoadQueueKeys
+    loadQueueKeys.add(path)
     pumpLoadQueue()
   }
 
@@ -379,9 +377,7 @@
         return null
       }
 
-      const nextLoadQueueKeys = new Set(loadQueueKeys)
-      nextLoadQueueKeys.delete(nextPath)
-      loadQueueKeys = nextLoadQueueKeys
+      loadQueueKeys.delete(nextPath)
 
       const entry = entryByPath.get(nextPath)
       if (entry && entry.status !== 'unsupported') {
