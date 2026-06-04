@@ -3259,14 +3259,29 @@ h2 {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   padding: 4px 4px 4px 0;
   border-right: 1px solid var(--border);
   background: var(--pane-bg);
+  overflow: hidden;
 }
 
 .directory-tree-host {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
+}
+
+.directory-tree-host > file-tree-container {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 
 .file-browser,

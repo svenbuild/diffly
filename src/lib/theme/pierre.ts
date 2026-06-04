@@ -70,6 +70,11 @@ export function buildPierreTreeUnsafeCss(
   return `
     :host {
       color-scheme: ${resolvedThemeMode};
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      height: 100%;
+      min-height: 0;
       --trees-font-family-override: ${tokens.uiFont};
       --trees-font-size-override: ${settings.uiFontSize}px;
       --trees-bg-override: ${tokens.panelSurface};
@@ -102,7 +107,15 @@ export function buildPierreTreeUnsafeCss(
       font-size: ${Math.max(11, settings.uiFontSize - 1)}px;
     }
 
+    [data-file-tree-virtualized-wrapper='true'],
+    [data-file-tree-virtualized-root='true'] {
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
     [data-file-tree-virtualized-scroll] {
+      min-height: 0;
       padding-left: 0;
     }
   `
