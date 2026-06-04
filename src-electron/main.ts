@@ -16,6 +16,13 @@ import {
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-zero-copy')
+// The machine's browser uses the NVIDIA GPU via ANGLE/D3D11 fine, but Electron's
+// GPU process can fall back to software when it can't initialise inside the
+// sandbox (common with locked-down/corporate security software or older
+// drivers). Force the same D3D11 ANGLE backend the browser uses and drop the GPU
+// sandbox so the process can reach the driver.
+app.commandLine.appendSwitch('use-angle', 'd3d11')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
 
 interface WindowState {
   x: number
