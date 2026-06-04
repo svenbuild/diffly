@@ -8,6 +8,15 @@ import {
   registerWindowLaunchContext,
 } from './services/backend'
 
+// Force GPU-accelerated compositing even when the GPU/driver is on Chromium's
+// blocklist. On some Windows GPU/driver combos Electron silently falls back to
+// software compositing, which makes scrolling (especially the virtualized diff
+// view) stutter on every frame — even though the same machine's browser scrolls
+// perfectly with the GPU enabled. These switches must be set before app `ready`.
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
+
 interface WindowState {
   x: number
   y: number
@@ -282,6 +291,14 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+    // Diagnostic: log whether compositing/rasterization is hardware-accelerated.
+    // If gpu_compositing is "software"/"disabled", scrolling will stutter and a
+    // driver update (or the GPU switches above) is needed. Visible in the
+    // terminal when run via `npm run preview` (not in the packaged app).
+    if (!app.isPackaged) {
+      console.log('[diffly] GPU feature status:', app.getGPUFeatureStatus())
+    }
+
     registerIpcHandlers()
     createWindow(initialLaunchContext)
     for (const launchContext of pendingLaunchContexts.splice(0)) {
