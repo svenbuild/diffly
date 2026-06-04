@@ -1,5 +1,12 @@
 # Security Policy
 
+## Supported Versions
+
+| Version | Supported |
+| --- | --- |
+| 0.2.x | Yes |
+| 0.1.x | No |
+
 ## Reporting A Vulnerability
 
 Please report suspected vulnerabilities through GitHub Security Advisories:

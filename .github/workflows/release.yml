@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Build and publish Windows installer
+      - name: Build and publish Windows release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis --publish always
+        run: npx electron-builder --win nsis portable --publish always

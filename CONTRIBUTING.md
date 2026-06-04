@@ -16,3 +16,16 @@ Run the validation path before opening or updating a pull request:
 npm run check
 npm test
 ```
+
+## Release Validation
+
+Before publishing a tagged release, update `package.json`, `package-lock.json`, and `CHANGELOG.md`, then run the relevant release checks:
+
+```bash
+npm run check
+npm run verify:scroll-guard
+npm run verify:electron-scroll
+npm run perf:directory-fixture
+```
+
+Publish releases from `main` with a `v*` tag. The GitHub release workflow builds and publishes the Windows installer and portable artifact.
