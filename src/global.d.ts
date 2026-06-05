@@ -49,7 +49,6 @@ declare global {
         relativePath: string,
         options: CompareOptions,
       ): Promise<FileDiffResult>
-      fileUrl(path: string): string
     }
   }
 }

@@ -413,12 +413,8 @@
     return null
   }
 
-  function takeNextQueuedEntry(priorityOnly = false) {
+  function takeNextQueuedEntry() {
     while (true) {
-      if (priorityOnly && priorityLoadQueueHead >= priorityLoadQueue.length) {
-        return null
-      }
-
       const nextPath = takeQueuedPath()
       if (!nextPath) {
         return null
@@ -434,14 +430,9 @@
   }
 
   function pumpLoadQueue() {
-    const priorityOnly = false
-
     while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
-      const entry = takeNextQueuedEntry(priorityOnly)
+      const entry = takeNextQueuedEntry()
       if (!entry) {
-        if (priorityOnly) {
-          scheduleLoadResume()
-        }
         return
       }
 
@@ -850,7 +841,7 @@
     {#if selectedRenderableEntries.length > 0}
       <PierreDirectoryVirtualDiffView
         entries={selectedRenderableEntries}
-        compareKey={`${leftPath} ${rightPath}`}
+        compareKey={`${leftPath}\u0000${rightPath}`}
         {collapsedPaths}
         {selectedRelativePath}
         {viewerSettings}

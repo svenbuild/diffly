@@ -1016,16 +1016,6 @@ async function computeDirectoryEntry(
     return null
   }
 
-  // Skip equal-content fast path for trivially differing sizes.
-  if (
-    leftIdentity.size !== rightIdentity.size &&
-    !(options.ignoreWhitespace || options.ignoreCase)
-  ) {
-    // Sizes differ and we are not normalising — definitely not equal. Fall
-    // through to classification using a small partial sample so we never
-    // touch the whole file just to decide kind.
-  }
-
   const [leftSample, rightSample] = await Promise.all([
     sampleFile(leftPath),
     sampleFile(rightPath),

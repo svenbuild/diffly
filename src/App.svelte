@@ -295,7 +295,6 @@
     left: 0,
     right: 0,
   }
-  let visibleDiffHunkCount = 0
   let canNavigateDiffs = false
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
@@ -2487,15 +2486,6 @@
 
   function goToNextDifference() {
     currentDiffHunk += 1
-  }
-
-  function syncPaneWheel(event: WheelEvent, source: 'left' | 'right') {
-    void event
-    void source
-  }
-
-  function syncPaneScroll(source: 'left' | 'right') {
-    void source
   }
 
   function buildCurrentPersistedSession() {
