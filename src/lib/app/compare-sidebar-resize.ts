@@ -1,6 +1,6 @@
-export const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
+export const DEFAULT_COMPARE_SIDEBAR_WIDTH = 212
 
-const MIN_COMPARE_SIDEBAR_WIDTH = 206
+const MIN_COMPARE_SIDEBAR_WIDTH = 186
 const MAX_COMPARE_SIDEBAR_WIDTH = 380
 
 interface CompareSidebarResizeControllerOptions {

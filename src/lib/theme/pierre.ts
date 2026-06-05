@@ -92,6 +92,8 @@ export function buildPierreTreeUnsafeCss(
       --trees-status-added-override: ${tokens.diffAdded};
       --trees-status-modified-override: ${tokens.accent};
       --trees-status-deleted-override: ${tokens.diffRemoved};
+      --trees-padding-inline-override: 9px;
+      --trees-scrollbar-gutter-override: 4px;
     }
 
     button[data-type='item'] {
@@ -101,11 +103,11 @@ export function buildPierreTreeUnsafeCss(
     }
 
     [data-file-tree-search-container] {
-      padding: 4px 4px 6px;
+      padding: 3px 4px 5px;
     }
 
     [data-file-tree-search-input] {
-      min-height: 26px;
+      min-height: 23px;
       font-size: ${Math.max(11, settings.uiFontSize - 1)}px;
     }
 

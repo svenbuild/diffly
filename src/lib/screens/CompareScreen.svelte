@@ -22,7 +22,7 @@
   export let updateIndicatorTitle = ''
   export let openUpdateSettings: () => void
   export let mode: CompareMode = 'directory'
-  export let compareSidebarWidth = 238
+  export let compareSidebarWidth = 212
   export let compareSurfaceTransitioning = false
   export let diffHeaderContext: DiffHeaderContext
   export let selectedRelativePath = ''
