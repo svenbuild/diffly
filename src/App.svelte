@@ -341,12 +341,6 @@
   }
   let startupUpdateCheckStarted = false
 
-  const statusLabel = {
-    modified: 'Modified',
-    leftOnly: 'Left only',
-    rightOnly: 'Right only',
-    unsupported: 'Unsupported',
-  }
   const availableLightThemes = getAvailableThemes('light')
   const availableDarkThemes = getAvailableThemes('dark')
   let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
@@ -3045,7 +3039,6 @@
             {directoryEntries}
             entriesRevision={directoryEntriesRevision}
             {selectedRelativePath}
-            {statusLabel}
             {treeSettings}
             {appearanceSettings}
             {resolvedThemeMode}
