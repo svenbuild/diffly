@@ -4,6 +4,66 @@ import type {
   PersistedSession,
 } from '../types'
 
+export function createDefaultViewerSettings(): CompareViewerSettings {
+  return {
+    diffStyle: 'split',
+    codeOverflow: 'scroll',
+    diffIndicators: 'bars',
+    // Default to no intra-line (word/char) diff highlighting. Word-level diffing
+    // wraps every changed segment in extra spans; on files with many changed
+    // lines that multiplies the DOM and makes scrolling stutter on machines
+    // without GPU compositing. The reference app T3 Code uses 'none' for the
+    // same @pierre/diffs renderer and scrolls smoothly. Users can re-enable
+    // word/char highlighting in Diff settings.
+    lineDiffType: 'none',
+    hunkSeparators: 'line-info',
+    expandUnchanged: false,
+    collapsedContextThreshold: 3,
+    expansionLineCount: 100,
+    disableLineNumbers: false,
+    disableFileHeader: false,
+    disableBackground: false,
+    disableVirtualizationBuffers: false,
+    stickyHeader: false,
+    syntaxMode: 'shiki',
+    preferredHighlighter: 'shiki-js',
+    useCSSClasses: false,
+    tokenizeMaxLineLength: 1000,
+    tokenizeMaxLength: 100000,
+    maxLineDiffLength: 1000,
+    lineHoverHighlight: 'disabled',
+    enableTokenInteractionsOnWhitespace: false,
+    enableGutterUtility: false,
+    enableLineSelection: false,
+    controlledSelection: false,
+  }
+}
+
+export function createDefaultTreeSettings(): CompareTreeSettings {
+  return {
+    density: 'compact',
+    customDensity: 1,
+    flattenEmptyDirectories: true,
+    stickyFolders: true,
+    initialExpansion: 'open',
+    initialExpansionDepth: 2,
+    initialExpandedPaths: [],
+    sortMode: 'path',
+    searchMode: 'expand-matches',
+    search: true,
+    searchFakeFocus: false,
+    searchBlurBehavior: 'close',
+    initialSearchQuery: '',
+    initialVisibleRowCount: 18,
+    itemHeight: 22,
+    overscan: 8,
+    dragAndDrop: false,
+    renaming: false,
+    iconSet: 'complete',
+    coloredIcons: true,
+  }
+}
+
 export function normalizeViewerSettings(
   settings: CompareViewerSettings | null | undefined,
   current: CompareViewerSettings,

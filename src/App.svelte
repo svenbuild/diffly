@@ -22,6 +22,13 @@
     saveSessionState,
     startDirectoryCompare,
   } from './lib/api'
+  import {
+    buildCompareRootDisplay,
+    directoryCompareEntryLabel,
+    fileCompareLabel,
+    filePaneLabel,
+    type CompareRootDisplay,
+  } from './lib/app/compare-display'
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
     buildDirectoryComparePairs,
@@ -39,7 +46,18 @@
     type UpdateIndicatorState,
     type UpdateStatus,
   } from './lib/app/update-controller'
-  import { readStartupFolderOverride } from './lib/app/startup'
+  import {
+    isLaunchContext,
+    installE2EHarness,
+    readE2ECompareTarget,
+    readStartupFolderOverride,
+    resolveInitialPanePath,
+    resolveStartupTarget,
+    waitForInitialPaint,
+    type E2ECompareTarget,
+    type E2EHarness,
+    type StartupTarget,
+  } from './lib/app/startup'
   import {
     applyAppearanceToRoot,
     resolveAppearanceState,
@@ -54,9 +72,6 @@
   } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
-    formatCompactPath,
-    formatRelativePathLabel,
-    getFileName,
     normalizeSelectionPath,
     splitCommonPathPrefix,
   } from './lib/path-utils'
@@ -65,15 +80,21 @@
   } from './lib/app/directory-state'
   import {
     buildNextHistoryState,
+    canComparePane as paneCanCompare,
     canGoBack,
     canGoForward,
     createExplorerPane,
     currentDrive,
+    formatPickerTargetLabel,
+    isCurrentFolderSelected,
+    isTargetSelected,
     retitlePane,
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
   import {
+    createDefaultTreeSettings,
+    createDefaultViewerSettings,
     normalizeTreeSettings,
     normalizeViewerSettings,
   } from './lib/app/settings-normalizers'
@@ -86,8 +107,6 @@
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
-    LaunchContext,
-    PathKind,
     PersistedExplorerPane,
     PersistedSession,
     ThemeMode,
@@ -126,37 +145,8 @@
 
   type Screen = 'setup' | 'compare' | 'settings'
   type CompareDirtyReason = 'comparisonRules'
-  interface CompareRootDisplay {
-    prefix: string
-    suffix: string
-    fullPath: string
-  }
-
   interface DiffScrollSnapshot {
     viewMode: ViewMode
-  }
-
-  interface StartupTarget {
-    folderPath: string
-    targetPath: string
-    kind: PathKind
-  }
-
-  interface E2ECompareTarget {
-    leftPath: string
-    rightPath: string
-  }
-
-  interface E2EHarness {
-    getState(): {
-      directoryEntries: number
-      errorMessage: string
-      loading: boolean
-      mode: CompareMode
-      screen: Screen
-      selectedRelativePath: string
-    }
-    selectPath(relativePath: string): Promise<boolean>
   }
 
   export let initialSession: PersistedSession | null = null
@@ -179,60 +169,8 @@
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
   let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
-  let viewerSettings: CompareViewerSettings = {
-    diffStyle: 'split',
-    codeOverflow: 'scroll',
-    diffIndicators: 'bars',
-    // Default to no intra-line (word/char) diff highlighting. Word-level diffing
-    // wraps every changed segment in extra spans; on files with many changed
-    // lines that multiplies the DOM and makes scrolling stutter on machines
-    // without GPU compositing. The reference app T3 Code uses 'none' for the
-    // same @pierre/diffs renderer and scrolls smoothly. Users can re-enable
-    // word/char highlighting in Diff settings.
-    lineDiffType: 'none',
-    hunkSeparators: 'line-info',
-    expandUnchanged: false,
-    collapsedContextThreshold: 3,
-    expansionLineCount: 100,
-    disableLineNumbers: false,
-    disableFileHeader: false,
-    disableBackground: false,
-    disableVirtualizationBuffers: false,
-    stickyHeader: false,
-    syntaxMode: 'shiki',
-    preferredHighlighter: 'shiki-js',
-    useCSSClasses: false,
-    tokenizeMaxLineLength: 1000,
-    tokenizeMaxLength: 100000,
-    maxLineDiffLength: 1000,
-    lineHoverHighlight: 'disabled',
-    enableTokenInteractionsOnWhitespace: false,
-    enableGutterUtility: false,
-    enableLineSelection: false,
-    controlledSelection: false,
-  }
-  let treeSettings: CompareTreeSettings = {
-    density: 'compact',
-    customDensity: 1,
-    flattenEmptyDirectories: true,
-    stickyFolders: true,
-    initialExpansion: 'open',
-    initialExpansionDepth: 2,
-    initialExpandedPaths: [],
-    sortMode: 'path',
-    searchMode: 'expand-matches',
-    search: true,
-    searchFakeFocus: false,
-    searchBlurBehavior: 'close',
-    initialSearchQuery: '',
-    initialVisibleRowCount: 18,
-    itemHeight: 22,
-    overscan: 8,
-    dragAndDrop: false,
-    renaming: false,
-    iconSet: 'complete',
-    coloredIcons: true,
-  }
+  let viewerSettings: CompareViewerSettings = createDefaultViewerSettings()
+  let treeSettings: CompareTreeSettings = createDefaultTreeSettings()
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
   let lastUpdateCheckAt = ''
@@ -528,24 +466,8 @@
     })
   }
 
-  function readE2ECompareTarget(): E2ECompareTarget | null {
-    if (typeof window === 'undefined') {
-      return null
-    }
-
-    const params = new URLSearchParams(window.location.search)
-    const left = params.get('difflyE2ELeft')?.trim()
-    const right = params.get('difflyE2ERight')?.trim()
-
-    return left && right ? { leftPath: left, rightPath: right } : null
-  }
-
   function syncE2EHarness() {
-    if (!e2eHarnessEnabled || typeof window === 'undefined') {
-      return
-    }
-
-    ;(window as unknown as { __difflyE2E?: E2EHarness }).__difflyE2E = {
+    installE2EHarness(e2eHarnessEnabled, {
       getState: () => ({
         directoryEntries: directoryEntries.length,
         errorMessage,
@@ -563,7 +485,7 @@
         await selectEntry(entry)
         return true
       },
-    }
+    })
   }
 
   onMount(() => {
@@ -789,26 +711,6 @@
     window.setTimeout(() => {
       void runUpdateCheck()
     }, 3000)
-  }
-
-  function waitForInitialPaint() {
-    if (typeof window === 'undefined') {
-      return Promise.resolve()
-    }
-
-    return new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => {
-        window.setTimeout(resolve, 0)
-      })
-    })
-  }
-
-  function isLaunchContext(value: unknown): value is LaunchContext {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      typeof (value as LaunchContext).openHerePath === 'string'
-    )
   }
 
   async function initializeUpdateVersion() {
@@ -1323,7 +1225,7 @@
       if (roots.length > 0) {
         const startupFolderOverride =
           startupFolderPath ?? await readStartupFolderOverride().catch(() => null)
-        const startupTarget = await resolveStartupTarget(startupFolderOverride)
+        const startupTarget = await resolveStartupTarget(startupFolderOverride, pathInfo)
 
         if (startupTarget) {
           await applyStartupTarget(startupTarget)
@@ -1332,10 +1234,12 @@
             resolveInitialPanePath(
               savedSession?.leftPane ?? null,
               roots[0].path,
+              pathInfo,
             ),
             resolveInitialPanePath(
               savedSession?.rightPane ?? null,
               roots[1]?.path ?? roots[0].path,
+              pathInfo,
             ),
           ])
 
@@ -1373,7 +1277,7 @@
       return
     }
 
-    const startupTarget = await resolveStartupTarget(overridePath)
+    const startupTarget = await resolveStartupTarget(overridePath, pathInfo)
 
     if (startupTarget) {
       await applyStartupTarget(startupTarget)
@@ -1467,59 +1371,6 @@
         message: 'A new Diffly build is available.',
       }
     }
-  }
-
-  async function resolveInitialPanePath(
-    pane: PersistedExplorerPane | null,
-    fallbackPath: string,
-  ) {
-    if (pane?.currentPath) {
-      const currentInfo = await pathInfo(pane.currentPath)
-
-      if (currentInfo.exists && currentInfo.isDirectory) {
-        return currentInfo.path
-      }
-    }
-
-    if (pane?.selectedTargetPath) {
-      const targetInfo = await pathInfo(pane.selectedTargetPath)
-
-      if (targetInfo.exists && targetInfo.isDirectory) {
-        return targetInfo.path
-      }
-
-      if (targetInfo.exists && targetInfo.isFile && targetInfo.parentPath) {
-        return targetInfo.parentPath
-      }
-    }
-
-    return fallbackPath
-  }
-
-  async function resolveStartupTarget(overridePath: string | null): Promise<StartupTarget | null> {
-    if (!overridePath) {
-      return null
-    }
-
-    const info = await pathInfo(overridePath)
-
-    if (info.exists && info.isDirectory) {
-      return {
-        folderPath: info.path,
-        targetPath: info.path,
-        kind: 'directory',
-      }
-    }
-
-    if (info.exists && info.isFile && info.parentPath) {
-      return {
-        folderPath: info.parentPath,
-        targetPath: info.path,
-        kind: 'file',
-      }
-    }
-
-    return null
   }
 
   async function restorePaneSelection(side: Side, pane: PersistedExplorerPane | null) {
@@ -1971,21 +1822,8 @@
     }
   }
 
-  function canComparePane(pane: ExplorerPaneState) {
-    return Boolean(pane.selectedTargetPath) && pane.selectedTargetKind === mode
-  }
-
-  function formatPickerTargetLabel(path: string, emptyLabel: string) {
-    if (!path) {
-      return emptyLabel
-    }
-
-    const label = getFileName(path)
-    return label || formatCompactPath(path, 2) || path
-  }
-
   async function runCompare() {
-    if (!canComparePane(leftExplorer) || !canComparePane(rightExplorer)) {
+    if (!paneCanCompare(leftExplorer, mode) || !paneCanCompare(rightExplorer, mode)) {
       errorMessage = 'Select valid targets on both sides first.'
       return
     }
@@ -2337,71 +2175,24 @@
     }, SESSION_SAVE_DELAY_MS)
   }
 
-  function isCurrentFolderSelected(pane: ExplorerPaneState) {
-    return pane.selectedTargetKind === 'directory' && pane.selectedTargetPath === pane.currentPath
-  }
-
-  function isTargetSelected(pane: ExplorerPaneState, entry: ExplorerEntry) {
-    const paths = pane.selectedTargetPaths
-    if (paths && paths.length > 0) {
-      return paths.includes(entry.path)
-    }
-    return pane.selectedTargetPath === entry.path
-  }
-
-  function buildCompareRootDisplay(fullPath: string, distinctSegments: string[]): CompareRootDisplay {
-    if (!fullPath) {
-      return {
-        prefix: '',
-        suffix: '',
-        fullPath: '',
-      }
-    }
-
-    const distinctPath = distinctSegments.join('/')
-    const suffix = distinctPath ? formatCompactPath(distinctPath, 3) : formatCompactPath(fullPath, 3)
-    const prefix = distinctPath && suffix && !suffix.startsWith('...') ? '...\\' : ''
-
-    return {
-      prefix,
-      suffix: suffix || formatCompactPath(fullPath, 3),
-      fullPath,
-    }
-  }
-
   function getCurrentFileLabel() {
     if (mode === 'directory') {
-      const entry = selectedRelativePath
-        ? selectedRelativePath
-        : defaultDirectoryEntry(visibleDirectoryEntries())?.relativePath
-
-      return entry ? formatRelativePathLabel(entry) : 'No file selected'
+      return directoryCompareEntryLabel(
+        selectedRelativePath,
+        visibleDirectoryEntries(),
+        'No file selected',
+      )
     }
 
-    if (!activeDiff) {
-      return 'No file selected'
-    }
-
-    const leftName = getFileName(activeDiff.leftLabel)
-    const rightName = getFileName(activeDiff.rightLabel)
-
-    return leftName === rightName ? leftName : `${leftName} <-> ${rightName}`
+    return fileCompareLabel(activeDiff, 'No file selected')
   }
 
   function getPaneLabel(side: Side) {
     if (mode === 'directory') {
-      const entry = selectedRelativePath
-        ? selectedRelativePath
-        : defaultDirectoryEntry(visibleDirectoryEntries())?.relativePath
-
-      return entry ? formatRelativePathLabel(entry) : ''
+      return directoryCompareEntryLabel(selectedRelativePath, visibleDirectoryEntries(), '')
     }
 
-    if (!activeDiff) {
-      return ''
-    }
-
-    return getFileName(side === 'left' ? activeDiff.leftLabel : activeDiff.rightLabel)
+    return filePaneLabel(activeDiff, side)
   }
 
   $: {
@@ -2488,7 +2279,7 @@
   }
 
   $: compareNeedsRefresh = compareDirtyReason !== null
-  $: pickerCanCompare = canComparePane(leftExplorer) && canComparePane(rightExplorer)
+  $: pickerCanCompare = paneCanCompare(leftExplorer, mode) && paneCanCompare(rightExplorer, mode)
   $: pickerSides = [
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
@@ -2502,8 +2293,8 @@
       normalizeSelectionPath(rightExplorer.selectedTargetPath)
       ? `Both sides currently point to the same ${mode === 'directory' ? 'folder' : 'file'}. The compare will usually be empty.`
       : ''
-  $: leftPickerReady = canComparePane(leftExplorer)
-  $: rightPickerReady = canComparePane(rightExplorer)
+  $: leftPickerReady = paneCanCompare(leftExplorer, mode)
+  $: rightPickerReady = paneCanCompare(rightExplorer, mode)
   $: setupHintMessage = pickerCanCompare
     ? ''
     : !leftPickerReady && !rightPickerReady

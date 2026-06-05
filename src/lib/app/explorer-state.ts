@@ -1,5 +1,9 @@
-import type { CompareMode } from '../types'
+import type { CompareMode, ExplorerEntry } from '../types'
 import type { ExplorerPaneState } from '../ui-types'
+import {
+  formatCompactPath,
+  getFileName,
+} from '../path-utils'
 
 export function createExplorerPane(title: string): ExplorerPaneState {
   return {
@@ -57,10 +61,35 @@ export function canGoForward(pane: ExplorerPaneState) {
   return pane.historyIndex !== -1 && pane.historyIndex < pane.history.length - 1
 }
 
+export function canComparePane(pane: ExplorerPaneState, mode: CompareMode) {
+  return Boolean(pane.selectedTargetPath) && pane.selectedTargetKind === mode
+}
+
 export function currentDrive(pane: ExplorerPaneState) {
   const normalized = pane.currentPath.toLowerCase()
 
   return pane.roots.find((root) => normalized.startsWith(root.path.toLowerCase()))?.path ?? ''
+}
+
+export function formatPickerTargetLabel(path: string, emptyLabel: string) {
+  if (!path) {
+    return emptyLabel
+  }
+
+  const label = getFileName(path)
+  return label || formatCompactPath(path, 2) || path
+}
+
+export function isCurrentFolderSelected(pane: ExplorerPaneState) {
+  return pane.selectedTargetKind === 'directory' && pane.selectedTargetPath === pane.currentPath
+}
+
+export function isTargetSelected(pane: ExplorerPaneState, entry: ExplorerEntry) {
+  const paths = pane.selectedTargetPaths
+  if (paths && paths.length > 0) {
+    return paths.includes(entry.path)
+  }
+  return pane.selectedTargetPath === entry.path
 }
 
 export function sanitizePaneForMode(pane: ExplorerPaneState, nextMode: CompareMode) {
