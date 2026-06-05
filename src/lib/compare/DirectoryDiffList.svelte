@@ -850,6 +850,7 @@
     {#if selectedRenderableEntries.length > 0}
       <PierreDirectoryVirtualDiffView
         entries={selectedRenderableEntries}
+        compareKey={`${leftPath} ${rightPath}`}
         {collapsedPaths}
         {selectedRelativePath}
         {viewerSettings}

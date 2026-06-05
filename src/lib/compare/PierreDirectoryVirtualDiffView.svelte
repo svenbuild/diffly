@@ -4,6 +4,7 @@
     CodeView,
     getFiletypeFromFileName,
     parseDiffFromFile,
+    type AnnotationSide,
     type CodeViewItem,
     type CodeViewLineSelection,
     type CodeViewOptions,
@@ -67,6 +68,7 @@
   }
 
   export let entries: LoadedDirectoryDiff[] = []
+  export let compareKey = ''
   export let collapsedPaths = new Set<string>()
   export let selectedRelativePath = ''
   export let viewerSettings: CompareViewerSettings
@@ -370,10 +372,104 @@
           itemId,
           list.filter((entry) => entry.metadata.id !== targetId),
         )
+        persistComments()
         setInteractionMessage('Comment deleted.')
         return
       }
     }
+  }
+
+  interface StoredComment {
+    side: AnnotationSide
+    lineNumber: number
+    id: string
+    text: string
+  }
+
+  function commentsStorageKey() {
+    return `diffly:comments:${compareKey}`
+  }
+
+  function persistComments() {
+    if (typeof localStorage === 'undefined' || !compareKey) {
+      return
+    }
+
+    const payload: Record<string, StoredComment[]> = {}
+    for (const [itemId, list] of commentAnnotations) {
+      const stored = list
+        .filter((entry) => entry.metadata.text.trim().length > 0)
+        .map((entry) => ({
+          side: entry.side,
+          lineNumber: entry.lineNumber,
+          id: entry.metadata.id,
+          text: entry.metadata.text,
+        }))
+      if (stored.length > 0) {
+        payload[itemId] = stored
+      }
+    }
+
+    try {
+      if (Object.keys(payload).length === 0) {
+        localStorage.removeItem(commentsStorageKey())
+      } else {
+        localStorage.setItem(commentsStorageKey(), JSON.stringify(payload))
+      }
+    } catch {
+      // Storage may be unavailable or full; comments stay in-memory.
+    }
+  }
+
+  function loadStoredComments() {
+    if (typeof localStorage === 'undefined' || !compareKey) {
+      commentAnnotations = new Map()
+      return
+    }
+
+    let raw: string | null = null
+    try {
+      raw = localStorage.getItem(commentsStorageKey())
+    } catch {
+      raw = null
+    }
+
+    const next = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, StoredComment[]>
+        let maxId = commentId
+        for (const [itemId, list] of Object.entries(parsed)) {
+          if (!Array.isArray(list)) {
+            continue
+          }
+          const annotations = list
+            .filter((entry) => entry && typeof entry.lineNumber === 'number')
+            .map((entry) => {
+              const match = /(\d+)$/.exec(String(entry.id ?? ''))
+              if (match) {
+                maxId = Math.max(maxId, Number(match[1]))
+              }
+              return {
+                side: (entry.side === 'deletions' ? 'deletions' : 'additions') as AnnotationSide,
+                lineNumber: entry.lineNumber,
+                metadata: {
+                  id: String(entry.id ?? `comment-${(commentId += 1)}`),
+                  text: String(entry.text ?? ''),
+                },
+              }
+            })
+          if (annotations.length > 0) {
+            next.set(itemId, annotations)
+          }
+        }
+        commentId = Math.max(commentId, maxId)
+      } catch {
+        // Corrupt payload; start clean for this compare.
+      }
+    }
+
+    commentAnnotations = next
   }
 
   function handleGutterUtilityClick(range: SelectedLineRange, context: CodeViewItemContext) {
@@ -460,7 +556,8 @@
     form.addEventListener('submit', (event) => {
       event.preventDefault()
       annotation.metadata.text = input.value.trim()
-      setInteractionMessage('Comment saved locally.')
+      persistComments()
+      setInteractionMessage('Comment saved.')
     })
     remove.addEventListener('click', (event) => {
       event.preventDefault()
@@ -1314,6 +1411,10 @@
 
   $: host,
     syncNativeScrollHandling()
+
+  // Load any saved comments whenever the active comparison changes so they
+  // survive reloads and re-opening the same compare.
+  $: compareKey, loadStoredComments()
 
   $: host,
     entries,
