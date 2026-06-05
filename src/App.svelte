@@ -220,6 +220,8 @@
     overscan: 8,
     dragAndDrop: false,
     renaming: false,
+    iconSet: 'complete',
+    coloredIcons: true,
   }
   let checkForUpdatesOnLaunch = true
   let updateChannel: UpdateChannel = DEFAULT_UPDATE_CHANNEL
@@ -431,6 +433,8 @@
       overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
       dragAndDrop: settings?.dragAndDrop ?? false,
       renaming: settings?.renaming ?? false,
+      iconSet: isTreeIconSet(settings?.iconSet) ? settings.iconSet : current.iconSet,
+      coloredIcons: settings?.coloredIcons ?? current.coloredIcons,
     }
   }
 
@@ -460,6 +464,10 @@
 
   function isTreeSearchMode(value: string | null | undefined): value is CompareTreeSettings['searchMode'] {
     return value === 'expand-matches' || value === 'collapse-non-matches' || value === 'hide-non-matches'
+  }
+
+  function isTreeIconSet(value: string | null | undefined): value is CompareTreeSettings['iconSet'] {
+    return value === 'minimal' || value === 'standard' || value === 'complete' || value === 'none'
   }
 
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {

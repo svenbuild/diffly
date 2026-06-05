@@ -56,6 +56,8 @@ export interface CompareTreeSettings {
   overscan: number
   dragAndDrop: boolean
   renaming: boolean
+  iconSet: 'minimal' | 'standard' | 'complete' | 'none'
+  coloredIcons: boolean
 }
 
 export type CompareSource =

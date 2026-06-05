@@ -323,22 +323,12 @@
       overscan: treeSettings.overscan,
       dragAndDrop: treeSettings.dragAndDrop,
       renaming: treeSettings.renaming,
-      // Pin the colored "complete" built-in icon set (VS Code / DiffsHub style
-      // file-type icons). It's the library default, but make it explicit so the
-      // colored icons can't silently change if the default ever shifts.
-      icons: { set: 'complete', colored: true },
+      // Built-in icon set (configurable). The colored "complete" set gives the
+      // per-file-type colors; git status only recolours the name + shows the
+      // A/M/D letter in the git lane, so the file-type icon colours stay intact.
+      icons: { set: treeSettings.iconSet, colored: treeSettings.coloredIcons },
       unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings, resolvedThemeMode),
       gitStatus: buildGitStatus(visibleEntries),
-      renderRowDecoration: ({ item }) => {
-        const entry = entryByPath.get(item.path)
-        if (!entry) {
-          return null
-        }
-        return {
-          text: statusLabel[entry.status],
-          title: statusLabel[entry.status],
-        }
-      },
       onSelectionChange: (paths) => {
         const nextPath = paths[0]
         const entry = nextPath ? entryByPath.get(nextPath) : null

@@ -47,6 +47,42 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
+          <strong>File icons</strong>
+          <p>Built-in icon set. "Complete" is the full colored file-type suite.</p>
+        </div>
+        <div class="settings-control">
+          <select
+            value={treeSettings.iconSet}
+            on:change={(event) => updateTreeSettings({ iconSet: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['iconSet'] })}
+          >
+            <option value="complete">Complete (colored)</option>
+            <option value="standard">Standard</option>
+            <option value="minimal">Minimal</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
+          <strong>Colored icons</strong>
+          <p>Use per-file-type colors for the "Complete" icon set.</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={treeSettings.coloredIcons}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateTreeSettings({ coloredIcons: !treeSettings.coloredIcons })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+
+      <div class="settings-row">
+        <div class="settings-row-copy">
           <strong>Initial expansion</strong>
           <p>Choose whether the tree starts closed, open, or expanded by depth.</p>
         </div>
