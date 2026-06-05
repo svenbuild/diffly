@@ -173,7 +173,13 @@
     diffStyle: 'split',
     codeOverflow: 'scroll',
     diffIndicators: 'bars',
-    lineDiffType: 'word-alt',
+    // Default to no intra-line (word/char) diff highlighting. Word-level diffing
+    // wraps every changed segment in extra spans; on files with many changed
+    // lines that multiplies the DOM and makes scrolling stutter on machines
+    // without GPU compositing. The reference app T3 Code uses 'none' for the
+    // same @pierre/diffs renderer and scrolls smoothly. Users can re-enable
+    // word/char highlighting in Diff settings.
+    lineDiffType: 'none',
     hunkSeparators: 'line-info',
     expandUnchanged: false,
     collapsedContextThreshold: 3,
@@ -357,7 +363,7 @@
     const current = viewerSettings
     const legacyDiffStyle = legacy?.viewMode === 'unified' ? 'unified' : 'split'
     const legacyOverflow = legacy?.wrapSideBySideLines ? 'wrap' : 'scroll'
-    const legacyLineDiffType = legacy?.showInlineHighlights === false ? 'none' : 'word-alt'
+    const legacyLineDiffType = legacy?.showInlineHighlights === true ? 'word-alt' : 'none'
     const legacySyntaxMode = legacy?.showSyntaxHighlighting === false ? 'plain' : 'shiki'
 
     return {
