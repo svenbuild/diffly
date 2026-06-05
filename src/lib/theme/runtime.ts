@@ -224,10 +224,6 @@ export function createThemeCssVariables(
     theme.accent,
     isDark ? scaleByContrast(contrastScale, 0.12, 0.28) : scaleByContrast(contrastScale, 0.09, 0.2)
   )
-  const collapsedBg = mixHex(canvasAlt, theme.ink, isDark ? 0.1 : 0.04)
-  const collapsedChipBgResolved = theme.opaqueWindows
-    ? tokens.elevatedSurface
-    : compositeHex(tokens.elevatedSurface, collapsedBg, elevatedAlpha)
   const scrollbarThumb = mixHex(
     theme.surface,
     theme.ink,
@@ -289,12 +285,6 @@ export function createThemeCssVariables(
   const statusDangerText = pickReadableText(dangerBg, readableText, 4.5)
   const diffInsertText = pickReadableText(diffInsertBg, readableText, 4.5)
   const diffDeleteText = pickReadableText(diffDeleteBg, readableText, 4.5)
-  const collapsedChipText = ensureReadableForeground(
-    mutedText,
-    collapsedChipBgResolved,
-    secondaryText,
-    4.5
-  )
   const selectedRowBg = ensureDistinguishableSurface(
     mixHex(
       listBgResolved,
@@ -384,9 +374,6 @@ export function createThemeCssVariables(
     '--code': tokens.codeFont,
     '--ui-font-size': `${tokens.uiFontSize}px`,
     '--code-font-size': `${tokens.codeFontSize}px`,
-    '--diff-font-size': `${tokens.codeFontSize}px`,
-    '--diff-row-line-height': `${tokens.codeFontSize + 3}px`,
-    '--diff-row-height': `${tokens.codeFontSize + 8}px`,
     '--interactive-cursor': settings.usePointerCursor ? 'pointer' : 'default',
     '--pane-backdrop-blur': theme.opaqueWindows ? 'none' : 'blur(10px)',
     '--canvas': canvas,
@@ -450,16 +437,6 @@ export function createThemeCssVariables(
     '--status-success-text': statusSuccessText,
     '--status-danger-border': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.32 : 0.2),
     '--status-danger-text': statusDangerText,
-    '--pane-header-bg': paneHeaderBg,
-    '--pane-header-shadow': rgbaFromHex(
-      theme.ink,
-      isDark ? scaleByContrast(contrastScale, 0.02, 0.06) : scaleByContrast(contrastScale, 0.03, 0.08)
-    ),
-    '--pane-inner-shadow': rgbaFromHex(
-      theme.ink,
-      isDark ? scaleByContrast(contrastScale, 0.01, 0.05) : scaleByContrast(contrastScale, 0.02, 0.06)
-    ),
-    '--hunk-bg': surfaceAlt,
     '--diff-divider': rgbaFromHex(
       theme.ink,
       isDark ? scaleByContrast(contrastScale, 0.08, 0.2) : scaleByContrast(contrastScale, 0.08, 0.18)
@@ -469,16 +446,6 @@ export function createThemeCssVariables(
     '--diff-insert-text': diffInsertText,
     '--diff-delete-bg': diffDeleteBg,
     '--diff-delete-text': diffDeleteText,
-    '--diff-gap-bg': canvasAlt,
-    '--diff-gap-stripe': rgbaFromHex(
-      theme.ink,
-      isDark ? scaleByContrast(contrastScale, 0.04, 0.08) : scaleByContrast(contrastScale, 0.03, 0.065)
-    ),
-    '--collapsed-row-bg': collapsedBg,
-    '--collapsed-row-line': rgbaFromHex(theme.ink, isDark ? 0.26 : 0.22),
-    '--collapsed-chip-bg': rgbaFromHex(theme.ink, isDark ? 0.045 : 0.035),
-    '--collapsed-chip-border': border,
-    '--collapsed-chip-text': collapsedChipText,
     '--scroll-marker-insert': theme.semanticColors.diffAdded,
     '--scroll-marker-delete': theme.semanticColors.diffRemoved,
     '--scroll-marker-mixed': theme.accent,

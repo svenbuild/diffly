@@ -3,7 +3,6 @@
   import {
     CodeView,
     parseDiffFromFile,
-    type AnnotationSide,
     type CodeViewItem,
     type CodeViewLineSelection,
     type CodeViewOptions,
@@ -32,8 +31,20 @@
     describeRange,
     describeSide,
     estimatePlaceholderLineCount,
-    statusLabel,
   } from './directory-code-view-items'
+  import {
+    loadStoredCommentAnnotations,
+    persistCommentAnnotations,
+    removeCommentAnnotation,
+    renderCommentAnnotationElement,
+    type DifflyCommentAnnotation,
+  } from './directory-code-view-comments'
+  import {
+    applyDirectoryItemPostRender,
+    renderDirectoryCollapseButton,
+    renderDirectoryHeaderMetadata,
+    type CodeViewItemContext,
+  } from './directory-code-view-renderers'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -41,11 +52,6 @@
     TextDiffPayload,
     ViewMode,
   } from '../types'
-
-  interface DifflyCommentAnnotation {
-    id: string
-    text: string
-  }
 
   interface LoadedDirectoryDiff {
     entry: DirectoryEntryResult
@@ -67,12 +73,6 @@
     file: FileContents
     key: string
     version: number
-  }
-
-  type CodeViewItemContext = {
-    item?: {
-      id?: string
-    }
   }
 
   export let entries: LoadedDirectoryDiff[] = []
@@ -262,11 +262,6 @@
     })
   }
 
-  function getContext(args: unknown[]) {
-    const context = args[args.length - 1] as CodeViewItemContext | undefined
-    return typeof context?.item?.id === 'string' ? context : null
-  }
-
   function setInteractionMessage(message: string) {
     interactionMessage = message
 
@@ -318,114 +313,14 @@
     commentAnnotations = next
   }
 
-  function deleteCommentAnnotation(
-    annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
-  ) {
-    const targetId = annotation.metadata.id
-    for (const [itemId, list] of commentAnnotations) {
-      if (list.some((entry) => entry.metadata.id === targetId)) {
-        updateAnnotations(
-          itemId,
-          list.filter((entry) => entry.metadata.id !== targetId),
-        )
-        persistComments()
-        setInteractionMessage('Comment deleted.')
-        return
-      }
-    }
-  }
-
-  interface StoredComment {
-    side: AnnotationSide
-    lineNumber: number
-    id: string
-    text: string
-  }
-
-  function commentsStorageKey() {
-    return `diffly:comments:${compareKey}`
-  }
-
   function persistComments() {
-    if (typeof localStorage === 'undefined' || !compareKey) {
-      return
-    }
-
-    const payload: Record<string, StoredComment[]> = {}
-    for (const [itemId, list] of commentAnnotations) {
-      const stored = list
-        .filter((entry) => entry.metadata.text.trim().length > 0)
-        .map((entry) => ({
-          side: entry.side,
-          lineNumber: entry.lineNumber,
-          id: entry.metadata.id,
-          text: entry.metadata.text,
-        }))
-      if (stored.length > 0) {
-        payload[itemId] = stored
-      }
-    }
-
-    try {
-      if (Object.keys(payload).length === 0) {
-        localStorage.removeItem(commentsStorageKey())
-      } else {
-        localStorage.setItem(commentsStorageKey(), JSON.stringify(payload))
-      }
-    } catch {
-      // Storage may be unavailable or full; comments stay in-memory.
-    }
+    persistCommentAnnotations(compareKey, commentAnnotations)
   }
 
   function loadStoredComments() {
-    if (typeof localStorage === 'undefined' || !compareKey) {
-      commentAnnotations = new Map()
-      return
-    }
-
-    let raw: string | null = null
-    try {
-      raw = localStorage.getItem(commentsStorageKey())
-    } catch {
-      raw = null
-    }
-
-    const next = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as Record<string, StoredComment[]>
-        let maxId = commentId
-        for (const [itemId, list] of Object.entries(parsed)) {
-          if (!Array.isArray(list)) {
-            continue
-          }
-          const annotations = list
-            .filter((entry) => entry && typeof entry.lineNumber === 'number')
-            .map((entry) => {
-              const match = /(\d+)$/.exec(String(entry.id ?? ''))
-              if (match) {
-                maxId = Math.max(maxId, Number(match[1]))
-              }
-              return {
-                side: (entry.side === 'deletions' ? 'deletions' : 'additions') as AnnotationSide,
-                lineNumber: entry.lineNumber,
-                metadata: {
-                  id: String(entry.id ?? `comment-${(commentId += 1)}`),
-                  text: String(entry.text ?? ''),
-                },
-              }
-            })
-          if (annotations.length > 0) {
-            next.set(itemId, annotations)
-          }
-        }
-        commentId = Math.max(commentId, maxId)
-      } catch {
-        // Corrupt payload; start clean for this compare.
-      }
-    }
-
-    commentAnnotations = next
+    const stored = loadStoredCommentAnnotations(compareKey, commentId)
+    commentAnnotations = stored.annotations
+    commentId = stored.commentId
   }
 
   function handleGutterUtilityClick(range: SelectedLineRange, context: CodeViewItemContext) {
@@ -459,160 +354,45 @@
   function renderCommentAnnotation(
     annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
   ) {
-    const wrapper = document.createElement('div')
-    const form = document.createElement('form')
-    const avatar = document.createElement('div')
-    const input = document.createElement('input')
-    const submit = document.createElement('button')
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    return renderCommentAnnotationElement(annotation, {
+      onDelete: (target) => {
+        const result = removeCommentAnnotation(commentAnnotations, target)
+        if (!result.removed) {
+          return
+        }
 
-    wrapper.className = 'diffly-comment-annotation'
-    form.className = 'diffly-comment-composer'
-    avatar.className = 'diffly-comment-avatar'
-    avatar.textContent = 'D'
-    input.type = 'text'
-    input.placeholder = 'Add a comment...'
-    input.value = annotation.metadata.text
-    submit.type = 'submit'
-    submit.className = 'diffly-comment-submit'
-    submit.setAttribute('aria-label', 'Save comment')
-    icon.setAttribute('viewBox', '0 0 16 16')
-    icon.setAttribute('aria-hidden', 'true')
-    path.setAttribute('d', 'M8 13V3m0 0L4.5 6.5M8 3l3.5 3.5')
-    path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'currentColor')
-    path.setAttribute('stroke-linecap', 'round')
-    path.setAttribute('stroke-linejoin', 'round')
-    path.setAttribute('stroke-width', '1.8')
-    icon.appendChild(path)
-    submit.appendChild(icon)
-
-    const remove = document.createElement('button')
-    const removeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    remove.type = 'button'
-    remove.className = 'diffly-comment-delete'
-    remove.setAttribute('aria-label', 'Delete comment')
-    remove.title = 'Delete comment'
-    removeIcon.setAttribute('viewBox', '0 0 16 16')
-    removeIcon.setAttribute('aria-hidden', 'true')
-    removePath.setAttribute('d', 'M3 5h10M6.5 5V3.5h3V5M6.5 8v3.5M9.5 8v3.5M4.5 5l.5 7.5h6l.5-7.5')
-    removePath.setAttribute('fill', 'none')
-    removePath.setAttribute('stroke', 'currentColor')
-    removePath.setAttribute('stroke-linecap', 'round')
-    removePath.setAttribute('stroke-linejoin', 'round')
-    removePath.setAttribute('stroke-width', '1.4')
-    removeIcon.appendChild(removePath)
-    remove.appendChild(removeIcon)
-
-    input.addEventListener('input', () => {
-      annotation.metadata.text = input.value
+        commentAnnotations = result.annotations
+        persistComments()
+        setInteractionMessage('Comment deleted.')
+      },
+      onSave: () => {
+        persistComments()
+        setInteractionMessage('Comment saved.')
+      },
     })
-    form.addEventListener('submit', (event) => {
-      event.preventDefault()
-      annotation.metadata.text = input.value.trim()
-      persistComments()
-      setInteractionMessage('Comment saved.')
-    })
-    remove.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      deleteCommentAnnotation(annotation)
-    })
-
-    form.append(avatar, input, submit, remove)
-    wrapper.appendChild(form)
-
-    return wrapper
   }
 
   function renderCollapseButton(...args: unknown[]) {
-    const context = getContext(args)
-    const itemId = context?.item?.id
-    if (!itemId) {
-      return null
-    }
-
-    const collapsed = collapsedPaths.has(itemId)
-    const button = document.createElement('button')
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    const loadedEntry = entryByPath.get(itemId)
-
-    button.type = 'button'
-    button.className = 'diffly-codeview-collapse-button'
-    button.dataset.difflyEntryPath = itemId
-    button.dataset.collapsed = collapsed ? 'true' : 'false'
-    button.setAttribute('aria-label', collapsed ? 'Expand file diff' : 'Collapse file diff')
-    button.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
-    button.title = collapsed ? 'Expand file diff' : 'Collapse file diff'
-    icon.setAttribute('viewBox', '0 0 16 16')
-    icon.setAttribute('aria-hidden', 'true')
-    path.setAttribute('d', 'M5.75 3.5 10.25 8l-4.5 4.5')
-    path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'currentColor')
-    path.setAttribute('stroke-linecap', 'round')
-    path.setAttribute('stroke-linejoin', 'round')
-    path.setAttribute('stroke-width', '1.8')
-    icon.appendChild(path)
-    button.appendChild(icon)
-    button.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      toggleEntry(itemId)
+    return renderDirectoryCollapseButton(args, {
+      collapsedPaths,
+      entryByPath,
+      schedulePlaceholderEntryRequest,
+      toggleEntry,
     })
-
-    if (loadedEntry && !loadedEntry.diff?.text && !loadedEntry.loading && !loadedEntry.error) {
-      schedulePlaceholderEntryRequest(itemId)
-    }
-
-    return button
   }
 
   function renderHeaderMetadata(...args: unknown[]) {
-    const context = getContext(args)
-    const itemId = context?.item?.id
-    if (!itemId) {
-      return null
-    }
-
-    const loadedEntry = entryByPath.get(itemId)
-    if (!loadedEntry || loadedEntry.diff?.text) {
-      return null
-    }
-
-    const metadata = document.createElement('span')
-    metadata.className = 'diffly-codeview-status-metadata'
-    if (loadedEntry.error) {
-      metadata.textContent = 'Error'
-      metadata.title = loadedEntry.error
-    } else {
-      metadata.textContent = loadedEntry.loading || !loadedEntry.diff?.text
-        ? 'Loading...'
-        : statusLabel(loadedEntry.entry.status)
-    }
-    return metadata
+    return renderDirectoryHeaderMetadata(args, entryByPath)
   }
 
   function handlePostRender(...args: unknown[]) {
-    const node = args[0]
-    const context = getContext(args)
-    const itemId = context?.item?.id
-    if (!(node instanceof HTMLElement) || !itemId) {
-      return
-    }
-
-    node.toggleAttribute('data-diffly-placeholder', placeholderPaths.has(itemId))
-    node.toggleAttribute('data-diffly-loading', loadingPaths.has(itemId))
-    node.toggleAttribute('data-diffly-error', Boolean(entryByPath.get(itemId)?.error))
-
-    const entry = entryByPath.get(itemId)
-    if (placeholderPaths.has(itemId) && entry && !entry.loading && !entry.error) {
-      schedulePlaceholderEntryRequest(itemId)
-    }
-
-    scheduleVisibleEntryRequest()
+    applyDirectoryItemPostRender(args, {
+      entryByPath,
+      loadingPaths,
+      placeholderPaths,
+      schedulePlaceholderEntryRequest,
+      scheduleVisibleEntryRequest,
+    })
   }
 
   function buildOptions(): CodeViewOptions<DifflyCommentAnnotation> {

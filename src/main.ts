@@ -1,5 +1,8 @@
 import { mount } from 'svelte'
 import './app.css'
+import './styles/settings.css'
+import './styles/workspace.css'
+import './styles/responsive.css'
 import App from './App.svelte'
 import { resolveVariant } from './lib/theme'
 import { normalizeAppearanceSettings, resolveThemeCssVariables } from './lib/theme/runtime'

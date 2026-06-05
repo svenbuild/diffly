@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import AppTopBar from './lib/AppTopBar.svelte'
-  import PickerPane from './lib/PickerPane.svelte'
-  import SettingsScreen from './lib/SettingsScreen.svelte'
+  import CompareScreen from './lib/screens/CompareScreen.svelte'
+  import SettingsRoute from './lib/screens/SettingsRoute.svelte'
+  import SetupScreen from './lib/screens/SetupScreen.svelte'
 
   import {
     choosePath,
@@ -29,6 +29,10 @@
     filePaneLabel,
     type CompareRootDisplay,
   } from './lib/app/compare-display'
+  import {
+    DEFAULT_COMPARE_SIDEBAR_WIDTH,
+    createCompareSidebarResizeController,
+  } from './lib/app/compare-sidebar-resize'
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
     buildDirectoryComparePairs,
@@ -38,8 +42,6 @@
   } from './lib/app/directory-compare-pairs'
   import {
     createUpdateController,
-    formatLastUpdateCheck,
-    formatLastUpdateCheckRelative,
     formatUpdateChannelLabel,
     getUpdateIndicatorTitle,
     shouldShowUpdateIndicator as shouldShowUpdateIndicatorState,
@@ -68,7 +70,6 @@
     setThemeMode as applyThemeMode,
     setThemePreset as applyThemePreset,
     setThemeSemanticColorOverride as applyThemeSemanticColorOverride,
-    setThemeTranslucency as applyThemeTranslucency,
   } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
   import {
@@ -140,7 +141,6 @@
   const BACKGROUND_DIFF_PRELOAD_DELAY_MS = 250
   const BACKGROUND_DIFF_PRELOAD_CONCURRENCY = 1
   const DIRECTORY_COMPARE_POLL_INTERVAL_MS = 50
-  const DEFAULT_COMPARE_SIDEBAR_WIDTH = 238
   const DEFAULT_UPDATE_CHANNEL: UpdateChannel = 'stable'
 
   type Screen = 'setup' | 'compare' | 'settings'
@@ -227,8 +227,6 @@
   let activeDetailRequestId = 0
   let compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareSidebarResizeActive = false
-  let compareSidebarResizeFrame: number | null = null
-  let pendingCompareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
   let compareDirtyReason: CompareDirtyReason | null = null
   let compareNeedsRefresh = false
   let leftExplorer = createExplorerPane('Left')
@@ -264,6 +262,15 @@
   }
   const diffCache = createDiffCacheController({
     openCompareItem,
+  })
+  const compareSidebarResizeController = createCompareSidebarResizeController({
+    getEnabled: () => mode === 'directory',
+    setActive: (active) => {
+      compareSidebarResizeActive = active
+    },
+    setWidth: (width) => {
+      compareSidebarWidth = width
+    },
   })
   let PierreDirectoryTreeComponent: typeof import('./lib/compare/PierreDirectoryTree.svelte').default | null = null
   let CompareViewerComponent: typeof import('./lib/compare/CompareViewer.svelte').default | null = null
@@ -327,63 +334,12 @@
     setViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')
   }
 
-  function clampCompareSidebarWidth(value: number) {
-    return Math.min(380, Math.max(206, Math.round(value)))
-  }
-
-  function stopCompareSidebarResize() {
-    if (compareSidebarResizeFrame !== null) {
-      window.cancelAnimationFrame(compareSidebarResizeFrame)
-      compareSidebarResizeFrame = null
-    }
-    compareSidebarWidth = pendingCompareSidebarWidth
-    compareSidebarResizeActive = false
-  }
-
-  function updateCompareSidebarWidth(clientX: number) {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    pendingCompareSidebarWidth = clampCompareSidebarWidth(clientX)
-    if (compareSidebarResizeFrame !== null) {
-      return
-    }
-
-    compareSidebarResizeFrame = window.requestAnimationFrame(() => {
-      compareSidebarResizeFrame = null
-      compareSidebarWidth = pendingCompareSidebarWidth
-    })
-  }
-
   function resetCompareSidebarWidth() {
-    pendingCompareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
-    compareSidebarWidth = DEFAULT_COMPARE_SIDEBAR_WIDTH
-    stopCompareSidebarResize()
+    compareSidebarResizeController.reset()
   }
 
   function startCompareSidebarResize(event: PointerEvent) {
-    if (mode !== 'directory') {
-      return
-    }
-
-    compareSidebarResizeActive = true
-    updateCompareSidebarWidth(event.clientX)
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      updateCompareSidebarWidth(moveEvent.clientX)
-    }
-
-    const handlePointerUp = () => {
-      stopCompareSidebarResize()
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-    }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
+    compareSidebarResizeController.start(event)
   }
 
   const toggleIgnoreWhitespace = () => {
@@ -554,9 +510,7 @@
         window.cancelAnimationFrame(paneWheelScrollFrame)
       }
 
-      if (compareSidebarResizeFrame !== null) {
-        window.cancelAnimationFrame(compareSidebarResizeFrame)
-      }
+      compareSidebarResizeController.dispose()
 
       clearDirectoryComparePollTimer()
 
@@ -680,10 +634,6 @@
 
   function setThemeContrast(variant: ThemeVariant, value: number) {
     appearanceSettings = applyThemeContrast(appearanceSettings, variant, value)
-  }
-
-  function setThemeTranslucency(variant: ThemeVariant, enabled: boolean) {
-    appearanceSettings = applyThemeTranslucency(appearanceSettings, variant, enabled)
   }
 
   function updateIndicatorTitle() {
@@ -2329,451 +2279,145 @@
 </svelte:head>
 
 {#if screen === 'setup'}
-  <main class="screen setup-screen">
-    <AppTopBar context="Setup">
-      {#snippet status()}
-        {#if shouldShowUpdateIndicator()}
-          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-          </button>
-        {/if}
-      {/snippet}
-
-      {#snippet middle()}
-        {#if setupTopbarWarning}
-          <p class="setup-topbar-warning">{setupTopbarWarning}</p>
-        {/if}
-      {/snippet}
-
-      {#snippet actions()}
-      <div class="setup-bar-actions">
-        <button
-          class="primary setup-compare-button"
-          class:compare-action-busy={loading}
-          aria-busy={loading}
-          disabled={!pickerCanCompare || loading}
-          title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
-          type="button"
-          on:click={runCompare}
-        >
-          {#if loading}
-            Comparing...
-          {:else}
-            Compare
-          {/if}
-        </button>
-        <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
-          Settings
-        </button>
-      </div>
-      {/snippet}
-    </AppTopBar>
-
-    {#if errorMessage}
-      <p class="error-banner">{errorMessage}</p>
-    {/if}
-
-    <section class="setup-body">
-      <section class="setup-launcher" aria-label="Compare setup">
-        <section class="picker-workspace">
-          {#each pickerSides as item}
-            <PickerPane
-              side={item.side}
-              pane={item.pane}
-              {pickerLoading}
-              {canGoBack}
-              {canGoForward}
-              {currentDrive}
-              {formatModified}
-              {formatSize}
-              {entryTypeLabel}
-              {changeDrive}
-              {navigateHistory}
-              {navigateTo}
-              {updatePathInput}
-              {submitPathInput}
-              {browseSystem}
-              setCurrentFolderAsTarget={useCurrentFolder}
-              {isCurrentFolderSelected}
-              {selectListEntry}
-              {activateListEntry}
-              {isTargetSelected}
-            />
-          {/each}
-        </section>
-
-      </section>
-    </section>
-  </main>
+  <SetupScreen
+    {updateIndicatorState}
+    showUpdateIndicator={shouldShowUpdateIndicator()}
+    updateIndicatorTitle={updateIndicatorTitle()}
+    {openUpdateSettings}
+    {setupTopbarWarning}
+    {loading}
+    {pickerCanCompare}
+    {sameSelectionWarning}
+    {setupHintMessage}
+    {runCompare}
+    {openSettings}
+    {errorMessage}
+    {pickerSides}
+    {pickerLoading}
+    {canGoBack}
+    {canGoForward}
+    {currentDrive}
+    {formatModified}
+    {formatSize}
+    {entryTypeLabel}
+    {changeDrive}
+    {navigateHistory}
+    {navigateTo}
+    {updatePathInput}
+    {submitPathInput}
+    {browseSystem}
+    {useCurrentFolder}
+    {isCurrentFolderSelected}
+    {selectListEntry}
+    {activateListEntry}
+    {isTargetSelected}
+  />
 {:else if screen === 'compare'}
-  <main
-    class="screen compare-screen"
-    style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
-  >
-    <AppTopBar context="Compare">
-      {#snippet status()}
-        {#if shouldShowUpdateIndicator()}
-          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-          </button>
-        {/if}
-      {/snippet}
-
-      {#snippet middle()}
-      <div
-        class:compare-context-updating={compareSurfaceTransitioning}
-        class="compare-editor-context"
-        aria-label="Compare context"
-      >
-        <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
-          {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
-        </strong>
-        <span title={comparePairsTooltip}>
-          {comparePairsLabel}
-        </span>
-      </div>
-      {/snippet}
-
-      {#snippet actions()}
-      <div class="compare-actions">
-        <div class="compare-action-group diff-nav-actions">
-          <div
-            class="nav-button-group segmented-control toolbar-segmented-control"
-            aria-label="Diff navigation"
-            role="group"
-          >
-            <button
-              class="secondary toolbar-button nav-button nav-button-group-item"
-              aria-label="Jump to the previous difference"
-              disabled={!canGoToPreviousDiff}
-              title="Jump to the previous difference"
-              type="button"
-              on:click={goToPreviousDifference}
-            >
-              <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
-                <path
-                  d="M9.8 3.2 5.4 8l4.4 4.8"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-              </svg>
-              <span>Prev</span>
-            </button>
-            <button
-              class="secondary toolbar-button nav-button nav-button-group-item"
-              aria-label="Jump to the next difference"
-              disabled={!canGoToNextDiff}
-              title="Jump to the next difference"
-              type="button"
-              on:click={goToNextDifference}
-            >
-              <span>Next</span>
-              <svg aria-hidden="true" class="nav-button-icon" viewBox="0 0 16 16">
-                <path
-                  d="M6.2 3.2 10.6 8l-4.4 4.8"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div class="compare-action-group display-actions">
-          <button
-            aria-label={viewMode === 'sideBySide' ? 'Switch to unified view' : 'Switch to split view'}
-            aria-pressed={viewMode === 'unified'}
-            class:unified-active={viewMode === 'unified'}
-            class="view-mode-toggle"
-            disabled={!textDiffActive}
-            type="button"
-            on:click={toggleViewMode}
-          >
-            <span
-              aria-hidden="true"
-              class="view-mode-toggle-thumb"
-            ></span>
-            <span
-              aria-hidden="true"
-              class:active={viewMode === 'sideBySide'}
-              class="view-mode-option"
-            >
-              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
-                <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-                <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
-              </svg>
-              <span class="view-mode-label">Split</span>
-            </span>
-            <span
-              aria-hidden="true"
-              class:active={viewMode === 'unified'}
-              class="view-mode-option"
-            >
-              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
-                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
-                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
-              </svg>
-              <span class="view-mode-label">Unified</span>
-            </span>
-          </button>
-        </div>
-
-        <div class="compare-action-group utility-actions">
-          <button
-            class="secondary toolbar-button icon-button swap-button"
-            aria-label="Switch left and right sides"
-            disabled={loading || detailLoading || pickerLoading}
-            title="Switch left and right sides"
-            type="button"
-            on:click={swapComparedSides}
-          >
-            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-              <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-              <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-              <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            </svg>
-          </button>
-
-          <button
-            aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-            aria-busy={loading}
-            class:compare-action-busy={loading}
-            class:pending-refresh={compareNeedsRefresh}
-            class="secondary toolbar-button icon-button refresh-button"
-            title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
-            type="button"
-            disabled={loading}
-            on:click={runCompare}
-          >
-            <span class="refresh-icon-slot" aria-hidden="true">
-              {#if loading}
-                <span class="refresh-spinner visible"></span>
-              {:else}
-                <svg class="refresh-icon" viewBox="0 0 16 16">
-                  <path
-                    d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M10.1 10.9h2.7v2.6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M5.9 5.1H3.2V2.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.7"
-                  />
-                </svg>
-              {/if}
-            </span>
-          </button>
-        </div>
-
-        <div class="compare-action-group global-actions">
-          <button class="secondary toolbar-button" type="button" on:click={() => openSettings('compare')}>
-            Settings
-          </button>
-          <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
-            Setup
-          </button>
-        </div>
-      </div>
-      {/snippet}
-    </AppTopBar>
-
-    {#if errorMessage}
-      <p class="error-banner">{errorMessage}</p>
-    {/if}
-
-    <section
-      class:resizing-sidebar={compareSidebarResizeActive}
-      class:single-pane={mode === 'file'}
-      class="compare-layout"
-      style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
-    >
-      {#if mode === 'directory'}
-        {#if PierreDirectoryTreeComponent}
-          <svelte:component
-            this={PierreDirectoryTreeComponent}
-            {loading}
-            {directoryEntries}
-            entriesRevision={directoryEntriesRevision}
-            {selectedRelativePath}
-            {treeSettings}
-            {appearanceSettings}
-            {resolvedThemeMode}
-            {selectEntry}
-          />
-        {:else}
-          <aside class="directory-tree-panel">
-            <div class="directory-tree-host">
-              <div class="directory-tree-state">
-                <span class="refresh-spinner visible"></span>
-                <p>Loading file list...</p>
-              </div>
-            </div>
-          </aside>
-        {/if}
-        <button
-          aria-label="Resize file list panel"
-          class="compare-sidebar-resizer"
-          type="button"
-          on:dblclick={resetCompareSidebarWidth}
-          on:pointerdown={startCompareSidebarResize}
-        ></button>
-      {/if}
-
-      {#if CompareViewerComponent}
-        <svelte:component
-          this={CompareViewerComponent}
-          {mode}
-          {activeDiff}
-          {directoryEntries}
-          {selectedRelativePath}
-          scrollTargetRevision={directoryScrollTargetRevision}
-          {loading}
-          {detailLoading}
-          {viewerSettings}
-          {appearanceSettings}
-          {resolvedThemeMode}
-          {viewMode}
-          revision={compareRevision}
-          {leftPath}
-          {rightPath}
-          compareOptions={activeCompareOptions}
-          transitionActive={compareSurfaceTransitioning}
-          resolveEntryBases={getDetailBasesForPath}
-        />
-      {:else}
-        <section class="compare-viewer">
-          <div class="compare-viewer-state">
-            <span class="refresh-spinner visible"></span>
-            <p>Opening compare view...</p>
-          </div>
-        </section>
-      {/if}
-    </section>
-  </main>
+  <CompareScreen
+    {updateIndicatorState}
+    showUpdateIndicator={shouldShowUpdateIndicator()}
+    updateIndicatorTitle={updateIndicatorTitle()}
+    {openUpdateSettings}
+    {mode}
+    {compareSidebarWidth}
+    {compareSurfaceTransitioning}
+    {diffHeaderContext}
+    {selectedRelativePath}
+    {comparePairsTooltip}
+    {comparePairsLabel}
+    {canGoToPreviousDiff}
+    {canGoToNextDiff}
+    {goToPreviousDifference}
+    {goToNextDifference}
+    {viewMode}
+    {textDiffActive}
+    {toggleViewMode}
+    {loading}
+    {detailLoading}
+    {pickerLoading}
+    {swapComparedSides}
+    {compareNeedsRefresh}
+    {runCompare}
+    {openSettings}
+    {goToSetup}
+    {errorMessage}
+    {compareSidebarResizeActive}
+    {PierreDirectoryTreeComponent}
+    {CompareViewerComponent}
+    {directoryEntries}
+    {directoryEntriesRevision}
+    {treeSettings}
+    {appearanceSettings}
+    {resolvedThemeMode}
+    {selectEntry}
+    {resetCompareSidebarWidth}
+    {startCompareSidebarResize}
+    {activeDiff}
+    {directoryScrollTargetRevision}
+    {viewerSettings}
+    {compareRevision}
+    {leftPath}
+    {rightPath}
+    {activeCompareOptions}
+    {getDetailBasesForPath}
+  />
 {:else}
-  <main class="screen settings-view">
-    <AppTopBar context="Settings">
-      {#snippet status()}
-        {#if shouldShowUpdateIndicator()}
-          <button class="secondary update-indicator" title={updateIndicatorTitle()} type="button" on:click={openUpdateSettings}>
-            {#if updateIndicatorState.status === 'downloading'}<span class="refresh-spinner visible"></span>{:else}Update{/if}
-          </button>
-        {/if}
-      {/snippet}
-
-      {#snippet actions()}
-      <button
-        aria-label="Close settings"
-        class="secondary toolbar-button settings-close-button"
-        title="Close settings"
-        type="button"
-        on:click={goBackFromSettings}
-      >
-        <svg aria-hidden="true" class="settings-close-icon" viewBox="0 0 16 16">
-          <path
-            d="M4 4l8 8M12 4 4 12"
-            fill="none"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-width="1.6"
-          />
-        </svg>
-        <span>Close</span>
-      </button>
-      {/snippet}
-    </AppTopBar>
-
-    {#if errorMessage}
-      <p class="error-banner">{errorMessage}</p>
-    {/if}
-
-    <SettingsScreen
-      activeSection={activeSettingsSection}
-      {appearanceSettings}
-      lightTheme={lightAppearanceTheme}
-      darkTheme={darkAppearanceTheme}
-      visibleThemeVariants={visibleAppearanceVariants}
-      availableLightThemes={availableLightThemes}
-      availableDarkThemes={availableDarkThemes}
-      {ignoreWhitespace}
-      {ignoreCase}
-      {viewMode}
-      {viewerSettings}
-      {treeSettings}
-      minUiFontSize={MIN_UI_FONT_SIZE}
-      maxUiFontSize={MAX_UI_FONT_SIZE}
-      minCodeFontSize={MIN_CODE_FONT_SIZE}
-      maxCodeFontSize={MAX_CODE_FONT_SIZE}
-      {checkForUpdatesOnLaunch}
-      {updateChannel}
-      updateChannelLabel={formatUpdateChannelLabel(updateChannel)}
-      currentVersion={updateIndicatorState.currentVersion}
-      updateIndicatorState={updateIndicatorState.status}
-      updateStatusMessage={updateIndicatorState.message}
-      availableUpdate={updateIndicatorState.metadata}
-      lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
-      lastUpdateCheckRelativeLabel={formatLastUpdateCheckRelative(lastUpdateCheckAt)}
-      updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-      comparisonRulesRequireRefresh={hasActiveCompareSession() && mode === 'directory'}
-      {compareNeedsRefresh}
-      onSelectSection={(section) => (activeSettingsSection = section)}
-      onSetThemeMode={setThemeMode}
-      onSetThemePreset={setThemePreset}
-      onSetThemeColor={setThemeColorOverride}
-      onSetThemeSemanticColor={setThemeSemanticColorOverride}
-      onSetThemeFont={setThemeFontOverride}
-      onSetThemeContrast={setThemeContrast}
-      onSetUsePointerCursor={setUsePointerCursor}
-      onStepUiFontSize={stepUiFontSize}
-      onStepCodeFontSize={stepCodeFontSize}
-      onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
-      onToggleIgnoreCase={toggleIgnoreCase}
-      onSetViewMode={setViewMode}
-      onSetViewerSettings={(settings) => {
-        viewerSettings = settings
-        viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
-      }}
-      onSetTreeSettings={(settings) => {
-        treeSettings = settings
-      }}
-      onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
-      onSetUpdateChannel={setUpdateChannel}
-      onCheckForUpdates={runUpdateCheck}
-      onDownloadUpdate={beginUpdateDownload}
-      onInstallUpdate={applyDownloadedUpdate}
-      onResetPreferences={confirmResetPreferences}
-      onClearRememberedSelections={confirmClearRememberedSelections}
-      onResetEverything={resetEverything}
-    />
-  </main>
+  <SettingsRoute
+    {activeSettingsSection}
+    {appearanceSettings}
+    {lightAppearanceTheme}
+    {darkAppearanceTheme}
+    {visibleAppearanceVariants}
+    {availableLightThemes}
+    {availableDarkThemes}
+    {ignoreWhitespace}
+    {ignoreCase}
+    {viewMode}
+    {viewerSettings}
+    {treeSettings}
+    minUiFontSize={MIN_UI_FONT_SIZE}
+    maxUiFontSize={MAX_UI_FONT_SIZE}
+    minCodeFontSize={MIN_CODE_FONT_SIZE}
+    maxCodeFontSize={MAX_CODE_FONT_SIZE}
+    {checkForUpdatesOnLaunch}
+    {updateChannel}
+    {updateIndicatorState}
+    {lastUpdateCheckAt}
+    comparisonRulesRequireRefresh={hasActiveCompareSession()}
+    {compareNeedsRefresh}
+    {mode}
+    {errorMessage}
+    showUpdateIndicator={shouldShowUpdateIndicator()}
+    updateIndicatorTitle={updateIndicatorTitle()}
+    {openUpdateSettings}
+    onClose={goBackFromSettings}
+    onSelectSection={(section) => (activeSettingsSection = section)}
+    onSetThemeMode={setThemeMode}
+    onSetThemePreset={setThemePreset}
+    onSetThemeColor={setThemeColorOverride}
+    onSetThemeSemanticColor={setThemeSemanticColorOverride}
+    onSetThemeFont={setThemeFontOverride}
+    onSetThemeContrast={setThemeContrast}
+    onSetUsePointerCursor={setUsePointerCursor}
+    onStepUiFontSize={stepUiFontSize}
+    onStepCodeFontSize={stepCodeFontSize}
+    onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
+    onToggleIgnoreCase={toggleIgnoreCase}
+    onSetViewMode={setViewMode}
+    onSetViewerSettings={(settings) => {
+      viewerSettings = settings
+      viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
+    }}
+    onSetTreeSettings={(settings) => {
+      treeSettings = settings
+    }}
+    onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
+    onSetUpdateChannel={setUpdateChannel}
+    onCheckForUpdates={runUpdateCheck}
+    onDownloadUpdate={beginUpdateDownload}
+    onInstallUpdate={applyDownloadedUpdate}
+    onResetPreferences={confirmResetPreferences}
+    onClearRememberedSelections={confirmClearRememberedSelections}
+    onResetEverything={resetEverything}
+  />
 {/if}

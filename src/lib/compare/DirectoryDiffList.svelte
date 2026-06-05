@@ -52,8 +52,6 @@
     relativePath,
   })
 
-  const DIRECTORY_DIFF_LOAD_ATTEMPTS = 3
-  const DIRECTORY_DIFF_LOAD_TIMEOUT_MS = 30000
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 0
@@ -226,29 +224,6 @@
     collapsedPaths = nextCollapsedPaths
   }
 
-  async function loadEntryDiffWithRetry(entry: DirectoryEntryResult) {
-    let lastError: unknown = null
-
-    for (let attempt = 0; attempt < DIRECTORY_DIFF_LOAD_ATTEMPTS; attempt += 1) {
-      try {
-        const bases = resolveEntryBases(entry.relativePath)
-        return await withLoadTimeout(
-          openCompareItem(
-            bases.leftBase,
-            bases.rightBase,
-            bases.relativePath,
-            compareOptions,
-          ),
-          DIRECTORY_DIFF_LOAD_TIMEOUT_MS,
-        )
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    throw lastError
-  }
-
   async function ensureLoaded(
     entry: DirectoryEntryResult,
     generation = loadGeneration,
@@ -278,7 +253,13 @@
     })
 
     try {
-      const diff = await loadEntryDiffWithRetry(entry)
+      const bases = resolveEntryBases(entry.relativePath)
+      const diff = await openCompareItem(
+        bases.leftBase,
+        bases.rightBase,
+        bases.relativePath,
+        compareOptions,
+      )
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
@@ -775,21 +756,6 @@
     cancelBackgroundLoadScheduling()
     cancelEntryStateFlush()
   })
-
-  function withLoadTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-    let timeoutId: number | null = null
-    const timeoutPromise = new Promise<T>((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        reject(new Error('Timed out while loading this file diff.'))
-      }, timeoutMs)
-    })
-
-    return Promise.race([promise, timeoutPromise]).finally(() => {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-      }
-    })
-  }
 
   $: {
     directoryEntries

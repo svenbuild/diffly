@@ -149,24 +149,6 @@ export function setThemeContrast(
   })
 }
 
-export function setThemeTranslucency(
-  appearanceSettings: AppearanceSettings,
-  variant: ThemeVariant,
-  enabled: boolean,
-) {
-  const nextOpaqueWindows = !enabled
-
-  return setVariantOverride(appearanceSettings, variant, (next, base) => {
-    if (nextOpaqueWindows === base.opaqueWindows) {
-      delete next.opaqueWindows
-    } else {
-      next.opaqueWindows = nextOpaqueWindows
-    }
-
-    return next
-  })
-}
-
 export function scheduleThemeTransitionCleanup(
   root: HTMLElement,
   existingTimer: number | null,
