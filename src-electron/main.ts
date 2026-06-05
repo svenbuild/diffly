@@ -8,21 +8,12 @@ import {
   registerWindowLaunchContext,
 } from './services/backend'
 
-// Force GPU-accelerated compositing even when the GPU/driver is on Chromium's
-// blocklist. On some Windows GPU/driver combos Electron silently falls back to
-// software compositing, which makes scrolling (especially the virtualized diff
-// view) stutter on every frame — even though the same machine's browser scrolls
-// perfectly with the GPU enabled. These switches must be set before app `ready`.
-app.commandLine.appendSwitch('ignore-gpu-blocklist')
-app.commandLine.appendSwitch('enable-gpu-rasterization')
-app.commandLine.appendSwitch('enable-zero-copy')
-// The machine's browser uses the NVIDIA GPU via ANGLE/D3D11 fine, but Electron's
-// GPU process can fall back to software when it can't initialise inside the
-// sandbox (common with locked-down/corporate security software or older
-// drivers). Force the same D3D11 ANGLE backend the browser uses and drop the GPU
-// sandbox so the process can reach the driver.
-app.commandLine.appendSwitch('use-angle', 'd3d11')
-app.commandLine.appendSwitch('disable-gpu-sandbox')
+// Use Electron's default GPU configuration — no forced GPU switches. The
+// reference app T3 Code (github.com/pingdotgg/t3code) renders diffs with the
+// same @pierre/diffs engine and NO GPU command-line switches, and scrolls
+// smoothly on the same hardware. The force-GPU switches tried earlier
+// (ignore-gpu-blocklist / use-angle / disable-gpu-sandbox) did not enable the
+// GPU and can themselves destabilise GPU-process init, so they are removed.
 
 interface WindowState {
   x: number
@@ -298,12 +289,20 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
-    // Diagnostic: log whether compositing/rasterization is hardware-accelerated.
-    // If gpu_compositing is "software"/"disabled", scrolling will stutter and a
-    // driver update (or the GPU switches above) is needed. Visible in the
-    // terminal when run via `npm run preview` (not in the packaged app).
-    if (!app.isPackaged) {
-      console.log('[diffly] GPU feature status:', app.getGPUFeatureStatus())
+    // Diagnostic: record whether compositing/rasterization is hardware
+    // accelerated. Logged to the console (visible via `npm run preview`) AND
+    // written to <userData>/gpu-status.json so the GPU status can be inspected
+    // from the packaged/installed build too (where there is no console).
+    try {
+      const gpuStatus = app.getGPUFeatureStatus()
+      console.log('[diffly] GPU feature status:', gpuStatus)
+      writeFileSync(
+        join(app.getPath('userData'), 'gpu-status.json'),
+        JSON.stringify(gpuStatus, null, 2),
+        'utf8',
+      )
+    } catch {
+      // Best-effort diagnostics only.
     }
 
     registerIpcHandlers()
