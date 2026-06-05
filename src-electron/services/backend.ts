@@ -1,17 +1,12 @@
 import { app, dialog, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import type { Stats } from 'node:fs'
 import {
-  mkdir,
   open,
   readdir,
   readFile,
-  rename,
-  rm,
   stat,
-  writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import type {
@@ -26,14 +21,20 @@ import type {
   PersistedSession,
   PollDirectoryCompareResponse,
   TextDiffPayload,
-  UpdateActionResult,
   UpdateChannel,
-  UpdateCheckResult,
   UnsupportedDiffPayload,
 } from '../../src/lib/types'
+import {
+  loadSessionState,
+  saveSessionState,
+} from './session-store'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+} from './update-service'
 
 const MAX_TEXT_BYTES = 1024 * 1024
-const MAX_SESSION_STATE_BYTES = 1024 * 1024
 const BINARY_SAMPLE_BYTES = 8192
 const FILES_EQUAL_CHUNK_BYTES = 1024 * 1024
 const DIRECTORY_COMPARE_CONCURRENCY = 16
@@ -117,7 +118,8 @@ const directoryListingCache = new Map<string, CachedDirectoryListing>()
 const directoryJobs = new Map<string, DirectoryJob>()
 const windowLaunchContexts = new Map<number, LaunchContext | null>()
 let fileDiffCacheBytes = 0
-let autoUpdaterInstance: Awaited<ReturnType<typeof loadAutoUpdater>> | null = null
+
+export { loadSessionState, saveSessionState } from './session-store'
 
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
@@ -366,43 +368,6 @@ function compareExplorerEntries(left: ExplorerEntry, right: ExplorerEntry) {
   return EXPLORER_ENTRY_COLLATOR.compare(left.name, right.name)
 }
 
-export async function loadSessionState(): Promise<PersistedSession | null> {
-  const filePath = sessionPath()
-  if (!existsSync(filePath)) {
-    return null
-  }
-
-  const info = await stat(filePath)
-  validateSessionStateSize(info.size)
-  return JSON.parse(await readFile(filePath, 'utf8')) as PersistedSession
-}
-
-export async function saveSessionState(session: PersistedSession) {
-  const json = JSON.stringify(session)
-  validateSessionStateSize(Buffer.byteLength(json))
-  const filePath = sessionPath()
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
-
-  await mkdir(dirname(filePath), { recursive: true })
-  try {
-    await writeFile(tempPath, json, 'utf8')
-    await rename(tempPath, filePath)
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined)
-    throw error
-  }
-}
-
-function sessionPath() {
-  return join(app.getPath('userData'), 'session.json')
-}
-
-function validateSessionStateSize(byteLength: number) {
-  if (byteLength > MAX_SESSION_STATE_BYTES) {
-    throw new Error('Session state is too large to load safely.')
-  }
-}
-
 function loadLaunchContext(webContentsId: number): LaunchContext | null {
   if (windowLaunchContexts.has(webContentsId)) {
     return windowLaunchContexts.get(webContentsId) ?? null
@@ -430,101 +395,6 @@ function parseLaunchContext(args: string[]): LaunchContext | null {
   }
 
   return { openHerePath }
-}
-
-async function checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResult> {
-  if (!app.isPackaged) {
-    return unavailableUpdate('Updates are not available in development builds.')
-  }
-
-  try {
-    const autoUpdater = await getAutoUpdater()
-    configureAutoUpdater(autoUpdater, channel)
-    const result = await autoUpdater.checkForUpdates()
-    const info = result?.updateInfo
-    if (!info) {
-      return unavailableUpdate('No update information was returned.')
-    }
-
-    const available = info.version !== app.getVersion()
-    return {
-      kind: available ? 'available' : 'upToDate',
-      available,
-      metadata: {
-        version: info.version,
-        currentVersion: app.getVersion(),
-        body: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
-        date: info.releaseDate,
-      },
-      message: null,
-    }
-  } catch (error) {
-    return {
-      kind: 'error',
-      available: false,
-      metadata: null,
-      message: errorMessage(error),
-    }
-  }
-}
-
-async function downloadUpdate(channel: UpdateChannel): Promise<UpdateActionResult> {
-  if (!app.isPackaged) {
-    return unavailableAction('Updates are not available in development builds.')
-  }
-
-  try {
-    const autoUpdater = await getAutoUpdater()
-    configureAutoUpdater(autoUpdater, channel)
-    await autoUpdater.downloadUpdate()
-    return { kind: 'downloaded', message: null }
-  } catch (error) {
-    return { kind: 'error', message: errorMessage(error) }
-  }
-}
-
-async function installUpdate(_channel: UpdateChannel): Promise<UpdateActionResult> {
-  if (!app.isPackaged) {
-    return unavailableAction('Updates are not available in development builds.')
-  }
-
-  try {
-    const autoUpdater = await getAutoUpdater()
-    autoUpdater.quitAndInstall(false, true)
-    return { kind: 'installed', message: null }
-  } catch (error) {
-    return { kind: 'error', message: errorMessage(error) }
-  }
-}
-
-async function getAutoUpdater() {
-  if (!autoUpdaterInstance) {
-    autoUpdaterInstance = await loadAutoUpdater()
-    autoUpdaterInstance.autoDownload = false
-    autoUpdaterInstance.autoInstallOnAppQuit = false
-  }
-
-  return autoUpdaterInstance
-}
-
-async function loadAutoUpdater() {
-  const updaterModule = await import('electron-updater')
-  return updaterModule.default?.autoUpdater ?? updaterModule.autoUpdater
-}
-
-function configureAutoUpdater(
-  autoUpdater: Awaited<ReturnType<typeof loadAutoUpdater>>,
-  channel: UpdateChannel,
-) {
-  autoUpdater.allowPrerelease = channel === 'prerelease'
-}
-
-function unavailableUpdate(message: string): UpdateCheckResult {
-  return { kind: 'unavailable', available: false, metadata: null, message }
-}
-
-function unavailableAction(message: string): UpdateActionResult {
-  return { kind: 'unavailable', message }
 }
 
 export async function comparePaths(

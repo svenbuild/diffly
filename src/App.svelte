@@ -24,6 +24,12 @@
   } from './lib/api'
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
+    buildDirectoryComparePairs,
+    findDirectoryComparePairForPath as findDirectoryComparePairInList,
+    prefixedRelativePathFor as prefixedRelativePathForPair,
+    type DirectoryComparePair,
+  } from './lib/app/directory-compare-pairs'
+  import {
     createUpdateController,
     formatLastUpdateCheck,
     formatLastUpdateCheckRelative,
@@ -67,6 +73,10 @@
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
+  import {
+    normalizeTreeSettings,
+    normalizeViewerSettings,
+  } from './lib/app/settings-normalizers'
   import type {
     CompareMode,
     CompareOptions,
@@ -250,12 +260,6 @@
   let activeDirectoryCompareJobId = ''
   let directoryComparePollTimer: number | null = null
   let directoryCompareEntrySlots: Array<DirectoryEntryResult | null | undefined> = []
-  type DirectoryComparePair = {
-    id: string
-    leftBase: string
-    rightBase: string
-    label: string
-  }
   let directoryComparePairs: DirectoryComparePair[] = []
   let directoryComparePairSlots: Array<Array<DirectoryEntryResult | null | undefined>> = []
   let directoryComparePairChangedIndices: number[][] = []
@@ -350,118 +354,6 @@
     ignoreWhitespace,
     ignoreCase,
   })
-
-  function normalizeViewerSettings(
-    settings: CompareViewerSettings | null | undefined,
-    legacy?: PersistedSession | null,
-  ): CompareViewerSettings {
-    const current = viewerSettings
-    const legacyDiffStyle = legacy?.viewMode === 'unified' ? 'unified' : 'split'
-    const legacyOverflow = legacy?.wrapSideBySideLines ? 'wrap' : 'scroll'
-    const legacyLineDiffType = legacy?.showInlineHighlights === true ? 'word-alt' : 'none'
-    const legacySyntaxMode = legacy?.showSyntaxHighlighting === false ? 'plain' : 'shiki'
-
-    return {
-      diffStyle: settings?.diffStyle ?? legacyDiffStyle,
-      codeOverflow: settings?.codeOverflow ?? legacyOverflow,
-      diffIndicators: settings?.diffIndicators ?? 'bars',
-      lineDiffType: settings?.lineDiffType ?? legacyLineDiffType,
-      hunkSeparators: settings?.hunkSeparators ?? 'line-info',
-      expandUnchanged: settings?.expandUnchanged ?? Boolean(legacy?.showFullFile),
-      collapsedContextThreshold: clampNumber(
-        settings?.collapsedContextThreshold ?? legacy?.contextLines,
-        0,
-        500,
-        current.collapsedContextThreshold,
-      ),
-      expansionLineCount: clampNumber(settings?.expansionLineCount, 1, 5000, current.expansionLineCount),
-      disableLineNumbers: settings?.disableLineNumbers ?? false,
-      disableFileHeader: settings?.disableFileHeader ?? false,
-      disableBackground: settings?.disableBackground ?? false,
-      disableVirtualizationBuffers: settings?.disableVirtualizationBuffers ?? false,
-      stickyHeader: settings?.stickyHeader ?? false,
-      syntaxMode: settings?.syntaxMode ?? legacySyntaxMode,
-      preferredHighlighter: isPreferredHighlighter(settings?.preferredHighlighter)
-        ? settings.preferredHighlighter
-        : current.preferredHighlighter,
-      useCSSClasses: settings?.useCSSClasses ?? false,
-      tokenizeMaxLineLength: clampNumber(settings?.tokenizeMaxLineLength, 0, 20000, current.tokenizeMaxLineLength),
-      tokenizeMaxLength: clampNumber(settings?.tokenizeMaxLength, 0, 1000000, current.tokenizeMaxLength),
-      maxLineDiffLength: clampNumber(settings?.maxLineDiffLength, 0, 20000, current.maxLineDiffLength),
-      lineHoverHighlight: isLineHoverHighlight(settings?.lineHoverHighlight)
-        ? settings.lineHoverHighlight
-        : current.lineHoverHighlight,
-      enableTokenInteractionsOnWhitespace: settings?.enableTokenInteractionsOnWhitespace ?? false,
-      enableGutterUtility: settings?.enableGutterUtility ?? false,
-      enableLineSelection: settings?.enableLineSelection ?? false,
-      controlledSelection: settings?.controlledSelection ?? false,
-    }
-  }
-
-  function normalizeTreeSettings(settings: CompareTreeSettings | null | undefined): CompareTreeSettings {
-    const current = treeSettings
-
-    return {
-      density: isTreeDensity(settings?.density) ? settings.density : current.density,
-      customDensity: clampNumber(settings?.customDensity, 0.5, 2, current.customDensity),
-      flattenEmptyDirectories: settings?.flattenEmptyDirectories ?? true,
-      stickyFolders: settings?.stickyFolders ?? true,
-      initialExpansion: isTreeInitialExpansion(settings?.initialExpansion)
-        ? settings.initialExpansion
-        : current.initialExpansion,
-      initialExpansionDepth: clampNumber(settings?.initialExpansionDepth, 0, 12, current.initialExpansionDepth),
-      initialExpandedPaths: Array.isArray(settings?.initialExpandedPaths)
-        ? settings.initialExpandedPaths
-            .filter((path) => typeof path === 'string' && path.trim())
-            .map((path) => path.trim())
-        : current.initialExpandedPaths,
-      sortMode: settings?.sortMode === 'default' ? 'default' : 'path',
-      searchMode: isTreeSearchMode(settings?.searchMode) ? settings.searchMode : current.searchMode,
-      search: settings?.search ?? true,
-      searchFakeFocus: settings?.searchFakeFocus ?? false,
-      searchBlurBehavior: settings?.searchBlurBehavior === 'retain' ? 'retain' : 'close',
-      initialSearchQuery: typeof settings?.initialSearchQuery === 'string' ? settings.initialSearchQuery : '',
-      initialVisibleRowCount: clampNumber(settings?.initialVisibleRowCount, 1, 200, current.initialVisibleRowCount),
-      itemHeight: clampNumber(settings?.itemHeight, 18, 60, current.itemHeight),
-      overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
-      dragAndDrop: settings?.dragAndDrop ?? false,
-      renaming: settings?.renaming ?? false,
-      iconSet: isTreeIconSet(settings?.iconSet) ? settings.iconSet : current.iconSet,
-      coloredIcons: settings?.coloredIcons ?? current.coloredIcons,
-    }
-  }
-
-  function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      return fallback
-    }
-
-    return Math.min(max, Math.max(min, Math.round(value)))
-  }
-
-  function isPreferredHighlighter(value: string | null | undefined): value is CompareViewerSettings['preferredHighlighter'] {
-    return value === 'shiki-js' || value === 'shiki-wasm'
-  }
-
-  function isLineHoverHighlight(value: string | null | undefined): value is CompareViewerSettings['lineHoverHighlight'] {
-    return value === 'disabled' || value === 'both' || value === 'number' || value === 'line'
-  }
-
-  function isTreeDensity(value: string | null | undefined): value is CompareTreeSettings['density'] {
-    return value === 'compact' || value === 'default' || value === 'relaxed' || value === 'custom'
-  }
-
-  function isTreeInitialExpansion(value: string | null | undefined): value is CompareTreeSettings['initialExpansion'] {
-    return value === 'closed' || value === 'open' || value === 'depth'
-  }
-
-  function isTreeSearchMode(value: string | null | undefined): value is CompareTreeSettings['searchMode'] {
-    return value === 'expand-matches' || value === 'collapse-non-matches' || value === 'hide-non-matches'
-  }
-
-  function isTreeIconSet(value: string | null | undefined): value is CompareTreeSettings['iconSet'] {
-    return value === 'minimal' || value === 'standard' || value === 'complete' || value === 'none'
-  }
 
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
     return (
@@ -1041,103 +933,16 @@
     }
   }
 
-  function basenameOf(path: string) {
-    const parts = path.split(/[\\/]+/).filter(Boolean)
-    const last = parts[parts.length - 1] ?? path
-    return /^[A-Za-z]:$/.test(last) ? `${last}\\` : last
-  }
-
-  function buildDirectoryComparePairs(
-    leftPaths: string[],
-    rightPaths: string[],
-  ): DirectoryComparePair[] {
-    // Selection order on left and right is independent (the user clicks in
-    // arbitrary order). Pair by basename first so e.g. CPU on the left gets
-    // matched with CPU on the right regardless of click order. Anything that
-    // does not have a same-named partner falls back to index pairing on the
-    // remaining items.
-    const remainingRight = [...rightPaths]
-    const matchedLeft: Array<{ leftBase: string; rightBase: string }> = []
-    const unmatchedLeft: string[] = []
-
-    for (const leftBase of leftPaths) {
-      const leftName = basenameOf(leftBase)
-      const matchIndex = remainingRight.findIndex(
-        (candidate) => basenameOf(candidate) === leftName,
-      )
-
-      if (matchIndex >= 0) {
-        const [rightBase] = remainingRight.splice(matchIndex, 1)
-        matchedLeft.push({ leftBase, rightBase })
-      } else {
-        unmatchedLeft.push(leftBase)
-      }
-    }
-
-    const fallbackPairs: Array<{ leftBase: string; rightBase: string }> = []
-    for (const [index, leftBase] of unmatchedLeft.entries()) {
-      const rightBase = remainingRight[index] ?? leftBase
-      fallbackPairs.push({ leftBase, rightBase })
-    }
-
-    const orderedPairs = [...matchedLeft, ...fallbackPairs]
-    const labels: string[] = []
-
-    return orderedPairs.map(({ leftBase, rightBase }, index) => {
-      const leftName = basenameOf(leftBase)
-      const rightName = basenameOf(rightBase)
-      const baseLabel = leftName === rightName ? leftName : `${leftName} ↔ ${rightName}`
-
-      let label = baseLabel
-      let suffix = 2
-      while (labels.includes(label)) {
-        label = `${baseLabel} (${suffix})`
-        suffix += 1
-      }
-      labels.push(label)
-
-      return {
-        id: `${index}-${leftBase}-${rightBase}`,
-        leftBase,
-        rightBase,
-        label,
-      }
-    })
-  }
-
   function isMultiPairCompare() {
     return directoryComparePairs.length > 1
   }
 
   function findDirectoryComparePairForPath(prefixedPath: string) {
-    if (directoryComparePairs.length === 0) {
-      return null
-    }
-
-    if (directoryComparePairs.length === 1) {
-      return { pair: directoryComparePairs[0], relativePath: prefixedPath }
-    }
-
-    for (const pair of directoryComparePairs) {
-      const prefix = `${pair.label}/`
-      if (prefixedPath === pair.label) {
-        return { pair, relativePath: '' }
-      }
-
-      if (prefixedPath.startsWith(prefix)) {
-        return { pair, relativePath: prefixedPath.slice(prefix.length) }
-      }
-    }
-
-    return null
+    return findDirectoryComparePairInList(directoryComparePairs, prefixedPath)
   }
 
   function prefixedRelativePathFor(pair: DirectoryComparePair, relativePath: string) {
-    if (!isMultiPairCompare()) {
-      return relativePath
-    }
-
-    return relativePath ? `${pair.label}/${relativePath}` : pair.label
+    return prefixedRelativePathForPair(directoryComparePairs, pair, relativePath)
   }
 
   function getDetailBasesForPath(prefixedPath: string): {
@@ -1631,14 +1436,14 @@
     }
 
     if (session.viewerSettings) {
-      viewerSettings = normalizeViewerSettings(session.viewerSettings, session)
+      viewerSettings = normalizeViewerSettings(session.viewerSettings, viewerSettings, session)
       viewMode = viewerSettings.diffStyle === 'split' ? 'sideBySide' : 'unified'
     } else {
-      viewerSettings = normalizeViewerSettings(null, session)
+      viewerSettings = normalizeViewerSettings(null, viewerSettings, session)
     }
 
     if (session.treeSettings) {
-      treeSettings = normalizeTreeSettings(session.treeSettings)
+      treeSettings = normalizeTreeSettings(session.treeSettings, treeSettings)
     }
 
     appearanceSettings = normalizeAppearanceSettings(
@@ -1779,8 +1584,8 @@
   function resetPreferenceState() {
     mode = 'directory'
     viewMode = 'sideBySide'
-    viewerSettings = normalizeViewerSettings(null)
-    treeSettings = normalizeTreeSettings(null)
+    viewerSettings = normalizeViewerSettings(null, viewerSettings)
+    treeSettings = normalizeTreeSettings(null, treeSettings)
     appearanceSettings = getDefaultAppearanceSettings()
     ignoreWhitespace = false
     ignoreCase = false

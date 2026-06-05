@@ -2,7 +2,6 @@
   import { onDestroy, tick } from 'svelte'
   import {
     CodeView,
-    getFiletypeFromFileName,
     parseDiffFromFile,
     type AnnotationSide,
     type CodeViewItem,
@@ -21,11 +20,20 @@
     type WorkerPoolOptions,
   } from '@pierre/diffs/worker'
   import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
+  import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
+  import {
+    buildDirectoryCodeViewFile,
+    buildPlaceholderFile,
+    describeRange,
+    describeSide,
+    estimatePlaceholderLineCount,
+    statusLabel,
+  } from './directory-code-view-items'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -129,10 +137,6 @@
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
-  const DIRECTORY_PLACEHOLDER_BYTES_PER_LINE = 31
-  const DIRECTORY_PLACEHOLDER_MIN_LINES = 8
-  const DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES = 240
-  const DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES = 1200
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
@@ -258,57 +262,9 @@
     })
   }
 
-  function buildFile(
-    entry: DirectoryEntryResult,
-    side: 'left' | 'right',
-    text: TextDiffPayload,
-  ): FileContents {
-    const contents = side === 'left' ? text.leftText : text.rightText
-    const cacheKey =
-      side === 'left'
-        ? text.leftCacheKey ?? text.leftSha256
-        : text.rightCacheKey ?? text.rightSha256
-
-    return {
-      name: entry.relativePath,
-      contents,
-      cacheKey: cacheKey ?? `${entry.relativePath}:${side}:${contents.length}`,
-      lang: getFiletypeFromFileName(entry.relativePath),
-    }
-  }
-
   function getContext(args: unknown[]) {
     const context = args[args.length - 1] as CodeViewItemContext | undefined
     return typeof context?.item?.id === 'string' ? context : null
-  }
-
-  function statusLabel(status: DirectoryEntryResult['status'] | undefined) {
-    switch (status) {
-      case 'leftOnly':
-        return 'Left only'
-      case 'rightOnly':
-        return 'Right only'
-      case 'unsupported':
-        return 'Unsupported'
-      case 'modified':
-      default:
-        return 'Modified'
-    }
-  }
-
-  function describeSide(side: string | undefined) {
-    return side === 'additions' ? 'right' : 'left'
-  }
-
-  function describeRange(range: SelectedLineRange) {
-    const startSide = describeSide(range.side)
-    const endSide = describeSide(range.endSide ?? range.side)
-
-    if (range.start === range.end && startSide === endSide) {
-      return `${startSide} line ${range.start}`
-    }
-
-    return `${startSide} line ${range.start} to ${endSide} line ${range.end}`
   }
 
   function setInteractionMessage(message: string) {
@@ -801,64 +757,18 @@
     }
 
     const version = (cached?.version ?? 0) + 1
-    const file = buildPlaceholderFile(loadedEntry, key)
+    const file = buildPlaceholderFile(
+      {
+        entry: loadedEntry.entry,
+        error: loadedEntry.error,
+        hasTextDiff: Boolean(loadedEntry.diff?.text),
+      },
+      key,
+      placeholderBlankLineSuffixes,
+    )
     const item = { file, key, version }
     placeholderItems.set(path, item)
     return item
-  }
-
-  function clampPlaceholderLineCount(value: number, max: number) {
-    if (!Number.isFinite(value) || value <= 0) {
-      return 1
-    }
-
-    return Math.max(
-      DIRECTORY_PLACEHOLDER_MIN_LINES,
-      Math.min(max, Math.ceil(value)),
-    )
-  }
-
-  function estimatePlaceholderLineCount(entry: DirectoryEntryResult) {
-    const maxSize = Math.max(entry.leftSize ?? 0, entry.rightSize ?? 0)
-    if (maxSize <= 0) {
-      return 1
-    }
-
-    const estimatedLines = maxSize / DIRECTORY_PLACEHOLDER_BYTES_PER_LINE
-    const maxLines =
-      entry.status === 'modified'
-        ? DIRECTORY_PLACEHOLDER_MODIFIED_MAX_LINES
-        : DIRECTORY_PLACEHOLDER_FULL_FILE_MAX_LINES
-
-    return clampPlaceholderLineCount(estimatedLines, maxLines)
-  }
-
-  function buildPlaceholderContents(label: string, lineCount: number) {
-    if (lineCount <= 1) {
-      return label
-    }
-
-    let suffix = placeholderBlankLineSuffixes.get(lineCount)
-    if (suffix === undefined) {
-      suffix = '\n'.repeat(lineCount - 1)
-      placeholderBlankLineSuffixes.set(lineCount, suffix)
-    }
-
-    return `${label}${suffix}`
-  }
-
-  function buildPlaceholderFile(loadedEntry: LoadedDirectoryDiff, key: string): FileContents {
-    const { entry } = loadedEntry
-    const label = loadedEntry.error || (loadedEntry.diff?.text ? 'Preparing diff...' : 'Loading diff...')
-    const lineCount = loadedEntry.error ? 1 : estimatePlaceholderLineCount(entry)
-    const contents = buildPlaceholderContents(label, lineCount)
-
-    return {
-      name: entry.relativePath,
-      contents,
-      cacheKey: ['placeholder', key, contents.length].join('\u0000'),
-      lang: 'text',
-    }
   }
 
   function codeViewItemFor(
@@ -891,8 +801,8 @@
               annotations,
               collapsed,
               fileDiff: parseDiffFromFile(
-                buildFile(entry, 'left', diff.text),
-                buildFile(entry, 'right', diff.text),
+                buildDirectoryCodeViewFile(entry, 'left', diff.text),
+                buildDirectoryCodeViewFile(entry, 'right', diff.text),
                 undefined,
                 true,
               ),

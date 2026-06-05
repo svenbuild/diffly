@@ -1,0 +1,76 @@
+.directory-code-view-host {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  background: var(--editor-bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.directory-code-view-host > *,
+.directory-code-view-host diffs-container {
+  overflow-anchor: none;
+}
+
+.directory-code-view-host::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.directory-code-view-host::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.directory-code-view-host::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.diffly-codeview-collapse-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0 -2px 0 -6px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.diffly-codeview-collapse-button:hover,
+.diffly-codeview-collapse-button:focus-visible {
+  background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
+  color: var(--text);
+}
+
+.diffly-codeview-collapse-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diffly-codeview-collapse-button svg {
+  width: 15px;
+  height: 15px;
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+
+.diffly-codeview-collapse-button[data-collapsed='true'] svg {
+  transform: rotate(0deg);
+}
+
+.diffly-codeview-status-metadata {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
