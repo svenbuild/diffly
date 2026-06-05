@@ -80,7 +80,7 @@
 .settings-nav-button.active,
 .settings-section-link.active {
   border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--text) 9%, transparent);
+  background: var(--neutral-bg);
   box-shadow: none;
   color: var(--text);
 }
@@ -93,7 +93,7 @@
 .settings-nav-button.active:hover:not(:disabled),
 .settings-section-link.active:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--text) 13%, transparent);
+  background: color-mix(in srgb, var(--neutral-bg) 88%, var(--text));
 }
 
 .settings-section-link span:last-child {
