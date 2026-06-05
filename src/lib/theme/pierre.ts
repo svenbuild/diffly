@@ -17,6 +17,8 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
 
   return `
     :host {
+      --diffs-light-bg: var(--editor-bg);
+      --diffs-dark-bg: var(--editor-bg);
       --diffs-font-family-override: ${darkTokens.codeFont};
       --diffs-header-font-family: ${darkTokens.uiFont};
       --diffs-font-size: ${settings.codeFontSize}px;

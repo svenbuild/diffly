@@ -80,20 +80,20 @@
 .settings-nav-button.active,
 .settings-section-link.active {
   border-color: var(--border-strong);
-  background: var(--surface-strong);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
   box-shadow: none;
   color: var(--text);
 }
 
 .settings-nav-button.active .settings-section-icon,
 .settings-section-link.active .settings-section-icon {
-  color: var(--accent-strong);
+  color: var(--text);
 }
 
 .settings-nav-button.active:hover:not(:disabled),
 .settings-section-link.active:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: var(--surface-strong);
+  background: color-mix(in srgb, var(--text) 13%, transparent);
 }
 
 .settings-section-link span:last-child {
@@ -678,6 +678,22 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
+}
+
+.settings-view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 116px;
+  height: var(--control-height-md);
+  padding: 0 14px;
+}
+
+.settings-view-mode-toggle .view-mode-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .settings-segmented-control svg {

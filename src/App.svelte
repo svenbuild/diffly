@@ -2073,14 +2073,6 @@
     }
   }
 
-  function goToPreviousDifference() {
-    currentDiffHunk = Math.max(0, currentDiffHunk - 1)
-  }
-
-  function goToNextDifference() {
-    currentDiffHunk += 1
-  }
-
   function buildCurrentPersistedSession() {
     return buildPersistedSession({
       mode,
@@ -2325,10 +2317,6 @@
     {selectedRelativePath}
     {comparePairsTooltip}
     {comparePairsLabel}
-    {canGoToPreviousDiff}
-    {canGoToNextDiff}
-    {goToPreviousDifference}
-    {goToNextDifference}
     {viewMode}
     {textDiffActive}
     {toggleViewMode}

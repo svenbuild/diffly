@@ -37,24 +37,27 @@
         </div>
 
         <div class="settings-control">
-          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Default diff view">
-            <button
-              aria-pressed={viewMode === 'sideBySide'}
-              class:active={viewMode === 'sideBySide'}
-              type="button"
-              on:click={() => onSetViewMode('sideBySide')}
-            >
-              Split
-            </button>
-            <button
-              aria-pressed={viewMode === 'unified'}
-              class:active={viewMode === 'unified'}
-              type="button"
-              on:click={() => onSetViewMode('unified')}
-            >
-              Unified
-            </button>
-          </div>
+          <button
+            aria-label={viewMode === 'sideBySide' ? 'Switch to unified view' : 'Switch to split view'}
+            aria-pressed={viewMode === 'unified'}
+            class="secondary settings-view-mode-toggle"
+            type="button"
+            on:click={() => onSetViewMode(viewMode === 'sideBySide' ? 'unified' : 'sideBySide')}
+          >
+            {#if viewMode === 'sideBySide'}
+              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
+                <rect x="2.5" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <rect x="9.3" y="3" width="4.2" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+              </svg>
+              <span>Split</span>
+            {:else}
+              <svg aria-hidden="true" class="view-mode-icon" viewBox="0 0 16 16">
+                <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
+              </svg>
+              <span>Unified</span>
+            {/if}
+          </button>
         </div>
       </div>
 

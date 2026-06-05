@@ -631,11 +631,14 @@ h2 {
 }
 
 .view-mode-button {
-  padding: 0 9px;
+  padding: 0;
   min-width: 0;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+}
+
+.view-mode-button:disabled {
+  opacity: 0.55;
 }
 
 .view-mode-button:hover:not(:disabled),
@@ -656,85 +659,6 @@ h2 {
   display: block;
   width: 14px;
   height: 14px;
-}
-
-.view-mode-button-label {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  line-height: 1;
-  text-align: center;
-}
-
-.view-mode-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  height: var(--control-height-md);
-  min-width: 138px;
-  box-sizing: border-box;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--list-header-bg);
-  color: var(--secondary-text);
-  overflow: hidden;
-  flex: 0 0 auto;
-  align-self: center;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.view-mode-toggle:hover:not(:disabled),
-.view-mode-toggle:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--list-header-bg);
-}
-
-.view-mode-option {
-  transition: background-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
-}
-
-.view-mode-toggle:disabled {
-  opacity: 0.55;
-}
-
-.view-mode-toggle-thumb {
-  display: none;
-}
-
-.view-mode-option {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  height: 24px;
-  padding: 3px 10px;
-  border-radius: 4px;
-  color: var(--secondary-text);
-  line-height: 1;
-}
-
-.view-mode-option + .view-mode-option {
-  box-shadow: none;
-}
-
-.view-mode-option.active {
-  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--text);
-}
-
-.view-mode-label {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
 }
 
 .toolbar-button,

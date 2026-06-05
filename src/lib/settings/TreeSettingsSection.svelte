@@ -58,7 +58,6 @@
             <option value="complete">Complete (colored)</option>
             <option value="standard">Standard</option>
             <option value="minimal">Minimal</option>
-            <option value="none">None</option>
           </select>
         </div>
       </div>

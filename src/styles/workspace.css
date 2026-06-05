@@ -247,7 +247,7 @@
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--panel-bg-raised) 72%, transparent);
+  background: transparent;
 }
 
 .drive-select {
@@ -344,7 +344,7 @@
   height: 28px;
   padding: 0 10px;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--list-header-bg);
+  background: transparent;
 }
 
 .list-columns,
