@@ -25,12 +25,6 @@
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
-  import {
-    applySuppressedScrollCorrection,
-    clearScrollCorrectionTargets,
-    shouldSuppressManualScrollCorrection,
-    type ScrollCorrectionGuardView,
-  } from './scroll-correction-guard'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -72,22 +66,6 @@
     }
   }
 
-  type CodeViewScrollFixPatch = ScrollCorrectionGuardView & {
-    __difflyOriginalApplyScrollFix?: (
-      targetScrollTop: number,
-      syncedScrollTop: number,
-      windowSpecs?: unknown,
-    ) => void
-    __difflyOriginalSetItems?: (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => void
-    __difflyScrollGuardInstalled?: boolean
-    applyScrollFix?: (
-      targetScrollTop: number,
-      syncedScrollTop: number,
-      windowSpecs?: unknown,
-    ) => void
-    setItems?: (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => void
-  }
-
   export let entries: LoadedDirectoryDiff[] = []
   export let collapsedPaths = new Set<string>()
   export let selectedRelativePath = ''
@@ -108,18 +86,10 @@
   let workerPool: WorkerPoolManager | null = null
   let unsubscribeScroll: (() => void) | null = null
   let unsubscribeNativeScroll: (() => void) | null = null
-  let unsubscribePointerDown: (() => void) | null = null
-  let unsubscribeWheel: (() => void) | null = null
-  let wheelScrollFrame: number | null = null
-  let wheelScrollTargetTop = 0
-  let wheelScrollTargetLeft = 0
-  let wheelScrollActiveUntil = 0
   let visibleRequestTimer: number | null = null
   let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
-  let wheelHost: HTMLDivElement | null = null
   let scrollHost: HTMLDivElement | null = null
-  let pointerHost: HTMLDivElement | null = null
   let lastRequestedVisibleKey = ''
   let lastOptionsKey = ''
   let lastWorkerOptionsKey = ''
@@ -129,8 +99,6 @@
   let lastCollapsedPaths: Set<string> | null = null
   let lastCommentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>> | null = null
   let appliedScrollTargetRevision = 0
-  let userScrollCorrectionSuppressedUntil = 0
-  let programmaticScrollAllowedUntil = 0
   let renderRevision = 0
   let diffRenderPathRevision = 0
   let selectedLineSelection: CodeViewLineSelection | null = null
@@ -156,10 +124,6 @@
   const DIRECTORY_CODE_VIEW_MAX_OVERSCROLL_PX = 1800
   const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 1.25
   const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 5000
-  const DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS = 9000
-  const DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS = 900
-  const DIRECTORY_CODE_VIEW_WHEEL_LINE_PX = 40
-  const DIRECTORY_CODE_VIEW_WHEEL_LERP = 0.42
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
@@ -187,8 +151,6 @@
   }
 
   function syncCodeViewVirtualization(view: CodeView<DifflyCommentAnnotation>) {
-    installScrollCorrectionGuard(view)
-
     const overscrollSize = directoryCodeViewOverscrollSize()
     if (view.config.overscrollSize !== overscrollSize) {
       view.config.overscrollSize = overscrollSize
@@ -200,232 +162,27 @@
     }
   }
 
-  function clearManualScrollTargets(view: CodeViewScrollFixPatch) {
-    clearScrollCorrectionTargets(view)
-  }
-
-  function cancelWheelScrollFrame() {
-    if (wheelScrollFrame !== null) {
-      window.cancelAnimationFrame(wheelScrollFrame)
-      wheelScrollFrame = null
-    }
-    wheelScrollActiveUntil = 0
-  }
-
-  function markUserScroll(view: CodeView<DifflyCommentAnnotation>, force = false) {
-    const now = performance.now()
-    if (!force && now < programmaticScrollAllowedUntil) {
-      return
-    }
-
-    if (force) {
-      programmaticScrollAllowedUntil = 0
-    }
-
-    pauseDiffLoading()
-    clearManualScrollTargets(view as unknown as CodeViewScrollFixPatch)
-    userScrollCorrectionSuppressedUntil =
-      now + DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS
-  }
-
-  function extendManualScrollStabilityWindow() {
-    const now = performance.now()
-    if (now >= userScrollCorrectionSuppressedUntil || now < programmaticScrollAllowedUntil) {
-      return
-    }
-
-    userScrollCorrectionSuppressedUntil =
-      now + DIRECTORY_CODE_VIEW_USER_SCROLL_SETTLE_MS
-  }
-
-  function allowProgrammaticScroll() {
-    programmaticScrollAllowedUntil = Math.max(
-      programmaticScrollAllowedUntil,
-      performance.now() + DIRECTORY_CODE_VIEW_PROGRAMMATIC_SCROLL_MS,
-    )
-  }
-
-  function releaseProgrammaticScroll(view: CodeView<DifflyCommentAnnotation>) {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (codeView !== view) {
-          return
-        }
-
-        programmaticScrollAllowedUntil = 0
-        clearManualScrollTargets(view as unknown as CodeViewScrollFixPatch)
-      })
-    })
-  }
-
-  function normalizeWheelDelta(delta: number, mode: number) {
-    if (mode === WheelEvent.DOM_DELTA_LINE) {
-      return delta * DIRECTORY_CODE_VIEW_WHEEL_LINE_PX
-    }
-
-    if (mode === WheelEvent.DOM_DELTA_PAGE) {
-      return delta * (host?.clientHeight ?? window.innerHeight)
-    }
-
-    return delta
-  }
-
-  function canApplyWheelDelta(delta: number, position: number, max: number) {
-    return delta < 0 ? position > 0 : delta > 0 && position < max
-  }
-
-  function clampWheelTarget(value: number, max: number) {
-    return Math.min(max, Math.max(0, value))
-  }
-
-  function runWheelScrollFrame() {
-    wheelScrollFrame = null
-
-    if (!host) {
-      return
-    }
-
-    wheelScrollActiveUntil = performance.now() + 80
-    const topDelta = wheelScrollTargetTop - host.scrollTop
-    const leftDelta = wheelScrollTargetLeft - host.scrollLeft
-    const nextTop =
-      Math.abs(topDelta) < 0.75
-        ? wheelScrollTargetTop
-        : host.scrollTop + topDelta * DIRECTORY_CODE_VIEW_WHEEL_LERP
-    const nextLeft =
-      Math.abs(leftDelta) < 0.75
-        ? wheelScrollTargetLeft
-        : host.scrollLeft + leftDelta * DIRECTORY_CODE_VIEW_WHEEL_LERP
-
-    if (Math.abs(topDelta) >= 0.75) {
-      host.scrollTop = nextTop
-    } else if (host.scrollTop !== wheelScrollTargetTop) {
-      host.scrollTop = wheelScrollTargetTop
-    }
-
-    if (Math.abs(leftDelta) >= 0.75) {
-      host.scrollLeft = nextLeft
-    } else if (host.scrollLeft !== wheelScrollTargetLeft) {
-      host.scrollLeft = wheelScrollTargetLeft
-    }
-
-    if (
-      Math.abs(wheelScrollTargetTop - host.scrollTop) >= 0.75 ||
-      Math.abs(wheelScrollTargetLeft - host.scrollLeft) >= 0.75
-    ) {
-      wheelScrollFrame = window.requestAnimationFrame(runWheelScrollFrame)
-    }
-  }
-
-  function scheduleWheelScrollFrame() {
-    if (wheelScrollFrame !== null) {
-      return
-    }
-
-    wheelScrollFrame = window.requestAnimationFrame(runWheelScrollFrame)
-  }
-
-  function handleHostWheel(event: WheelEvent) {
-    if (!host || event.defaultPrevented || event.ctrlKey) {
-      return
-    }
-
-    const rawVerticalDelta = normalizeWheelDelta(event.deltaY, event.deltaMode)
-    const rawHorizontalDelta = normalizeWheelDelta(event.deltaX, event.deltaMode)
-    const verticalDelta =
-      event.shiftKey && rawHorizontalDelta === 0 ? 0 : rawVerticalDelta
-    const horizontalDelta =
-      rawHorizontalDelta || (event.shiftKey ? rawVerticalDelta : 0)
-    const maxTop = Math.max(0, host.scrollHeight - host.clientHeight)
-    const maxLeft = Math.max(0, host.scrollWidth - host.clientWidth)
-    const canScrollVertically = canApplyWheelDelta(verticalDelta, host.scrollTop, maxTop)
-    const canScrollHorizontally = canApplyWheelDelta(horizontalDelta, host.scrollLeft, maxLeft)
-
-    if (!canScrollVertically && !canScrollHorizontally) {
-      return
-    }
-
-    event.preventDefault()
-    wheelScrollActiveUntil = performance.now() + 120
-
-    if (codeView) {
-      markUserScroll(codeView)
-    }
-
-    if (wheelScrollFrame === null) {
-      wheelScrollTargetTop = host.scrollTop
-      wheelScrollTargetLeft = host.scrollLeft
-    }
-
-    if (canScrollVertically) {
-      wheelScrollTargetTop = clampWheelTarget(wheelScrollTargetTop + verticalDelta, maxTop)
-    }
-
-    if (canScrollHorizontally) {
-      wheelScrollTargetLeft = clampWheelTarget(wheelScrollTargetLeft + horizontalDelta, maxLeft)
-    }
-
-    scheduleWheelScrollFrame()
-  }
-
-  function syncWheelHandling() {
-    if (wheelHost === host) {
-      return
-    }
-
-    unsubscribeWheel?.()
-    unsubscribeWheel = null
-    wheelHost = host
-
-    if (!host) {
-      return
-    }
-
-    const nextHost = host
-    nextHost.addEventListener('wheel', handleHostWheel, {
-      capture: true,
-      passive: false,
-    })
-    unsubscribeWheel = () => {
-      nextHost.removeEventListener('wheel', handleHostWheel, true)
-    }
-  }
-
-  function handleHostPointerDown() {
-    if (!codeView) {
-      return
-    }
-
-    cancelWheelScrollFrame()
-    markUserScroll(codeView, true)
-  }
-
   function handleHostNativeScroll() {
     if (!codeView) {
       return
     }
 
-    if (wheelScrollFrame !== null || performance.now() < wheelScrollActiveUntil) {
-      markUserScroll(codeView)
-      scheduleVisibleEntryRequest()
-      return
-    }
-
-    markUserScroll(codeView, true)
+    // Native scrolling drives this. We only piggy-back on the passive scroll
+    // event to pause background diff loading and lazy-load the diffs that just
+    // scrolled into view — no preventDefault, no manual scroll animation, so the
+    // browser keeps scrolling on the compositor thread.
+    pauseDiffLoading()
     scheduleVisibleEntryRequest()
   }
 
   function syncNativeScrollHandling() {
-    if (scrollHost === host && pointerHost === host) {
+    if (scrollHost === host) {
       return
     }
 
     unsubscribeNativeScroll?.()
-    unsubscribePointerDown?.()
     unsubscribeNativeScroll = null
-    unsubscribePointerDown = null
     scrollHost = host
-    pointerHost = host
 
     if (!host) {
       return
@@ -436,77 +193,9 @@
       capture: true,
       passive: true,
     })
-    nextHost.addEventListener('pointerdown', handleHostPointerDown, {
-      capture: true,
-      passive: true,
-    })
     unsubscribeNativeScroll = () => {
       nextHost.removeEventListener('scroll', handleHostNativeScroll, true)
     }
-    unsubscribePointerDown = () => {
-      nextHost.removeEventListener('pointerdown', handleHostPointerDown, true)
-    }
-  }
-
-  function shouldSuppressScrollCorrection(
-    targetScrollTop: number,
-    syncedScrollTop: number,
-  ) {
-    return shouldSuppressManualScrollCorrection({
-      now: performance.now(),
-      programmaticScrollAllowedUntil,
-      syncedScrollTop,
-      targetScrollTop,
-      userScrollCorrectionSuppressedUntil,
-    })
-  }
-
-  function installScrollCorrectionGuard(view: CodeView<DifflyCommentAnnotation>) {
-    const patched = view as unknown as CodeViewScrollFixPatch
-    if (patched.__difflyScrollGuardInstalled || !patched.applyScrollFix || !patched.setItems) {
-      return
-    }
-
-    const originalApplyScrollFix = patched.applyScrollFix.bind(view)
-    const originalSetItems = patched.setItems.bind(view)
-    patched.__difflyOriginalApplyScrollFix = originalApplyScrollFix
-    patched.__difflyOriginalSetItems = originalSetItems
-    patched.__difflyScrollGuardInstalled = true
-
-    patched.setItems = (items: readonly CodeViewItem<DifflyCommentAnnotation>[]) => {
-      const now = performance.now()
-      extendManualScrollStabilityWindow()
-      if (now < userScrollCorrectionSuppressedUntil && now >= programmaticScrollAllowedUntil) {
-        clearManualScrollTargets(patched)
-      }
-      originalSetItems(items)
-    }
-
-    patched.applyScrollFix = (
-      targetScrollTop: number,
-      syncedScrollTop: number,
-      windowSpecs?: unknown,
-    ) => {
-      if (shouldSuppressScrollCorrection(targetScrollTop, syncedScrollTop)) {
-        applySuppressedScrollCorrection(patched, host?.scrollTop ?? 0)
-        return
-      }
-
-      originalApplyScrollFix(targetScrollTop, syncedScrollTop, windowSpecs)
-    }
-  }
-
-  function restoreScrollCorrectionGuard() {
-    const patched = codeView as unknown as CodeViewScrollFixPatch | null
-    if (!patched?.__difflyOriginalApplyScrollFix) {
-      return
-    }
-
-    patched.applyScrollFix = patched.__difflyOriginalApplyScrollFix
-    patched.setItems = patched.__difflyOriginalSetItems
-    patched.__difflyOriginalApplyScrollFix = undefined
-    patched.__difflyOriginalSetItems = undefined
-    patched.__difflyScrollGuardInstalled = false
   }
 
   function workerPoolOptions(): WorkerPoolOptions {
@@ -1436,8 +1125,7 @@
       return
     }
 
-    unsubscribeScroll = codeView.subscribeToScroll((_, view) => {
-      markUserScroll(view)
+    unsubscribeScroll = codeView.subscribeToScroll(() => {
       scheduleVisibleEntryRequest()
     })
   }
@@ -1575,20 +1263,15 @@
 
     if (codeView?.getItem(targetPath)) {
       appliedScrollTargetRevision = targetRevision
-      allowProgrammaticScroll()
       codeView.scrollTo({
         type: 'item',
         id: targetPath,
         align: 'start',
         behavior: 'instant',
       })
-      releaseProgrammaticScroll(codeView)
       scheduleVisibleEntryRequest()
     }
   }
-
-  $: host,
-    syncWheelHandling()
 
   $: host,
     syncNativeScrollHandling()
@@ -1612,11 +1295,6 @@
       window.clearTimeout(interactionMessageTimer)
     }
 
-    if (wheelScrollFrame !== null) {
-      window.cancelAnimationFrame(wheelScrollFrame)
-      wheelScrollFrame = null
-    }
-
     if (visibleRequestTimer !== null) {
       window.clearTimeout(visibleRequestTimer)
       visibleRequestTimer = null
@@ -1636,11 +1314,6 @@
     unsubscribeScroll = null
     unsubscribeNativeScroll?.()
     unsubscribeNativeScroll = null
-    unsubscribePointerDown?.()
-    unsubscribePointerDown = null
-    unsubscribeWheel?.()
-    unsubscribeWheel = null
-    restoreScrollCorrectionGuard()
     codeView?.cleanUp()
     codeView = null
     hasRenderedItems = false
