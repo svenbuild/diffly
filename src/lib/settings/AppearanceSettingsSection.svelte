@@ -90,6 +90,17 @@
     return themeTitles[variant]
   }
 
+  function getThemePalette(theme: ThemeDefinition) {
+    return [
+      { label: 'Accent', value: theme.accent },
+      { label: 'Surface', value: theme.surface },
+      { label: 'Text', value: theme.ink },
+      { label: 'Added', value: theme.semanticColors.diffAdded },
+      { label: 'Removed', value: theme.semanticColors.diffRemoved },
+      { label: 'Syntax', value: theme.semanticColors.skill },
+    ]
+  }
+
   function getPreviewTitle(variant: ThemeVariant) {
     return previewTitles[variant]
   }
@@ -156,54 +167,34 @@
     pane: 'base' | 'viewer',
     previewOptions: PreviewStyleOptions,
   ): PreviewLine[] {
-    if (pane === 'base') {
-      const surfaceText = '  surface: "sidebar",'
-      const accentText = `  accent: "${theme.accent}",`
-      const contrastText = `  contrast: ${Math.max(theme.contrast - 8, 0)},`
-
-      return [
-        createPreviewLine(1, 'const themePreview = {', previewOptions),
-        createPreviewLine(2, surfaceText, previewOptions, [
-          { text: '  surface: "', highlighted: false },
-          { text: 'sidebar', highlighted: true },
-          { text: '",', highlighted: false },
-        ]),
-        createPreviewLine(3, accentText, previewOptions, [
-          { text: '  accent: "', highlighted: false },
-          { text: theme.accent, highlighted: true },
-          { text: '",', highlighted: false },
-        ]),
-        createPreviewLine(4, contrastText, previewOptions, [
-          { text: '  contrast: ', highlighted: false },
-          { text: String(Math.max(theme.contrast - 8, 0)), highlighted: true },
-          { text: ',', highlighted: false },
-        ]),
-        createPreviewLine(5, '};', previewOptions),
-      ]
-    }
-
-    const surfaceText = '  surface: "sidebar-elevated",'
-    const accentText = `  accent: "${theme.accent}",`
-    const contrastText = `  contrast: ${theme.contrast},`
+    const isViewer = pane === 'viewer'
+    const surfaceValue = isViewer ? 'sidebar-elevated' : 'sidebar'
+    const contrastValue = isViewer ? theme.contrast : Math.max(theme.contrast - 8, 0)
 
     return [
-      createPreviewLine(1, 'const themePreview = {', previewOptions),
-      createPreviewLine(2, surfaceText, previewOptions, [
+      createPreviewLine(1, 'export const theme = {', previewOptions),
+      createPreviewLine(2, '  name: "Diffly",', previewOptions),
+      createPreviewLine(3, `  surface: "${surfaceValue}",`, previewOptions, [
         { text: '  surface: "', highlighted: false },
-        { text: 'sidebar-elevated', highlighted: true },
+        { text: surfaceValue, highlighted: true },
         { text: '",', highlighted: false },
       ]),
-      createPreviewLine(3, accentText, previewOptions, [
+      createPreviewLine(4, `  accent: "${theme.accent}",`, previewOptions, [
         { text: '  accent: "', highlighted: false },
         { text: theme.accent, highlighted: true },
         { text: '",', highlighted: false },
       ]),
-      createPreviewLine(4, contrastText, previewOptions, [
+      createPreviewLine(5, `  contrast: ${contrastValue},`, previewOptions, [
         { text: '  contrast: ', highlighted: false },
-        { text: String(theme.contrast), highlighted: true },
+        { text: String(contrastValue), highlighted: true },
         { text: ',', highlighted: false },
       ]),
-      createPreviewLine(5, '};', previewOptions),
+      createPreviewLine(6, '  radius: 10,', previewOptions),
+      createPreviewLine(7, '  font: "Cascadia Code",', previewOptions),
+      createPreviewLine(8, '  render(node) {', previewOptions),
+      createPreviewLine(9, '    return paint(node, this.accent)', previewOptions),
+      createPreviewLine(10, '  },', previewOptions),
+      createPreviewLine(11, '};', previewOptions),
     ]
   }
 
@@ -292,6 +283,7 @@
               previewStyle={themeState.previewStyle}
               basePreviewLines={themeState.basePreviewLines}
               viewerPreviewLines={themeState.viewerPreviewLines}
+              palette={getThemePalette(themeState.theme)}
             />
           {/each}
         </div>

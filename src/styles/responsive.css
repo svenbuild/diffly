@@ -174,7 +174,7 @@
   }
 
   .settings-section-link.active {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 46%, transparent);
+    box-shadow: none;
   }
 
   .settings-panel {

@@ -79,15 +79,21 @@
 
 .settings-nav-button.active,
 .settings-section-link.active {
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+  box-shadow: none;
   color: var(--text);
+}
+
+.settings-nav-button.active .settings-section-icon,
+.settings-section-link.active .settings-section-icon {
+  color: var(--accent-strong);
 }
 
 .settings-nav-button.active:hover:not(:disabled),
 .settings-section-link.active:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-soft) 20%, var(--active-surface));
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
 }
 
 .settings-section-link span:last-child {
@@ -249,6 +255,7 @@
 }
 
 .library-settings {
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   align-items: start;
   gap: 14px;
@@ -290,7 +297,8 @@
 }
 
 .compare-settings-page .library-settings {
-  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   padding-top: 12px;
 }
@@ -821,7 +829,7 @@
 .settings-appearance-preview-diff {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  height: 116px;
+  min-height: 220px;
   overflow: hidden;
   background: var(--preview-surface);
   color: var(--preview-ink);
@@ -865,6 +873,54 @@
 .settings-appearance-preview-pane-added {
   background: var(--preview-added);
   color: var(--preview-added-text);
+}
+
+.settings-appearance-preview-palette {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+}
+
+.settings-appearance-preview-swatch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.settings-appearance-preview-swatch-dot {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.settings-appearance-preview-swatch-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settings-appearance-preview-swatch-label {
+  color: var(--panel-title);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.settings-appearance-preview-swatch-value {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-appearance-preview-pane-removed .line-fragment.highlighted {
