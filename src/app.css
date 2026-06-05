@@ -407,16 +407,20 @@ select {
 select {
   appearance: none;
   border-radius: var(--radius-control);
-  background:
-    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 14px) 50% / 5px 5px no-repeat,
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 9px) 50% / 5px 5px no-repeat,
-    color-mix(in srgb, var(--surface) 88%, var(--panel-bg));
+  background-color: color-mix(in srgb, var(--surface) 88%, var(--panel-bg));
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
 }
 
 input:not([type='checkbox']):hover:not(:disabled),
 select:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--surface-strong) 15%, var(--surface));
+  /* background-color only, so the select's chevron background-image survives */
+  background-color: color-mix(in srgb, var(--surface-strong) 15%, var(--surface));
 }
 
 input[type='checkbox'] {
