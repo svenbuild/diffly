@@ -3163,6 +3163,33 @@ h2 {
   height: 16px;
 }
 
+.diffly-comment-delete {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.diffly-comment-delete:hover {
+  color: var(--danger, #ff5c5c);
+  border-color: var(--danger, #ff5c5c);
+  background: color-mix(in srgb, var(--danger, #ff5c5c) 12%, transparent);
+}
+
+.diffly-comment-delete svg {
+  width: 15px;
+  height: 15px;
+}
+
 .pierre-diff-feedback {
   position: absolute;
   right: 14px;

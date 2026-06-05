@@ -360,6 +360,22 @@
     commentAnnotations = next
   }
 
+  function deleteCommentAnnotation(
+    annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
+  ) {
+    const targetId = annotation.metadata.id
+    for (const [itemId, list] of commentAnnotations) {
+      if (list.some((entry) => entry.metadata.id === targetId)) {
+        updateAnnotations(
+          itemId,
+          list.filter((entry) => entry.metadata.id !== targetId),
+        )
+        setInteractionMessage('Comment deleted.')
+        return
+      }
+    }
+  }
+
   function handleGutterUtilityClick(range: SelectedLineRange, context: CodeViewItemContext) {
     const itemId = context.item?.id ?? selectedLineSelection?.id ?? ''
     if (!itemId) {
@@ -420,6 +436,24 @@
     icon.appendChild(path)
     submit.appendChild(icon)
 
+    const remove = document.createElement('button')
+    const removeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    remove.type = 'button'
+    remove.className = 'diffly-comment-delete'
+    remove.setAttribute('aria-label', 'Delete comment')
+    remove.title = 'Delete comment'
+    removeIcon.setAttribute('viewBox', '0 0 16 16')
+    removeIcon.setAttribute('aria-hidden', 'true')
+    removePath.setAttribute('d', 'M3 5h10M6.5 5V3.5h3V5M6.5 8v3.5M9.5 8v3.5M4.5 5l.5 7.5h6l.5-7.5')
+    removePath.setAttribute('fill', 'none')
+    removePath.setAttribute('stroke', 'currentColor')
+    removePath.setAttribute('stroke-linecap', 'round')
+    removePath.setAttribute('stroke-linejoin', 'round')
+    removePath.setAttribute('stroke-width', '1.4')
+    removeIcon.appendChild(removePath)
+    remove.appendChild(removeIcon)
+
     input.addEventListener('input', () => {
       annotation.metadata.text = input.value
     })
@@ -428,8 +462,13 @@
       annotation.metadata.text = input.value.trim()
       setInteractionMessage('Comment saved locally.')
     })
+    remove.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      deleteCommentAnnotation(annotation)
+    })
 
-    form.append(avatar, input, submit)
+    form.append(avatar, input, submit, remove)
     wrapper.appendChild(form)
 
     return wrapper
