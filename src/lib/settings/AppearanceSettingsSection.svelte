@@ -290,23 +290,25 @@
       </div>
 
       <div class="settings-theme-editor-stack">
-        {#each visibleThemeVariants as variant}
-          {@const themeState = resolvedThemeState[variant]}
-          {#key `${variant}:${themeState.presetId}`}
-            <ThemeEditorPanel
-              title={getThemeTitle(variant)}
-              subtitle="Preset changes stay in sync here. Manual edits become overrides."
-              {variant}
-              {themeState}
-              {formatThemeLabel}
-              {onSetThemePreset}
-              {onSetThemeColor}
-              {onSetThemeSemanticColor}
-              {onSetThemeFont}
-              {onSetThemeContrast}
-            />
-          {/key}
-        {/each}
+        <div class="settings-theme-editor-variants" data-variant-count={visibleThemeVariants.length}>
+          {#each visibleThemeVariants as variant}
+            {@const themeState = resolvedThemeState[variant]}
+            {#key `${variant}:${themeState.presetId}`}
+              <ThemeEditorPanel
+                title={getThemeTitle(variant)}
+                subtitle="Preset changes stay in sync here. Manual edits become overrides."
+                {variant}
+                {themeState}
+                {formatThemeLabel}
+                {onSetThemePreset}
+                {onSetThemeColor}
+                {onSetThemeSemanticColor}
+                {onSetThemeFont}
+                {onSetThemeContrast}
+              />
+            {/key}
+          {/each}
+        </div>
 
         <section class="settings-theme-editor settings-theme-editor-global">
           <header class="settings-theme-editor-header">
