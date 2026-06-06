@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CompareTreeSettings } from '../types'
 
+  export let activeSection: string = 'structure'
   export let treeSettings: CompareTreeSettings
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
 
@@ -21,13 +22,8 @@
   }
 </script>
 
-<section class="library-settings tree-settings">
-  <section class="settings-group" id="tree-structure">
-    <div class="settings-group-header">
-      <h3>Tree structure</h3>
-      <p>Sorting, initial expansion, flattened folders, and sticky parents.</p>
-    </div>
-
+{#if activeSection === 'structure'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
@@ -166,13 +162,10 @@
       </div>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="tree-density">
-    <div class="settings-group-header">
-      <h3>Tree density</h3>
-      <p>Preset density, exact row height, and virtualized row windows.</p>
-    </div>
-
+{#if activeSection === 'density'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
@@ -260,13 +253,10 @@
       </div>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="tree-search">
-    <div class="settings-group-header">
-      <h3>Tree search</h3>
-      <p>Built-in Pierre search, match handling, focus, and initial query.</p>
-    </div>
-
+{#if activeSection === 'search'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
@@ -352,13 +342,10 @@
       </div>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="tree-mutations">
-    <div class="settings-group-header">
-      <h3>Tree mutations</h3>
-      <p>Optional local Pierre interactions for drag/drop and inline rename.</p>
-    </div>
-
+{#if activeSection === 'mutations'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
@@ -397,4 +384,4 @@
       </label>
     </div>
   </section>
-</section>
+{/if}

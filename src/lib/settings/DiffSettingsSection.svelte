@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CompareViewerSettings, ViewMode } from '../types'
 
+  export let activeSection: string = 'layout'
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
   export let ignoreWhitespace: boolean
@@ -22,20 +23,14 @@
   }
 </script>
 
-<section class="library-settings diff-settings">
-  <section class="settings-group" id="diff-layout">
-    <div class="settings-group-header">
-      <h3>Layout and context</h3>
-      <p>Structure, wrapping, collapsed regions, and sticky file headers.</p>
-    </div>
-
+{#if activeSection === 'layout'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <div class="settings-row settings-row-span-full">
         <div class="settings-row-copy">
           <strong>View mode</strong>
           <p>Use split or unified layout.</p>
         </div>
-
         <div class="settings-control">
           <button
             aria-label={viewMode === 'sideBySide' ? 'Switch to unified view' : 'Switch to split view'}
@@ -148,13 +143,10 @@
       </label>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="diff-rendering">
-    <div class="settings-group-header">
-      <h3>Code rendering</h3>
-      <p>Inline highlights, gutters, hunk separators, and line backgrounds.</p>
-    </div>
-
+{#if activeSection === 'rendering'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
@@ -264,13 +256,10 @@
       </label>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="diff-syntax">
-    <div class="settings-group-header">
-      <h3>Syntax and limits</h3>
-      <p>Highlighter engine, CSS output mode, and expensive tokenization limits.</p>
-    </div>
-
+{#if activeSection === 'syntax'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
@@ -373,13 +362,10 @@
       </div>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="diff-interaction">
-    <div class="settings-group-header">
-      <h3>Mouse and selection</h3>
-      <p>Hover state, token callbacks, gutter buttons, and selected ranges.</p>
-    </div>
-
+{#if activeSection === 'mouse'}
+  <section class="settings-group compare-section-card">
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
@@ -490,17 +476,15 @@
       </label>
     </div>
   </section>
+{/if}
 
-  <section class="settings-group" id="diff-rules">
-    <div class="settings-group-header">
-      <h3>Compare rules</h3>
-      <p>
-        Whitespace and case handling before Pierre receives the file contents.
-        {#if comparisonRulesRequireRefresh}
-          Press Refresh in the compare toolbar to apply updates to the current folder snapshot.
-        {/if}
+{#if activeSection === 'rules'}
+  <section class="settings-group compare-section-card">
+    {#if comparisonRulesRequireRefresh}
+      <p class="settings-inline-note">
+        Press Refresh in the compare toolbar to apply rule changes to the current folder snapshot.
       </p>
-    </div>
+    {/if}
 
     {#if compareNeedsRefresh}
       <p class="settings-inline-note">
@@ -536,4 +520,4 @@
       </div>
     </div>
   </section>
-</section>
+{/if}
