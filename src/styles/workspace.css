@@ -614,13 +614,77 @@
 .diffly-comment-avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--active-surface);
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.diffly-comment-avatar svg {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: block;
+}
+
+.diffly-gutter-utility {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
   color: var(--active-text);
+  cursor: var(--interactive-cursor);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.diffly-gutter-utility:hover {
+  background: var(--accent-strong);
+  transform: scale(1.08);
+}
+
+.diffly-gutter-utility svg {
+  width: 13px;
+  height: 13px;
+}
+
+.diffly-comment-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  width: min(620px, calc(100% - 20px));
+  margin-left: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px color-mix(in srgb, #000 18%, transparent);
+}
+
+.diffly-comment-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.diffly-comment-author {
+  color: var(--text);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+}
+
+.diffly-comment-text {
+  margin: 0;
+  color: var(--secondary-text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .diffly-comment-composer input {
@@ -677,6 +741,19 @@
 .diffly-comment-delete svg {
   width: 15px;
   height: 15px;
+}
+
+.diffly-comment-card .diffly-comment-delete {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border: 0;
+}
+
+.diffly-comment-card .diffly-comment-delete svg {
+  width: 13px;
+  height: 13px;
 }
 
 .pierre-diff-feedback {

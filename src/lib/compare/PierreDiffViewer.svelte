@@ -24,7 +24,13 @@
   interface DifflyCommentAnnotation {
     id: string
     text: string
+    author: string
+    saved: boolean
   }
+
+  type CommentSide = DiffLineAnnotation<DifflyCommentAnnotation>['side']
+
+  const SVG_NS = 'http://www.w3.org/2000/svg'
 
   export let text: TextDiffPayload
   export let leftLabel: string
@@ -126,11 +132,74 @@
     }
   }
 
-  function handleGutterUtilityClick(range: SelectedLineRange) {
-    applyControlledSelection(range)
-    const side = range.endSide ?? range.side ?? 'additions'
-    const lineNumber = range.end
+  function createSvgIcon(paths: string[], options: { fill?: boolean } = {}): SVGSVGElement {
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('viewBox', '0 0 16 16')
+    svg.setAttribute('aria-hidden', 'true')
+    svg.setAttribute('fill', 'none')
+    for (const d of paths) {
+      const path = document.createElementNS(SVG_NS, 'path')
+      path.setAttribute('d', d)
+      if (options.fill) {
+        path.setAttribute('fill', 'currentColor')
+      } else {
+        path.setAttribute('fill', 'none')
+        path.setAttribute('stroke', 'currentColor')
+        path.setAttribute('stroke-width', '1.6')
+        path.setAttribute('stroke-linecap', 'round')
+        path.setAttribute('stroke-linejoin', 'round')
+      }
+      svg.appendChild(path)
+    }
+    return svg
+  }
 
+  // Distinct small icons per action.
+  const plusIcon = () => createSvgIcon(['M8 3.4v9.2', 'M3.4 8h9.2'])
+  const sendIcon = () => createSvgIcon(['M8 13V4', 'M4.6 7.4 8 4l3.4 3.4'])
+  const closeIcon = () => createSvgIcon(['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'])
+
+  function hashSeed(seed: string) {
+    let hash = 0
+    for (let index = 0; index < seed.length; index += 1) {
+      hash = (hash * 31 + seed.charCodeAt(index)) >>> 0
+    }
+    return hash
+  }
+
+  // Deterministic identicon so every comment gets a different little avatar.
+  function createAvatar(seed: string): SVGSVGElement {
+    const hash = hashSeed(seed)
+    const hue = hash % 360
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('viewBox', '0 0 16 16')
+    svg.setAttribute('aria-hidden', 'true')
+    const bg = document.createElementNS(SVG_NS, 'rect')
+    bg.setAttribute('width', '16')
+    bg.setAttribute('height', '16')
+    bg.setAttribute('rx', '5')
+    bg.setAttribute('fill', `hsl(${hue} 55% 45%)`)
+    svg.appendChild(bg)
+    const fg = `hsl(${hue} 75% 88%)`
+    for (let col = 0; col < 3; col += 1) {
+      const sourceCol = col === 2 ? 0 : col
+      for (let row = 0; row < 3; row += 1) {
+        if (((hash >> (sourceCol * 3 + row)) & 1) === 0) {
+          continue
+        }
+        const cell = document.createElementNS(SVG_NS, 'rect')
+        cell.setAttribute('x', String(2 + col * 4))
+        cell.setAttribute('y', String(2 + row * 4))
+        cell.setAttribute('width', '4')
+        cell.setAttribute('height', '4')
+        cell.setAttribute('fill', fg)
+        svg.appendChild(cell)
+      }
+    }
+    return svg
+  }
+
+  function openCommentAt(lineNumber: number, side: CommentSide) {
     commentAnnotations = [
       ...commentAnnotations,
       {
@@ -139,10 +208,36 @@
         metadata: {
           id: `comment-${commentId += 1}`,
           text: '',
+          author: 'You',
+          saved: false,
         },
       },
     ]
-    setInteractionMessage(`Comment opened for ${describeRange(range)}.`)
+    setInteractionMessage(`Comment added on line ${lineNumber}.`)
+  }
+
+  function removeComment(id: string) {
+    commentAnnotations = commentAnnotations.filter((entry) => entry.metadata.id !== id)
+    setInteractionMessage('Comment removed.')
+  }
+
+  function renderGutterUtility(
+    getHoveredRow: () => { lineNumber: number; side: CommentSide } | undefined,
+  ): HTMLButtonElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'diffly-gutter-utility'
+    button.setAttribute('aria-label', 'Add a comment')
+    button.title = 'Add a comment'
+    button.appendChild(plusIcon())
+    button.addEventListener('click', () => {
+      const row = getHoveredRow()
+      if (!row) {
+        return
+      }
+      openCommentAt(row.lineNumber, row.side)
+    })
+    return button
   }
 
   function handleTokenClick(token: DiffTokenEventBaseProps) {
@@ -165,46 +260,80 @@
 
   function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
     const wrapper = document.createElement('div')
-    const form = document.createElement('form')
-    const avatar = document.createElement('div')
-    const input = document.createElement('input')
-    const submit = document.createElement('button')
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-
     wrapper.className = 'diffly-comment-annotation'
-    form.className = 'diffly-comment-composer'
+
+    const avatar = document.createElement('span')
     avatar.className = 'diffly-comment-avatar'
-    avatar.textContent = 'D'
+    avatar.appendChild(createAvatar(annotation.metadata.id))
+
+    if (annotation.metadata.saved && annotation.metadata.text) {
+      // Saved comment — read view (avatar + author + text + delete), diffshub-style.
+      const card = document.createElement('div')
+      card.className = 'diffly-comment-card'
+
+      const body = document.createElement('div')
+      body.className = 'diffly-comment-body'
+      const author = document.createElement('strong')
+      author.className = 'diffly-comment-author'
+      author.textContent = annotation.metadata.author
+      const text = document.createElement('p')
+      text.className = 'diffly-comment-text'
+      text.textContent = annotation.metadata.text
+      body.append(author, text)
+
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.className = 'diffly-comment-delete'
+      remove.setAttribute('aria-label', 'Delete comment')
+      remove.title = 'Delete comment'
+      remove.appendChild(closeIcon())
+      remove.addEventListener('click', () => removeComment(annotation.metadata.id))
+
+      card.append(avatar, body, remove)
+      wrapper.appendChild(card)
+      return wrapper
+    }
+
+    // Composer — avatar + input + send.
+    const form = document.createElement('form')
+    form.className = 'diffly-comment-composer'
+
+    const input = document.createElement('input')
     input.type = 'text'
     input.placeholder = 'Add a comment...'
     input.value = annotation.metadata.text
+    input.autofocus = true
+
+    const submit = document.createElement('button')
     submit.type = 'submit'
     submit.className = 'diffly-comment-submit'
     submit.setAttribute('aria-label', 'Save comment')
-    icon.setAttribute('viewBox', '0 0 16 16')
-    icon.setAttribute('aria-hidden', 'true')
-    path.setAttribute('d', 'M8 13V3m0 0L4.5 6.5M8 3l3.5 3.5')
-    path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'currentColor')
-    path.setAttribute('stroke-linecap', 'round')
-    path.setAttribute('stroke-linejoin', 'round')
-    path.setAttribute('stroke-width', '1.8')
-    icon.appendChild(path)
-    submit.appendChild(icon)
+    submit.title = 'Save comment'
+    submit.appendChild(sendIcon())
 
     input.addEventListener('input', () => {
       annotation.metadata.text = input.value
     })
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        removeComment(annotation.metadata.id)
+      }
+    })
     form.addEventListener('submit', (event) => {
       event.preventDefault()
-      annotation.metadata.text = input.value.trim()
-      setInteractionMessage('Comment saved locally.')
+      const value = input.value.trim()
+      if (!value) {
+        removeComment(annotation.metadata.id)
+        return
+      }
+      annotation.metadata.text = value
+      annotation.metadata.saved = true
+      commentAnnotations = [...commentAnnotations]
+      setInteractionMessage('Comment saved.')
     })
 
     form.append(avatar, input, submit)
     wrapper.appendChild(form)
-
     return wrapper
   }
 
@@ -235,7 +364,7 @@
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
       enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
       enableGutterUtility: viewerSettings.enableGutterUtility,
-      onGutterUtilityClick: handleGutterUtilityClick,
+      renderGutterUtility,
       renderAnnotation: renderCommentAnnotation,
       onTokenClick: handleTokenClick,
       enableLineSelection:
