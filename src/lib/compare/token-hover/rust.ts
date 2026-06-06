@@ -1,0 +1,50 @@
+import { buildDictionary, type TokenRow } from './build'
+import type { TokenDictionary } from './types'
+
+const REF = 'https://doc.rust-lang.org'
+
+const rustRows: TokenRow[] = [
+  ['fn', 'keyword', 'Declares a function, the primary unit of executable code. It can also denote a function pointer type.', 'std/keyword.fn.html'],
+  ['let', 'keyword', 'Binds a value to a variable. Bindings are immutable by default unless declared with mut.', 'std/keyword.let.html'],
+  ['mut', 'keyword', 'Marks a binding or reference as mutable, allowing the value it refers to be changed.', 'std/keyword.mut.html'],
+  ['const', 'keyword', 'Declares a constant evaluated at compile time and inlined wherever it is used.', 'std/keyword.const.html'],
+  ['static', 'keyword', 'Declares a value with a fixed memory location that lives for the entire duration of the program.', 'std/keyword.static.html'],
+  ['struct', 'keyword', 'Defines a structure type that groups related named or positional fields into one type.', 'std/keyword.struct.html'],
+  ['enum', 'keyword', 'Defines an enumeration — a type that can be one of several variants, each optionally carrying data.', 'std/keyword.enum.html'],
+  ['trait', 'keyword', 'Defines shared behavior as a set of methods that types can implement, similar to an interface.', 'std/keyword.trait.html'],
+  ['impl', 'keyword', 'Implements inherent methods on a type or implements a trait for a type.', 'std/keyword.impl.html'],
+  ['pub', 'keyword', 'Marks an item as public, making it visible outside its defining module.', 'std/keyword.pub.html'],
+  ['mod', 'keyword', 'Declares a module, an organizational unit that namespaces and controls the visibility of items.', 'std/keyword.mod.html'],
+  ['use', 'keyword', 'Brings paths into scope so their items can be referred to by shorter names.', 'std/keyword.use.html'],
+  ['match', 'keyword', 'Compares a value against a series of patterns and runs the code of the first one that matches.', 'std/keyword.match.html'],
+  ['if', 'keyword', 'Branches based on a boolean condition, and can also bind values via if let.', 'std/keyword.if.html'],
+  ['else', 'keyword', 'Provides the branch executed when an if condition is false.', 'std/keyword.else.html'],
+  ['loop', 'keyword', 'Creates an infinite loop that runs until explicitly broken out of, optionally yielding a value.', 'std/keyword.loop.html'],
+  ['while', 'keyword', 'Loops as long as a condition is true, with a while let form for pattern matching.', 'std/keyword.while.html'],
+  ['for', 'keyword', 'Iterates over the items produced by an iterator.', 'std/keyword.for.html'],
+  ['return', 'keyword', 'Returns a value from the current function, ending its execution early.', 'std/keyword.return.html'],
+  ['break', 'keyword', 'Exits the innermost loop, optionally returning a value from a loop expression.', 'std/keyword.break.html'],
+  ['continue', 'keyword', 'Skips the rest of the current loop iteration and proceeds to the next.', 'std/keyword.continue.html'],
+  ['move', 'keyword', 'Forces a closure to take ownership of the variables it captures rather than borrowing them.', 'std/keyword.move.html'],
+  ['ref', 'keyword', 'Binds by reference within a pattern instead of moving or copying the matched value.', 'std/keyword.ref.html'],
+  ['where', 'keyword', 'Introduces trait bounds on generic parameters in a clearer, more flexible clause.', 'std/keyword.where.html'],
+  ['async', 'keyword', 'Marks a function or block that returns a future, enabling asynchronous execution.', 'std/keyword.async.html'],
+  ['await', 'keyword', 'Suspends execution of an async function until the awaited future is ready.', 'std/keyword.await.html'],
+  ['dyn', 'keyword', 'Highlights that a type is a trait object, dispatched dynamically at runtime.', 'std/keyword.dyn.html'],
+  ['self', 'keyword', 'Refers to the current method’s receiver or the current module, depending on context.', 'std/keyword.self.html'],
+  ['unsafe', 'keyword', 'Marks code that the compiler cannot guarantee is memory safe, placing responsibility on the author.', 'std/keyword.unsafe.html'],
+  ['bool', 'type', 'The boolean primitive type with the two values true and false.', 'std/primitive.bool.html'],
+  ['i32', 'type', 'The 32-bit signed integer primitive type, the default for integer literals.', 'std/primitive.i32.html'],
+  ['u32', 'type', 'The 32-bit unsigned integer primitive type.', 'std/primitive.u32.html'],
+  ['usize', 'type', 'A pointer-sized unsigned integer, used for indexing and sizes.', 'std/primitive.usize.html'],
+  ['str', 'type', 'The primitive string slice type, a borrowed view into UTF-8 text.', 'std/primitive.str.html'],
+  ['String', 'type', 'A growable, heap-allocated, owned UTF-8 string type.', 'std/string/struct.String.html'],
+  ['Vec', 'type', 'A contiguous growable array type, the most common owned collection in Rust.', 'std/vec/struct.Vec.html'],
+  ['Option', 'type', 'An enum representing an optional value: either Some containing a value, or None.', 'std/option/enum.Option.html'],
+  ['Result', 'type', 'An enum for recoverable errors: either Ok carrying a success value, or Err carrying an error.', 'std/result/enum.Result.html'],
+  ['Box', 'type', 'A smart pointer providing heap allocation and single ownership of the contained value.', 'std/boxed/struct.Box.html'],
+  ['println', 'macro', 'A macro that prints text to standard output, followed by a newline, using format-string interpolation.', 'std/macro.println.html'],
+  ['vec', 'macro', 'A macro that constructs a Vec, either from a list of elements or by repeating a value a number of times.', 'std/macro.vec.html'],
+]
+
+export const rustTokens: TokenDictionary = buildDictionary('Rust docs', (slug) => `${REF}/${slug}`, rustRows)

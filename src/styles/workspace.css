@@ -746,6 +746,98 @@ img.diffly-comment-avatar {
   pointer-events: none;
 }
 
+.token-hover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  max-width: 380px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.45;
+  /* The card itself ignores the pointer so it never steals hover from the
+     token underneath; only the footer link re-enables pointer events. */
+  pointer-events: none;
+}
+
+.token-hover-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.token-hover-name {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.token-hover-kind {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.token-hover-description {
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.token-hover-syntax {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.token-hover-baseline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--success);
+  font-size: 12px;
+}
+
+.token-hover-baseline-check {
+  font-weight: 700;
+}
+
+.token-hover-footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.token-hover-link {
+  color: var(--muted);
+  text-decoration: none;
+  /* Re-enable interaction so the external doc link is clickable even though the
+     card as a whole is pointer-events: none. */
+  pointer-events: auto;
+}
+
+.token-hover-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 .compare-viewer-state,
 .directory-tree-state {
   display: flex;

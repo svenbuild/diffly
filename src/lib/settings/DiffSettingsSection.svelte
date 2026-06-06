@@ -399,6 +399,24 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
+          <strong>Token hover</strong>
+          <p>Show an info tooltip when hovering known syntax tokens.</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={viewerSettings.tokenHover}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateViewerSettings({ tokenHover: !viewerSettings.tokenHover })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
           <strong>Gutter utility</strong>
           <p>Show Pierre's gutter utility button and report clicked ranges.</p>
         </div>

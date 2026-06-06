@@ -36,6 +36,7 @@ export function createDefaultViewerSettings(): CompareViewerSettings {
     enableGutterUtility: false,
     enableLineSelection: false,
     controlledSelection: false,
+    tokenHover: false,
   }
 }
 
@@ -108,6 +109,7 @@ export function normalizeViewerSettings(
     enableGutterUtility: settings?.enableGutterUtility ?? false,
     enableLineSelection: settings?.enableLineSelection ?? false,
     controlledSelection: settings?.controlledSelection ?? false,
+    tokenHover: settings?.tokenHover ?? false,
   }
 }
 

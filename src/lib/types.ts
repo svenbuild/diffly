@@ -35,6 +35,7 @@ export interface CompareViewerSettings {
   enableGutterUtility: boolean
   enableLineSelection: boolean
   controlledSelection: boolean
+  tokenHover: boolean
 }
 
 export interface CompareTreeSettings {

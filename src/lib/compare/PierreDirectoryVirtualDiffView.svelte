@@ -2,6 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import {
     CodeView,
+    getFiletypeFromFileName,
     parseDiffFromFile,
     type CodeViewItem,
     type CodeViewLineSelection,
@@ -38,10 +39,12 @@
   } from './directory-code-view-comments'
   import {
     applyDirectoryItemPostRender,
+    getCodeViewItemContext,
     renderDirectoryCollapseButton,
     renderDirectoryHeaderMetadata,
     type CodeViewItemContext,
   } from './directory-code-view-renderers'
+  import { createTokenHoverController } from './token-hover/controller'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -118,6 +121,36 @@
   let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
+
+  const tokenHoverController = createTokenHoverController()
+  const tokenHoverLanguageByPath = new Map<string, string>()
+
+  function tokenHoverLanguageFor(itemId: string | undefined): string {
+    if (!itemId) {
+      return ''
+    }
+
+    const cached = tokenHoverLanguageByPath.get(itemId)
+    if (cached !== undefined) {
+      return cached
+    }
+
+    const fileName = itemId.split(/[\\/]/).pop() || itemId
+    const language = getFiletypeFromFileName(fileName)
+    tokenHoverLanguageByPath.set(itemId, language)
+    return language
+  }
+
+  function handleTokenEnter(...args: unknown[]) {
+    const props = args[0] as { tokenText: string; tokenElement: HTMLElement }
+    const event = args[1] as PointerEvent
+    const context = getCodeViewItemContext(args)
+    tokenHoverController.handleEnter(props, event, tokenHoverLanguageFor(context?.item?.id))
+  }
+
+  function handleTokenLeave() {
+    tokenHoverController.handleLeave()
+  }
 
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
@@ -424,6 +457,15 @@
       renderHeaderPrefix: renderCollapseButton as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderPrefix'],
       renderHeaderMetadata: renderHeaderMetadata as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderMetadata'],
       onPostRender: handlePostRender as CodeViewOptions<DifflyCommentAnnotation>['onPostRender'],
+      // Providing token handlers auto-enables Pierre's token transformer, so we
+      // only attach them when the feature is on. tokenHover is part of
+      // optionsKey() below so toggling actually re-renders the CodeView.
+      ...(viewerSettings.tokenHover
+        ? {
+            onTokenEnter: handleTokenEnter as CodeViewOptions<DifflyCommentAnnotation>['onTokenEnter'],
+            onTokenLeave: handleTokenLeave as CodeViewOptions<DifflyCommentAnnotation>['onTokenLeave'],
+          }
+        : {}),
       layout: {
         paddingTop: 8,
         paddingBottom: 8,
@@ -469,6 +511,7 @@
       viewerSettings.enableGutterUtility ? '1' : '0',
       viewerSettings.enableLineSelection ? '1' : '0',
       viewerSettings.controlledSelection ? '1' : '0',
+      viewerSettings.tokenHover ? '1' : '0',
     ].join('\u0000')
   }
 
@@ -1131,6 +1174,7 @@
     hasRenderedItems = false
     workerPool?.terminate()
     workerPool = null
+    tokenHoverController.destroy()
   })
 </script>
 

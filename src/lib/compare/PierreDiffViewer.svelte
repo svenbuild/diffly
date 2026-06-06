@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { FileDiff, areOptionsEqual } from '@pierre/diffs'
+  import { FileDiff, areOptionsEqual, getFiletypeFromFileName } from '@pierre/diffs'
   import {
     WorkerPoolManager,
     type WorkerInitializationRenderOptions,
@@ -9,6 +9,7 @@
   import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
   import type {
     DiffLineAnnotation,
+    DiffTokenEventBaseProps,
     FileContents,
     FileDiffOptions,
     SelectedLineRange,
@@ -23,6 +24,7 @@
     renderCommentAnnotationElement,
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
+  import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
   export let leftLabel: string
@@ -48,6 +50,17 @@
   let lastWorkerOptionsKey = ''
   let leftFileCache: { key: string; file: FileContents } | null = null
   let rightFileCache: { key: string; file: FileContents } | null = null
+
+  const tokenHoverController = createTokenHoverController()
+  let tokenHoverLanguage = ''
+
+  function handleTokenEnter(props: DiffTokenEventBaseProps, event: PointerEvent) {
+    tokenHoverController.handleEnter(props, event, tokenHoverLanguage)
+  }
+
+  function handleTokenLeave() {
+    tokenHoverController.handleLeave()
+  }
 
   function workerPoolSize() {
     const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
@@ -181,6 +194,12 @@
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
       onPostRender: applyCollapsedState,
+      // Providing token handlers auto-enables Pierre's token transformer, so we
+      // only attach them when the feature is on. Toggling changes the options
+      // identity, which areOptionsEqual/setOptions detects and re-renders.
+      ...(viewerSettings.tokenHover
+        ? { onTokenEnter: handleTokenEnter, onTokenLeave: handleTokenLeave }
+        : {}),
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
     }
   }
@@ -339,6 +358,8 @@
     applyCollapsedState()
   }
 
+  $: tokenHoverLanguage = getFiletypeFromFileName(fileName(rightLabel || leftLabel))
+
   $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, commentAnnotations, void renderDiff()
 
   onDestroy(() => {
@@ -350,6 +371,7 @@
     workerPool?.terminate()
     workerPool = null
     renderedOptions = null
+    tokenHoverController.destroy()
   })
 </script>
 

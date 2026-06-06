@@ -1,0 +1,57 @@
+import { buildDictionary, type TokenRow } from './build'
+import type { TokenDictionary } from './types'
+
+const REF = 'https://developer.mozilla.org/docs/Web/JavaScript/Reference'
+
+export const javascriptRows: TokenRow[] = [
+  ['const', 'keyword', 'Declares a block-scoped, read-only named constant. The binding cannot be reassigned, though the value it holds may still be mutable.', 'Statements/const'],
+  ['let', 'keyword', 'Declares a block-scoped local variable, optionally initializing it to a value.', 'Statements/let'],
+  ['var', 'keyword', 'Declares a function-scoped or globally-scoped variable, optionally initializing it to a value.', 'Statements/var'],
+  ['function', 'keyword', 'Declares a function with the specified parameters, creating a binding of the given name in the current scope.', 'Statements/function'],
+  ['return', 'keyword', 'Ends function execution and specifies a value to be returned to the function caller.', 'Statements/return'],
+  ['if', 'keyword', 'Executes a statement if a specified condition is truthy; an optional else clause runs when the condition is falsy.', 'Statements/if...else'],
+  ['else', 'keyword', 'Specifies the block to execute when the condition of an if statement is falsy.', 'Statements/if...else'],
+  ['for', 'keyword', 'Creates a loop that runs as long as a condition holds, with optional initialization and afterthought expressions.', 'Statements/for'],
+  ['while', 'keyword', 'Creates a loop that executes its body as long as the test condition evaluates to true.', 'Statements/while'],
+  ['switch', 'keyword', 'Evaluates an expression and runs statements from the matching case clause, falling through until a break is reached.', 'Statements/switch'],
+  ['case', 'keyword', 'Defines a branch within a switch statement matched against the switch expression using strict equality.', 'Statements/switch'],
+  ['break', 'keyword', 'Terminates the current loop or switch statement and transfers control to the statement following it.', 'Statements/break'],
+  ['continue', 'keyword', 'Skips the rest of the current loop iteration and continues with the next one.', 'Statements/continue'],
+  ['class', 'keyword', 'Declares a class — a template for creating objects that encapsulates data and behavior with shared methods.', 'Statements/class'],
+  ['extends', 'keyword', 'Used in class declarations to create a class that is a child of another class, inheriting its prototype.', 'Classes/extends'],
+  ['new', 'keyword', 'Creates an instance of an object type by invoking a constructor function.', 'Operators/new'],
+  ['this', 'keyword', 'Refers to the execution context — the object the current code is operating on, determined by how a function is called.', 'Operators/this'],
+  ['super', 'keyword', 'Accesses and calls functions on an object’s parent class, including its constructor.', 'Operators/super'],
+  ['import', 'keyword', 'Statically imports read-only live bindings exported by another module.', 'Statements/import'],
+  ['export', 'keyword', 'Exports values from a module so they can be imported by other programs with an import declaration.', 'Statements/export'],
+  ['default', 'keyword', 'Marks the default export of a module, or the fallback clause of a switch statement.', 'Statements/export'],
+  ['async', 'keyword', 'Declares an async function that returns a promise and may use await to pause on asynchronous operations.', 'Statements/async_function'],
+  ['await', 'keyword', 'Pauses execution of an async function until a promise settles, then resumes with its resolved value.', 'Operators/await'],
+  ['yield', 'keyword', 'Pauses and resumes a generator function, returning the operand as the next value in the iterator.', 'Operators/yield'],
+  ['typeof', 'keyword', 'A unary operator that returns a string indicating the type of its operand.', 'Operators/typeof'],
+  ['instanceof', 'keyword', 'Tests whether an object’s prototype chain contains the prototype property of a given constructor.', 'Operators/instanceof'],
+  ['try', 'keyword', 'Marks a block of statements to attempt, specifying a response should an exception be thrown.', 'Statements/try...catch'],
+  ['catch', 'keyword', 'Defines a block of statements to execute if an exception is thrown in the associated try block.', 'Statements/try...catch'],
+  ['finally', 'keyword', 'Defines a block that always runs after try/catch, regardless of whether an exception was thrown.', 'Statements/try...catch'],
+  ['throw', 'keyword', 'Throws a user-defined exception, halting execution and passing control to the nearest catch block.', 'Statements/throw'],
+  ['delete', 'keyword', 'An operator that removes a property from an object; if no more references to it remain it is eventually released.', 'Operators/delete'],
+  ['void', 'keyword', 'An operator that evaluates an expression and discards its return value, producing undefined.', 'Operators/void'],
+  ['null', 'constant', 'Represents the intentional absence of any object value. It is one of JavaScript’s primitive values.', 'Operators/null'],
+  ['undefined', 'constant', 'A property of the global object whose value is the primitive undefined, the default value of uninitialized variables.', 'Global_Objects/undefined'],
+  ['true', 'constant', 'The boolean primitive representing logical truth.', 'Global_Objects/Boolean'],
+  ['false', 'constant', 'The boolean primitive representing logical falsehood.', 'Global_Objects/Boolean'],
+  ['Promise', 'type', 'Represents the eventual completion or failure of an asynchronous operation and its resulting value.', 'Global_Objects/Promise'],
+  ['Array', 'type', 'The global object used to construct arrays — high-level, list-like objects with many iteration and transformation methods.', 'Global_Objects/Array'],
+  ['Object', 'type', 'The constructor for the Object type, the base from which most other JavaScript objects derive.', 'Global_Objects/Object'],
+  ['Map', 'type', 'A collection of keyed data items that remembers the original insertion order of the keys, allowing keys of any type.', 'Global_Objects/Map'],
+  ['Set', 'type', 'A collection of unique values of any type, whether primitive values or object references.', 'Global_Objects/Set'],
+  ['JSON', 'type', 'A namespace object with methods for parsing and serializing JavaScript values to and from JSON text.', 'Global_Objects/JSON'],
+  ['Math', 'type', 'A built-in namespace object with properties and methods for mathematical constants and functions.', 'Global_Objects/Math'],
+  ['console', 'type', 'Provides access to the browser or runtime debugging console, with methods such as log, warn, and error.', '../API/console'],
+]
+
+export const javascriptTokens: TokenDictionary = buildDictionary(
+  'MDN',
+  (slug) => `${REF}/${slug}`,
+  javascriptRows,
+)
