@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "description": "Desktop file and directory diff tool built with Svelte and Electron.",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
