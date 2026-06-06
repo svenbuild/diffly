@@ -3,10 +3,12 @@
   import ThemePreviewCard from './ThemePreviewCard.svelte'
   import type { AppearanceSettings, ThemeDefinition, ThemeSemanticColorKey, ThemeVariant } from '../theme'
   import type { CompareViewerSettings, ViewMode } from '../types'
+  import { createThemeCssVariables } from '../theme/runtime'
 
   interface ThemeState {
     availableThemes: ThemeDefinition[]
     presetId: string
+    previewStyle: string
     theme: ThemeDefinition
   }
 
@@ -82,15 +84,33 @@
     return previewTitles[variant]
   }
 
+  function buildInlineStyle(values: Record<string, string>) {
+    return Object.entries(values)
+      .map(([property, value]) => `${property}: ${value}`)
+      .join('; ')
+  }
+
+  function getPreviewStyle(theme: ThemeDefinition) {
+    return buildInlineStyle(
+      createThemeCssVariables(theme, {
+        codeFontSize: appearanceSettings.codeFontSize,
+        uiFontSize: appearanceSettings.uiFontSize,
+        usePointerCursor: appearanceSettings.usePointerCursor,
+      }),
+    )
+  }
+
   $: resolvedThemeState = {
     light: {
       availableThemes: availableLightThemes,
       presetId: appearanceSettings.lightThemeId,
+      previewStyle: getPreviewStyle(lightTheme),
       theme: lightTheme,
     },
     dark: {
       availableThemes: availableDarkThemes,
       presetId: appearanceSettings.darkThemeId,
+      previewStyle: getPreviewStyle(darkTheme),
       theme: darkTheme,
     },
   }
@@ -150,6 +170,7 @@
             <ThemePreviewCard
               title={getPreviewTitle(variant)}
               themeLabel={formatThemeLabel(themeState.theme.id)}
+              previewStyle={themeState.previewStyle}
               palette={getThemePalette(themeState.theme)}
               {viewerSettings}
               {viewMode}

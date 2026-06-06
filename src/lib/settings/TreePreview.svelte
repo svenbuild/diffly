@@ -38,16 +38,23 @@
   async function selectEntry(selected: DirectoryEntryResult) {
     selectedRelativePath = selected.relativePath
   }
+
+  // Remount the tree on any settings change. Pierre's in-place rebuild path is
+  // only exercised off-screen in the real app; remounting guarantees a clean
+  // render here (the initial mount always works).
+  $: treeKey = `${resolvedThemeMode}:${JSON.stringify(treeSettings)}`
 </script>
 
 <div class="settings-preview-host settings-preview-host-tree">
-  <PierreDirectoryTree
-    directoryEntries={entries}
-    entriesRevision={1}
-    {selectedRelativePath}
-    {treeSettings}
-    {appearanceSettings}
-    {resolvedThemeMode}
-    {selectEntry}
-  />
+  {#key treeKey}
+    <PierreDirectoryTree
+      directoryEntries={entries}
+      entriesRevision={1}
+      {selectedRelativePath}
+      {treeSettings}
+      {appearanceSettings}
+      {resolvedThemeMode}
+      {selectEntry}
+    />
+  {/key}
 </div>

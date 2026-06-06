@@ -108,38 +108,42 @@
         </header>
       {/if}
 
-      {#if activeDomain === 'diffs'}
-        <DiffSettingsSection
-          {activeSection}
-          {viewMode}
-          {viewerSettings}
-          {ignoreWhitespace}
-          {ignoreCase}
-          {comparisonRulesRequireRefresh}
-          {compareNeedsRefresh}
-          {onSetViewMode}
-          {onSetViewerSettings}
-          {onToggleIgnoreWhitespace}
-          {onToggleIgnoreCase}
-        />
-      {:else}
-        <TreeSettingsSection {activeSection} {treeSettings} {onSetTreeSettings} />
-      {/if}
-
-      <div class="compare-settings-preview">
-        <div class="compare-settings-preview-header">
-          <strong>Live preview</strong>
-          <span>
-            {activeDomain === 'diffs'
-              ? 'Interactive demo on sample files — settings apply instantly.'
-              : 'Interactive demo on a sample folder — settings apply instantly.'}
-          </span>
+      <div class="compare-settings-body" data-domain={activeDomain}>
+        <div class="compare-settings-main">
+          {#if activeDomain === 'diffs'}
+            <DiffSettingsSection
+              {activeSection}
+              {viewMode}
+              {viewerSettings}
+              {ignoreWhitespace}
+              {ignoreCase}
+              {comparisonRulesRequireRefresh}
+              {compareNeedsRefresh}
+              {onSetViewMode}
+              {onSetViewerSettings}
+              {onToggleIgnoreWhitespace}
+              {onToggleIgnoreCase}
+            />
+          {:else}
+            <TreeSettingsSection {activeSection} {treeSettings} {onSetTreeSettings} />
+          {/if}
         </div>
-        {#if activeDomain === 'diffs'}
-          <DiffPreview {viewerSettings} {viewMode} {appearanceSettings} {resolvedThemeMode} />
-        {:else}
-          <TreePreview {treeSettings} {appearanceSettings} {resolvedThemeMode} />
-        {/if}
+
+        <div class="compare-settings-preview">
+          <div class="compare-settings-preview-header">
+            <strong>Live preview</strong>
+            <span>
+              {activeDomain === 'diffs'
+                ? 'Interactive demo on sample files — settings apply instantly.'
+                : 'Interactive demo on a sample folder.'}
+            </span>
+          </div>
+          {#if activeDomain === 'diffs'}
+            <DiffPreview height={480} {viewerSettings} {viewMode} {appearanceSettings} {resolvedThemeMode} />
+          {:else}
+            <TreePreview {treeSettings} {appearanceSettings} {resolvedThemeMode} />
+          {/if}
+        </div>
       </div>
     </div>
   </div>

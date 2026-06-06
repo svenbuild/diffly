@@ -10,6 +10,7 @@
 
   export let title: string
   export let themeLabel: string
+  export let previewStyle = ''
   export let palette: PaletteSwatch[] = []
   export let viewerSettings: CompareViewerSettings
   export let viewMode: ViewMode
@@ -17,7 +18,7 @@
   export let resolvedThemeMode: 'light' | 'dark'
 </script>
 
-<div class="settings-appearance-preview-card">
+<div class="settings-appearance-preview-card" style={previewStyle}>
   <div class="settings-appearance-preview-header">
     <strong>{title}</strong>
     <span>{themeLabel}</span>
