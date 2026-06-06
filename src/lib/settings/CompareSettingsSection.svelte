@@ -1,7 +1,10 @@
 <script lang="ts">
   import DiffSettingsSection from './DiffSettingsSection.svelte'
   import TreeSettingsSection from './TreeSettingsSection.svelte'
+  import DiffPreview from './DiffPreview.svelte'
+  import TreePreview from './TreePreview.svelte'
   import type { CompareTreeSettings, CompareViewerSettings, ViewMode } from '../types'
+  import type { AppearanceSettings } from '../theme'
 
   type CompareSectionId =
     | 'layout'
@@ -17,6 +20,8 @@
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
   export let treeSettings: CompareTreeSettings
+  export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: 'light' | 'dark' = 'dark'
   export let ignoreWhitespace: boolean
   export let ignoreCase: boolean
   export let comparisonRulesRequireRefresh: boolean
@@ -120,6 +125,22 @@
       {:else}
         <TreeSettingsSection {activeSection} {treeSettings} {onSetTreeSettings} />
       {/if}
+
+      <div class="compare-settings-preview">
+        <div class="compare-settings-preview-header">
+          <strong>Live preview</strong>
+          <span>
+            {activeDomain === 'diffs'
+              ? 'Interactive demo on sample files — settings apply instantly.'
+              : 'Interactive demo on a sample folder — settings apply instantly.'}
+          </span>
+        </div>
+        {#if activeDomain === 'diffs'}
+          <DiffPreview {viewerSettings} {viewMode} {appearanceSettings} {resolvedThemeMode} />
+        {:else}
+          <TreePreview {treeSettings} {appearanceSettings} {resolvedThemeMode} />
+        {/if}
+      </div>
     </div>
   </div>
 </section>

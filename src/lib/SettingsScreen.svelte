@@ -42,6 +42,7 @@
 
   export let activeSection: SettingsSection
   export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: 'light' | 'dark' = 'dark'
   export let lightTheme: ThemeDefinition
   export let darkTheme: ThemeDefinition
   export let visibleThemeVariants: ThemeVariant[]
@@ -176,6 +177,8 @@
           {viewMode}
           {viewerSettings}
           {treeSettings}
+          {appearanceSettings}
+          {resolvedThemeMode}
           {ignoreWhitespace}
           {ignoreCase}
           {comparisonRulesRequireRefresh}

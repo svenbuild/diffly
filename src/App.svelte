@@ -2353,6 +2353,7 @@
   <SettingsRoute
     {activeSettingsSection}
     {appearanceSettings}
+    {resolvedThemeMode}
     {lightAppearanceTheme}
     {darkAppearanceTheme}
     {visibleAppearanceVariants}

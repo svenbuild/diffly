@@ -25,6 +25,7 @@
 
   export let activeSettingsSection: SettingsSection
   export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: 'light' | 'dark' = 'dark'
   export let lightAppearanceTheme: ThemeDefinition
   export let darkAppearanceTheme: ThemeDefinition
   export let visibleAppearanceVariants: ThemeVariant[] = []
@@ -124,6 +125,7 @@
   <SettingsScreen
     activeSection={activeSettingsSection}
     {appearanceSettings}
+    {resolvedThemeMode}
     lightTheme={lightAppearanceTheme}
     darkTheme={darkAppearanceTheme}
     visibleThemeVariants={visibleAppearanceVariants}
