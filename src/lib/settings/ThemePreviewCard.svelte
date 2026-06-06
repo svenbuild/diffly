@@ -18,7 +18,10 @@
   export let resolvedThemeMode: 'light' | 'dark'
 </script>
 
-<div class="settings-appearance-preview-card" style={previewStyle}>
+<div
+  class="settings-appearance-preview-card"
+  style={`${previewStyle}; color-scheme: ${resolvedThemeMode}`}
+>
   <div class="settings-appearance-preview-header">
     <strong>{title}</strong>
     <span>{themeLabel}</span>

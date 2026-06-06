@@ -2359,8 +2359,6 @@
     {visibleAppearanceVariants}
     {availableLightThemes}
     {availableDarkThemes}
-    {ignoreWhitespace}
-    {ignoreCase}
     {viewMode}
     {viewerSettings}
     {treeSettings}
@@ -2372,9 +2370,6 @@
     {updateChannel}
     {updateIndicatorState}
     {lastUpdateCheckAt}
-    comparisonRulesRequireRefresh={hasActiveCompareSession()}
-    {compareNeedsRefresh}
-    {mode}
     {errorMessage}
     showUpdateIndicator={shouldShowUpdateIndicator()}
     updateIndicatorTitle={updateIndicatorTitle()}
@@ -2390,8 +2385,6 @@
     onSetUsePointerCursor={setUsePointerCursor}
     onStepUiFontSize={stepUiFontSize}
     onStepCodeFontSize={stepCodeFontSize}
-    onToggleIgnoreWhitespace={toggleIgnoreWhitespace}
-    onToggleIgnoreCase={toggleIgnoreCase}
     onSetViewMode={setViewMode}
     onSetViewerSettings={(settings) => {
       viewerSettings = settings

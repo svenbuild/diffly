@@ -22,15 +22,9 @@
   export let treeSettings: CompareTreeSettings
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark' = 'dark'
-  export let ignoreWhitespace: boolean
-  export let ignoreCase: boolean
-  export let comparisonRulesRequireRefresh: boolean
-  export let compareNeedsRefresh: boolean
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
-  export let onToggleIgnoreWhitespace: () => void
-  export let onToggleIgnoreCase: () => void
 
   interface SectionItem {
     id: CompareSectionId
@@ -53,7 +47,6 @@
         { id: 'rendering', label: 'Code rendering', summary: 'Inline highlights, gutters, hunk separators, and backgrounds.' },
         { id: 'syntax', label: 'Syntax & limits', summary: 'Highlighter engine, CSS output, and tokenization limits.' },
         { id: 'mouse', label: 'Mouse & selection', summary: 'Hover state, token callbacks, gutter buttons, and ranges.' },
-        { id: 'rules', label: 'Compare rules', summary: 'Whitespace and case handling before files are compared.' },
       ],
     },
     {
@@ -72,8 +65,6 @@
 
   $: activeDomain =
     navGroups.find((group) => group.sections.some((section) => section.id === activeSection))?.domain ?? 'diffs'
-  $: activeItem =
-    navGroups.flatMap((group) => group.sections).find((section) => section.id === activeSection) ?? null
 </script>
 
 <section class="settings-page compare-settings-page">
@@ -101,13 +92,6 @@
     </nav>
 
     <div class="compare-settings-content">
-      {#if activeItem}
-        <header class="compare-settings-section-header">
-          <h3>{activeItem.label}</h3>
-          <p>{activeItem.summary}</p>
-        </header>
-      {/if}
-
       <div class="compare-settings-body" data-domain={activeDomain}>
         <div class="compare-settings-main">
           {#if activeDomain === 'diffs'}
@@ -115,14 +99,8 @@
               {activeSection}
               {viewMode}
               {viewerSettings}
-              {ignoreWhitespace}
-              {ignoreCase}
-              {comparisonRulesRequireRefresh}
-              {compareNeedsRefresh}
               {onSetViewMode}
               {onSetViewerSettings}
-              {onToggleIgnoreWhitespace}
-              {onToggleIgnoreCase}
             />
           {:else}
             <TreeSettingsSection {activeSection} {treeSettings} {onSetTreeSettings} />

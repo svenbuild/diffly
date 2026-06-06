@@ -252,10 +252,12 @@
     cacheKey: string | null,
     sha256: string | null,
   ): FileContents {
+    const lang: 'text' | undefined = viewerSettings.syntaxMode === 'shiki' ? undefined : 'text'
     const key = [
       label,
       cacheKey ?? sha256 ?? '',
       contents.length,
+      lang ?? 'auto',
     ].join('\u0000')
     const cache = side === 'left' ? leftFileCache : rightFileCache
 
@@ -263,10 +265,11 @@
       return cache.file
     }
 
-    const file = {
+    const file: FileContents = {
       name: fileName(label),
       contents,
       cacheKey: cacheKey ?? sha256 ?? `${label}:${contents.length}`,
+      lang,
     }
 
     if (side === 'left') {

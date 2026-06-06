@@ -8,7 +8,6 @@
     type UpdateIndicatorState,
   } from '../app/update-controller'
   import type {
-    CompareMode,
     CompareTreeSettings,
     CompareViewerSettings,
     UpdateChannel,
@@ -31,8 +30,6 @@
   export let visibleAppearanceVariants: ThemeVariant[] = []
   export let availableLightThemes: ThemeDefinition[] = []
   export let availableDarkThemes: ThemeDefinition[] = []
-  export let ignoreWhitespace = false
-  export let ignoreCase = false
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
   export let treeSettings: CompareTreeSettings
@@ -44,9 +41,6 @@
   export let updateChannel: UpdateChannel
   export let updateIndicatorState: UpdateIndicatorState
   export let lastUpdateCheckAt = ''
-  export let comparisonRulesRequireRefresh = false
-  export let compareNeedsRefresh = false
-  export let mode: CompareMode = 'directory'
   export let errorMessage = ''
   export let showUpdateIndicator = false
   export let updateIndicatorTitle = ''
@@ -70,8 +64,6 @@
   export let onSetUsePointerCursor: (value: boolean) => void
   export let onStepUiFontSize: (direction: -1 | 1) => void
   export let onStepCodeFontSize: (direction: -1 | 1) => void
-  export let onToggleIgnoreWhitespace: () => void
-  export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
@@ -131,8 +123,6 @@
     visibleThemeVariants={visibleAppearanceVariants}
     {availableLightThemes}
     {availableDarkThemes}
-    {ignoreWhitespace}
-    {ignoreCase}
     {viewMode}
     {viewerSettings}
     {treeSettings}
@@ -150,8 +140,6 @@
     lastUpdateCheckLabel={formatLastUpdateCheck(lastUpdateCheckAt)}
     lastUpdateCheckRelativeLabel={formatLastUpdateCheckRelative(lastUpdateCheckAt)}
     updateBusy={updateIndicatorState.status === 'checking' || updateIndicatorState.status === 'downloading'}
-    comparisonRulesRequireRefresh={comparisonRulesRequireRefresh && mode === 'directory'}
-    {compareNeedsRefresh}
     {onSelectSection}
     {onSetThemeMode}
     {onSetThemePreset}
@@ -162,8 +150,6 @@
     {onSetUsePointerCursor}
     {onStepUiFontSize}
     {onStepCodeFontSize}
-    {onToggleIgnoreWhitespace}
-    {onToggleIgnoreCase}
     {onSetViewMode}
     {onSetViewerSettings}
     {onSetTreeSettings}

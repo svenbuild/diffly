@@ -4,14 +4,8 @@
   export let activeSection: string = 'layout'
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
-  export let ignoreWhitespace: boolean
-  export let ignoreCase: boolean
-  export let comparisonRulesRequireRefresh: boolean
-  export let compareNeedsRefresh: boolean
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
-  export let onToggleIgnoreWhitespace: () => void
-  export let onToggleIgnoreCase: () => void
 
   function updateViewerSettings(patch: Partial<CompareViewerSettings>) {
     onSetViewerSettings({ ...viewerSettings, ...patch })
@@ -478,46 +472,3 @@
   </section>
 {/if}
 
-{#if activeSection === 'rules'}
-  <section class="settings-group compare-section-card">
-    {#if comparisonRulesRequireRefresh}
-      <p class="settings-inline-note">
-        Press Refresh in the compare toolbar to apply rule changes to the current folder snapshot.
-      </p>
-    {/if}
-
-    {#if compareNeedsRefresh}
-      <p class="settings-inline-note">
-        The current compare is using the previous rules until you refresh it.
-      </p>
-    {/if}
-
-    <div class="settings-group-grid">
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>Whitespace</strong>
-          <p>Compare spacing exactly or ignore whitespace-only edits.</p>
-        </div>
-        <div class="settings-control">
-          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Whitespace handling">
-            <button aria-pressed={!ignoreWhitespace} class:active={!ignoreWhitespace} type="button" on:click={onToggleIgnoreWhitespace}>Exact</button>
-            <button aria-pressed={ignoreWhitespace} class:active={ignoreWhitespace} type="button" on:click={onToggleIgnoreWhitespace}>Ignore</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>Case sensitivity</strong>
-          <p>Choose whether letter case should count as a change.</p>
-        </div>
-        <div class="settings-control">
-          <div class="segmented-control toolbar-segmented-control settings-segmented-control" role="group" aria-label="Case sensitivity">
-            <button aria-pressed={!ignoreCase} class:active={!ignoreCase} type="button" on:click={onToggleIgnoreCase}>Sensitive</button>
-            <button aria-pressed={ignoreCase} class:active={ignoreCase} type="button" on:click={onToggleIgnoreCase}>Insensitive</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-{/if}

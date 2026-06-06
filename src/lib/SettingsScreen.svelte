@@ -48,8 +48,6 @@
   export let visibleThemeVariants: ThemeVariant[]
   export let availableLightThemes: ThemeDefinition[]
   export let availableDarkThemes: ThemeDefinition[]
-  export let ignoreWhitespace: boolean
-  export let ignoreCase: boolean
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
   export let treeSettings: CompareTreeSettings
@@ -67,8 +65,6 @@
   export let lastUpdateCheckLabel: string
   export let lastUpdateCheckRelativeLabel: string
   export let updateBusy: boolean
-  export let comparisonRulesRequireRefresh: boolean
-  export let compareNeedsRefresh: boolean
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (theme: ThemeMode) => void
   export let onSetThemePreset: (variant: ThemeVariant, themeId: string) => void
@@ -87,8 +83,6 @@
   export let onSetUsePointerCursor: (value: boolean) => void
   export let onStepUiFontSize: (direction: -1 | 1) => void
   export let onStepCodeFontSize: (direction: -1 | 1) => void
-  export let onToggleIgnoreWhitespace: () => void
-  export let onToggleIgnoreCase: () => void
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
@@ -179,15 +173,9 @@
           {treeSettings}
           {appearanceSettings}
           {resolvedThemeMode}
-          {ignoreWhitespace}
-          {ignoreCase}
-          {comparisonRulesRequireRefresh}
-          {compareNeedsRefresh}
           {onSetViewMode}
           {onSetViewerSettings}
           {onSetTreeSettings}
-          {onToggleIgnoreWhitespace}
-          {onToggleIgnoreCase}
         />
       {/if}
 
