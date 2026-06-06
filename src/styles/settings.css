@@ -276,13 +276,13 @@
 }
 
 .compare-settings-nav-group {
-  margin-top: 9px;
-  padding: 4px 8px 3px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
+  margin-top: 12px;
+  padding: 4px 8px 4px;
+  color: var(--title);
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.1em;
 }
 
 .compare-settings-nav-group:first-child {
@@ -521,8 +521,9 @@
 }
 
 .settings-control textarea {
-  min-height: 84px;
-  resize: vertical;
+  height: 132px;
+  resize: none;
+  overflow: auto;
 }
 
 .settings-theme-grid {
@@ -691,10 +692,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 116px;
+  gap: 7px;
+  min-width: 94px;
   height: var(--control-height-md);
-  padding: 0 14px;
+  padding: 0 12px;
 }
 
 .settings-view-mode-toggle .view-mode-icon {
