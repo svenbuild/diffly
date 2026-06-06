@@ -20,6 +20,7 @@
     resolvePierreDiffTheme,
   } from '../theme/pierre'
   import type { CompareViewerSettings, TextDiffPayload, ViewMode } from '../types'
+  import { pickAvatar } from '../assets/avatars'
 
   interface DifflyCommentAnnotation {
     id: string
@@ -159,44 +160,16 @@
   const sendIcon = () => createSvgIcon(['M8 13V4', 'M4.6 7.4 8 4l3.4 3.4'])
   const closeIcon = () => createSvgIcon(['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'])
 
-  function hashSeed(seed: string) {
-    let hash = 0
-    for (let index = 0; index < seed.length; index += 1) {
-      hash = (hash * 31 + seed.charCodeAt(index)) >>> 0
-    }
-    return hash
-  }
-
-  // Deterministic identicon so every comment gets a different little avatar.
-  function createAvatar(seed: string): SVGSVGElement {
-    const hash = hashSeed(seed)
-    const hue = hash % 360
-    const svg = document.createElementNS(SVG_NS, 'svg')
-    svg.setAttribute('viewBox', '0 0 16 16')
-    svg.setAttribute('aria-hidden', 'true')
-    const bg = document.createElementNS(SVG_NS, 'rect')
-    bg.setAttribute('width', '16')
-    bg.setAttribute('height', '16')
-    bg.setAttribute('rx', '5')
-    bg.setAttribute('fill', `hsl(${hue} 55% 45%)`)
-    svg.appendChild(bg)
-    const fg = `hsl(${hue} 75% 88%)`
-    for (let col = 0; col < 3; col += 1) {
-      const sourceCol = col === 2 ? 0 : col
-      for (let row = 0; row < 3; row += 1) {
-        if (((hash >> (sourceCol * 3 + row)) & 1) === 0) {
-          continue
-        }
-        const cell = document.createElementNS(SVG_NS, 'rect')
-        cell.setAttribute('x', String(2 + col * 4))
-        cell.setAttribute('y', String(2 + row * 4))
-        cell.setAttribute('width', '4')
-        cell.setAttribute('height', '4')
-        cell.setAttribute('fill', fg)
-        svg.appendChild(cell)
-      }
-    }
-    return svg
+  // Each comment gets one of the bundled character portraits, chosen
+  // deterministically from its id so it stays stable across re-renders.
+  function createAvatar(seed: string): HTMLImageElement {
+    const img = document.createElement('img')
+    img.className = 'diffly-comment-avatar'
+    img.src = pickAvatar(seed)
+    img.alt = ''
+    img.setAttribute('aria-hidden', 'true')
+    img.draggable = false
+    return img
   }
 
   function openCommentAt(lineNumber: number, side: CommentSide) {
@@ -258,43 +231,36 @@
     }
   }
 
-  function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
-    const wrapper = document.createElement('div')
-    wrapper.className = 'diffly-comment-annotation'
+  function buildSavedCard(annotation: DiffLineAnnotation<DifflyCommentAnnotation>): HTMLElement {
+    const card = document.createElement('div')
+    card.className = 'diffly-comment-card'
 
-    const avatar = document.createElement('span')
-    avatar.className = 'diffly-comment-avatar'
-    avatar.appendChild(createAvatar(annotation.metadata.id))
+    const body = document.createElement('div')
+    body.className = 'diffly-comment-body'
+    const author = document.createElement('strong')
+    author.className = 'diffly-comment-author'
+    author.textContent = annotation.metadata.author
+    const text = document.createElement('p')
+    text.className = 'diffly-comment-text'
+    text.textContent = annotation.metadata.text
+    body.append(author, text)
 
-    if (annotation.metadata.saved && annotation.metadata.text) {
-      // Saved comment — read view (avatar + author + text + delete), diffshub-style.
-      const card = document.createElement('div')
-      card.className = 'diffly-comment-card'
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'diffly-comment-delete'
+    remove.setAttribute('aria-label', 'Delete comment')
+    remove.title = 'Delete comment'
+    remove.appendChild(closeIcon())
+    remove.addEventListener('click', () => removeComment(annotation.metadata.id))
 
-      const body = document.createElement('div')
-      body.className = 'diffly-comment-body'
-      const author = document.createElement('strong')
-      author.className = 'diffly-comment-author'
-      author.textContent = annotation.metadata.author
-      const text = document.createElement('p')
-      text.className = 'diffly-comment-text'
-      text.textContent = annotation.metadata.text
-      body.append(author, text)
+    card.append(createAvatar(annotation.metadata.id), body, remove)
+    return card
+  }
 
-      const remove = document.createElement('button')
-      remove.type = 'button'
-      remove.className = 'diffly-comment-delete'
-      remove.setAttribute('aria-label', 'Delete comment')
-      remove.title = 'Delete comment'
-      remove.appendChild(closeIcon())
-      remove.addEventListener('click', () => removeComment(annotation.metadata.id))
-
-      card.append(avatar, body, remove)
-      wrapper.appendChild(card)
-      return wrapper
-    }
-
-    // Composer — avatar + input + send.
+  function buildComposer(
+    annotation: DiffLineAnnotation<DifflyCommentAnnotation>,
+    onSaved: () => void,
+  ): HTMLElement {
     const form = document.createElement('form')
     form.className = 'diffly-comment-composer'
 
@@ -302,7 +268,6 @@
     input.type = 'text'
     input.placeholder = 'Add a comment...'
     input.value = annotation.metadata.text
-    input.autofocus = true
 
     const submit = document.createElement('button')
     submit.type = 'submit'
@@ -328,12 +293,30 @@
       }
       annotation.metadata.text = value
       annotation.metadata.saved = true
-      commentAnnotations = [...commentAnnotations]
       setInteractionMessage('Comment saved.')
+      onSaved()
     })
 
-    form.append(avatar, input, submit)
-    wrapper.appendChild(form)
+    form.append(createAvatar(annotation.metadata.id), input, submit)
+    window.requestAnimationFrame(() => input.focus())
+    return form
+  }
+
+  function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
+    const wrapper = document.createElement('div')
+    wrapper.className = 'diffly-comment-annotation'
+
+    // Toggle composer <-> saved card in-place so it does not depend on Pierre
+    // re-running renderAnnotation (it caches annotation DOM by id).
+    const showSaved = () => wrapper.replaceChildren(buildSavedCard(annotation))
+    const showComposer = () => wrapper.replaceChildren(buildComposer(annotation, showSaved))
+
+    if (annotation.metadata.saved && annotation.metadata.text) {
+      showSaved()
+    } else {
+      showComposer()
+    }
+
     return wrapper
   }
 

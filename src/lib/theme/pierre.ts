@@ -34,6 +34,15 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
       font-family: ${darkTokens.uiFont};
     }
 
+    /* Keep the gutter "add comment" button on the far-left edge of the gutter
+       instead of sitting on top of the line-number digits. */
+    [data-gutter-utility-slot] {
+      left: 0 !important;
+      right: auto !important;
+      justify-content: flex-start !important;
+      padding-left: 1px;
+    }
+
     *,
     *::before,
     *::after {
