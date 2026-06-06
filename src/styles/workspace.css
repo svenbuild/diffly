@@ -755,14 +755,14 @@ img.diffly-comment-avatar {
   padding: 12px 14px 10px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-strong);
+  background: var(--surface);
   color: var(--text);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   font-size: 13px;
   line-height: 1.45;
-  /* The card itself ignores the pointer so it never steals hover from the
-     token underneath; only the footer link re-enables pointer events. */
-  pointer-events: none;
+  /* Interactive so moving the pointer onto the card keeps it open (and the
+     footer link stays clickable); it hides once the pointer leaves the card. */
+  pointer-events: auto;
 }
 
 .token-hover-header {
@@ -828,9 +828,6 @@ img.diffly-comment-avatar {
 .token-hover-link {
   color: var(--muted);
   text-decoration: none;
-  /* Re-enable interaction so the external doc link is clickable even though the
-     card as a whole is pointer-events: none. */
-  pointer-events: auto;
 }
 
 .token-hover-link:hover {

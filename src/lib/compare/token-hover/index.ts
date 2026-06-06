@@ -24,6 +24,10 @@ const DICTIONARIES: Record<string, TokenDictionary> = {
   html: htmlTokens,
   c: cTokens,
   cpp: cppTokens,
+  // Pierre maps a bare `.h` header to objective-cpp and `.m` to objective-c;
+  // surface the C/C++ dictionaries there so plain headers get tooltips too.
+  'objective-cpp': cppTokens,
+  'objective-c': cTokens,
   java: javaTokens,
   rust: rustTokens,
   rs: rustTokens,

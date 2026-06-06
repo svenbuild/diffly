@@ -20,6 +20,31 @@ export function createTokenHoverController(): TokenHoverController {
   let card: HTMLDivElement | null = null
   let showTimer: number | null = null
   let hideTimer: number | null = null
+  let activeToken: HTMLElement | null = null
+
+  function applyUnderline(token: HTMLElement) {
+    if (activeToken === token) {
+      return
+    }
+    clearUnderline()
+    activeToken = token
+    // Tokens live inside Pierre's shadow root, so our stylesheet can't reach
+    // them — set the decoration inline instead.
+    token.style.textDecorationLine = 'underline'
+    token.style.textDecorationStyle = 'dotted'
+    token.style.textUnderlineOffset = '2px'
+    token.style.cursor = 'help'
+  }
+
+  function clearUnderline() {
+    if (activeToken) {
+      activeToken.style.textDecorationLine = ''
+      activeToken.style.textDecorationStyle = ''
+      activeToken.style.textUnderlineOffset = ''
+      activeToken.style.cursor = ''
+      activeToken = null
+    }
+  }
 
   function clearShowTimer() {
     if (showTimer !== null) {
@@ -41,12 +66,11 @@ export function createTokenHoverController(): TokenHoverController {
       card.className = 'token-hover'
       card.setAttribute('role', 'tooltip')
       card.style.display = 'none'
-      // The card itself is pointer-events: none, so only the footer link is a
-      // hit target. pointerover/pointerout bubble from that link up to the card,
-      // letting us keep the card alive while the pointer is on the link (so it
-      // stays clickable) and hide it once the pointer leaves.
-      card.addEventListener('pointerover', clearHideTimer)
-      card.addEventListener('pointerout', scheduleHide)
+      // Keep the card alive while the pointer is over it (so the footer link is
+      // clickable and the card doesn't vanish when you move onto it); hide once
+      // the pointer leaves the card itself.
+      card.addEventListener('pointerenter', clearHideTimer)
+      card.addEventListener('pointerleave', scheduleHide)
       document.body.appendChild(card)
     }
     return card
@@ -156,6 +180,7 @@ export function createTokenHoverController(): TokenHoverController {
       card.style.display = 'none'
       card.replaceChildren()
     }
+    clearUnderline()
   }
 
   function scheduleHide() {
@@ -180,6 +205,9 @@ export function createTokenHoverController(): TokenHoverController {
     clearHideTimer()
     clearShowTimer()
     const target = props.tokenElement
+    // Underline immediately so hovering any known token gives instant feedback,
+    // even before the tooltip's show delay elapses.
+    applyUnderline(target)
     showTimer = window.setTimeout(() => {
       showTimer = null
       show(entry, target)
@@ -193,6 +221,7 @@ export function createTokenHoverController(): TokenHoverController {
   function destroy() {
     clearShowTimer()
     clearHideTimer()
+    clearUnderline()
     if (card) {
       card.remove()
       card = null
