@@ -396,13 +396,13 @@
 .entry-row.selected,
 .file-row.selected {
   color: var(--strong-text);
-  background: var(--select-neutral-bg);
-  box-shadow: inset 0 0 0 1px var(--select-neutral-border);
+  background: var(--active-surface);
+  box-shadow: inset 0 0 0 1px var(--active-border);
 }
 
 .entry-row:hover:not(.selected),
 .file-row:hover:not(.selected) {
-  background: var(--select-neutral-bg-hover);
+  background: color-mix(in srgb, var(--accent-soft) 22%, var(--surface-alt));
   box-shadow: none;
 }
 

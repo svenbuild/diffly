@@ -79,21 +79,21 @@
 
 .settings-nav-button.active,
 .settings-section-link.active {
-  border-color: var(--select-neutral-border);
-  background: var(--select-neutral-bg);
+  border-color: var(--active-border);
+  background: var(--active-surface);
   box-shadow: none;
-  color: var(--text);
+  color: var(--active-text);
 }
 
 .settings-nav-button.active .settings-section-icon,
 .settings-section-link.active .settings-section-icon {
-  color: var(--text);
+  color: var(--active-text);
 }
 
 .settings-nav-button.active:hover:not(:disabled),
 .settings-section-link.active:hover:not(:disabled) {
-  border-color: var(--select-neutral-border);
-  background: var(--select-neutral-bg-hover);
+  border-color: var(--active-border);
+  background: color-mix(in srgb, var(--active-surface) 88%, var(--accent));
 }
 
 .settings-section-link span:last-child {
