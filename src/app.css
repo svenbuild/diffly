@@ -79,6 +79,9 @@
   --warning: #d29922;
   --warning-bg: #2e2413;
   --neutral-bg: #242424;
+  --select-neutral-bg: #2a2a2a;
+  --select-neutral-bg-hover: #323232;
+  --select-neutral-border: rgba(255, 255, 255, 0.18);
   --canvas-glow-primary: transparent;
   --canvas-glow-secondary: transparent;
   --app-bar-bg: var(--panel-bg);
@@ -190,6 +193,9 @@
   --warning: #9a6700;
   --warning-bg: #fff8c5;
   --neutral-bg: #eef2f6;
+  --select-neutral-bg: #e9e9e9;
+  --select-neutral-bg-hover: #e1e1e1;
+  --select-neutral-border: rgba(0, 0, 0, 0.14);
   --canvas-glow-primary: transparent;
   --canvas-glow-secondary: transparent;
   --app-bar-bg: #f6f8fa;

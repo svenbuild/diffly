@@ -79,8 +79,8 @@
 
 .settings-nav-button.active,
 .settings-section-link.active {
-  border-color: var(--border-strong);
-  background: var(--neutral-bg);
+  border-color: var(--select-neutral-border);
+  background: var(--select-neutral-bg);
   box-shadow: none;
   color: var(--text);
 }
@@ -92,8 +92,8 @@
 
 .settings-nav-button.active:hover:not(:disabled),
 .settings-section-link.active:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--neutral-bg) 88%, var(--text));
+  border-color: var(--select-neutral-border);
+  background: var(--select-neutral-bg-hover);
 }
 
 .settings-section-link span:last-child {
