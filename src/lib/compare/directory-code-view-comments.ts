@@ -3,17 +3,55 @@ import type {
   DiffLineAnnotation,
   LineAnnotation,
 } from '@pierre/diffs'
+import { pickAvatar } from '../assets/avatars'
 
 export interface DifflyCommentAnnotation {
   id: string
   text: string
 }
 
+type CommentAnnotation =
+  | DiffLineAnnotation<DifflyCommentAnnotation>
+  | LineAnnotation<DifflyCommentAnnotation>
+
 interface StoredComment {
   side: AnnotationSide
   lineNumber: number
   id: string
   text: string
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function createSvgIcon(paths: string[]): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('fill', 'none')
+  for (const d of paths) {
+    const path = document.createElementNS(SVG_NS, 'path')
+    path.setAttribute('d', d)
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', 'currentColor')
+    path.setAttribute('stroke-width', '1.6')
+    path.setAttribute('stroke-linecap', 'round')
+    path.setAttribute('stroke-linejoin', 'round')
+    svg.appendChild(path)
+  }
+  return svg
+}
+
+const sendIcon = () => createSvgIcon(['M8 13V4', 'M4.6 7.4 8 4l3.4 3.4'])
+const closeIcon = () => createSvgIcon(['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'])
+
+function createCommentAvatar(seed: string): HTMLImageElement {
+  const img = document.createElement('img')
+  img.className = 'diffly-comment-avatar'
+  img.src = pickAvatar(seed).url
+  img.alt = ''
+  img.setAttribute('aria-hidden', 'true')
+  img.draggable = false
+  return img
 }
 
 export function commentsStorageKey(compareKey: string) {
@@ -120,7 +158,7 @@ export function loadStoredCommentAnnotations(
 
 export function removeCommentAnnotation(
   commentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>,
-  annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
+  annotation: CommentAnnotation,
 ) {
   const targetId = annotation.metadata.id
   const next = new Map(commentAnnotations)
@@ -146,78 +184,105 @@ export function removeCommentAnnotation(
   }
 }
 
-export function renderCommentAnnotationElement(
-  annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
-  callbacks: {
-    onDelete: (
-      annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
-    ) => void
-    onSave: () => void
-  },
-) {
-  const wrapper = document.createElement('div')
-  const form = document.createElement('form')
-  const avatar = document.createElement('div')
-  const input = document.createElement('input')
-  const submit = document.createElement('button')
-  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+interface CommentCallbacks {
+  onSave: () => void
+  onDelete: (annotation: CommentAnnotation) => void
+}
 
-  wrapper.className = 'diffly-comment-annotation'
-  form.className = 'diffly-comment-composer'
-  avatar.className = 'diffly-comment-avatar'
-  avatar.textContent = 'D'
-  input.type = 'text'
-  input.placeholder = 'Add a comment...'
-  input.value = annotation.metadata.text
-  submit.type = 'submit'
-  submit.className = 'diffly-comment-submit'
-  submit.setAttribute('aria-label', 'Save comment')
-  icon.setAttribute('viewBox', '0 0 16 16')
-  icon.setAttribute('aria-hidden', 'true')
-  path.setAttribute('d', 'M8 13V3m0 0L4.5 6.5M8 3l3.5 3.5')
-  path.setAttribute('fill', 'none')
-  path.setAttribute('stroke', 'currentColor')
-  path.setAttribute('stroke-linecap', 'round')
-  path.setAttribute('stroke-linejoin', 'round')
-  path.setAttribute('stroke-width', '1.8')
-  icon.appendChild(path)
-  submit.appendChild(icon)
+function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbacks): HTMLElement {
+  const card = document.createElement('div')
+  card.className = 'diffly-comment-card'
+
+  const body = document.createElement('div')
+  body.className = 'diffly-comment-body'
+  const author = document.createElement('strong')
+  author.className = 'diffly-comment-author'
+  author.textContent = pickAvatar(annotation.metadata.id).name
+  const text = document.createElement('p')
+  text.className = 'diffly-comment-text'
+  text.textContent = annotation.metadata.text
+  body.append(author, text)
 
   const remove = document.createElement('button')
-  const removeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   remove.type = 'button'
   remove.className = 'diffly-comment-delete'
   remove.setAttribute('aria-label', 'Delete comment')
   remove.title = 'Delete comment'
-  removeIcon.setAttribute('viewBox', '0 0 16 16')
-  removeIcon.setAttribute('aria-hidden', 'true')
-  removePath.setAttribute('d', 'M3 5h10M6.5 5V3.5h3V5M6.5 8v3.5M9.5 8v3.5M4.5 5l.5 7.5h6l.5-7.5')
-  removePath.setAttribute('fill', 'none')
-  removePath.setAttribute('stroke', 'currentColor')
-  removePath.setAttribute('stroke-linecap', 'round')
-  removePath.setAttribute('stroke-linejoin', 'round')
-  removePath.setAttribute('stroke-width', '1.4')
-  removeIcon.appendChild(removePath)
-  remove.appendChild(removeIcon)
-
-  input.addEventListener('input', () => {
-    annotation.metadata.text = input.value
-  })
-  form.addEventListener('submit', (event) => {
-    event.preventDefault()
-    annotation.metadata.text = input.value.trim()
-    callbacks.onSave()
-  })
+  remove.appendChild(closeIcon())
   remove.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
     callbacks.onDelete(annotation)
   })
 
-  form.append(avatar, input, submit, remove)
-  wrapper.appendChild(form)
+  card.append(createCommentAvatar(annotation.metadata.id), body, remove)
+  return card
+}
+
+function buildComposer(
+  annotation: CommentAnnotation,
+  callbacks: CommentCallbacks,
+  onSaved: () => void,
+): HTMLElement {
+  const form = document.createElement('form')
+  form.className = 'diffly-comment-composer'
+
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.placeholder = 'Add a comment...'
+  input.value = annotation.metadata.text
+
+  const submit = document.createElement('button')
+  submit.type = 'submit'
+  submit.className = 'diffly-comment-submit'
+  submit.setAttribute('aria-label', 'Save comment')
+  submit.title = 'Save comment'
+  submit.appendChild(sendIcon())
+
+  input.addEventListener('input', () => {
+    annotation.metadata.text = input.value
+  })
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      callbacks.onDelete(annotation)
+    }
+  })
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const value = input.value.trim()
+    if (!value) {
+      callbacks.onDelete(annotation)
+      return
+    }
+    annotation.metadata.text = value
+    callbacks.onSave()
+    onSaved()
+  })
+
+  form.append(createCommentAvatar(annotation.metadata.id), input, submit)
+  window.requestAnimationFrame(() => input.focus())
+  return form
+}
+
+export function renderCommentAnnotationElement(
+  annotation: CommentAnnotation,
+  callbacks: CommentCallbacks,
+) {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'diffly-comment-annotation'
+
+  // Toggle composer <-> saved card in-place so it doesn't depend on Pierre
+  // re-running renderAnnotation (it caches annotation DOM by id). "Saved" is
+  // simply derived from whether there is any text yet.
+  const showSaved = () => wrapper.replaceChildren(buildSavedCard(annotation, callbacks))
+  const showComposer = () =>
+    wrapper.replaceChildren(buildComposer(annotation, callbacks, showSaved))
+
+  if (annotation.metadata.text.trim().length > 0) {
+    showSaved()
+  } else {
+    showComposer()
+  }
 
   return wrapper
 }
