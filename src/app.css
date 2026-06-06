@@ -615,19 +615,8 @@ h2 {
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
-.nav-button {
-  min-width: 72px;
-  transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-.nav-button-icon,
 .view-mode-icon {
   flex: 0 0 auto;
-}
-
-.nav-button-icon {
-  width: 13px;
-  height: 13px;
 }
 
 .view-mode-button {
@@ -716,10 +705,6 @@ h2 {
 
 .toolbar-segmented-control button + button {
   box-shadow: none;
-}
-
-.nav-button-group button + button {
-  box-shadow: inset 1px 0 0 var(--border);
 }
 
 .toolbar-segmented-control button:first-child {
@@ -914,5 +899,4 @@ h2 {
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
-  box-shadow: inset 3px 0 0 var(--warning);
 }
