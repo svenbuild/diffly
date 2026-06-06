@@ -7,7 +7,6 @@
     type CodeViewLineSelection,
     type CodeViewOptions,
     type DiffLineAnnotation,
-    type DiffTokenEventBaseProps,
     type FileContents,
     type FileDiffMetadata,
     type LineAnnotation,
@@ -28,8 +27,6 @@
   import {
     buildDirectoryCodeViewFile,
     buildPlaceholderFile,
-    describeRange,
-    describeSide,
     estimatePlaceholderLineCount,
   } from './directory-code-view-items'
   import {
@@ -285,19 +282,11 @@
 
   function handleSelectedLinesChange(selection: CodeViewLineSelection | null) {
     applyControlledSelection(selection)
-
-    if (selection) {
-      setInteractionMessage(`Selected ${describeRange(selection.range)}.`)
-    }
   }
 
   function handleLineSelected(range: SelectedLineRange | null, context: CodeViewItemContext) {
     const id = context.item?.id
     applyControlledSelection(id && range ? { id, range } : null)
-
-    if (range) {
-      setInteractionMessage(`Selected ${describeRange(range)}.`)
-    }
   }
 
   function annotationsFor(itemId: string) {
@@ -338,17 +327,11 @@
         side,
         lineNumber,
         metadata: {
-          id: `comment-${commentId += 1}`,
+          id: `comment-${commentId += 1}-${Math.random().toString(36).slice(2, 8)}`,
           text: '',
         },
       },
     ])
-    setInteractionMessage(`Comment opened for ${describeRange(range)}.`)
-  }
-
-  function handleTokenClick(token: DiffTokenEventBaseProps | { tokenText: string; lineNumber: number; side?: string }) {
-    const tokenText = token.tokenText.trim() || 'whitespace'
-    console.debug(`Diff token "${tokenText}" on ${describeSide(token.side)} line ${token.lineNumber}.`)
   }
 
   function renderCommentAnnotation(
@@ -437,7 +420,6 @@
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
       onSelectedLinesChange: handleSelectedLinesChange,
-      onTokenClick: handleTokenClick,
       renderAnnotation: renderCommentAnnotation,
       renderHeaderPrefix: renderCollapseButton as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderPrefix'],
       renderHeaderMetadata: renderHeaderMetadata as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderMetadata'],

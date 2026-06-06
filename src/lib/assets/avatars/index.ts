@@ -8,26 +8,28 @@ const modules = import.meta.glob('./*.png', {
 
 // Invented display names per portrait. Falls back to a capitalized file stem.
 const NAMES: Record<string, string> = {
+  // Female portraits
   assassin: 'Vesper',
-  astronaut: 'Cosmo',
-  baker: 'Pol',
-  elf: 'Lirael',
-  fighter: 'Pixel',
-  gothic: 'Raven',
-  hacker: 'Nyx',
-  healer: 'Seren',
-  knight: 'Cedric',
-  mechanic: 'Dash',
-  pirate: 'Morgan',
-  punk: 'Sid',
-  ranger: 'Cassia',
-  robot: 'Unit-7',
-  scientist: 'Ada',
+  mechanic: 'Mara',
   sorceress: 'Isolde',
-  vampire: 'Vlad',
-  warrior: 'Bjorn',
-  winter: 'Yuki',
+  healer: 'Seren',
+  punk: 'Roxy',
+  astronaut: 'Nova',
+  warrior: 'Freya',
+  scientist: 'Ada',
+  winter: 'Eira',
+  gothic: 'Lenore',
+  fighter: 'Kira',
+  // Male portraits
+  knight: 'Cedric',
+  hacker: 'Zane',
   wizard: 'Merlin',
+  ranger: 'Rook',
+  baker: 'Pol',
+  vampire: 'Vlad',
+  elf: 'Aelar',
+  pirate: 'Drake',
+  robot: 'Unit-7',
 }
 
 export interface Avatar {

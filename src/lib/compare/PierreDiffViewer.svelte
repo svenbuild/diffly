@@ -9,7 +9,6 @@
   import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
   import type {
     DiffLineAnnotation,
-    DiffTokenEventBaseProps,
     FileContents,
     FileDiffOptions,
     SelectedLineRange,
@@ -68,23 +67,6 @@
     ].join(':')
   }
 
-  function describeSide(side: string | undefined) {
-    return side === 'additions' ? 'right' : 'left'
-  }
-
-  function describeRange(range: SelectedLineRange) {
-    const startSide = describeSide(range.side)
-    const endSide = describeSide(range.endSide ?? range.side)
-    const startLine = range.start
-    const endLine = range.end
-
-    if (startLine === endLine && startSide === endSide) {
-      return `${startSide} line ${startLine}`
-    }
-
-    return `${startSide} line ${startLine} to ${endSide} line ${endLine}`
-  }
-
   function annotationKey(annotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>>) {
     return annotations
       .map((annotation) => [
@@ -119,10 +101,6 @@
 
   function handleLineSelected(range: SelectedLineRange | null) {
     applyControlledSelection(range)
-
-    if (range) {
-      setInteractionMessage(`Selected ${describeRange(range)}.`)
-    }
   }
 
   function handleGutterUtilityClick(range: SelectedLineRange) {
@@ -134,17 +112,11 @@
         side,
         lineNumber: range.end,
         metadata: {
-          id: `comment-${commentId += 1}`,
+          id: `comment-${commentId += 1}-${Math.random().toString(36).slice(2, 8)}`,
           text: '',
         },
       },
     ]
-    setInteractionMessage(`Comment added on line ${range.end}.`)
-  }
-
-  function handleTokenClick(token: DiffTokenEventBaseProps) {
-    const tokenText = token.tokenText.trim() || 'whitespace'
-    setInteractionMessage(`Token "${tokenText}" on ${describeSide(token.side)} line ${token.lineNumber}.`)
   }
 
   function applyCollapsedState() {
@@ -201,7 +173,6 @@
       enableGutterUtility: viewerSettings.enableGutterUtility,
       onGutterUtilityClick: handleGutterUtilityClick,
       renderAnnotation: renderCommentAnnotation,
-      onTokenClick: handleTokenClick,
       enableLineSelection:
         viewerSettings.enableLineSelection ||
         viewerSettings.controlledSelection ||
