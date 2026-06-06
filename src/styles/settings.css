@@ -436,6 +436,22 @@
   background: transparent;
 }
 
+.settings-preview-host ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.settings-preview-host ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.settings-preview-host ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .settings-preview-host-diff .pierre-diff-host {
   min-height: 0;
 }

@@ -155,6 +155,11 @@
 
     if (container) {
       container.toggleAttribute('data-diffly-collapsed', collapsed)
+      // Pierre themes via themeType but never reflects it as a host attribute,
+      // so our :host([data-theme='light']) overrides (header/host text color)
+      // never apply. Mirror the resolved mode onto the host ourselves.
+      container.setAttribute('data-theme', resolvedThemeMode)
+      container.style.colorScheme = resolvedThemeMode
     }
   }
 
