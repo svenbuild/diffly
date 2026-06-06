@@ -154,8 +154,8 @@
           {visibleThemeVariants}
           {availableLightThemes}
           {availableDarkThemes}
-          showInlineHighlights={viewerSettings.lineDiffType !== 'none'}
-          showSyntaxHighlighting={viewerSettings.syntaxMode === 'shiki'}
+          {viewerSettings}
+          {viewMode}
           {minUiFontSize}
           {maxUiFontSize}
           {minCodeFontSize}

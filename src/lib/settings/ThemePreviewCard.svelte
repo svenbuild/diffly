@@ -1,14 +1,7 @@
 <script lang="ts">
-  interface PreviewFragment {
-    text: string
-    highlighted: boolean
-    className?: string | null
-  }
-
-  interface PreviewLine {
-    lineNumber: number
-    fragments: PreviewFragment[]
-  }
+  import DiffPreview from './DiffPreview.svelte'
+  import type { CompareViewerSettings, ViewMode } from '../types'
+  import type { AppearanceSettings } from '../theme'
 
   interface PaletteSwatch {
     label: string
@@ -17,51 +10,29 @@
 
   export let title: string
   export let themeLabel: string
-  export let previewStyle: string
-  export let basePreviewLines: PreviewLine[]
-  export let viewerPreviewLines: PreviewLine[]
   export let palette: PaletteSwatch[] = []
+  export let viewerSettings: CompareViewerSettings
+  export let viewMode: ViewMode
+  export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: 'light' | 'dark'
 </script>
 
-<div class="settings-appearance-preview-card" style={previewStyle}>
+<div class="settings-appearance-preview-card">
   <div class="settings-appearance-preview-header">
     <strong>{title}</strong>
     <span>{themeLabel}</span>
   </div>
 
-  <div class="settings-appearance-preview-diff">
-    <div class="settings-appearance-preview-pane settings-appearance-preview-pane-removed">
-      {#each basePreviewLines as line}
-        <span class="settings-appearance-preview-line-number">{line.lineNumber}</span>
-        <code class="settings-appearance-preview-code">
-          {#each line.fragments as fragment}
-            <span
-              class:highlighted={fragment.highlighted}
-              class={`line-fragment ${fragment.className ?? ''}`}
-            >
-              {fragment.text || ' '}
-            </span>
-          {/each}
-        </code>
-      {/each}
-    </div>
-
-    <div class="settings-appearance-preview-pane settings-appearance-preview-pane-added">
-      {#each viewerPreviewLines as line}
-        <span class="settings-appearance-preview-line-number">{line.lineNumber}</span>
-        <code class="settings-appearance-preview-code">
-          {#each line.fragments as fragment}
-            <span
-              class:highlighted={fragment.highlighted}
-              class={`line-fragment ${fragment.className ?? ''}`}
-            >
-              {fragment.text || ' '}
-            </span>
-          {/each}
-        </code>
-      {/each}
-    </div>
-  </div>
+  <DiffPreview
+    bare
+    height={208}
+    leftLabel="palette.ts"
+    rightLabel="palette.ts"
+    {viewerSettings}
+    {viewMode}
+    {appearanceSettings}
+    {resolvedThemeMode}
+  />
 
   {#if palette.length > 0}
     <div class="settings-appearance-preview-palette">

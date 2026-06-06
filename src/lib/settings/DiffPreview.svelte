@@ -9,6 +9,8 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let leftLabel = 'theme-preview.ts'
   export let rightLabel = 'theme-preview.ts'
+  export let height = 380
+  export let bare = false
 
   const leftText = `import { palette } from "./palette";
 
@@ -57,7 +59,11 @@ document.body.append(save);
   }
 </script>
 
-<div class="settings-preview-host settings-preview-host-diff">
+<div
+  class:settings-preview-host-bare={bare}
+  class="settings-preview-host settings-preview-host-diff"
+  style={`height: ${height}px`}
+>
   <PierreDiffViewer
     {text}
     {leftLabel}

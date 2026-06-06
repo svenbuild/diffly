@@ -401,6 +401,12 @@
   min-height: 0;
 }
 
+.settings-preview-host-bare {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .settings-preview-host-diff .pierre-diff-host {
   min-height: 0;
 }
