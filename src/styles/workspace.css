@@ -923,6 +923,20 @@ img.diffly-comment-avatar {
   overflow: hidden;
 }
 
+.compare-directory-sidebar {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.directory-tree-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.directory-tree-main > .directory-tree-host {
+  height: 100%;
+}
+
 .directory-tree-host {
   position: relative;
   width: 100%;
@@ -930,6 +944,102 @@ img.diffly-comment-avatar {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.compare-sidebar-metrics {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  background: var(--pane-bg);
+}
+
+.sidebar-metric-section {
+  min-width: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-metric-section:first-child {
+  border-top: 0;
+}
+
+.sidebar-metric-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 34px;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.sidebar-metric-header:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.sidebar-metric-header[aria-expanded='true'] {
+  color: var(--secondary-text);
+}
+
+.sidebar-metric-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+
+.sidebar-metric-list {
+  display: grid;
+  margin: 0;
+  padding: 0 0 6px 28px;
+}
+
+.sidebar-metric-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-metric-list div:first-child {
+  border-top-color: var(--border);
+}
+
+.sidebar-metric-list dt,
+.sidebar-metric-list dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.sidebar-metric-list dt {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-metric-list dd {
+  color: var(--secondary-text);
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sidebar-metric-list .metric-additions {
+  color: var(--success);
+}
+
+.sidebar-metric-list .metric-deletions {
+  color: var(--danger);
 }
 
 .directory-tree-host > file-tree-container {

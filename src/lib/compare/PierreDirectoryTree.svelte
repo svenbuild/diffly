@@ -14,6 +14,7 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
+  export let embedded = false
 
   let host: HTMLDivElement | null = null
   let fileTree: FileTree | null = null
@@ -240,7 +241,7 @@
   })
 </script>
 
-<aside class="directory-tree-panel">
+{#if embedded}
   <div class="directory-tree-host" bind:this={host}>
     {#if loading && directoryEntries.length === 0}
       <div class="directory-tree-state">
@@ -249,4 +250,15 @@
       </div>
     {/if}
   </div>
-</aside>
+{:else}
+  <aside class="directory-tree-panel">
+    <div class="directory-tree-host" bind:this={host}>
+      {#if loading && directoryEntries.length === 0}
+        <div class="directory-tree-state">
+          <span class="refresh-spinner visible"></span>
+          <p>Scanning folders...</p>
+        </div>
+      {/if}
+    </div>
+  </aside>
+{/if}

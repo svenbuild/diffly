@@ -191,6 +191,31 @@ export interface FileDiffResult {
   unsupported?: UnsupportedDiffPayload | null
 }
 
+export interface DiffStatsSnapshot {
+  files: number
+  additions: number
+  deletions: number
+  lines: number
+}
+
+export interface SystemMonitorSnapshot {
+  busyWorkers: number
+  totalWorkers: number
+  taskQueue: number
+  renderedDiffs: number
+  diffCache: number
+}
+
+export interface DirectoryDiffRuntimeStats {
+  activeLoadCount: number
+  pendingLoadCount: number
+  renderedDiffs: number
+  workerBusyWorkers: number
+  workerTotalWorkers: number
+  workerQueuedTasks: number
+  workerDiffCacheSize: number
+}
+
 export interface UpdateMetadata {
   version: string
   currentVersion: string

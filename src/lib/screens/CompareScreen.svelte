@@ -1,13 +1,16 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
+  import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
     CompareOptions,
     CompareTreeSettings,
     CompareViewerSettings,
+    DiffStatsSnapshot,
     DirectoryEntryResult,
     FileDiffResult,
+    SystemMonitorSnapshot,
     ViewMode,
   } from '../types'
   import type {
@@ -58,12 +61,55 @@
   export let leftPath = ''
   export let rightPath = ''
   export let activeCompareOptions: CompareOptions
+  export let diffStats: DiffStatsSnapshot
+  export let systemMonitor: SystemMonitorSnapshot
+  export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
+  export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
     rightBase: string
     relativePath: string
   }
+
+  let activeSidebarPanel: 'diffStats' | 'systemMonitor' = 'diffStats'
+
+  function isEditableTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    const tagName = target.tagName.toLowerCase()
+    return (
+      tagName === 'input' ||
+      tagName === 'textarea' ||
+      tagName === 'select' ||
+      target.isContentEditable
+    )
+  }
+
+  function handleCompareKeydown(event: KeyboardEvent) {
+    if (
+      mode !== 'directory' ||
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      isEditableTarget(event.target)
+    ) {
+      return
+    }
+
+    if (event.key === 'F2') {
+      event.preventDefault()
+      activeSidebarPanel = 'diffStats'
+    } else if (event.key === 'F3') {
+      event.preventDefault()
+      activeSidebarPanel = 'systemMonitor'
+    }
+  }
 </script>
+
+<svelte:window on:keydown={handleCompareKeydown} />
 
 <main
   class="screen compare-screen"
@@ -214,28 +260,23 @@
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
     {#if mode === 'directory'}
-      {#if PierreDirectoryTreeComponent}
-        <svelte:component
-          this={PierreDirectoryTreeComponent}
-          {loading}
-          {directoryEntries}
-          entriesRevision={directoryEntriesRevision}
-          {selectedRelativePath}
-          {treeSettings}
-          {appearanceSettings}
-          {resolvedThemeMode}
-          {selectEntry}
-        />
-      {:else}
-        <aside class="directory-tree-panel">
-          <div class="directory-tree-host">
-            <div class="directory-tree-state">
-              <span class="refresh-spinner visible"></span>
-              <p>Loading file list...</p>
-            </div>
-          </div>
-        </aside>
-      {/if}
+      <CompareDirectorySidebar
+        {loading}
+        {directoryEntries}
+        entriesRevision={directoryEntriesRevision}
+        {selectedRelativePath}
+        {treeSettings}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        {selectEntry}
+        {PierreDirectoryTreeComponent}
+        {diffStats}
+        {systemMonitor}
+        activePanel={activeSidebarPanel}
+        onSetActivePanel={(panel) => {
+          activeSidebarPanel = panel
+        }}
+      />
       <button
         aria-label="Resize file list panel"
         class="compare-sidebar-resizer"
@@ -264,6 +305,8 @@
         {rightPath}
         compareOptions={activeCompareOptions}
         transitionActive={compareSurfaceTransitioning}
+        {onDiffStatsChange}
+        {onSystemMonitorChange}
         resolveEntryBases={getDetailBasesForPath}
       />
     {:else}

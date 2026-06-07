@@ -104,12 +104,14 @@
     CompareOptions,
     CompareTreeSettings,
     CompareViewerSettings,
+    DiffStatsSnapshot,
     DirectoryEntryResult,
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
     PersistedExplorerPane,
     PersistedSession,
+    SystemMonitorSnapshot,
     ThemeMode,
     UpdateChannel,
     ViewMode,
@@ -194,6 +196,19 @@
   let selectedRelativePath = ''
   let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
+  let diffStats: DiffStatsSnapshot = {
+    files: 0,
+    additions: 0,
+    deletions: 0,
+    lines: 0,
+  }
+  let systemMonitor: SystemMonitorSnapshot = {
+    busyWorkers: 0,
+    totalWorkers: 0,
+    taskQueue: 0,
+    renderedDiffs: 0,
+    diffCache: 0,
+  }
   let compareRevision = 0
   let activeDirectoryCompareJobId = ''
   let directoryComparePollTimer: number | null = null
@@ -299,6 +314,30 @@
     ignoreWhitespace,
     ignoreCase,
   })
+
+  function resetCompareMetrics() {
+    diffStats = {
+      files: 0,
+      additions: 0,
+      deletions: 0,
+      lines: 0,
+    }
+    systemMonitor = {
+      busyWorkers: 0,
+      totalWorkers: 0,
+      taskQueue: 0,
+      renderedDiffs: 0,
+      diffCache: 0,
+    }
+  }
+
+  function setDiffStats(stats: DiffStatsSnapshot) {
+    diffStats = stats
+  }
+
+  function setSystemMonitor(stats: SystemMonitorSnapshot) {
+    systemMonitor = stats
+  }
 
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
     return (
@@ -1812,6 +1851,7 @@
     loading = true
     detailLoading = false
     errorMessage = ''
+    resetCompareMetrics()
     pulseCompareSurface()
     activeDetailRequestId += 1
     cancelBackgroundDiffPreload()
@@ -2347,6 +2387,10 @@
     {leftPath}
     {rightPath}
     {activeCompareOptions}
+    {diffStats}
+    {systemMonitor}
+    onDiffStatsChange={setDiffStats}
+    onSystemMonitorChange={setSystemMonitor}
     {getDetailBasesForPath}
   />
 {:else}

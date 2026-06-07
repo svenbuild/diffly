@@ -2,12 +2,15 @@
   import { onDestroy } from 'svelte'
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem } from '../api'
+  import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareOptions,
     CompareViewerSettings,
+    DiffStatsSnapshot,
     DirectoryEntryResult,
     FileDiffResult,
+    SystemMonitorSnapshot,
     ViewMode,
   } from '../types'
 
@@ -42,6 +45,8 @@
     ignoreWhitespace: false,
     ignoreCase: false,
   }
+  export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void = () => {}
+  export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
     rightBase: string
@@ -84,6 +89,13 @@
   let selectedRenderableEntries: LoadedDirectoryDiff[] = []
   let pendingEntryCount = 0
   let unresolvedEntryCount = 0
+  let diffStatsByPath = new Map<string, {
+    additions: number
+    deletions: number
+    lines: number
+    signature: string
+  }>()
+  let diffStatsTotals: DiffStatsSnapshot = { ...EMPTY_DIFF_STATS }
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -178,6 +190,8 @@
     entryIndexByPath = nextEntryIndexByPath
     changedEntryPaths = []
     entryStructureRevision += 1
+    pruneDiffStats(nextPaths)
+    publishDiffStats()
     rebuildVisibleEntries(nextStates)
   }
 
@@ -193,6 +207,66 @@
   function setEntryState(path: string, state: EntryDiffState) {
     pendingEntryStateUpdates.set(path, state)
     scheduleEntryStateFlush()
+  }
+
+  function publishDiffStats() {
+    onDiffStatsChange({
+      files: directoryEntries.length,
+      additions: diffStatsTotals.additions,
+      deletions: diffStatsTotals.deletions,
+      lines: diffStatsTotals.lines,
+    })
+  }
+
+  function resetDiffStats() {
+    diffStatsByPath = new Map()
+    diffStatsTotals = { ...EMPTY_DIFF_STATS }
+    publishDiffStats()
+  }
+
+  function pruneDiffStats(activePaths: Set<string>) {
+    let changed = false
+
+    for (const [path, stats] of diffStatsByPath) {
+      if (activePaths.has(path)) {
+        continue
+      }
+
+      diffStatsTotals = {
+        files: 0,
+        additions: diffStatsTotals.additions - stats.additions,
+        deletions: diffStatsTotals.deletions - stats.deletions,
+        lines: diffStatsTotals.lines - stats.lines,
+      }
+      diffStatsByPath.delete(path)
+      changed = true
+    }
+
+    if (changed) {
+      publishDiffStats()
+    }
+  }
+
+  function trackDiffStats(entry: DirectoryEntryResult, diff: FileDiffResult | null) {
+    if (!diff?.text) {
+      return
+    }
+
+    const path = entry.relativePath
+    const stats = buildTextDiffStats(diff.text)
+    const previous = diffStatsByPath.get(path)
+    if (previous?.signature === stats.signature) {
+      return
+    }
+
+    diffStatsByPath.set(path, stats)
+    diffStatsTotals = {
+      files: 0,
+      additions: diffStatsTotals.additions + stats.additions - (previous?.additions ?? 0),
+      deletions: diffStatsTotals.deletions + stats.deletions - (previous?.deletions ?? 0),
+      lines: diffStatsTotals.lines + stats.lines - (previous?.lines ?? 0),
+    }
+    publishDiffStats()
   }
 
   function getEntryState(path: string) {
@@ -233,6 +307,7 @@
     const state = getEntryState(path)
 
     if (state?.diff && state.revision === loadRevision) {
+      trackDiffStats(entry, state.diff)
       return
     }
 
@@ -271,6 +346,7 @@
         loading: false,
         revision: loadRevision,
       })
+      trackDiffStats(entry, diff)
     } catch (error) {
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
@@ -771,6 +847,7 @@
       activeLoadCount = 0
       backgroundLoadCursor = 0
       cancelBackgroundLoadScheduling()
+      resetDiffStats()
     }
     syncEntryCollections()
   }
@@ -821,6 +898,7 @@
         toggleEntry={toggleEntryByPath}
         {requestVisibleEntries}
         pauseDiffLoading={pauseDirectoryDiffLoads}
+        {onSystemMonitorChange}
       />
     {:else if selectedRelativePath}
       <div class="compare-viewer-state">

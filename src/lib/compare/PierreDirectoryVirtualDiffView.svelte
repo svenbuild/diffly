@@ -17,6 +17,7 @@
     WorkerPoolManager,
     type WorkerInitializationRenderOptions,
     type WorkerPoolOptions,
+    type WorkerStats,
   } from '@pierre/diffs/worker'
   import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
   import './directory-code-view.css'
@@ -49,6 +50,7 @@
     CompareViewerSettings,
     DirectoryEntryResult,
     FileDiffResult,
+    SystemMonitorSnapshot,
     TextDiffPayload,
     ViewMode,
   } from '../types'
@@ -90,10 +92,13 @@
   export let toggleEntry: (relativePath: string) => void = () => {}
   export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
   export let pauseDiffLoading: () => void = () => {}
+  export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
 
   let host: HTMLDivElement | null = null
   let codeView: CodeView<DifflyCommentAnnotation> | null = null
   let workerPool: WorkerPoolManager | null = null
+  let unsubscribeWorkerStats: (() => void) | null = null
+  let lastWorkerStats: WorkerStats | null = null
   let unsubscribeScroll: (() => void) | null = null
   let unsubscribeNativeScroll: (() => void) | null = null
   let visibleRequestTimer: number | null = null
@@ -274,9 +279,30 @@
     if (!workerPool) {
       lastWorkerOptionsKey = workerOptionsKey()
       workerPool = new WorkerPoolManager(workerPoolOptions(), workerRenderOptions())
+      subscribeWorkerStats(workerPool)
     }
 
     return workerPool
+  }
+
+  function publishSystemMonitorStats(stats: WorkerStats | null = lastWorkerStats) {
+    onSystemMonitorChange({
+      busyWorkers: stats?.busyWorkers ?? 0,
+      totalWorkers: stats?.totalWorkers ?? 0,
+      taskQueue: stats?.queuedTasks ?? 0,
+      renderedDiffs: parsedDiffs.size,
+      diffCache: stats?.diffCacheSize ?? 0,
+    })
+  }
+
+  function subscribeWorkerStats(manager: WorkerPoolManager) {
+    unsubscribeWorkerStats?.()
+    unsubscribeWorkerStats = manager.subscribeToStatChanges((stats) => {
+      lastWorkerStats = stats
+      publishSystemMonitorStats(stats)
+    })
+    lastWorkerStats = manager.getStats()
+    publishSystemMonitorStats(lastWorkerStats)
   }
 
   function syncWorkerRenderOptions() {
@@ -779,6 +805,7 @@
     itemIndexByPath = nextItemIndexByPath
     itemInputIndexByPath = nextItemInputIndexByPath
     itemKeyByPath = nextItemKeyByPath
+    publishSystemMonitorStats()
 
     return items
   }
@@ -868,6 +895,7 @@
     placeholderPaths = nextPlaceholderPaths
     loadingPaths = nextLoadingPaths
     itemKeyByPath = nextItemKeyByPath
+    publishSystemMonitorStats()
 
     if (shouldBatchCodeViewUpdate) {
       codeView.setItems(nextRenderedItems)
@@ -1172,8 +1200,11 @@
     codeView?.cleanUp()
     codeView = null
     hasRenderedItems = false
+    unsubscribeWorkerStats?.()
+    unsubscribeWorkerStats = null
     workerPool?.terminate()
     workerPool = null
+    lastWorkerStats = null
     tokenHoverController.destroy()
   })
 </script>

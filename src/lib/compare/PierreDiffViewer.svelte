@@ -5,6 +5,7 @@
     WorkerPoolManager,
     type WorkerInitializationRenderOptions,
     type WorkerPoolOptions,
+    type WorkerStats,
   } from '@pierre/diffs/worker'
   import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
   import type {
@@ -19,7 +20,12 @@
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
-  import type { CompareViewerSettings, TextDiffPayload, ViewMode } from '../types'
+  import type {
+    CompareViewerSettings,
+    SystemMonitorSnapshot,
+    TextDiffPayload,
+    ViewMode,
+  } from '../types'
   import {
     renderCommentAnnotationElement,
     type DifflyCommentAnnotation,
@@ -34,10 +40,12 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let collapsed = false
+  export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
   let workerPool: WorkerPoolManager | null = null
+  let unsubscribeWorkerStats: (() => void) | null = null
   let renderedOptions: FileDiffOptions<DifflyCommentAnnotation> | null = null
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
@@ -280,9 +288,26 @@
     if (!workerPool) {
       lastWorkerOptionsKey = workerOptionsKey()
       workerPool = new WorkerPoolManager(workerPoolOptions(), workerRenderOptions())
+      subscribeWorkerStats(workerPool)
     }
 
     return workerPool
+  }
+
+  function publishWorkerStats(stats: WorkerStats) {
+    onSystemMonitorChange({
+      busyWorkers: stats.busyWorkers,
+      totalWorkers: stats.totalWorkers,
+      taskQueue: stats.queuedTasks,
+      renderedDiffs: 0,
+      diffCache: stats.diffCacheSize,
+    })
+  }
+
+  function subscribeWorkerStats(manager: WorkerPoolManager) {
+    unsubscribeWorkerStats?.()
+    unsubscribeWorkerStats = manager.subscribeToStatChanges(publishWorkerStats)
+    publishWorkerStats(manager.getStats())
   }
 
   function syncWorkerRenderOptions() {
@@ -368,6 +393,8 @@
     }
     fileDiff?.cleanUp()
     fileDiff = null
+    unsubscribeWorkerStats?.()
+    unsubscribeWorkerStats = null
     workerPool?.terminate()
     workerPool = null
     renderedOptions = null

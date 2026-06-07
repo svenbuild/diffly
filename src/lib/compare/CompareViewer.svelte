@@ -7,6 +7,8 @@
     CompareMode,
     CompareOptions,
     CompareViewerSettings,
+    DiffStatsSnapshot,
+    SystemMonitorSnapshot,
     DirectoryEntryResult,
     FileDiffResult,
     ViewMode,
@@ -31,6 +33,8 @@
     ignoreCase: false,
   }
   export let transitionActive = false
+  export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void = () => {}
+  export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
     rightBase: string
@@ -57,6 +61,8 @@
       {leftPath}
       {rightPath}
       {compareOptions}
+      {onDiffStatsChange}
+      {onSystemMonitorChange}
       {resolveEntryBases}
     />
   {:else if loading || detailLoading}
@@ -77,6 +83,7 @@
       {appearanceSettings}
       {resolvedThemeMode}
       {viewMode}
+      {onSystemMonitorChange}
     />
   {:else}
     <UnsupportedCompareView
