@@ -63,6 +63,14 @@
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
   const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
   const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
+  const EMPTY_SYSTEM_MONITOR: SystemMonitorSnapshot = {
+    busyWorkers: 0,
+    totalWorkers: 0,
+    taskQueue: 0,
+    renderingDiffs: 0,
+    preparedDiffs: 0,
+    diffCache: 0,
+  }
 
   let entriesSignature = ''
   let loadGeneration = 0
@@ -96,6 +104,42 @@
     signature: string
   }>()
   let diffStatsTotals: DiffStatsSnapshot = { ...EMPTY_DIFF_STATS }
+  let childSystemMonitor: SystemMonitorSnapshot = { ...EMPTY_SYSTEM_MONITOR }
+  let lastSystemMonitorSignature = ''
+
+  function queuedLoadCount() {
+    return (
+      Math.max(0, priorityLoadQueue.length - priorityLoadQueueHead) +
+      Math.max(0, normalLoadQueue.length - normalLoadQueueHead)
+    )
+  }
+
+  function publishDirectorySystemMonitorStats(stats = childSystemMonitor) {
+    childSystemMonitor = stats
+    const nextStats: SystemMonitorSnapshot = {
+      ...stats,
+      taskQueue: stats.taskQueue + activeLoadCount + queuedLoadCount(),
+    }
+    const signature = [
+      nextStats.busyWorkers,
+      nextStats.totalWorkers,
+      nextStats.taskQueue,
+      nextStats.renderingDiffs,
+      nextStats.preparedDiffs,
+      nextStats.diffCache,
+    ].join(':')
+
+    if (signature === lastSystemMonitorSignature) {
+      return
+    }
+
+    lastSystemMonitorSignature = signature
+    onSystemMonitorChange(nextStats)
+  }
+
+  function handleSystemMonitorChange(stats: SystemMonitorSnapshot) {
+    publishDirectorySystemMonitorStats(stats)
+  }
 
   function entryKey(entry: DirectoryEntryResult) {
     return entry.relativePath
@@ -379,6 +423,7 @@
     }
 
     loadQueueKeys.add(path)
+    publishDirectorySystemMonitorStats()
     pumpLoadQueue()
   }
 
@@ -496,10 +541,12 @@
       const generation = loadGeneration
       const loadRevision = revision
       activeLoadCount += 1
+      publishDirectorySystemMonitorStats()
 
       void ensureLoaded(entry, generation, loadRevision).finally(() => {
         if (generation === loadGeneration) {
           activeLoadCount = Math.max(0, activeLoadCount - 1)
+          publishDirectorySystemMonitorStats()
           pumpLoadQueue()
         }
       })
@@ -571,6 +618,7 @@
     priorityLoadQueueHead = 0
     normalLoadQueueHead = 0
     loadQueueKeys = new Set([...priorityLoadQueue, ...normalLoadQueue])
+    publishDirectorySystemMonitorStats()
     pumpLoadQueue()
   }
 
@@ -826,9 +874,12 @@
       normalLoadQueueHead = 0
       loadQueueKeys = new Set()
       activeLoadCount = 0
+      childSystemMonitor = { ...EMPTY_SYSTEM_MONITOR }
+      lastSystemMonitorSignature = ''
       backgroundLoadCursor = 0
       cancelBackgroundLoadScheduling()
       resetDiffStats()
+      publishDirectorySystemMonitorStats()
     }
     syncEntryCollections()
   }
@@ -883,7 +934,7 @@
       toggleEntry={toggleEntryByPath}
       {requestVisibleEntries}
       pauseDiffLoading={pauseDirectoryDiffLoads}
-      {onSystemMonitorChange}
+      onSystemMonitorChange={handleSystemMonitorChange}
     />
   {/if}
 </section>

@@ -286,12 +286,20 @@
     return workerPool
   }
 
+  function renderedDiffItemCount() {
+    if (!codeView) {
+      return 0
+    }
+
+    return codeView.getRenderedItems().filter((item) => item.type === 'diff').length
+  }
+
   function publishSystemMonitorStats(stats: WorkerStats | null = lastWorkerStats) {
     onSystemMonitorChange({
       busyWorkers: stats?.busyWorkers ?? 0,
       totalWorkers: stats?.totalWorkers ?? 0,
       taskQueue: stats?.queuedTasks ?? 0,
-      renderingDiffs: stats?.activeTasks ?? 0,
+      renderingDiffs: renderedDiffItemCount(),
       preparedDiffs: parsedDiffs.size,
       diffCache: stats?.diffCacheSize ?? 0,
     })
@@ -923,6 +931,7 @@
     }
 
     const paths = collectRenderedEntryPaths(view)
+    publishSystemMonitorStats()
     if (paths.length === 0) {
       return
     }
