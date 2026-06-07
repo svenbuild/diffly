@@ -1,72 +1,47 @@
 # Diffly
 
-Diffly is a desktop diff tool for local file and folder comparisons. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and a straightforward desktop workflow.
+Diffly is a local desktop diff tool for comparing files and folders. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and predictable desktop workflows.
+
+## Download
+
+Install the latest Windows build from [GitHub Releases](https://github.com/svenbuild/diffly/releases/latest).
 
 Current release: `v0.2.1`
 
 ## Features
 
-- Compare individual files or whole directory trees.
-- Browse changed entries with directory-aware filtering.
-- Switch between side-by-side and unified diff views.
-- Merge text hunks selectively when resolving file differences.
-- Preview images visually and inspect binary files in a hex view.
-- Open one directory diff file at a time while the remaining file diffs load in the background cache.
-- Use virtual rendering for large text diffs, directory diffs, and binary previews.
-- Persist the current compare session and app state locally.
-- Check for signed app updates from GitHub releases.
+- Compare files or full directory trees.
+- Browse changed entries with a directory-aware sidebar.
+- Switch between side-by-side and unified text diffs.
+- Preview images and inspect binary files in a hex view.
+- Add persistent comments to diff lines.
+- Use Token Hover for quick syntax-token context.
+- Keep large text, directory, and binary diffs responsive with virtual rendering.
+- Restore local compare sessions and app state across restarts.
+- Receive app updates through GitHub Releases.
 
-## Getting Started
-
-Install dependencies:
+## Development
 
 ```bash
 npm install
-```
-
-Run the desktop app in development mode:
-
-```bash
 npm run electron:dev
 ```
 
-## Validation
-
-Run the standard validation path before pushing changes:
+Run checks before pushing changes:
 
 ```bash
 npm run check
-npm test
 ```
 
-## Build
-
-Build a fast local desktop binary:
-
-```bash
-npm run electron:build
-```
-
-Build the Windows installer:
+Build the Windows installer and portable app:
 
 ```bash
 npm run electron:package
 ```
 
-Build installers for all supported local targets:
+## Links
 
-```bash
-npm run electron:package:all
-```
-
-Tagged releases are published through GitHub Actions and provide the updater artifacts used by the app.
-
-## Releases
-
-Release notes are tracked in [CHANGELOG.md](CHANGELOG.md). The `v0.2.1` release adds persistent diff comments, Token Hover tooltips, cleaner settings previews, directory tree stability work, Electron 42, and the GPLv3 license update.
-
-## Project Links
-
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Contribution workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Security reporting: [SECURITY.md](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [License](LICENSE)
