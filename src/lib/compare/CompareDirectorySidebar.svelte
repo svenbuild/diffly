@@ -62,9 +62,12 @@
         on:click={() => onSetActivePanel('diffStats')}
       >
         <svg aria-hidden="true" class="sidebar-metric-icon" fill="currentColor" viewBox="0 0 16 16">
-          <path clip-rule="evenodd" d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM5.25 10a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5h-5.5ZM8 3.546a.75.75 0 0 0-.75.75v6.25h1.5v-6.25A.75.75 0 0 0 8 3.546Z" fill-rule="evenodd" />
+          <path clip-rule="evenodd" fill-rule="evenodd" d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5Zm0 2.8a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9ZM7.25 7.25a.75.75 0 0 1 1.5 0v3.75a.75.75 0 0 1-1.5 0Z" />
         </svg>
-        <span>Diff Stats (F2)</span>
+        <span class="sidebar-metric-title">
+          <span class="sidebar-metric-name">Diff Stats</span>
+          <span class="sidebar-metric-hint">F2</span>
+        </span>
       </button>
 
       {#if activePanel === 'diffStats'}
@@ -96,11 +99,14 @@
         type="button"
         on:click={() => onSetActivePanel('systemMonitor')}
       >
-        <svg aria-hidden="true" class="sidebar-metric-icon" viewBox="0 0 16 16">
-          <path d="M2.2 8s2.1-3.4 5.8-3.4 5.8 3.4 5.8 3.4-2.1 3.4-5.8 3.4S2.2 8 2.2 8Z" fill="none" stroke="currentColor" stroke-width="1.15" />
-          <circle cx="8" cy="8" r="1.7" fill="none" stroke="currentColor" stroke-width="1.15" />
+        <svg aria-hidden="true" class="sidebar-metric-icon" fill="none" viewBox="0 0 16 16">
+          <path d="M1.75 8S4 3.75 8 3.75 14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3" />
+          <circle cx="8" cy="8" r="1.85" fill="currentColor" />
         </svg>
-        <span>System Monitor (F3)</span>
+        <span class="sidebar-metric-title">
+          <span class="sidebar-metric-name">System Monitor</span>
+          <span class="sidebar-metric-hint">F3</span>
+        </span>
       </button>
 
       {#if activePanel === 'systemMonitor'}

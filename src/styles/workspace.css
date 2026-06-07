@@ -947,9 +947,9 @@ img.diffly-comment-avatar {
 }
 
 .compare-sidebar-metrics {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  padding: 0 8px 8px 16px;
   border-top: 1px solid var(--border);
   background: var(--pane-bg);
 }
@@ -966,54 +966,86 @@ img.diffly-comment-avatar {
 .sidebar-metric-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 9px;
   width: 100%;
-  height: 32px;
-  gap: 6px;
-  padding: 0;
+  height: 34px;
+  padding: 0 12px;
   border: 0;
   border-radius: 0;
   color: var(--muted);
   background: transparent;
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   text-align: left;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
 }
 
 .sidebar-metric-header:hover {
   color: var(--text);
-  background: transparent;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .sidebar-metric-header[aria-expanded='true'] {
-  color: var(--secondary-text);
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 
 .sidebar-metric-icon {
-  width: 12px;
-  height: 12px;
+  width: 15px;
+  height: 15px;
   flex: 0 0 auto;
   color: var(--text-faint);
+  transition: color 0.12s ease;
+}
+
+.sidebar-metric-header:hover .sidebar-metric-icon,
+.sidebar-metric-header[aria-expanded='true'] .sidebar-metric-icon {
+  color: var(--secondary-text);
+}
+
+.sidebar-metric-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sidebar-metric-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-metric-hint {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .sidebar-metric-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   margin: 0;
-  padding: 0 0 4px 0;
+  padding: 0 12px 8px;
 }
 
 .sidebar-metric-list div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
-  min-height: 22px;
+  gap: 12px;
+  min-height: 24px;
   padding: 0;
   border-top: 1px solid var(--border-subtle);
 }
 
 .sidebar-metric-list div:first-child {
-  border-top-color: var(--border);
+  border-top: 0;
 }
 
 .sidebar-metric-list dt,
@@ -1031,10 +1063,11 @@ img.diffly-comment-avatar {
 }
 
 .sidebar-metric-list dd {
-  color: var(--secondary-text);
+  color: var(--text);
   font-family: var(--font-code);
   font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
 }
