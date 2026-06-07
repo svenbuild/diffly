@@ -70,7 +70,11 @@
         </span>
       </button>
 
-      {#if activePanel === 'diffStats'}
+      <div
+        class="sidebar-metric-reveal"
+        class:open={activePanel === 'diffStats'}
+        aria-hidden={activePanel !== 'diffStats'}
+      >
         <dl class="sidebar-metric-list">
           <div>
             <dt>Files</dt>
@@ -89,7 +93,7 @@
             <dd>{formatNumber(diffStats.lines)}</dd>
           </div>
         </dl>
-      {/if}
+      </div>
     </section>
 
     <section class="sidebar-metric-section">
@@ -109,7 +113,11 @@
         </span>
       </button>
 
-      {#if activePanel === 'systemMonitor'}
+      <div
+        class="sidebar-metric-reveal"
+        class:open={activePanel === 'systemMonitor'}
+        aria-hidden={activePanel !== 'systemMonitor'}
+      >
         <dl class="sidebar-metric-list">
           <div>
             <dt>Busy Workers</dt>
@@ -128,7 +136,7 @@
             <dd>{formatNumber(systemMonitor.diffCache)}</dd>
           </div>
         </dl>
-      {/if}
+      </div>
     </section>
   </div>
 </aside>
