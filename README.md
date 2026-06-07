@@ -2,7 +2,7 @@
 
 Diffly is a desktop diff tool for local file and folder comparisons. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and a straightforward desktop workflow.
 
-Current release: `v0.2.0`
+Current release: `v0.2.1`
 
 ## Features
 
@@ -63,7 +63,7 @@ Tagged releases are published through GitHub Actions and provide the updater art
 
 ## Releases
 
-Release notes are tracked in [CHANGELOG.md](CHANGELOG.md). The `v0.2.0` release includes the full change history since `v0.1.5`, including the Electron migration, Compare view performance work, virtualized directory and binary diff rendering, updater fixes, and Windows installer/portable packaging.
+Release notes are tracked in [CHANGELOG.md](CHANGELOG.md). The `v0.2.1` release adds persistent diff comments, Token Hover tooltips, cleaner settings previews, directory tree stability work, Electron 42, and the GPLv3 license update.
 
 ## Project Links
 

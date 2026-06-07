@@ -1,5 +1,76 @@
 # Changelog
 
+## Diffly v0.2.1
+
+Released: 2026-06-07
+
+This release covers all changes from `v0.2.0` through `v0.2.1`.
+
+### Highlights
+
+- Added persistent diff comments across single-file and folder comparisons, including gutter actions, delete support, named portraits, and larger randomized avatars.
+- Added Token Hover for bundled syntax-token knowledge tooltips, with sticky popouts, darker cards, underline affordances, and `.h` file support.
+- Reworked settings and appearance previews around real Pierre diff/tree rendering, cleaner sidebar navigation, compact controls, and more accurate light/dark preview behavior.
+- Simplified directory tree and compare rendering by removing legacy fallbacks, benchmark harnesses, custom wheel handling, and structural dead code.
+- Improved directory tree reliability, viewport sizing, native scrolling, virtualizer line-height matching, and setup/compare layout polish.
+- Updated Electron from 39 to 42 and adjusted GPU/compositing behavior for newer Chromium desktop rendering.
+- Updated the project license to GPLv3 and refreshed release metadata.
+
+### Validation
+
+- `npm run check`
+- `npm run build`
+- GitHub Actions release workflow on tag `v0.2.1`
+
+### Complete Commit List Since v0.2.0
+
+- Add subtle compare transition feedback (`d57dfa3`)
+- Remove scroll and benchmark harnesses (`182fe1c`)
+- Fix directory tree viewport sizing (`c6de6ea`)
+- Stabilize directory tree mounting (`f70d236`)
+- Update repository commit guidance (`d45e637`)
+- Ensure directory sidebar renders entries (`3d2c54e`)
+- Force GPU compositing; pin colored file-tree icons (`49572be`)
+- Match virtualizer line-height metric to rendered row height (`9e66e41`)
+- Try forcing D3D11 ANGLE + dropping GPU sandbox (`896181c`)
+- Upgrade Electron 39 -> 42 for newer Chromium GPU support (`ca11ebe`)
+- Drop forced GPU switches; write GPU status to userData (`ea8d09c`)
+- Default lineDiffType to 'none' to cut per-line span count (`8508255`)
+- Remove custom wheel/scroll machinery; use native scrolling (`0834085`)
+- Add delete button to diff comments (`19f285e`)
+- Tree: configurable built-in icon set; drop status text labels (`81677bc`)
+- Persist diff comments across reloads (per comparison) (`6d3682e`)
+- Settings: keep select chevron on hover (`c1efa89`)
+- Tree: remove fallback list, always use the @pierre/trees FileTree (`7bdac75`)
+- Clean up structural dead code (`5b37ee9`)
+- Extract focused structural helpers (`c52f049`)
+- Split startup and explorer helpers (`d576b05`)
+- Split renderer structure and remove legacy diff fallbacks (`60b50d0`)
+- Restyle settings sidebar, appearance preview, and compare layout (`e1de6f3`)
+- Polish compare toolbar, settings sidebar, and picker contrast (`d87366a`)
+- Narrow compare sidebar and tighten tree padding (`44de5d6`)
+- Use neutral gray for settings sidebar and picker selection (`c5e1cf5`)
+- Use runtime-safe neutral tokens for sidebar and picker selection (`66fd090`)
+- Track theme surface for panel/app/editor backgrounds; revert selection graying (`753e847`)
+- Give the setup warning banner a uniform border (`fd41057`)
+- Lay light and dark theme editors side by side in System mode (`b3d2e23`)
+- Redesign compare settings as a section rail with focused panels (`66c9cc3`)
+- Tweak compare settings: prominent group labels, smaller view-mode button, taller fixed paths textarea (`fdde9f2`)
+- Add live interactive previews to compare diff and tree settings (`75aa23c`)
+- Render appearance theme previews with real @pierre/diffs (`29d29ee`)
+- Refine settings previews: per-variant theming, richer diff, tree beside settings (`c899475`)
+- Fix settings previews: real syntax toggle, light scrollbar, drop compare rules and section headers (`7fb6d9c`)
+- Fix light theme preview: reflect theme on Pierre host and theme preview scrollbars (`9037946`)
+- Diffshub-style gutter comment button and comment UI with distinct SVG icons (`2a3841d`)
+- Diff comments: portrait avatars, working save/delete, gutter button off the line number (`775e1a1`)
+- Unify diff comments across single-file and folder compare; named portraits; built-in gutter button (`46b66d3`)
+- Gender-specific comment names, bigger random avatars, drop line-click toast (`bd425e1`)
+- Add TODO list (`aad5c3f`)
+- Add Token Hover: bundled syntax-token knowledge tooltips (`09822e8`)
+- Refine Token Hover: underline, sticky popout, .h support, darker card (`99391a6`)
+- Mark token hover as done in TODO (`3b12895`)
+- Update project license to GPLv3 (`3a7a0ab`)
+
 ## Diffly v0.2.0
 
 Released: 2026-06-04
