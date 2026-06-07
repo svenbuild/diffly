@@ -251,9 +251,8 @@
 }
 
 .drive-select {
-  width: 72px;
-  min-width: 72px;
-  padding-right: 18px;
+  flex: 0 0 auto;
+  width: 96px;
 }
 
 .path-input {

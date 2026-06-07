@@ -362,7 +362,7 @@
   padding: 11px 16px;
 }
 
-.compare-section-card .settings-control select {
+.compare-section-card .settings-control .dropdown {
   min-width: 132px;
 }
 
@@ -609,10 +609,8 @@
   width: min(var(--control-width-xl), 100%);
 }
 
-.settings-control select {
-  min-width: 112px;
+.settings-control .dropdown {
   max-width: var(--control-width-sm);
-  height: var(--control-height-md);
 }
 
 .settings-control input,
@@ -1143,78 +1141,6 @@
 .settings-theme-select {
   position: relative;
   min-width: 172px;
-}
-
-.settings-theme-select-button {
-  width: 100%;
-  height: var(--control-height-md);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border-color: var(--border-subtle);
-  border-radius: var(--control-radius);
-  background: color-mix(in srgb, var(--surface) 90%, var(--panel-bg));
-  color: var(--text);
-  text-align: left;
-}
-
-.settings-theme-select-button:hover,
-.settings-theme-select-button:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-strong));
-  background: color-mix(in srgb, var(--surface-strong) 22%, var(--surface));
-}
-
-.settings-theme-select-button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-theme-select-button svg {
-  width: 14px;
-  height: 14px;
-  color: var(--muted);
-}
-
-.settings-theme-select-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 4px);
-  right: 0;
-  width: min(220px, 72vw);
-  max-height: 248px;
-  overflow: auto;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface);
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
-}
-
-.settings-theme-select-menu button {
-  width: 100%;
-  min-height: 28px;
-  justify-content: flex-start;
-  padding: 0 9px;
-  border-color: transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-}
-
-.settings-theme-select-menu button:hover,
-.settings-theme-select-menu button:focus-visible {
-  border-color: transparent;
-  background: var(--surface-alt);
-}
-
-.settings-theme-select-menu button.active {
-  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-alt));
-  color: var(--active-text);
 }
 
 .settings-theme-editor-row {

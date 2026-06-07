@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CompareTreeSettings } from '../types'
+  import Dropdown from '../components/Dropdown.svelte'
 
   export let activeSection: string = 'structure'
   export let treeSettings: CompareTreeSettings
@@ -20,6 +21,41 @@
       .map((path) => path.trim())
       .filter(Boolean)
   }
+
+  const sortModeOptions = [
+    { value: 'path', label: 'Path order' },
+    { value: 'default', label: 'Pierre default' },
+  ]
+
+  const iconSetOptions = [
+    { value: 'complete', label: 'Complete (colored)' },
+    { value: 'standard', label: 'Standard' },
+    { value: 'minimal', label: 'Minimal' },
+  ]
+
+  const initialExpansionOptions = [
+    { value: 'closed', label: 'Closed' },
+    { value: 'open', label: 'Open' },
+    { value: 'depth', label: 'Depth' },
+  ]
+
+  const densityOptions = [
+    { value: 'compact', label: 'Compact' },
+    { value: 'default', label: 'Default' },
+    { value: 'relaxed', label: 'Relaxed' },
+    { value: 'custom', label: 'Custom' },
+  ]
+
+  const searchModeOptions = [
+    { value: 'expand-matches', label: 'Expand matches' },
+    { value: 'collapse-non-matches', label: 'Collapse non-matches' },
+    { value: 'hide-non-matches', label: 'Hide non-matches' },
+  ]
+
+  const searchBlurBehaviorOptions = [
+    { value: 'close', label: 'Close' },
+    { value: 'retain', label: 'Retain' },
+  ]
 </script>
 
 {#if activeSection === 'structure'}
@@ -31,13 +67,12 @@
           <p>Use Diffly path order or Pierre's default tree sorter.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Sort mode"
+            options={sortModeOptions}
             value={treeSettings.sortMode}
-            on:change={(event) => updateTreeSettings({ sortMode: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['sortMode'] })}
-          >
-            <option value="path">Path order</option>
-            <option value="default">Pierre default</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ sortMode: value as CompareTreeSettings['sortMode'] })}
+          />
         </div>
       </div>
 
@@ -47,14 +82,12 @@
           <p>Built-in icon set. "Complete" is the full colored file-type suite.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="File icons"
+            options={iconSetOptions}
             value={treeSettings.iconSet}
-            on:change={(event) => updateTreeSettings({ iconSet: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['iconSet'] })}
-          >
-            <option value="complete">Complete (colored)</option>
-            <option value="standard">Standard</option>
-            <option value="minimal">Minimal</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ iconSet: value as CompareTreeSettings['iconSet'] })}
+          />
         </div>
       </div>
 
@@ -82,14 +115,12 @@
           <p>Choose whether the tree starts closed, open, or expanded by depth.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Initial expansion"
+            options={initialExpansionOptions}
             value={treeSettings.initialExpansion}
-            on:change={(event) => updateTreeSettings({ initialExpansion: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['initialExpansion'] })}
-          >
-            <option value="closed">Closed</option>
-            <option value="open">Open</option>
-            <option value="depth">Depth</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ initialExpansion: value as CompareTreeSettings['initialExpansion'] })}
+          />
         </div>
       </div>
 
@@ -173,15 +204,12 @@
           <p>Use Pierre's preset density or a custom scale factor.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Row density"
+            options={densityOptions}
             value={treeSettings.density}
-            on:change={(event) => updateTreeSettings({ density: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['density'] })}
-          >
-            <option value="compact">Compact</option>
-            <option value="default">Default</option>
-            <option value="relaxed">Relaxed</option>
-            <option value="custom">Custom</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ density: value as CompareTreeSettings['density'] })}
+          />
         </div>
       </div>
 
@@ -282,14 +310,12 @@
           <p>Choose how non-matching tree rows behave.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Search mode"
+            options={searchModeOptions}
             value={treeSettings.searchMode}
-            on:change={(event) => updateTreeSettings({ searchMode: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['searchMode'] })}
-          >
-            <option value="expand-matches">Expand matches</option>
-            <option value="collapse-non-matches">Collapse non-matches</option>
-            <option value="hide-non-matches">Hide non-matches</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ searchMode: value as CompareTreeSettings['searchMode'] })}
+          />
         </div>
       </div>
 
@@ -299,13 +325,12 @@
           <p>Close or retain the search session when it loses focus.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Search blur behavior"
+            options={searchBlurBehaviorOptions}
             value={treeSettings.searchBlurBehavior}
-            on:change={(event) => updateTreeSettings({ searchBlurBehavior: (event.currentTarget as HTMLSelectElement).value as CompareTreeSettings['searchBlurBehavior'] })}
-          >
-            <option value="close">Close</option>
-            <option value="retain">Retain</option>
-          </select>
+            onChange={(value) => updateTreeSettings({ searchBlurBehavior: value as CompareTreeSettings['searchBlurBehavior'] })}
+          />
         </div>
       </div>
 

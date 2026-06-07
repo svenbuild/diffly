@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import Dropdown from './components/Dropdown.svelte'
   import EntryIcon from './EntryIcon.svelte'
 
   import type { ExplorerEntry } from './types'
@@ -239,15 +240,14 @@
       </button>
     </div>
 
-    <select
-      class="drive-select"
-      value={currentDrive(pane)}
-      on:change={(event) => changeDrive(side, event.currentTarget.value)}
-    >
-      {#each pane.roots as root}
-        <option value={root.path}>{root.name}</option>
-      {/each}
-    </select>
+    <div class="drive-select">
+      <Dropdown
+        ariaLabel="Drive"
+        options={pane.roots.map((root) => ({ value: root.path, label: root.name }))}
+        value={currentDrive(pane)}
+        onChange={(value) => changeDrive(side, value)}
+      />
+    </div>
 
     <label class="picker-open-path">
       <span>Open folder</span>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CompareViewerSettings, ViewMode } from '../types'
+  import Dropdown from '../components/Dropdown.svelte'
 
   export let activeSection: string = 'layout'
   export let viewMode: ViewMode
@@ -15,6 +16,38 @@
     const value = (event.currentTarget as HTMLInputElement).valueAsNumber
     return Number.isFinite(value) ? value : 0
   }
+
+  const lineDiffTypeOptions = [
+    { value: 'word-alt', label: 'Word alt' },
+    { value: 'word', label: 'Word' },
+    { value: 'char', label: 'Character' },
+    { value: 'none', label: 'None' },
+  ]
+
+  const diffIndicatorOptions = [
+    { value: 'bars', label: 'Bars' },
+    { value: 'classic', label: 'Classic' },
+    { value: 'none', label: 'None' },
+  ]
+
+  const hunkSeparatorOptions = [
+    { value: 'line-info', label: 'Line info' },
+    { value: 'line-info-basic', label: 'Line info basic' },
+    { value: 'metadata', label: 'Metadata' },
+    { value: 'simple', label: 'Simple' },
+  ]
+
+  const highlighterOptions = [
+    { value: 'shiki-js', label: 'Shiki JS' },
+    { value: 'shiki-wasm', label: 'Shiki WASM' },
+  ]
+
+  const lineHoverOptions = [
+    { value: 'disabled', label: 'Disabled' },
+    { value: 'both', label: 'Line and number' },
+    { value: 'line', label: 'Line' },
+    { value: 'number', label: 'Number' },
+  ]
 </script>
 
 {#if activeSection === 'layout'}
@@ -148,15 +181,12 @@
           <p>Choose word, character, or no inline highlighting.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Inline diff"
+            options={lineDiffTypeOptions}
             value={viewerSettings.lineDiffType}
-            on:change={(event) => updateViewerSettings({ lineDiffType: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['lineDiffType'] })}
-          >
-            <option value="word-alt">Word alt</option>
-            <option value="word">Word</option>
-            <option value="char">Character</option>
-            <option value="none">None</option>
-          </select>
+            onChange={(value) => updateViewerSettings({ lineDiffType: value as CompareViewerSettings['lineDiffType'] })}
+          />
         </div>
       </div>
 
@@ -166,14 +196,12 @@
           <p>Choose change bars, classic +/- prefixes, or no indicators.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Diff indicators"
+            options={diffIndicatorOptions}
             value={viewerSettings.diffIndicators}
-            on:change={(event) => updateViewerSettings({ diffIndicators: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['diffIndicators'] })}
-          >
-            <option value="bars">Bars</option>
-            <option value="classic">Classic</option>
-            <option value="none">None</option>
-          </select>
+            onChange={(value) => updateViewerSettings({ diffIndicators: value as CompareViewerSettings['diffIndicators'] })}
+          />
         </div>
       </div>
 
@@ -183,15 +211,12 @@
           <p>Choose the separator style between changed regions.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Hunk separators"
+            options={hunkSeparatorOptions}
             value={viewerSettings.hunkSeparators}
-            on:change={(event) => updateViewerSettings({ hunkSeparators: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['hunkSeparators'] })}
-          >
-            <option value="line-info">Line info</option>
-            <option value="line-info-basic">Line info basic</option>
-            <option value="metadata">Metadata</option>
-            <option value="simple">Simple</option>
-          </select>
+            onChange={(value) => updateViewerSettings({ hunkSeparators: value as CompareViewerSettings['hunkSeparators'] })}
+          />
         </div>
       </div>
 
@@ -279,13 +304,12 @@
           <p>Select the Shiki JavaScript or WASM engine.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Preferred highlighter"
+            options={highlighterOptions}
             value={viewerSettings.preferredHighlighter}
-            on:change={(event) => updateViewerSettings({ preferredHighlighter: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['preferredHighlighter'] })}
-          >
-            <option value="shiki-js">Shiki JS</option>
-            <option value="shiki-wasm">Shiki WASM</option>
-          </select>
+            onChange={(value) => updateViewerSettings({ preferredHighlighter: value as CompareViewerSettings['preferredHighlighter'] })}
+          />
         </div>
       </div>
 
@@ -367,15 +391,12 @@
           <p>Choose which part of a row highlights on pointer hover.</p>
         </div>
         <div class="settings-control">
-          <select
+          <Dropdown
+            ariaLabel="Line hover highlight"
+            options={lineHoverOptions}
             value={viewerSettings.lineHoverHighlight}
-            on:change={(event) => updateViewerSettings({ lineHoverHighlight: (event.currentTarget as HTMLSelectElement).value as CompareViewerSettings['lineHoverHighlight'] })}
-          >
-            <option value="disabled">Disabled</option>
-            <option value="both">Line and number</option>
-            <option value="line">Line</option>
-            <option value="number">Number</option>
-          </select>
+            onChange={(value) => updateViewerSettings({ lineHoverHighlight: value as CompareViewerSettings['lineHoverHighlight'] })}
+          />
         </div>
       </div>
 

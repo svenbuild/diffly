@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ThemeDefinition, ThemeSemanticColorKey, ThemeVariant } from '../theme'
+  import Dropdown from '../components/Dropdown.svelte'
 
   interface ThemeState {
     availableThemes: ThemeDefinition[]
@@ -26,8 +27,10 @@
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
 
-  let presetMenuOpen = false
-  let presetMenuEl: HTMLDivElement | null = null
+  $: presetOptions = themeState.availableThemes.map((preset) => ({
+    value: preset.id,
+    label: formatThemeLabel(preset.id),
+  }))
 
   function getFontValue(field: 'ui' | 'code') {
     const value = field === 'ui' ? themeState.theme.fonts.ui : themeState.theme.fonts.code
@@ -75,27 +78,7 @@
     return 0.2126 * toLinear(value.r) + 0.7152 * toLinear(value.g) + 0.0722 * toLinear(value.b)
   }
 
-  function selectPreset(themeId: string) {
-    onSetThemePreset(variant, themeId)
-    presetMenuOpen = false
-  }
-
-  function handleWindowClick(event: MouseEvent) {
-    if (!presetMenuOpen || presetMenuEl?.contains(event.target as Node)) {
-      return
-    }
-
-    presetMenuOpen = false
-  }
-
-  function handleWindowKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      presetMenuOpen = false
-    }
-  }
 </script>
-
-<svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
 
 <section class="settings-theme-editor">
   <header class="settings-theme-editor-header">
@@ -105,36 +88,13 @@
     </div>
 
     <div class="settings-theme-editor-actions">
-      <div bind:this={presetMenuEl} class="settings-theme-select">
-        <button
-          aria-expanded={presetMenuOpen}
-          aria-haspopup="listbox"
-          aria-label={`${title} preset`}
-          class="settings-theme-select-button"
-          type="button"
-          on:click={() => (presetMenuOpen = !presetMenuOpen)}
-        >
-          <span>{formatThemeLabel(themeState.presetId)}</span>
-          <svg aria-hidden="true" viewBox="0 0 16 16">
-            <path d="m4.5 6.2 3.5 3.6 3.5-3.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
-          </svg>
-        </button>
-
-        {#if presetMenuOpen}
-          <div class="settings-theme-select-menu" role="listbox" tabindex="-1">
-          {#each themeState.availableThemes as preset}
-            <button
-              aria-selected={preset.id === themeState.presetId}
-              class:active={preset.id === themeState.presetId}
-              role="option"
-              type="button"
-              on:click={() => selectPreset(preset.id)}
-            >
-              {formatThemeLabel(preset.id)}
-            </button>
-          {/each}
-          </div>
-        {/if}
+      <div class="settings-theme-select">
+        <Dropdown
+          ariaLabel={`${title} preset`}
+          options={presetOptions}
+          value={themeState.presetId}
+          onChange={(value) => onSetThemePreset(variant, value)}
+        />
       </div>
     </div>
   </header>
