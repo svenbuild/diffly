@@ -1096,6 +1096,9 @@
       if (viewerSettings.controlledSelection) {
         codeView.setSelectedLines(selectedLineSelection, { notify: false })
       }
+      if (scrollTargetRevision > appliedScrollTargetRevision) {
+        void scrollToSelectedEntry()
+      }
       return
     }
 
@@ -1123,6 +1126,10 @@
 
     if (viewerSettings.controlledSelection) {
       codeView.setSelectedLines(selectedLineSelection, { notify: false })
+    }
+
+    if (scrollTargetRevision > appliedScrollTargetRevision) {
+      void scrollToSelectedEntry()
     }
   }
 

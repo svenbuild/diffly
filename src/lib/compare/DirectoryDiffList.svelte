@@ -86,7 +86,7 @@
   let backgroundLoadCursor = 0
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
-  let selectedRenderableEntries: LoadedDirectoryDiff[] = []
+  let hasRenderableDirectoryItems = false
   let pendingEntryCount = 0
   let unresolvedEntryCount = 0
   let diffStatsByPath = new Map<string, {
@@ -706,23 +706,6 @@
     )
   }
 
-  function loadedEntryIsRenderable(loadedEntry: LoadedDirectoryDiff) {
-    return Boolean(
-      loadedEntry.diff?.text ||
-        loadedEntry.error ||
-        loadedEntry.entry.status === 'unsupported',
-    )
-  }
-
-  function updateSelectedRenderableEntry(nextTextEntries = textEntries) {
-    const selectedEntry = selectedRelativePath
-      ? nextTextEntries[entryIndexByPath.get(selectedRelativePath) ?? -1]
-      : null
-
-    selectedRenderableEntries =
-      selectedEntry && loadedEntryIsRenderable(selectedEntry) ? [selectedEntry] : []
-  }
-
   function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     const nextLoadedEntryCache = new Map<string, LoadedDirectoryDiff>()
@@ -745,7 +728,6 @@
 
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
-    updateSelectedRenderableEntry(nextTextEntries)
     pendingEntryCount = nextPendingEntryCount
     unresolvedEntryCount = nextUnresolvedEntryCount
   }
@@ -798,7 +780,6 @@
     unresolvedEntryCount = Math.max(0, nextUnresolvedEntryCount)
     loadedEntryCache = nextLoadedEntryCache
     textEntries = nextTextEntries
-    updateSelectedRenderableEntry(nextTextEntries)
     publishChangedEntryPaths(paths)
   }
 
@@ -867,7 +848,7 @@
     scheduleBackgroundLoadPump()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
-  $: selectedRelativePath, textEntries, updateSelectedRenderableEntry(textEntries)
+  $: hasRenderableDirectoryItems = textEntries.length > 0
 </script>
 
 <section class="directory-diff-list">
@@ -880,39 +861,29 @@
     <div class="compare-viewer-state">
       <p>No file changes.</p>
     </div>
+  {:else if !hasRenderableDirectoryItems}
+    <div class="compare-viewer-state">
+      <span class="refresh-spinner visible"></span>
+      <p>Preparing diffs...</p>
+    </div>
   {:else}
-    {#if selectedRenderableEntries.length > 0}
-      <PierreDirectoryVirtualDiffView
-        entries={selectedRenderableEntries}
-        compareKey={`${leftPath}\u0000${rightPath}`}
-        {collapsedPaths}
-        {selectedRelativePath}
-        {viewerSettings}
-        {appearanceSettings}
-        {resolvedThemeMode}
-        {viewMode}
-        {scrollTargetRevision}
-        {changedEntryPaths}
-        {changedEntryRevision}
-        {entryStructureRevision}
-        toggleEntry={toggleEntryByPath}
-        {requestVisibleEntries}
-        pauseDiffLoading={pauseDirectoryDiffLoads}
-        {onSystemMonitorChange}
-      />
-    {:else if selectedRelativePath}
-      <div class="compare-viewer-state">
-        {#if pendingEntryCount > 0 || unresolvedEntryCount > 0}
-          <span class="refresh-spinner visible"></span>
-          <p>Loading selected diff...</p>
-        {:else}
-          <p>No text diff selected.</p>
-        {/if}
-      </div>
-    {:else}
-      <div class="compare-viewer-state">
-        <p>Select a changed file.</p>
-      </div>
-    {/if}
+    <PierreDirectoryVirtualDiffView
+      entries={textEntries}
+      compareKey={`${leftPath}\u0000${rightPath}`}
+      {collapsedPaths}
+      {selectedRelativePath}
+      {viewerSettings}
+      {appearanceSettings}
+      {resolvedThemeMode}
+      {viewMode}
+      {scrollTargetRevision}
+      {changedEntryPaths}
+      {changedEntryRevision}
+      {entryStructureRevision}
+      toggleEntry={toggleEntryByPath}
+      {requestVisibleEntries}
+      pauseDiffLoading={pauseDirectoryDiffLoads}
+      {onSystemMonitorChange}
+    />
   {/if}
 </section>
