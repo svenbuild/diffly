@@ -1,7 +1,7 @@
 # TODO
 
 - [x] token hover
-- [ ] Diff Stats and System Monitor
+- [x] Diff Stats and System Monitor
 - [ ] icons besser machen (diffs/trees webseite SVGs in website code)
 - [ ] buttons/switches kleiner kompakter moderner
 - [ ] diffs custom header

@@ -1,5 +1,35 @@
 # Changelog
 
+## Diffly v0.2.2-rc.1
+
+Released: 2026-06-07
+
+This is a prerelease for testing the Diff Stats and System Monitor work before the next stable release.
+
+### Highlights
+
+- Added compare sidebar Diff Stats and System Monitor panels.
+- Added sidebar metrics toggles and polished their spacing, alignment, and collapsed states.
+- Animated metric panels while keeping closed panels fully collapsed.
+- Cleaned up the README around a shorter product, download, development, and links structure.
+- Marked Diff Stats and System Monitor as complete in the project TODO list.
+
+### Validation
+
+- `npm run check`
+- `npm run build`
+- GitHub Actions release workflow on tag `v0.2.2-rc.1`
+
+### Complete Commit List Since v0.2.1
+
+- Clean up README (`07e0d5f`)
+- Add compare sidebar stats monitor (`e22d1f3`)
+- Polish sidebar metrics toggles (`58f9960`)
+- Clean up sidebar Diff Stats and System Monitor styling (`0f5bbd9`)
+- Force left-aligned sidebar metric headers (`f065e09`)
+- Animate sidebar metric panels open and closed (`526d8e7`)
+- Fully collapse sidebar metric panels when closed (`f3ef58f`)
+
 ## Diffly v0.2.1
 
 Released: 2026-06-07
