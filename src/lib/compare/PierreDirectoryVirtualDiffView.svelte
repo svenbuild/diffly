@@ -102,6 +102,7 @@
   let unsubscribeScroll: (() => void) | null = null
   let unsubscribeNativeScroll: (() => void) | null = null
   let visibleRequestTimer: number | null = null
+  let lastVisibleRequestAt = 0
   let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
   let scrollHost: HTMLDivElement | null = null
@@ -915,14 +916,29 @@
   }
 
   function scheduleVisibleEntryRequest(delayMs = DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS) {
-    if (visibleRequestTimer !== null) {
-      window.clearTimeout(visibleRequestTimer)
+    const now = performance.now()
+    const elapsedMs = now - lastVisibleRequestAt
+
+    if (lastVisibleRequestAt === 0 || elapsedMs >= delayMs) {
+      if (visibleRequestTimer !== null) {
+        window.clearTimeout(visibleRequestTimer)
+        visibleRequestTimer = null
+      }
+      lastVisibleRequestAt = now
+      requestRenderedEntries(codeView)
+      return
     }
 
+    if (visibleRequestTimer !== null) {
+      return
+    }
+
+    const remainingMs = Math.max(0, delayMs - elapsedMs)
     visibleRequestTimer = window.setTimeout(() => {
       visibleRequestTimer = null
+      lastVisibleRequestAt = performance.now()
       requestRenderedEntries(codeView)
-    }, delayMs)
+    }, remainingMs)
   }
 
   function requestRenderedEntries(view: CodeView<DifflyCommentAnnotation> | null) {
