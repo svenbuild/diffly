@@ -6,7 +6,7 @@ Diffly is a local desktop diff tool for comparing files and folders. It is built
 
 Install the latest Windows build from [GitHub Releases](https://github.com/svenbuild/diffly/releases/latest).
 
-Current release: `v0.2.1`
+Current release: `v0.2.2`
 
 ## Features
 

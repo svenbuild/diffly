@@ -1,5 +1,20 @@
 # Changelog
 
+## Diffly v0.2.2
+
+### What's Changed
+
+- Added compare sidebar Diff Stats and System Monitor panels.
+- Added one-page directory diff scrolling with faster visible-diff promotion.
+- Reported active directory diff rendering and directory diff work in the system monitor.
+- Capped the diff render cache size to keep memory use predictable.
+- Loaded visible directory diffs while scrolling.
+- Replaced native selects with a custom dropdown that avoids layout shift and keeps inner scrolling stable.
+- Compact buttons, switches, and controls with follow-up alignment fixes.
+- Cleaned up the README and marked completed TODO items for the release work.
+
+**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.1...v0.2.2
+
 ## Diffly v0.2.2-rc.2
 
 ### What's Changed
