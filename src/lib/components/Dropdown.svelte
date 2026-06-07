@@ -161,11 +161,16 @@
     // preventScroll: focusing for keyboard nav must not scroll the panel.
     node.focus({ preventScroll: true })
 
-    const close = () => {
+    // A fixed menu would detach visually if the page scrolls, so close it —
+    // but ignore scrolling within the menu's own option list.
+    const close = (event: Event) => {
+      if (event.type === 'scroll' && node.contains(event.target as Node)) {
+        return
+      }
+
       open = false
     }
 
-    // A fixed menu would detach visually if the page scrolls, so close it.
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
 
@@ -291,12 +296,30 @@
     max-width: min(280px, 72vw);
     max-height: 248px;
     overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
     outline: none;
+  }
+
+  .dropdown-menu::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dropdown-menu::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+
+  .dropdown-menu::-webkit-scrollbar-track {
+    background: transparent;
   }
 
   .dropdown-menu button {
