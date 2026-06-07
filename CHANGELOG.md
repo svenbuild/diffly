@@ -1,5 +1,19 @@
 # Changelog
 
+## Diffly v0.2.2-rc.2
+
+### What's Changed
+
+- Show directory diffs in one scroll view
+- Promote visible directory diffs faster
+- Report active directory diff rendering
+- Cap diff render cache size
+- Report directory diff work in monitor
+- Load visible directory diffs while scrolling
+- Mark one-page directory diffs as complete in the TODO list
+
+**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.2-rc.1...v0.2.2-rc.2
+
 ## Diffly v0.2.2-rc.1
 
 Released: 2026-06-07

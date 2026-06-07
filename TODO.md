@@ -2,6 +2,7 @@
 
 - [x] token hover
 - [x] Diff Stats and System Monitor
+- [x] Alle diffs auf eine seite und Trees sidebar scrollt zu den diffs hin
 - [ ] icons besser machen (diffs/trees webseite SVGs in website code)
 - [ ] buttons/switches kleiner kompakter moderner
 - [ ] diffs custom header

@@ -1,7 +1,7 @@
 {
   "name": "diffly",
   "private": true,
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.2",
   "description": "Desktop file and directory diff tool built with Svelte and Electron.",
   "license": "GPL-3.0-only",
   "type": "module",
