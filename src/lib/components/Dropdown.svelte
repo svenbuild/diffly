@@ -50,7 +50,7 @@
     open = false
 
     if (returnFocus) {
-      buttonEl?.focus()
+      buttonEl?.focus({ preventScroll: true })
     }
   }
 
@@ -141,7 +141,9 @@
     const spaceAbove = triggerRect.top
 
     dropUp = spaceBelow < node.offsetHeight + 12 && spaceAbove > spaceBelow
-    node.focus()
+    // preventScroll: focusing for keyboard nav must not scroll the panel,
+    // which would visibly nudge the trigger/layout when the menu opens.
+    node.focus({ preventScroll: true })
   }
 </script>
 
