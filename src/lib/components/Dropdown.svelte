@@ -19,9 +19,9 @@
   const uid = `dropdown-${(dropdownIdCounter += 1)}`
 
   let open = false
-  let dropUp = false
   let rootEl: HTMLDivElement
   let buttonEl: HTMLButtonElement
+  let menuEl: HTMLDivElement | null = null
   let optionEls: HTMLButtonElement[] = []
   let activeIndex = -1
 
@@ -126,24 +126,57 @@
   }
 
   function handleWindowClick(event: MouseEvent) {
-    if (!open || rootEl?.contains(event.target as Node)) {
+    const target = event.target as Node
+
+    if (!open || rootEl?.contains(target) || menuEl?.contains(target)) {
       return
     }
 
     open = false
   }
 
-  // Open upward when there is not enough room below the trigger (e.g. a
-  // dropdown near the bottom of a scrollable settings panel).
-  function positionMenu(node: HTMLDivElement) {
-    const triggerRect = buttonEl.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - triggerRect.bottom
-    const spaceAbove = triggerRect.top
+  // Render the menu on document.body with fixed positioning anchored to the
+  // trigger. This keeps it out of the settings panels (which use
+  // overflow: hidden) so it can never be clipped by, or reflow, their layout.
+  // Opens upward when there is not enough room below the trigger.
+  function placeMenu(node: HTMLDivElement) {
+    menuEl = node
+    document.body.appendChild(node)
 
-    dropUp = spaceBelow < node.offsetHeight + 12 && spaceAbove > spaceBelow
-    // preventScroll: focusing for keyboard nav must not scroll the panel,
-    // which would visibly nudge the trigger/layout when the menu opens.
+    const rect = buttonEl.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const openUp = spaceBelow < node.offsetHeight + 12 && rect.top > spaceBelow
+
+    node.style.left = `${rect.left}px`
+    node.style.minWidth = `${rect.width}px`
+
+    if (openUp) {
+      node.style.top = 'auto'
+      node.style.bottom = `${window.innerHeight - rect.top + 4}px`
+    } else {
+      node.style.bottom = 'auto'
+      node.style.top = `${rect.bottom + 4}px`
+    }
+
+    // preventScroll: focusing for keyboard nav must not scroll the panel.
     node.focus({ preventScroll: true })
+
+    const close = () => {
+      open = false
+    }
+
+    // A fixed menu would detach visually if the page scrolls, so close it.
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+
+    return {
+      destroy() {
+        window.removeEventListener('scroll', close, true)
+        window.removeEventListener('resize', close)
+        menuEl = null
+        node.parentNode?.removeChild(node)
+      },
+    }
   }
 </script>
 
@@ -179,10 +212,9 @@
       aria-activedescendant={activeIndex >= 0 ? `${uid}-option-${activeIndex}` : undefined}
       aria-label={ariaLabel}
       class="dropdown-menu"
-      class:up={dropUp}
       role="listbox"
       tabindex="-1"
-      use:positionMenu
+      use:placeMenu
       on:keydown={handleMenuKeydown}
     >
       {#each options as option, index (option.value)}
@@ -250,12 +282,11 @@
     transform: rotate(180deg);
   }
 
+  /* Positioned on document.body by the placeMenu action (top/left/min-width
+     are set inline), so it is never clipped by the panels' overflow: hidden. */
   .dropdown-menu {
-    position: absolute;
-    z-index: 30;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 100%;
+    position: fixed;
+    z-index: 1000;
     width: max-content;
     max-width: min(280px, 72vw);
     max-height: 248px;
@@ -266,11 +297,6 @@
     background: var(--surface);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
     outline: none;
-  }
-
-  .dropdown-menu.up {
-    top: auto;
-    bottom: calc(100% + 4px);
   }
 
   .dropdown-menu button {
