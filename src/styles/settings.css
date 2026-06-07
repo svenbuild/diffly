@@ -815,8 +815,8 @@
 
 .settings-switch {
   position: relative;
-  width: 46px;
-  height: 26px;
+  width: 34px;
+  height: 20px;
   display: inline-flex;
   flex: 0 0 auto;
 }
@@ -849,8 +849,8 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
@@ -865,7 +865,7 @@
 }
 
 .settings-switch input:checked + .settings-switch-ui::after {
-  transform: translateX(20.5px);
+  transform: translateX(14px);
   background: var(--primary-text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }

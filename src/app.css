@@ -30,8 +30,8 @@
   --del-bg: rgba(248, 81, 73, 0.18);
   --del-bg-strong: rgba(248, 81, 73, 0.42);
   --del-text: #ffa198;
-  --control-height-sm: 28px;
-  --control-height-md: 32px;
+  --control-height-sm: 24px;
+  --control-height-md: 27px;
   --t-panel-distance: 10px;
   --t-panel-duration: 180ms;
   --t-panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -44,14 +44,14 @@
   --control-md: var(--control-height-md);
   --chip-height: 22px;
   --sidebar-row-height: 27px;
-  --control-radius: 7px;
+  --control-radius: 6px;
   --control-padding-x: 10px;
   --control-width-sm: 148px;
   --control-width-md: 190px;
   --control-width-lg: 280px;
   --control-width-xl: 360px;
   --radius-card: 10px;
-  --radius-control: 7px;
+  --radius-control: 6px;
   --radius-row: 6px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -325,8 +325,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 5px;
+  padding: 4px 9px;
   background: var(--surface-alt);
   color: var(--text);
   cursor: var(--interactive-cursor);
@@ -677,15 +677,15 @@ h2 {
 }
 
 .segmented-control button {
-  min-height: 24px;
-  padding: 2px 7px;
+  min-height: 22px;
+  padding: 2px 6px;
 }
 
 .secondary,
 .primary,
 .inline-actions button {
   min-height: var(--control-height-md);
-  padding: 0 12px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
 }
@@ -698,7 +698,7 @@ h2 {
 }
 
 .toolbar-segmented-control button {
-  height: 28px;
+  height: 24px;
   border-color: transparent;
   border-radius: 0;
 }
