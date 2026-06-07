@@ -75,24 +75,26 @@
         class:open={activePanel === 'diffStats'}
         aria-hidden={activePanel !== 'diffStats'}
       >
-        <dl class="sidebar-metric-list">
-          <div>
-            <dt>Files</dt>
-            <dd>{formatNumber(diffStats.files)}</dd>
-          </div>
-          <div>
-            <dt>Additions</dt>
-            <dd class="metric-additions">{formatNumber(diffStats.additions)}</dd>
-          </div>
-          <div>
-            <dt>Deletions</dt>
-            <dd class="metric-deletions">{formatNumber(diffStats.deletions)}</dd>
-          </div>
-          <div>
-            <dt>Lines</dt>
-            <dd>{formatNumber(diffStats.lines)}</dd>
-          </div>
-        </dl>
+        <div class="sidebar-metric-reveal-inner">
+          <dl class="sidebar-metric-list">
+            <div>
+              <dt>Files</dt>
+              <dd>{formatNumber(diffStats.files)}</dd>
+            </div>
+            <div>
+              <dt>Additions</dt>
+              <dd class="metric-additions">{formatNumber(diffStats.additions)}</dd>
+            </div>
+            <div>
+              <dt>Deletions</dt>
+              <dd class="metric-deletions">{formatNumber(diffStats.deletions)}</dd>
+            </div>
+            <div>
+              <dt>Lines</dt>
+              <dd>{formatNumber(diffStats.lines)}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </section>
 
@@ -118,24 +120,26 @@
         class:open={activePanel === 'systemMonitor'}
         aria-hidden={activePanel !== 'systemMonitor'}
       >
-        <dl class="sidebar-metric-list">
-          <div>
-            <dt>Busy Workers</dt>
-            <dd>{formatNumber(systemMonitor.busyWorkers)}/{formatNumber(systemMonitor.totalWorkers)}</dd>
-          </div>
-          <div>
-            <dt>Task Queue</dt>
-            <dd>{formatNumber(systemMonitor.taskQueue)}</dd>
-          </div>
-          <div>
-            <dt>Rendered Diffs</dt>
-            <dd>{formatNumber(systemMonitor.renderedDiffs)}</dd>
-          </div>
-          <div>
-            <dt>Diff Cache</dt>
-            <dd>{formatNumber(systemMonitor.diffCache)}</dd>
-          </div>
-        </dl>
+        <div class="sidebar-metric-reveal-inner">
+          <dl class="sidebar-metric-list">
+            <div>
+              <dt>Busy Workers</dt>
+              <dd>{formatNumber(systemMonitor.busyWorkers)}/{formatNumber(systemMonitor.totalWorkers)}</dd>
+            </div>
+            <div>
+              <dt>Task Queue</dt>
+              <dd>{formatNumber(systemMonitor.taskQueue)}</dd>
+            </div>
+            <div>
+              <dt>Rendered Diffs</dt>
+              <dd>{formatNumber(systemMonitor.renderedDiffs)}</dd>
+            </div>
+            <div>
+              <dt>Diff Cache</dt>
+              <dd>{formatNumber(systemMonitor.diffCache)}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </section>
   </div>
