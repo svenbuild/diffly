@@ -206,7 +206,8 @@
     busyWorkers: 0,
     totalWorkers: 0,
     taskQueue: 0,
-    renderedDiffs: 0,
+    renderingDiffs: 0,
+    preparedDiffs: 0,
     diffCache: 0,
   }
   let compareRevision = 0
@@ -326,7 +327,8 @@
       busyWorkers: 0,
       totalWorkers: 0,
       taskQueue: 0,
-      renderedDiffs: 0,
+      renderingDiffs: 0,
+      preparedDiffs: 0,
       diffCache: 0,
     }
   }

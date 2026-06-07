@@ -299,7 +299,8 @@
       busyWorkers: stats.busyWorkers,
       totalWorkers: stats.totalWorkers,
       taskQueue: stats.queuedTasks,
-      renderedDiffs: 0,
+      renderingDiffs: stats.activeTasks,
+      preparedDiffs: 0,
       diffCache: stats.diffCacheSize,
     })
   }

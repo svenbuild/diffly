@@ -131,8 +131,12 @@
               <dd>{formatNumber(systemMonitor.taskQueue)}</dd>
             </div>
             <div>
-              <dt>Rendered Diffs</dt>
-              <dd>{formatNumber(systemMonitor.renderedDiffs)}</dd>
+              <dt>Rendering Diffs</dt>
+              <dd>{formatNumber(systemMonitor.renderingDiffs)}</dd>
+            </div>
+            <div>
+              <dt>Prepared Diffs</dt>
+              <dd>{formatNumber(systemMonitor.preparedDiffs)}</dd>
             </div>
             <div>
               <dt>Diff Cache</dt>

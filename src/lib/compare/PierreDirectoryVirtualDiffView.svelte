@@ -290,7 +290,8 @@
       busyWorkers: stats?.busyWorkers ?? 0,
       totalWorkers: stats?.totalWorkers ?? 0,
       taskQueue: stats?.queuedTasks ?? 0,
-      renderedDiffs: parsedDiffs.size,
+      renderingDiffs: stats?.activeTasks ?? 0,
+      preparedDiffs: parsedDiffs.size,
       diffCache: stats?.diffCacheSize ?? 0,
     })
   }

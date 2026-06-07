@@ -202,14 +202,16 @@ export interface SystemMonitorSnapshot {
   busyWorkers: number
   totalWorkers: number
   taskQueue: number
-  renderedDiffs: number
+  renderingDiffs: number
+  preparedDiffs: number
   diffCache: number
 }
 
 export interface DirectoryDiffRuntimeStats {
   activeLoadCount: number
   pendingLoadCount: number
-  renderedDiffs: number
+  renderingDiffs: number
+  preparedDiffs: number
   workerBusyWorkers: number
   workerTotalWorkers: number
   workerQueuedTasks: number
