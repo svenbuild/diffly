@@ -172,6 +172,7 @@
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 4
+  const DIFF_RENDER_CACHE_SIZE = 100
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
@@ -243,7 +244,7 @@
     return {
       workerFactory: () => new DiffsWorker(),
       poolSize: workerPoolSize(),
-      totalASTLRUCacheSize: 240,
+      totalASTLRUCacheSize: DIFF_RENDER_CACHE_SIZE,
     }
   }
 

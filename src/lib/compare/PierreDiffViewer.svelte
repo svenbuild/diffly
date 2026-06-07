@@ -60,6 +60,7 @@
   let rightFileCache: { key: string; file: FileContents } | null = null
 
   const tokenHoverController = createTokenHoverController()
+  const DIFF_RENDER_CACHE_SIZE = 100
   let tokenHoverLanguage = ''
 
   function handleTokenEnter(props: DiffTokenEventBaseProps, event: PointerEvent) {
@@ -252,7 +253,7 @@
     return {
       workerFactory: () => new DiffsWorker(),
       poolSize: workerPoolSize(),
-      totalASTLRUCacheSize: 160,
+      totalASTLRUCacheSize: DIFF_RENDER_CACHE_SIZE,
     }
   }
 
