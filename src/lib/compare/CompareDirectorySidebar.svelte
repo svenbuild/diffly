@@ -18,7 +18,7 @@
   export let PierreDirectoryTreeComponent: typeof import('./PierreDirectoryTree.svelte').default | null = null
   export let diffStats: DiffStatsSnapshot
   export let systemMonitor: SystemMonitorSnapshot
-  export let activePanel: 'diffStats' | 'systemMonitor' = 'diffStats'
+  export let activePanel: 'diffStats' | 'systemMonitor' | null = null
   export let onSetActivePanel: (panel: 'diffStats' | 'systemMonitor') => void = () => {}
 
   const numberFormatter = new Intl.NumberFormat('en-US')
@@ -61,9 +61,8 @@
         type="button"
         on:click={() => onSetActivePanel('diffStats')}
       >
-        <svg aria-hidden="true" class="sidebar-metric-icon" viewBox="0 0 16 16">
-          <path d="M4.5 4.5h7M4.5 8h7M4.5 11.5h4.8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.35" />
-          <path d="M2.8 2.8h10.4v10.4H2.8z" fill="none" stroke="currentColor" stroke-width="1.15" />
+        <svg aria-hidden="true" class="sidebar-metric-icon" fill="currentColor" viewBox="0 0 16 16">
+          <path clip-rule="evenodd" d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM5.25 10a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5h-5.5ZM8 3.546a.75.75 0 0 0-.75.75v6.25h1.5v-6.25A.75.75 0 0 0 8 3.546Z" fill-rule="evenodd" />
         </svg>
         <span>Diff Stats (F2)</span>
       </button>

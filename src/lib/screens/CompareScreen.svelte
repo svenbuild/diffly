@@ -71,7 +71,11 @@
     relativePath: string
   }
 
-  let activeSidebarPanel: 'diffStats' | 'systemMonitor' = 'diffStats'
+  let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
+
+  function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
+    activeSidebarPanel = activeSidebarPanel === panel ? null : panel
+  }
 
   function isEditableTarget(target: EventTarget | null) {
     if (!(target instanceof HTMLElement)) {
@@ -101,10 +105,10 @@
 
     if (event.key === 'F2') {
       event.preventDefault()
-      activeSidebarPanel = 'diffStats'
+      toggleSidebarPanel('diffStats')
     } else if (event.key === 'F3') {
       event.preventDefault()
-      activeSidebarPanel = 'systemMonitor'
+      toggleSidebarPanel('systemMonitor')
     }
   }
 </script>
@@ -273,9 +277,7 @@
         {diffStats}
         {systemMonitor}
         activePanel={activeSidebarPanel}
-        onSetActivePanel={(panel) => {
-          activeSidebarPanel = panel
-        }}
+        onSetActivePanel={toggleSidebarPanel}
       />
       <button
         aria-label="Resize file list panel"
