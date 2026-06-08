@@ -64,7 +64,9 @@
 
     try {
       const result = await validateGitRepository(trimmed)
-      if (token !== requestToken) {
+      // Discard if a newer request started or the input no longer matches the
+      // path we validated (the user edited it while this was in flight).
+      if (token !== requestToken || inputPath.trim() !== trimmed) {
         return
       }
       validatedPath = trimmed
@@ -82,7 +84,7 @@
         validationStatus = 'invalid'
       }
     } catch {
-      if (token !== requestToken) {
+      if (token !== requestToken || inputPath.trim() !== trimmed) {
         return
       }
       validatedPath = trimmed
@@ -105,9 +107,13 @@
       return
     }
 
-    // Edited away from the validated path: drop the now-stale status until the
-    // user re-submits or blurs.
-    if (trimmed !== validatedPath && validationStatus !== 'validating') {
+    // Edited away from the path that is validated or in flight: cancel any
+    // pending validation (bump the token so its result is dropped) and clear the
+    // now-stale status until the user re-submits or blurs. Bumping the token here
+    // is what guards against an in-flight validation finishing and showing
+    // "valid" for a path the user has already edited away from.
+    if (trimmed !== validatedPath) {
+      requestToken += 1
       validationStatus = 'idle'
       validationError = ''
       repositoryRoot = ''
