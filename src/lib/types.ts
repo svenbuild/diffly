@@ -1,6 +1,7 @@
 import type { AppearanceMode, AppearanceSettings } from './theme'
 
 export type CompareMode = 'file' | 'directory'
+export type SetupMode = 'git' | 'local' | 'github'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
@@ -9,6 +10,78 @@ export type ContentKind = 'text' | 'unsupported'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
 export type UpdateChannel = 'stable' | 'prerelease'
+
+export type DiffSource =
+  | LocalDiffSource
+  | GitDiffSource
+  | GithubPullRequestSource
+
+export interface LocalDiffSource {
+  kind: 'local'
+  leftPath: string
+  rightPath: string
+  compareMode: 'file' | 'directory'
+}
+
+export interface GitDiffSource {
+  kind: 'git'
+  repoPath: string
+  repositoryRoot: string
+  selection: GitSelection
+}
+
+export type GitSelection =
+  | {
+      kind: 'workingTree'
+      initialScope: GitWorkingTreeScope
+    }
+  | {
+      kind: 'refRange'
+      baseRef: string
+      headRef: string
+      notation: 'twoDot' | 'threeDot'
+    }
+  | {
+      kind: 'commit'
+      commitRef: string
+    }
+
+export type GitWorkingTreeScope =
+  | 'all'
+  | 'staged'
+  | 'unstaged'
+  | 'untracked'
+
+export interface GithubPullRequestSource {
+  kind: 'githubPullRequest'
+  owner: string
+  repo: string
+  pullNumber: number
+  url: string
+}
+
+export type DiffEntryStatus =
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'typeChanged'
+  | 'untracked'
+  | 'conflicted'
+  | 'unsupported'
+
+export interface DiffEntry {
+  id: string
+  path: string
+  oldPath?: string | null
+  displayPath: string
+  status: DiffEntryStatus
+  scope?: GitWorkingTreeScope
+  leftSize: number | null
+  rightSize: number | null
+  binary?: boolean
+}
 
 export interface CompareViewerSettings {
   diffStyle: 'split' | 'unified'
@@ -61,7 +134,7 @@ export interface CompareTreeSettings {
   coloredIcons: boolean
 }
 
-export type CompareSource =
+export type LegacyCompareSource =
   | {
       kind: 'localPaths'
       leftPath: string
@@ -83,6 +156,8 @@ export type CompareSource =
       pathFilter?: string[]
     }
 
+export type CompareSource = LegacyCompareSource
+
 export interface LaunchContext {
   openHerePath: string
 }
@@ -97,7 +172,8 @@ export interface PersistedExplorerPane {
 
 export interface PersistedSession {
   mode: CompareMode
-  source?: CompareSource
+  setupMode?: SetupMode
+  source?: DiffSource
   viewMode?: ViewMode
   viewerSettings?: CompareViewerSettings
   treeSettings?: CompareTreeSettings

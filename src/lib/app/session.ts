@@ -39,11 +39,12 @@ export function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPa
 export function buildPersistedSession(args: BuildPersistedSessionArgs): PersistedSession {
   return {
     mode: args.mode,
+    setupMode: 'local',
     source: {
-      kind: 'localPaths',
+      kind: 'local',
       leftPath: args.leftPane.selectedTargetPath,
       rightPath: args.rightPane.selectedTargetPath,
-      mode: args.mode,
+      compareMode: args.mode,
     },
     viewMode: args.viewerSettings.diffStyle === 'split' ? 'sideBySide' : 'unified',
     viewerSettings: args.viewerSettings,
