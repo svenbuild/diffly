@@ -72,6 +72,20 @@
     commitRef = ''
   }
 
+  function invalidateRefsForValidation(nextPath: string) {
+    refsRequestToken += 1
+    refsStatus = 'idle'
+    refsError = ''
+    gitRefs = null
+
+    if (nextPath !== validatedPath && nextPath !== repositoryRoot) {
+      refsDefaultsPath = ''
+      baseRef = ''
+      headRef = ''
+      commitRef = ''
+    }
+  }
+
   async function validate(path: string) {
     const trimmed = path.trim()
 
@@ -82,6 +96,7 @@
     }
 
     const token = (requestToken += 1)
+    invalidateRefsForValidation(trimmed)
     validationStatus = 'validating'
 
     try {
