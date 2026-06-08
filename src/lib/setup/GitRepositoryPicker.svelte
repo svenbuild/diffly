@@ -1,10 +1,13 @@
 <script lang="ts">
+  import GitRepositoryBrowser from './GitRepositoryBrowser.svelte'
   import type { GitWorkingTreeScope } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
 
-  export let inputPath = ''
+  export let selectedRepoPath = ''
+  export let revealPath = ''
+  export let revealRequestId = 0
   export let validationStatus: 'idle' | 'validating' | 'valid' | 'invalid' = 'idle'
   export let validationError = ''
   export let repositoryRoot = ''
@@ -17,10 +20,7 @@
   export let notation: Notation = 'twoDot'
   export let commitRef = ''
 
-  export let onBrowse: () => void
-  export let onPathInput: (value: string) => void
-  export let onPathSubmit: () => void
-  export let onPathBlur: () => void
+  export let onSelectRepo: (path: string) => void
   export let onSelectionKindChange: (kind: SelectionKind) => void
   export let onScopeChange: (scope: GitWorkingTreeScope) => void
   export let onBaseRefChange: (value: string) => void
@@ -43,35 +43,13 @@
 
   $: repoReady = validationStatus === 'valid'
   $: shortHead = headSha ? headSha.slice(0, 7) : ''
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      onPathSubmit()
-    }
-  }
 </script>
 
 <section class="git-setup-picker" aria-label="Git repository">
   <h2 class="git-setup-picker-title">Git repository</h2>
 
-  <div class="git-setup-field">
-    <label class="git-setup-label" for="git-setup-path">Path</label>
-    <div class="git-setup-path-row">
-      <input
-        id="git-setup-path"
-        class="path-input"
-        type="text"
-        autocomplete="off"
-        spellcheck="false"
-        placeholder="Path to a Git repository"
-        value={inputPath}
-        on:input={(event) => onPathInput(event.currentTarget.value)}
-        on:keydown={handleKeydown}
-        on:blur={onPathBlur}
-      />
-      <button type="button" class="secondary" on:click={onBrowse}>Browse folder…</button>
-    </div>
+  <div class="git-setup-browser">
+    <GitRepositoryBrowser {selectedRepoPath} {revealPath} {revealRequestId} {onSelectRepo} />
   </div>
 
   <div class="git-setup-status" aria-live="polite">
@@ -208,22 +186,20 @@
     color: var(--panel-title);
   }
 
-  .git-setup-field {
+  .git-setup-browser {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex: 1 1 auto;
+    min-height: 240px;
+  }
+
+  .git-setup-browser > :global(.git-browser) {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .git-setup-label {
     color: var(--muted);
     font-size: 11px;
-  }
-
-  .git-setup-path-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
   }
 
   .git-setup-status {

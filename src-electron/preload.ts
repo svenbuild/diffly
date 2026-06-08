@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<RecentSources>('diffly:removeRecentSource', { id }),
   validateGitRepository: (path: string) =>
     invoke<GitRepositoryValidation>('diffly:validateGitRepository', { path }),
+  detectGitRepositories: (paths: string[]) =>
+    invoke<string[]>('diffly:detectGitRepositories', { paths }),
   getAppVersion: () =>
     invoke('diffly:getAppVersion'),
   checkForUpdates: (channel: UpdateChannel) =>

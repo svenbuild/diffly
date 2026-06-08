@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
-  import { choosePath, loadRecentSources, validateGitRepository } from '../api'
+  import { loadRecentSources, validateGitRepository } from '../api'
   import type { GitWorkingTreeScope, RecentGitRepository } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
@@ -24,6 +24,11 @@
 
   let recentRepositories: RecentGitRepository[] = []
   let recentLoadError = false
+
+  // Reveal trigger for the browser: bumped when a repo is chosen from the recents
+  // list so the browser navigates to that repo's parent folder and shows it.
+  let revealPath = ''
+  let revealRequestId = 0
 
   // Monotonic token used to discard stale validation responses. Any newer
   // validation (or a cleared path) bumps it so an older in-flight result can no
@@ -96,54 +101,17 @@
     }
   }
 
-  function handlePathInput(value: string) {
-    inputPath = value
-    const trimmed = value.trim()
-
-    if (trimmed === '') {
-      // Cleared field: discard any in-flight validation and reset to idle.
-      requestToken += 1
-      clearValidation()
-      return
-    }
-
-    // Edited away from the path that is validated or in flight: cancel any
-    // pending validation (bump the token so its result is dropped) and clear the
-    // now-stale status until the user re-submits or blurs. Bumping the token here
-    // is what guards against an in-flight validation finishing and showing
-    // "valid" for a path the user has already edited away from.
-    if (trimmed !== validatedPath) {
-      requestToken += 1
-      validationStatus = 'idle'
-      validationError = ''
-      repositoryRoot = ''
-      currentBranch = ''
-      headSha = ''
-    }
+  // Selected from the browser (the repo is already visible there).
+  function handleSelectRepo(path: string) {
+    inputPath = path
+    void validate(path)
   }
 
-  function handlePathSubmit() {
-    void validate(inputPath)
-  }
-
-  function handlePathBlur() {
-    const trimmed = inputPath.trim()
-    if (trimmed !== '' && trimmed !== validatedPath) {
-      void validate(inputPath)
-    }
-  }
-
-  async function handleBrowse() {
-    const selected = await choosePath('directory')
-    if (!selected) {
-      return
-    }
-    inputPath = selected
-    void validate(selected)
-  }
-
+  // Selected from the recents list: validate and ask the browser to reveal it.
   function handleSelectRecent(repo: RecentGitRepository) {
     inputPath = repo.repoPath
+    revealPath = repo.repoPath
+    revealRequestId += 1
     void validate(repo.repoPath)
   }
 
@@ -182,7 +150,9 @@
   />
 
   <GitRepositoryPicker
-    {inputPath}
+    selectedRepoPath={inputPath}
+    {revealPath}
+    {revealRequestId}
     {validationStatus}
     {validationError}
     {repositoryRoot}
@@ -194,10 +164,7 @@
     {headRef}
     {notation}
     {commitRef}
-    onBrowse={handleBrowse}
-    onPathInput={handlePathInput}
-    onPathSubmit={handlePathSubmit}
-    onPathBlur={handlePathBlur}
+    onSelectRepo={handleSelectRepo}
     onSelectionKindChange={handleSelectionKindChange}
     onScopeChange={handleScopeChange}
     onBaseRefChange={handleBaseRefChange}

@@ -52,6 +52,9 @@ export const removeRecentSource = (id: string): Promise<RecentSources> =>
 export const validateGitRepository = (path: string): Promise<GitRepositoryValidation> =>
   window.diffly.validateGitRepository(path)
 
+export const detectGitRepositories = (paths: string[]): Promise<string[]> =>
+  window.diffly.detectGitRepositories(paths)
+
 export const getAppVersion = () =>
   window.diffly.getAppVersion()
 
