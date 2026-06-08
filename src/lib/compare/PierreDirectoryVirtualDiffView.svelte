@@ -29,7 +29,6 @@
   import {
     buildDirectoryCodeViewFile,
     buildPlaceholderFile,
-    estimatePlaceholderLineCount,
   } from './directory-code-view-items'
   import {
     loadStoredCommentAnnotations,
@@ -91,7 +90,6 @@
   export let entryStructureRevision = 0
   export let toggleEntry: (relativePath: string) => void = () => {}
   export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
-  export let pauseDiffLoading: () => void = () => {}
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
 
   let host: HTMLDivElement | null = null
@@ -103,7 +101,6 @@
   let unsubscribeNativeScroll: (() => void) | null = null
   let visibleRequestTimer: number | null = null
   let lastVisibleRequestAt = 0
-  let placeholderRequestTimer: number | null = null
   let layoutRetryFrame: number | null = null
   let scrollHost: HTMLDivElement | null = null
   let lastRequestedVisibleKey = ''
@@ -111,20 +108,16 @@
   let lastWorkerOptionsKey = ''
   let lastEntryStructureRevision = -1
   let lastChangedEntryRevision = 0
-  let lastDiffRenderPathRevision = 0
   let lastCollapsedPaths: Set<string> | null = null
   let lastCommentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>> | null = null
   let appliedScrollTargetRevision = 0
   let renderRevision = 0
-  let diffRenderPathRevision = 0
   let selectedLineSelection: CodeViewLineSelection | null = null
   let commentId = 0
   let commentAnnotations = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
   let entryByPath = new Map<string, LoadedDirectoryDiff>()
   let placeholderPaths = new Set<string>()
   let loadingPaths = new Set<string>()
-  let pendingPlaceholderRequestPaths = new Set<string>()
-  let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
 
@@ -171,10 +164,7 @@
   const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 1.25
   const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 80
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
-  const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
-  const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 4
   const DIFF_RENDER_CACHE_SIZE = 100
-  const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
     const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
@@ -211,10 +201,7 @@
     }
 
     // Native scrolling drives this. We only piggy-back on the passive scroll
-    // event to pause background diff loading and lazy-load the diffs that just
-    // scrolled into view — no preventDefault, no manual scroll animation, so the
-    // browser keeps scrolling on the compositor thread.
-    pauseDiffLoading()
+    // event to lazy-load the diffs that just scrolled into view.
     scheduleVisibleEntryRequest()
   }
 
@@ -429,7 +416,6 @@
     return renderDirectoryCollapseButton(args, {
       collapsedPaths,
       entryByPath,
-      schedulePlaceholderEntryRequest,
       toggleEntry,
     })
   }
@@ -443,7 +429,6 @@
       entryByPath,
       loadingPaths,
       placeholderPaths,
-      schedulePlaceholderEntryRequest,
       scheduleVisibleEntryRequest,
     })
   }
@@ -584,7 +569,6 @@
       entry.rightSize ?? '',
       loadedEntry.error,
       loadedEntry.diff?.text ? 'ready' : 'loading',
-      estimatePlaceholderLineCount(entry),
       collapsedPaths.has(entry.relativePath) ? '1' : '0',
     ].join('\u0000')
   }
@@ -606,7 +590,6 @@
         hasTextDiff: Boolean(loadedEntry.diff?.text),
       },
       key,
-      placeholderBlankLineSuffixes,
     )
     const item = { file, key, version }
     placeholderItems.set(path, item)
@@ -619,7 +602,7 @@
     const { entry, diff } = loadedEntry
     const collapsed = collapsedPaths.has(entry.relativePath)
 
-    if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
+    if (!diff?.text) {
       const placeholder = placeholderItem(loadedEntry)
       return {
         id: entry.relativePath,
@@ -700,79 +683,6 @@
       }
     }
 
-    for (const path of diffRenderPaths) {
-      if (!activePaths.has(path)) {
-        diffRenderPaths.delete(path)
-      }
-    }
-  }
-
-  function seedInitialDiffRenderPaths() {
-    if (entries.length === 0) {
-      return
-    }
-
-    let changed = false
-    const nextDiffRenderPaths = new Set(diffRenderPaths)
-    const addPath = (path: string) => {
-      const loadedEntry = entries.find((candidate) => candidate.entry.relativePath === path)
-      if (!loadedEntry?.diff?.text || nextDiffRenderPaths.has(path)) {
-        return
-      }
-
-      nextDiffRenderPaths.add(path)
-      changed = true
-    }
-
-    if (selectedRelativePath && nextDiffRenderPaths.size === 0) {
-      addPath(selectedRelativePath)
-    }
-
-    for (
-      let index = 0;
-      index < entries.length && nextDiffRenderPaths.size < DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT;
-      index += 1
-    ) {
-      const loadedEntry = entries[index]
-      if (loadedEntry.diff?.text) {
-        addPath(loadedEntry.entry.relativePath)
-      }
-    }
-
-    if (changed) {
-      diffRenderPaths = nextDiffRenderPaths
-      diffRenderPathRevision += 1
-    }
-  }
-
-  function promoteRenderedDiffPaths(paths: string[]) {
-    if (paths.length === 0) {
-      return false
-    }
-
-    let changed = false
-    const nextDiffRenderPaths = new Set(diffRenderPaths)
-    let promotedCount = 0
-    for (const path of paths) {
-      if (promotedCount >= DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH) {
-        break
-      }
-
-      const loadedEntry = entryByPath.get(path)
-      if (loadedEntry?.diff?.text && !nextDiffRenderPaths.has(path)) {
-        nextDiffRenderPaths.add(path)
-        changed = true
-        promotedCount += 1
-      }
-    }
-
-    if (!changed) {
-      return false
-    }
-
-    diffRenderPaths = nextDiffRenderPaths
-    diffRenderPathRevision += 1
-    return true
   }
 
   function buildItems() {
@@ -791,7 +701,7 @@
       nextEntryByPath.set(entry.relativePath, loadedEntry)
       nextItemInputIndexByPath.set(entry.relativePath, entryInputIndex)
 
-      if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
+      if (!diff?.text) {
         nextPlaceholderPaths.add(entry.relativePath)
       }
 
@@ -863,7 +773,7 @@
       ensureCollections()
       nextEntryByPath.set(path, loadedEntry)
 
-      if (loadedEntry.diff?.text && diffRenderPaths.has(path)) {
+      if (loadedEntry.diff?.text) {
         nextPlaceholderPaths.delete(path)
       } else {
         nextPlaceholderPaths.add(path)
@@ -955,13 +865,8 @@
     const key = paths.join('\u0000')
     const hasPendingVisiblePlaceholder = paths.some((path) => {
       const entry = entryByPath.get(path)
-      return entry && !entry.error && (!entry.diff?.text || !diffRenderPaths.has(path))
+      return entry && !entry.error && !entry.diff?.text
     })
-
-    if (promoteRenderedDiffPaths(paths)) {
-      void syncCodeView()
-      return
-    }
 
     if (key === lastRequestedVisibleKey && !hasPendingVisiblePlaceholder) {
       return
@@ -1006,24 +911,6 @@
     })
 
     return paths
-  }
-
-  function schedulePlaceholderEntryRequest(path: string) {
-    pendingPlaceholderRequestPaths.add(path)
-
-    if (placeholderRequestTimer !== null) {
-      window.clearTimeout(placeholderRequestTimer)
-    }
-
-    placeholderRequestTimer = window.setTimeout(() => {
-      placeholderRequestTimer = null
-      const paths = Array.from(pendingPlaceholderRequestPaths)
-      pendingPlaceholderRequestPaths = new Set()
-
-      if (paths.length > 0) {
-        requestVisibleEntries(paths)
-      }
-    }, DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS)
   }
 
   function syncScrollSubscription() {
@@ -1091,14 +978,11 @@
     const structureChanged = entryStructureRevision !== lastEntryStructureRevision
     const collapsedChanged = collapsedPaths !== lastCollapsedPaths
     const annotationsChanged = commentAnnotations !== lastCommentAnnotations
-    seedInitialDiffRenderPaths()
-    const diffRenderPathsChanged = diffRenderPathRevision !== lastDiffRenderPathRevision
     const canPatchChangedItems =
       codeView &&
       !structureChanged &&
       !collapsedChanged &&
       !annotationsChanged &&
-      !diffRenderPathsChanged &&
       changedEntryRevision !== lastChangedEntryRevision &&
       changedEntryPaths.length > 0
 
@@ -1134,12 +1018,10 @@
       structureChanged ||
       collapsedChanged ||
       annotationsChanged ||
-      diffRenderPathsChanged ||
       changedEntryRevision !== lastChangedEntryRevision
     const items = buildItems()
     lastEntryStructureRevision = entryStructureRevision
     lastChangedEntryRevision = changedEntryRevision
-    lastDiffRenderPathRevision = diffRenderPathRevision
     lastCollapsedPaths = collapsedPaths
     lastCommentAnnotations = commentAnnotations
 
@@ -1215,11 +1097,6 @@
     if (visibleRequestTimer !== null) {
       window.clearTimeout(visibleRequestTimer)
       visibleRequestTimer = null
-    }
-
-    if (placeholderRequestTimer !== null) {
-      window.clearTimeout(placeholderRequestTimer)
-      placeholderRequestTimer = null
     }
 
     if (layoutRetryFrame !== null) {
