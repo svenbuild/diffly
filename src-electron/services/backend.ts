@@ -71,11 +71,12 @@ export function registerIpcHandlers() {
     saveSessionState(payload.session),
   )
   ipcMain.handle('diffly:loadRecentSources', () => loadRecentSources())
-  ipcMain.handle('diffly:addRecentSource', (_event, payload) =>
-    addRecentSource(payload?.source, payload?.metadata),
-  )
-  ipcMain.handle('diffly:removeRecentSource', (_event, payload: { id: string }) =>
-    removeRecentSource(payload.id),
+  ipcMain.handle('diffly:addRecentSource', (_event, payload: unknown) => {
+    const recentPayload = readAddRecentSourcePayload(payload)
+    return addRecentSource(recentPayload.source, recentPayload.metadata)
+  })
+  ipcMain.handle('diffly:removeRecentSource', (_event, payload: unknown) =>
+    removeRecentSource(readRemoveRecentSourceId(payload)),
   )
   ipcMain.handle('diffly:getAppVersion', () => app.getVersion())
   ipcMain.handle('diffly:checkForUpdates', (_event, payload: { channel: UpdateChannel }) =>
@@ -185,4 +186,88 @@ export function refreshDiffSession(sessionId: string): Promise<CreateDiffSession
 
 export function disposeDiffSession(sessionId: string): void {
   diffSessionService.dispose(sessionId)
+}
+
+function readAddRecentSourcePayload(payload: unknown): {
+  source: DiffSource
+  metadata?: unknown
+} {
+  if (!isRecord(payload) || !isDiffSourcePayload(payload.source)) {
+    throw new Error('Invalid add recent source payload.')
+  }
+
+  return {
+    source: payload.source,
+    metadata: payload.metadata,
+  }
+}
+
+function readRemoveRecentSourceId(payload: unknown) {
+  if (!isRecord(payload) || typeof payload.id !== 'string' || !payload.id.trim()) {
+    throw new Error('Invalid remove recent source payload.')
+  }
+
+  return payload.id
+}
+
+function isDiffSourcePayload(value: unknown): value is DiffSource {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
+  }
+
+  switch (value.kind) {
+    case 'local':
+      return (
+        typeof value.leftPath === 'string' &&
+        typeof value.rightPath === 'string' &&
+        (value.compareMode === 'file' || value.compareMode === 'directory')
+      )
+    case 'git':
+      return (
+        typeof value.repoPath === 'string' &&
+        typeof value.repositoryRoot === 'string' &&
+        isGitSelectionPayload(value.selection)
+      )
+    case 'githubPullRequest':
+      return (
+        typeof value.owner === 'string' &&
+        typeof value.repo === 'string' &&
+        typeof value.url === 'string' &&
+        typeof value.pullNumber === 'number' &&
+        Number.isInteger(value.pullNumber) &&
+        value.pullNumber > 0
+      )
+    default:
+      return false
+  }
+}
+
+function isGitSelectionPayload(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
+  }
+
+  switch (value.kind) {
+    case 'workingTree':
+      return (
+        value.initialScope === 'all' ||
+        value.initialScope === 'staged' ||
+        value.initialScope === 'unstaged' ||
+        value.initialScope === 'untracked'
+      )
+    case 'refRange':
+      return (
+        typeof value.baseRef === 'string' &&
+        typeof value.headRef === 'string' &&
+        (value.notation === 'twoDot' || value.notation === 'threeDot')
+      )
+    case 'commit':
+      return typeof value.commitRef === 'string'
+    default:
+      return false
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
