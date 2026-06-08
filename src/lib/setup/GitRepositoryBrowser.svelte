@@ -118,6 +118,13 @@
     const token = (navToken += 1)
     loading = true
     error = ''
+    // Drop the previous folder's badge/selection state immediately so an
+    // in-flight detection can't write back over the new view and "Use current
+    // folder" can't stay active for the old folder while the new one loads.
+    detectionToken += 1
+    repoPaths = new Set()
+    currentFolderIsRepo = false
+    focusedPath = ''
 
     try {
       const listing = await listDirectory(path)
@@ -127,7 +134,6 @@
       currentListing = listing
       currentPath = listing.path
       pathInput = listing.path
-      focusedPath = ''
       if (options.push) {
         history = [...history.slice(0, historyIndex + 1), listing.path]
         historyIndex = history.length - 1
@@ -323,7 +329,7 @@
     <button
       class={currentFolderIsRepo ? 'primary' : 'secondary'}
       type="button"
-      disabled={!currentFolderIsRepo}
+      disabled={loading || !currentFolderIsRepo}
       title={currentFolderIsRepo
         ? 'Use the open folder as the repository'
         : 'The open folder is not a Git repository'}

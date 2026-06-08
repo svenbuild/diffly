@@ -150,7 +150,7 @@
   />
 
   <GitRepositoryPicker
-    selectedRepoPath={inputPath}
+    selectedRepoPath={validationStatus === 'valid' ? validatedPath : ''}
     {revealPath}
     {revealRequestId}
     {validationStatus}
