@@ -139,19 +139,19 @@ export function registerIpcHandlers() {
     openCompareItem(payload.leftBase, payload.rightBase, payload.relativePath, payload.options),
   )
   ipcMain.handle('diffly:createDiffSession', (_event, payload) =>
-    createDiffSession(payload.source, payload.options),
+    createDiffSession(payload?.source, payload?.options),
   )
   ipcMain.handle('diffly:listDiffEntries', (_event, payload) =>
-    listDiffEntries(payload.sessionId, payload.filter),
+    listDiffEntries(payload?.sessionId, payload?.filter),
   )
   ipcMain.handle('diffly:openDiffEntry', (_event, payload) =>
-    openDiffEntry(payload.sessionId, payload.entryId, payload.options),
+    openDiffEntry(payload?.sessionId, payload?.entryId, payload?.options),
   )
   ipcMain.handle('diffly:refreshDiffSession', (_event, payload) =>
-    refreshDiffSession(payload.sessionId),
+    refreshDiffSession(payload?.sessionId),
   )
   ipcMain.handle('diffly:disposeDiffSession', (_event, payload) =>
-    disposeDiffSession(payload.sessionId),
+    disposeDiffSession(payload?.sessionId),
   )
 }
 
