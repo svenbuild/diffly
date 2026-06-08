@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import Dropdown from './components/Dropdown.svelte'
   import EntryIcon from './EntryIcon.svelte'
+  import { filterRows, reduceTypeAheadKey } from './setup/explorer-typeahead'
 
   import type { ExplorerEntry } from './types'
   import type { ExplorerPaneState, Side } from './ui-types'
@@ -41,6 +42,12 @@
   let rowsViewportHeight = 0
   let resizeObserver: ResizeObserver | null = null
 
+  // Type-ahead filter over the current folder. The filter and highlight reset
+  // whenever the open folder changes.
+  let filterQuery = ''
+  let highlightedIndex = -1
+  let lastListedPath = ''
+
   $: selectionCount = pane.selectedTargetPaths?.length ?? (pane.selectedTargetPath ? 1 : 0)
   $: targetKindLabel = pane.selectedTargetKind === 'file'
     ? 'File'
@@ -62,18 +69,88 @@
         : [],
   )
   $: explorerRows = buildExplorerRows(pane.currentListing?.directories ?? [], pane.currentListing?.files ?? [])
-  $: totalRowsHeight = explorerRows.length * ROW_HEIGHT
+  $: filteredRows = filterRows(explorerRows, filterQuery)
+  $: totalRowsHeight = filteredRows.length * ROW_HEIGHT
   $: virtualStartIndex = Math.max(0, Math.floor(rowsScrollTop / ROW_HEIGHT) - ROW_OVERSCAN)
   $: virtualVisibleCount = Math.max(
     ROW_OVERSCAN * 2,
     Math.ceil((rowsViewportHeight || 480) / ROW_HEIGHT) + ROW_OVERSCAN * 2,
   )
-  $: virtualEndIndex = Math.min(explorerRows.length, virtualStartIndex + virtualVisibleCount)
-  $: virtualRows = explorerRows.slice(virtualStartIndex, virtualEndIndex)
+  $: virtualEndIndex = Math.min(filteredRows.length, virtualStartIndex + virtualVisibleCount)
+  $: virtualRows = filteredRows.slice(virtualStartIndex, virtualEndIndex)
   $: virtualTopPadding = virtualStartIndex * ROW_HEIGHT
   $: virtualBottomPadding = Math.max(0, totalRowsHeight - virtualTopPadding - virtualRows.length * ROW_HEIGHT)
   $: if (rowsScrollTop > Math.max(0, totalRowsHeight - rowsViewportHeight)) {
     rowsScrollTop = Math.max(0, totalRowsHeight - rowsViewportHeight)
+  }
+
+  // Reset the filter when the open folder changes so a stale query never hides
+  // the new folder's contents.
+  $: if (pane.currentPath !== lastListedPath) {
+    lastListedPath = pane.currentPath
+    filterQuery = ''
+    highlightedIndex = -1
+  }
+
+  function handleListKeydown(event: KeyboardEvent) {
+    const result = reduceTypeAheadKey(event, {
+      query: filterQuery,
+      highlightedIndex,
+      rowCount: filteredRows.length,
+    })
+
+    if (!result.handled && result.action === 'none') {
+      return
+    }
+
+    event.preventDefault()
+    filterQuery = result.query
+    highlightedIndex = result.highlightedIndex
+
+    const row = highlightedIndex >= 0 ? filteredRows[highlightedIndex] : null
+
+    if (result.action === 'open' && row) {
+      void activateListEntry(side, row.entry)
+    } else if (result.action === 'select' && row) {
+      selectListEntry(side, row.entry)
+    } else if (result.action === 'goUp') {
+      const parent = pane.currentListing?.parentPath
+      if (parent) {
+        void navigateTo(side, parent)
+      }
+    }
+
+    // Navigating unmounts the focused row button; keep focus on the list so the
+    // user can keep typing/navigating in the new folder.
+    if (result.action === 'open' || result.action === 'goUp') {
+      rowsHost?.focus({ preventScroll: true })
+    }
+
+    scrollHighlightedIntoView()
+  }
+
+  function scrollHighlightedIntoView() {
+    if (highlightedIndex < 0 || !rowsHost) {
+      return
+    }
+
+    const top = highlightedIndex * ROW_HEIGHT
+    const bottom = top + ROW_HEIGHT
+    const viewTop = rowsHost.scrollTop
+    const viewBottom = viewTop + rowsHost.clientHeight
+
+    if (top < viewTop) {
+      rowsHost.scrollTop = top
+    } else if (bottom > viewBottom) {
+      rowsHost.scrollTop = bottom - rowsHost.clientHeight
+    }
+
+    rowsScrollTop = rowsHost.scrollTop
+  }
+
+  function handleRowClick(index: number, entry: ExplorerEntry, event: MouseEvent) {
+    highlightedIndex = index
+    selectListEntry(side, entry, event)
   }
 
   function compactPath(path: string) {
@@ -273,19 +350,36 @@
       </div>
     </div>
 
-    <div class="list-rows" bind:this={rowsHost} on:scroll={handleRowsScroll}>
+    {#if filterQuery}
+      <div class="list-filter-bar">
+        <span class="list-filter-label">Filter</span>
+        <span class="list-filter-query">{filterQuery}</span>
+        <span class="list-filter-count">{filteredRows.length} match{filteredRows.length === 1 ? '' : 'es'}</span>
+      </div>
+    {/if}
+
+    <div
+      class="list-rows"
+      bind:this={rowsHost}
+      tabindex="0"
+      role="listbox"
+      aria-label="{pane.title} folder entries"
+      on:scroll={handleRowsScroll}
+      on:keydown={handleListKeydown}
+    >
       {#if pickerLoading}
         <div class="empty-state">Loading drives...</div>
       {:else if pane.loading}
         <div class="empty-state">Loading folder...</div>
       {:else if pane.currentListing}
         <div class="virtual-list-spacer" style:height={`${virtualTopPadding}px`}></div>
-        {#each virtualRows as row (row.key)}
+        {#each virtualRows as row, index (row.key)}
           <button
             class:selected={rowIsSelected(row.entry)}
+            class:highlighted={virtualStartIndex + index === highlightedIndex}
             class="entry-row"
             type="button"
-            on:click={(event) => selectListEntry(side, row.entry, event)}
+            on:click={(event) => handleRowClick(virtualStartIndex + index, row.entry, event)}
             on:dblclick={() => activateListEntry(side, row.entry)}
           >
             <span class="entry-name">
@@ -304,6 +398,8 @@
 
         {#if pane.currentListing.directories.length === 0 && pane.currentListing.files.length === 0}
           <div class="empty-state">Folder is empty.</div>
+        {:else if filteredRows.length === 0}
+          <div class="empty-state">No entries match “{filterQuery}”.</div>
         {/if}
       {:else}
         <div class="empty-state">No folder open.</div>

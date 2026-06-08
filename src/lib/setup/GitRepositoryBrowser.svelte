@@ -4,6 +4,7 @@
   import EntryIcon from '../EntryIcon.svelte'
   import { detectGitRepositories, listDirectory, listRoots, pathInfo } from '../api'
   import { entryTypeLabel, formatModified, formatSize } from '../format'
+  import { filterRows, reduceTypeAheadKey } from './explorer-typeahead'
   import type { DirectoryListing, ExplorerEntry } from '../types'
 
   // The repo that is currently validated/selected by GitSetupPanel. Used purely
@@ -58,6 +59,11 @@
   let rowsViewportHeight = 0
   let resizeObserver: ResizeObserver | null = null
 
+  // Type-ahead filter over the current folder; reset whenever it changes.
+  let filterQuery = ''
+  let highlightedIndex = -1
+  let lastListedPath = ''
+
   $: canGoBack = historyIndex > 0
   $: canGoForward = historyIndex >= 0 && historyIndex < history.length - 1
   $: directoryCount = currentListing?.directories.length ?? 0
@@ -66,14 +72,15 @@
     currentListing?.directories ?? [],
     currentListing?.files ?? [],
   )
-  $: totalRowsHeight = explorerRows.length * ROW_HEIGHT
+  $: filteredRows = filterRows(explorerRows, filterQuery)
+  $: totalRowsHeight = filteredRows.length * ROW_HEIGHT
   $: virtualStartIndex = Math.max(0, Math.floor(rowsScrollTop / ROW_HEIGHT) - ROW_OVERSCAN)
   $: virtualVisibleCount = Math.max(
     ROW_OVERSCAN * 2,
     Math.ceil((rowsViewportHeight || 480) / ROW_HEIGHT) + ROW_OVERSCAN * 2,
   )
-  $: virtualEndIndex = Math.min(explorerRows.length, virtualStartIndex + virtualVisibleCount)
-  $: virtualRows = explorerRows.slice(virtualStartIndex, virtualEndIndex)
+  $: virtualEndIndex = Math.min(filteredRows.length, virtualStartIndex + virtualVisibleCount)
+  $: virtualRows = filteredRows.slice(virtualStartIndex, virtualEndIndex)
   $: virtualTopPadding = virtualStartIndex * ROW_HEIGHT
   $: virtualBottomPadding = Math.max(
     0,
@@ -81,6 +88,72 @@
   )
   $: if (rowsScrollTop > Math.max(0, totalRowsHeight - rowsViewportHeight)) {
     rowsScrollTop = Math.max(0, totalRowsHeight - rowsViewportHeight)
+  }
+
+  // Reset the filter when the open folder changes.
+  $: if (currentPath !== lastListedPath) {
+    lastListedPath = currentPath
+    filterQuery = ''
+    highlightedIndex = -1
+  }
+
+  function handleListKeydown(event: KeyboardEvent) {
+    const result = reduceTypeAheadKey(event, {
+      query: filterQuery,
+      highlightedIndex,
+      rowCount: filteredRows.length,
+    })
+
+    if (!result.handled && result.action === 'none') {
+      return
+    }
+
+    event.preventDefault()
+    filterQuery = result.query
+    highlightedIndex = result.highlightedIndex
+
+    const row = highlightedIndex >= 0 ? filteredRows[highlightedIndex] : null
+
+    if (result.action === 'open' && row?.kind === 'directory') {
+      // Enter goes into the highlighted folder.
+      void navigateTo(row.entry.path)
+    } else if (result.action === 'select' && row?.kind === 'directory') {
+      // Space selects a repository folder; otherwise just focuses it.
+      if (repoPaths.has(row.entry.path)) {
+        onSelectRepo(row.entry.path)
+      } else {
+        focusedPath = row.entry.path
+      }
+    } else if (result.action === 'goUp') {
+      goUp()
+    }
+
+    // Navigating unmounts the focused row button; keep focus on the list so the
+    // user can keep typing/navigating in the new folder.
+    if (result.action === 'open' || result.action === 'goUp') {
+      rowsHost?.focus({ preventScroll: true })
+    }
+
+    scrollHighlightedIntoView()
+  }
+
+  function scrollHighlightedIntoView() {
+    if (highlightedIndex < 0 || !rowsHost) {
+      return
+    }
+
+    const top = highlightedIndex * ROW_HEIGHT
+    const bottom = top + ROW_HEIGHT
+    const viewTop = rowsHost.scrollTop
+    const viewBottom = viewTop + rowsHost.clientHeight
+
+    if (top < viewTop) {
+      rowsHost.scrollTop = top
+    } else if (bottom > viewBottom) {
+      rowsHost.scrollTop = bottom - rowsHost.clientHeight
+    }
+
+    rowsScrollTop = rowsHost.scrollTop
   }
 
   // Reveal an externally chosen repo by opening its parent directory.
@@ -420,19 +493,39 @@
       </div>
     </div>
 
-    <div class="list-rows" bind:this={rowsHost} on:scroll={handleRowsScroll}>
+    {#if filterQuery}
+      <div class="list-filter-bar">
+        <span class="list-filter-label">Filter</span>
+        <span class="list-filter-query">{filterQuery}</span>
+        <span class="list-filter-count">{filteredRows.length} match{filteredRows.length === 1 ? '' : 'es'}</span>
+      </div>
+    {/if}
+
+    <div
+      class="list-rows"
+      bind:this={rowsHost}
+      tabindex="0"
+      role="listbox"
+      aria-label="Repository folder entries"
+      on:scroll={handleRowsScroll}
+      on:keydown={handleListKeydown}
+    >
       {#if loading}
         <div class="empty-state">Loading folder...</div>
       {:else if currentListing}
         <div class="virtual-list-spacer" style:height={`${virtualTopPadding}px`}></div>
-        {#each virtualRows as row (row.key)}
+        {#each virtualRows as row, index (row.key)}
           {#if row.kind === 'directory'}
             <button
               class:selected={row.entry.path === selectedRepoPath}
               class:focused={row.entry.path === focusedPath}
+              class:highlighted={virtualStartIndex + index === highlightedIndex}
               class="entry-row"
               type="button"
-              on:click={() => handleRowClick(row)}
+              on:click={() => {
+                highlightedIndex = virtualStartIndex + index
+                handleRowClick(row)
+              }}
               on:dblclick={() => handleRowDblClick(row)}
             >
               <span class="entry-name">
@@ -447,7 +540,11 @@
               <span class="entry-meta">-</span>
             </button>
           {:else}
-            <div class="entry-row file-inert" aria-disabled="true">
+            <div
+              class:highlighted={virtualStartIndex + index === highlightedIndex}
+              class="entry-row file-inert"
+              aria-disabled="true"
+            >
               <span class="entry-name">
                 <EntryIcon kind={row.entry.kind} open={false} />
                 <span class="entry-text">{row.entry.name}</span>
@@ -462,6 +559,8 @@
 
         {#if directoryCount === 0 && fileCount === 0}
           <div class="empty-state">Folder is empty.</div>
+        {:else if filteredRows.length === 0}
+          <div class="empty-state">No entries match “{filterQuery}”.</div>
         {/if}
       {:else}
         <div class="empty-state">No folder open.</div>

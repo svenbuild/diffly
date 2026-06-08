@@ -431,6 +431,54 @@
   background: color-mix(in srgb, var(--active-border) 16%, transparent);
 }
 
+/* Keyboard type-ahead highlight — distinct from the chosen target's .selected. */
+.entry-row.highlighted:not(.selected) {
+  background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-alt));
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.list-rows:focus,
+.list-rows:focus-visible {
+  outline: none;
+}
+
+/* Ring the active explorer's list so it's clear which pane the keyboard drives. */
+.explorer-list-pane:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Filter status bar shown above the entry list while a type-ahead query runs. */
+.list-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-alt);
+  font-size: 11px;
+}
+
+.list-filter-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.list-filter-query {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--code);
+  color: var(--text);
+}
+
+.list-filter-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 .entry-name,
 .file-row-top {
   display: flex;
