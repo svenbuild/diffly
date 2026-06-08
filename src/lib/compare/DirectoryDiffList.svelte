@@ -89,6 +89,7 @@
   let normalLoadQueueHead = 0
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
+  let loadResumeTimer: number | null = null
   let backgroundLoadTimer: number | null = null
   let backgroundLoadCursor = 0
   let entryStateFlushFrame: number | null = null
@@ -467,6 +468,21 @@
     }
   }
 
+  function scheduleLoadResume() {
+    if (loadResumeTimer !== null) {
+      window.clearTimeout(loadResumeTimer)
+    }
+
+    loadResumeTimer = window.setTimeout(() => {
+      loadResumeTimer = null
+      pumpLoadQueue()
+    }, 16)
+  }
+
+  function pauseDirectoryDiffLoads() {
+    scheduleLoadResume()
+  }
+
   function compactPriorityLoadQueue() {
     if (priorityLoadQueueHead > 64 && priorityLoadQueueHead * 2 > priorityLoadQueue.length) {
       priorityLoadQueue = priorityLoadQueue.slice(priorityLoadQueueHead)
@@ -838,6 +854,10 @@
   }
 
   onDestroy(() => {
+    if (loadResumeTimer !== null) {
+      window.clearTimeout(loadResumeTimer)
+      loadResumeTimer = null
+    }
     cancelBackgroundLoadScheduling()
     cancelEntryStateFlush()
   })
@@ -913,6 +933,7 @@
       {entryStructureRevision}
       toggleEntry={toggleEntryByPath}
       {requestVisibleEntries}
+      pauseDiffLoading={pauseDirectoryDiffLoads}
       onSystemMonitorChange={handleSystemMonitorChange}
     />
   {/if}

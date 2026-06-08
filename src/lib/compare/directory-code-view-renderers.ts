@@ -24,6 +24,7 @@ export function renderDirectoryCollapseButton(
   options: {
     collapsedPaths: Set<string>
     entryByPath: Map<string, LoadedDirectoryDiffLike>
+    schedulePlaceholderEntryRequest: (path: string) => void
     toggleEntry: (relativePath: string) => void
   },
 ) {
@@ -37,6 +38,8 @@ export function renderDirectoryCollapseButton(
   const button = document.createElement('button')
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  const loadedEntry = options.entryByPath.get(itemId)
+
   button.type = 'button'
   button.className = 'diffly-codeview-collapse-button'
   button.dataset.difflyEntryPath = itemId
@@ -59,6 +62,10 @@ export function renderDirectoryCollapseButton(
     event.stopPropagation()
     options.toggleEntry(itemId)
   })
+
+  if (loadedEntry && !loadedEntry.diff?.text && !loadedEntry.loading && !loadedEntry.error) {
+    options.schedulePlaceholderEntryRequest(itemId)
+  }
 
   return button
 }
@@ -97,6 +104,7 @@ export function applyDirectoryItemPostRender(
     entryByPath: Map<string, LoadedDirectoryDiffLike>
     loadingPaths: Set<string>
     placeholderPaths: Set<string>
+    schedulePlaceholderEntryRequest: (path: string) => void
     scheduleVisibleEntryRequest: () => void
   },
 ) {
@@ -110,6 +118,11 @@ export function applyDirectoryItemPostRender(
   node.toggleAttribute('data-diffly-placeholder', options.placeholderPaths.has(itemId))
   node.toggleAttribute('data-diffly-loading', options.loadingPaths.has(itemId))
   node.toggleAttribute('data-diffly-error', Boolean(options.entryByPath.get(itemId)?.error))
+
+  const entry = options.entryByPath.get(itemId)
+  if (options.placeholderPaths.has(itemId) && entry && !entry.loading && !entry.error) {
+    options.schedulePlaceholderEntryRequest(itemId)
+  }
 
   options.scheduleVisibleEntryRequest()
 }
