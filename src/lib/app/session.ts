@@ -4,6 +4,7 @@ import type {
   CompareMode,
   PersistedExplorerPane,
   PersistedSession,
+  SetupMode,
   UpdateChannel,
   UpdateMetadata,
 } from '../types'
@@ -12,6 +13,7 @@ import type { ExplorerPaneState } from '../ui-types'
 
 export interface BuildPersistedSessionArgs {
   mode: CompareMode
+  setupMode: SetupMode
   viewerSettings: CompareViewerSettings
   treeSettings: CompareTreeSettings
   appearanceSettings: AppearanceSettings
@@ -39,7 +41,7 @@ export function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPa
 export function buildPersistedSession(args: BuildPersistedSessionArgs): PersistedSession {
   return {
     mode: args.mode,
-    setupMode: 'local',
+    setupMode: args.setupMode,
     source: {
       kind: 'local',
       leftPath: args.leftPane.selectedTargetPath,

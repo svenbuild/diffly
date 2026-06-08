@@ -1,7 +1,8 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
   import PickerPane from '../PickerPane.svelte'
-  import type { ExplorerEntry } from '../types'
+  import SetupModeSlider from '../setup/SetupModeSlider.svelte'
+  import type { ExplorerEntry, SetupMode } from '../types'
   import type {
     ExplorerPaneState,
     SettingsSection,
@@ -14,6 +15,8 @@
   export let showUpdateIndicator = false
   export let updateIndicatorTitle = ''
   export let openUpdateSettings: () => void
+  export let setupMode: SetupMode = 'local'
+  export let onSetupModeChange: (mode: SetupMode) => void
   export let setupTopbarWarning = ''
   export let loading = false
   export let pickerCanCompare = false
@@ -41,6 +44,13 @@
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
+
+  $: placeholderMessage =
+    setupMode === 'git' ? 'Git setup coming soon' : 'GitHub setup coming soon'
+  $: compareButtonTitle =
+    setupMode === 'local'
+      ? sameSelectionWarning || setupHintMessage || 'Compare selected targets'
+      : placeholderMessage
 </script>
 
 <main class="screen setup-screen">
@@ -55,7 +65,8 @@
     {/snippet}
 
     {#snippet middle()}
-      {#if setupTopbarWarning}
+      <SetupModeSlider mode={setupMode} onChange={onSetupModeChange} />
+      {#if setupTopbarWarning && setupMode === 'local'}
         <p class="setup-topbar-warning">{setupTopbarWarning}</p>
       {/if}
     {/snippet}
@@ -67,7 +78,7 @@
         class:compare-action-busy={loading}
         aria-busy={loading}
         disabled={!pickerCanCompare || loading}
-        title={sameSelectionWarning || setupHintMessage || 'Compare selected targets'}
+        title={compareButtonTitle}
         type="button"
         on:click={runCompare}
       >
@@ -89,33 +100,39 @@
   {/if}
 
   <section class="setup-body">
-    <section class="setup-launcher" aria-label="Compare setup">
-      <section class="picker-workspace">
-        {#each pickerSides as item}
-          <PickerPane
-            side={item.side}
-            pane={item.pane}
-            {pickerLoading}
-            {canGoBack}
-            {canGoForward}
-            {currentDrive}
-            {formatModified}
-            {formatSize}
-            {entryTypeLabel}
-            {changeDrive}
-            {navigateHistory}
-            {navigateTo}
-            {updatePathInput}
-            {submitPathInput}
-            {browseSystem}
-            setCurrentFolderAsTarget={useCurrentFolder}
-            {isCurrentFolderSelected}
-            {selectListEntry}
-            {activateListEntry}
-            {isTargetSelected}
-          />
-        {/each}
+    {#if setupMode === 'local'}
+      <section class="setup-launcher" aria-label="Compare setup">
+        <section class="picker-workspace">
+          {#each pickerSides as item}
+            <PickerPane
+              side={item.side}
+              pane={item.pane}
+              {pickerLoading}
+              {canGoBack}
+              {canGoForward}
+              {currentDrive}
+              {formatModified}
+              {formatSize}
+              {entryTypeLabel}
+              {changeDrive}
+              {navigateHistory}
+              {navigateTo}
+              {updatePathInput}
+              {submitPathInput}
+              {browseSystem}
+              setCurrentFolderAsTarget={useCurrentFolder}
+              {isCurrentFolderSelected}
+              {selectListEntry}
+              {activateListEntry}
+              {isTargetSelected}
+            />
+          {/each}
+        </section>
       </section>
-    </section>
+    {:else}
+      <section class="setup-placeholder" aria-label="{setupMode} setup">
+        <p>{placeholderMessage}</p>
+      </section>
+    {/if}
   </section>
 </main>

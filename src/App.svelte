@@ -111,6 +111,7 @@
     FileDiffResult,
     PersistedExplorerPane,
     PersistedSession,
+    SetupMode,
     SystemMonitorSnapshot,
     ThemeMode,
     UpdateChannel,
@@ -160,6 +161,7 @@
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
+  let setupMode: SetupMode = 'local'
   let viewMode: ViewMode = 'sideBySide'
   let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
     initialSession?.appearance,
@@ -1326,6 +1328,14 @@
       mode = session.mode
     }
 
+    if (
+      session.setupMode === 'local' ||
+      session.setupMode === 'git' ||
+      session.setupMode === 'github'
+    ) {
+      setupMode = session.setupMode
+    }
+
     if (session.viewMode === 'sideBySide' || session.viewMode === 'unified') {
       viewMode = session.viewMode
     }
@@ -1813,7 +1823,23 @@
     }
   }
 
+  function setSetupMode(next: SetupMode) {
+    if (next === setupMode) {
+      return
+    }
+    setupMode = next
+    // Clear any stale error banner from the previous mode and persist the choice.
+    // Compare data (entries, active diff, selections) is intentionally preserved.
+    errorMessage = ''
+    scheduleSessionSave()
+  }
+
   async function runCompare() {
+    // Only Local has a working setup panel in this step; other modes have no source yet.
+    if (setupMode !== 'local') {
+      return
+    }
+
     if (!paneCanCompare(leftExplorer, mode) || !paneCanCompare(rightExplorer, mode)) {
       errorMessage = 'Select valid targets on both sides first.'
       return
@@ -2130,6 +2156,7 @@
       lastUpdateMetadata: updateIndicatorState.metadata,
       leftPane: leftExplorer,
       rightPane: rightExplorer,
+      setupMode,
     })
   }
 
@@ -2287,6 +2314,7 @@
         ? `Select the left ${mode === 'directory' ? 'folder' : 'file'}.`
         : `Select the right ${mode === 'directory' ? 'folder' : 'file'}.`
   $: setupTopbarWarning = sameSelectionWarning || setupHintMessage
+  $: setupCanCompare = setupMode === 'local' && pickerCanCompare
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: comparePairsLabel = (() => {
@@ -2318,9 +2346,11 @@
     showUpdateIndicator={shouldShowUpdateIndicator()}
     updateIndicatorTitle={updateIndicatorTitle()}
     {openUpdateSettings}
+    {setupMode}
+    onSetupModeChange={setSetupMode}
     {setupTopbarWarning}
     {loading}
-    {pickerCanCompare}
+    pickerCanCompare={setupCanCompare}
     {sameSelectionWarning}
     {setupHintMessage}
     {runCompare}
