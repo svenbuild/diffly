@@ -3,6 +3,7 @@ import type {
   CompareOptions,
   DiffEntryFilter,
   DiffSource,
+  GitRepositoryValidation,
   PathKind,
   PersistedSession,
   RecentSources,
@@ -45,6 +46,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<RecentSources>('diffly:addRecentSource', { source, metadata }),
   removeRecentSource: (id: string) =>
     invoke<RecentSources>('diffly:removeRecentSource', { id }),
+  validateGitRepository: (path: string) =>
+    invoke<GitRepositoryValidation>('diffly:validateGitRepository', { path }),
   getAppVersion: () =>
     invoke('diffly:getAppVersion'),
   checkForUpdates: (channel: UpdateChannel) =>

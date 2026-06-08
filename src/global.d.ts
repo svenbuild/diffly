@@ -8,6 +8,7 @@ import type {
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
+  GitRepositoryValidation,
   LaunchContext,
   PathInfo,
   PathKind,
@@ -34,6 +35,7 @@ declare global {
       loadRecentSources(): Promise<RecentSources>
       addRecentSource(source: DiffSource, metadata?: unknown): Promise<RecentSources>
       removeRecentSource(id: string): Promise<RecentSources>
+      validateGitRepository(path: string): Promise<GitRepositoryValidation>
       getAppVersion(): Promise<string>
       checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResult>
       downloadUpdate(channel: UpdateChannel): Promise<UpdateActionResult>

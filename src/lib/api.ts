@@ -6,6 +6,7 @@ import type {
   DiffEntryFilter,
   DiffSource,
   FileDiffResult,
+  GitRepositoryValidation,
   PathKind,
   PersistedSession,
   RecentSources,
@@ -47,6 +48,9 @@ export const addRecentSource = (
 
 export const removeRecentSource = (id: string): Promise<RecentSources> =>
   window.diffly.removeRecentSource(id)
+
+export const validateGitRepository = (path: string): Promise<GitRepositoryValidation> =>
+  window.diffly.validateGitRepository(path)
 
 export const getAppVersion = () =>
   window.diffly.getAppVersion()

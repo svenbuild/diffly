@@ -24,6 +24,7 @@ import {
   loadRecentSources,
   removeRecentSource,
 } from './recents-store'
+import { validateGitRepository } from './git/git-repository'
 import {
   loadSessionState,
   saveSessionState,
@@ -51,6 +52,7 @@ export {
   loadRecentSources,
   removeRecentSource,
 } from './recents-store'
+export { validateGitRepository } from './git/git-repository'
 export { loadSessionState, saveSessionState } from './session-store'
 export { clearFileDiffCache } from './file-diff'
 
@@ -77,6 +79,9 @@ export function registerIpcHandlers() {
   })
   ipcMain.handle('diffly:removeRecentSource', (_event, payload: unknown) =>
     removeRecentSource(readRemoveRecentSourceId(payload)),
+  )
+  ipcMain.handle('diffly:validateGitRepository', (_event, payload) =>
+    validateGitRepository(payload?.path),
   )
   ipcMain.handle('diffly:getAppVersion', () => app.getVersion())
   ipcMain.handle('diffly:checkForUpdates', (_event, payload: { channel: UpdateChannel }) =>

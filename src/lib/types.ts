@@ -30,6 +30,18 @@ export interface GitDiffSource {
   selection: GitSelection
 }
 
+export interface GitRepositoryValidation {
+  valid: boolean
+  inputPath: string
+  repositoryRoot: string | null
+  gitDir: string | null
+  currentBranch: string | null
+  headSha: string | null
+  isBare: boolean
+  isWorktree: boolean
+  error: string | null
+}
+
 export type GitSelection =
   | {
       kind: 'workingTree'
