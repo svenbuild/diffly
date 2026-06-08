@@ -1828,10 +1828,10 @@
       return
     }
     setupMode = next
-    // Clear any stale error banner from the previous mode and persist the choice.
+    // Clear any stale error banner from the previous mode. The setupMode change
+    // itself triggers the persistence reactive block, so no explicit save here.
     // Compare data (entries, active diff, selections) is intentionally preserved.
     errorMessage = ''
-    scheduleSessionSave()
   }
 
   async function runCompare() {
@@ -2266,6 +2266,7 @@
 
   $: if (persistenceReady) {
     mode
+    setupMode
     viewMode
     appearanceSettings
     viewerSettings
