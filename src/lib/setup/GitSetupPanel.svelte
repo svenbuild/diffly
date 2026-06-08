@@ -2,8 +2,8 @@
   import { onMount } from 'svelte'
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
-  import { loadRecentSources, validateGitRepository } from '../api'
-  import type { GitWorkingTreeScope, RecentGitRepository } from '../types'
+  import { listGitRefs, loadRecentSources, validateGitRepository } from '../api'
+  import type { GitRefsResponse, GitWorkingTreeScope, RecentGitRepository } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
@@ -15,6 +15,11 @@
   let validationError = ''
   let currentBranch = ''
   let headSha = ''
+  let refsStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
+  let refsError = ''
+  let gitRefs: GitRefsResponse | null = null
+  let refsRequestToken = 0
+  let refsDefaultsPath = ''
   let selectionKind: SelectionKind = 'workingTree'
   let workingTreeScope: GitWorkingTreeScope = 'all'
   let baseRef = ''
@@ -53,6 +58,18 @@
     currentBranch = ''
     headSha = ''
     validatedPath = ''
+    clearRefs()
+  }
+
+  function clearRefs() {
+    refsRequestToken += 1
+    refsStatus = 'idle'
+    refsError = ''
+    gitRefs = null
+    refsDefaultsPath = ''
+    baseRef = ''
+    headRef = ''
+    commitRef = ''
   }
 
   async function validate(path: string) {
@@ -81,10 +98,12 @@
         headSha = result.headSha ?? ''
         validationError = ''
         validationStatus = 'valid'
+        void loadRefs(repositoryRoot)
       } else {
         repositoryRoot = ''
         currentBranch = ''
         headSha = ''
+        clearRefs()
         validationError = result.error ?? 'This folder is not a Git repository.'
         validationStatus = 'invalid'
       }
@@ -96,9 +115,66 @@
       repositoryRoot = ''
       currentBranch = ''
       headSha = ''
+      clearRefs()
       validationError = 'This folder is not a Git repository.'
       validationStatus = 'invalid'
     }
+  }
+
+  async function loadRefs(root: string) {
+    if (!root) {
+      clearRefs()
+      return
+    }
+
+    const token = (refsRequestToken += 1)
+    refsStatus = 'loading'
+    refsError = ''
+    gitRefs = null
+
+    try {
+      const refs = await listGitRefs(root)
+      if (token !== refsRequestToken || repositoryRoot !== root) {
+        return
+      }
+
+      gitRefs = refs
+      currentBranch = refs.currentBranch ?? ''
+      headSha = refs.headSha ?? ''
+      refsStatus = 'loaded'
+      applyRefDefaults(root, refs)
+    } catch {
+      if (token !== refsRequestToken || repositoryRoot !== root) {
+        return
+      }
+
+      gitRefs = null
+      refsError = 'Refs could not be loaded.'
+      refsStatus = 'error'
+    }
+  }
+
+  function applyRefDefaults(root: string, refs: GitRefsResponse) {
+    if (refsDefaultsPath === root) {
+      return
+    }
+
+    const defaultHeadRef = refs.currentBranch
+      ?? refs.headSha
+      ?? refs.localBranches[0]?.name
+      ?? refs.remoteBranches[0]?.name
+      ?? ''
+    const defaultBaseRef = refs.localBranches.find((ref) => ref.name === 'main')?.name
+      ?? refs.localBranches.find((ref) => ref.name === 'master')?.name
+      ?? refs.localBranches.find((ref) => ref.name !== defaultHeadRef)?.name
+      ?? refs.remoteBranches.find((ref) => ref.name !== defaultHeadRef)?.name
+      ?? ''
+    const defaultCommitRef = refs.recentCommits[0]?.sha ?? refs.headSha ?? ''
+
+    headRef = defaultHeadRef
+    baseRef = defaultBaseRef
+    commitRef = defaultCommitRef
+    refsDefaultsPath = root
   }
 
   // Selected from the browser (the repo is already visible there).
@@ -158,6 +234,9 @@
     {repositoryRoot}
     {currentBranch}
     {headSha}
+    {refsStatus}
+    {refsError}
+    {gitRefs}
     {selectionKind}
     {workingTreeScope}
     {baseRef}

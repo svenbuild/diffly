@@ -25,6 +25,7 @@ import {
   removeRecentSource,
 } from './recents-store'
 import { detectGitRepositories } from './git/git-detection'
+import { listGitRefs } from './git/git-refs'
 import { validateGitRepository } from './git/git-repository'
 import {
   loadSessionState,
@@ -54,6 +55,7 @@ export {
   removeRecentSource,
 } from './recents-store'
 export { detectGitRepositories } from './git/git-detection'
+export { listGitRefs } from './git/git-refs'
 export { validateGitRepository } from './git/git-repository'
 export { loadSessionState, saveSessionState } from './session-store'
 export { clearFileDiffCache } from './file-diff'
@@ -84,6 +86,9 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:validateGitRepository', (_event, payload) =>
     validateGitRepository(payload?.path),
+  )
+  ipcMain.handle('diffly:listGitRefs', (_event, payload) =>
+    listGitRefs(payload?.repoPath),
   )
   ipcMain.handle('diffly:detectGitRepositories', (_event, payload) =>
     detectGitRepositories(payload?.paths),

@@ -1,9 +1,16 @@
 <script lang="ts">
+  import Dropdown from '../components/Dropdown.svelte'
   import GitRepositoryBrowser from './GitRepositoryBrowser.svelte'
-  import type { GitWorkingTreeScope } from '../types'
+  import type { GitRefsResponse, GitWorkingTreeScope } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
+  type RefsStatus = 'idle' | 'loading' | 'loaded' | 'error'
+
+  interface SelectOption {
+    value: string
+    label: string
+  }
 
   export let selectedRepoPath = ''
   export let revealPath = ''
@@ -13,6 +20,9 @@
   export let repositoryRoot = ''
   export let currentBranch = ''
   export let headSha = ''
+  export let refsStatus: RefsStatus = 'idle'
+  export let refsError = ''
+  export let gitRefs: GitRefsResponse | null = null
   export let selectionKind: SelectionKind = 'workingTree'
   export let workingTreeScope: GitWorkingTreeScope = 'all'
   export let baseRef = ''
@@ -43,6 +53,77 @@
 
   $: repoReady = validationStatus === 'valid'
   $: shortHead = headSha ? headSha.slice(0, 7) : ''
+  $: branchDisplay = currentBranch || (headSha ? `Detached HEAD at ${shortHead}` : 'No HEAD')
+  $: refOptions = buildRefOptions(gitRefs, baseRef, headRef)
+  $: commitOptions = buildCommitOptions(gitRefs, commitRef)
+  $: refsUnavailable = refsStatus === 'loading' || refsStatus === 'error' || refOptions.length === 0
+  $: commitsUnavailable =
+    refsStatus === 'loading' ||
+    refsStatus === 'error' ||
+    commitOptions.length === 0 ||
+    (gitRefs?.recentCommits.length ?? 0) === 0
+  $: refStatusMessage = refsStatus === 'loading'
+    ? 'Loading refs...'
+    : refsStatus === 'error'
+      ? refsError || 'Refs could not be loaded.'
+      : refsStatus === 'loaded' && refOptions.length === 0
+        ? 'No refs found.'
+        : ''
+  $: commitStatusMessage = refsStatus === 'loading'
+    ? 'Loading refs...'
+    : refsStatus === 'error'
+      ? refsError || 'Refs could not be loaded.'
+      : refsStatus === 'loaded' && (gitRefs?.recentCommits.length ?? 0) === 0
+        ? 'No commits found.'
+        : ''
+
+  function buildRefOptions(
+    refs: GitRefsResponse | null,
+    currentBaseRef: string,
+    currentHeadRef: string,
+  ): SelectOption[] {
+    const options = refs
+      ? [
+          ...refs.localBranches.map((ref) => ({ value: ref.name, label: `Local: ${ref.name}` })),
+          ...refs.remoteBranches.map((ref) => ({ value: ref.name, label: `Remote: ${ref.name}` })),
+          ...refs.tags.map((ref) => ({ value: ref.name, label: `Tag: ${ref.name}` })),
+        ]
+      : []
+    const values = new Set(options.map((option) => option.value))
+
+    for (const value of [currentBaseRef, currentHeadRef]) {
+      if (value && !values.has(value)) {
+        options.push({ value, label: `Custom: ${value}` })
+        values.add(value)
+      }
+    }
+
+    return options
+  }
+
+  function buildCommitOptions(
+    refs: GitRefsResponse | null,
+    currentCommitRef: string,
+  ): SelectOption[] {
+    const options = refs
+      ? refs.recentCommits.map((commit) => ({
+          value: commit.sha,
+          label: commit.decorations.length > 0
+            ? `${commit.shortSha} ${commit.subject} · ${commit.decorations.join(', ')}`
+            : `${commit.shortSha} ${commit.subject}`,
+        }))
+      : []
+    const hasCurrent = options.some((option) => option.value === currentCommitRef)
+
+    if (currentCommitRef && !hasCurrent) {
+      options.push({
+        value: currentCommitRef,
+        label: `Custom: ${currentCommitRef.slice(0, 12)}`,
+      })
+    }
+
+    return options
+  }
 </script>
 
 <section class="git-setup-picker" aria-label="Git repository">
@@ -66,7 +147,7 @@
         </div>
         <div>
           <dt>Branch</dt>
-          <dd>{currentBranch || 'Detached HEAD'}</dd>
+          <dd>{branchDisplay}</dd>
         </div>
         <div>
           <dt>HEAD</dt>
@@ -114,26 +195,22 @@
       <div class="git-setup-suboption git-setup-suboption-grid">
         <div>
           <label class="git-setup-label" for="git-setup-base-ref">Base ref</label>
-          <input
-            id="git-setup-base-ref"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="e.g. main"
+          <Dropdown
+            ariaLabel="Base ref"
+            disabled={refsUnavailable}
+            options={refOptions}
             value={baseRef}
-            on:input={(event) => onBaseRefChange(event.currentTarget.value)}
+            onChange={onBaseRefChange}
           />
         </div>
         <div>
           <label class="git-setup-label" for="git-setup-head-ref">Head ref</label>
-          <input
-            id="git-setup-head-ref"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="e.g. feature/x"
+          <Dropdown
+            ariaLabel="Head ref"
+            disabled={refsUnavailable}
+            options={refOptions}
             value={headRef}
-            on:input={(event) => onHeadRefChange(event.currentTarget.value)}
+            onChange={onHeadRefChange}
           />
         </div>
         <div>
@@ -148,19 +225,23 @@
             <option value="threeDot">Three-dot (base...head)</option>
           </select>
         </div>
+        {#if refStatusMessage}
+          <p class="git-setup-suboption-status">{refStatusMessage}</p>
+        {/if}
       </div>
     {:else}
       <div class="git-setup-suboption">
         <label class="git-setup-label" for="git-setup-commit-ref">Commit</label>
-        <input
-          id="git-setup-commit-ref"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Commit SHA or ref"
+        <Dropdown
+          ariaLabel="Commit"
+          disabled={commitsUnavailable}
+          options={commitOptions}
           value={commitRef}
-          on:input={(event) => onCommitRefChange(event.currentTarget.value)}
+          onChange={onCommitRefChange}
         />
+        {#if commitStatusMessage}
+          <p class="git-setup-suboption-status">{commitStatusMessage}</p>
+        {/if}
       </div>
     {/if}
   </fieldset>
@@ -316,5 +397,12 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .git-setup-suboption-status {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
   }
 </style>

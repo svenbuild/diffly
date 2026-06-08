@@ -42,6 +42,31 @@ export interface GitRepositoryValidation {
   error: string | null
 }
 
+export type GitRefKind = 'localBranch' | 'remoteBranch' | 'tag'
+
+export interface GitRef {
+  name: string
+  fullName: string
+  sha: string
+  kind: GitRefKind
+}
+
+export interface GitCommitSummary {
+  sha: string
+  shortSha: string
+  subject: string
+  decorations: string[]
+}
+
+export interface GitRefsResponse {
+  currentBranch: string | null
+  headSha: string | null
+  localBranches: GitRef[]
+  remoteBranches: GitRef[]
+  tags: GitRef[]
+  recentCommits: GitCommitSummary[]
+}
+
 export type GitSelection =
   | {
       kind: 'workingTree'
