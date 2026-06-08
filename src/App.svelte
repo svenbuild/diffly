@@ -5,10 +5,12 @@
   import SetupScreen from './lib/screens/SetupScreen.svelte'
 
   import {
+    addRecentSource,
     choosePath,
     checkForUpdates,
     comparePaths,
     cancelDirectoryCompare,
+    createDiffSession,
     downloadUpdate,
     getAppVersion,
     installUpdate,
@@ -109,6 +111,7 @@
     EntryStatus,
     ExplorerEntry,
     FileDiffResult,
+    GitDiffSource,
     PersistedExplorerPane,
     PersistedSession,
     SetupMode,
@@ -162,6 +165,9 @@
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
   let setupMode: SetupMode = 'local'
+  // Latest Git source emitted by GitSetupPanel, or null when its setup is
+  // incomplete. Transient setup-draft state — intentionally not persisted.
+  let gitSetupSource: GitDiffSource | null = null
   let viewMode: ViewMode = 'sideBySide'
   let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
     initialSession?.appearance,
@@ -1834,8 +1840,50 @@
     errorMessage = ''
   }
 
+  function handleGitSourceChange(source: GitDiffSource | null) {
+    gitSetupSource = source
+  }
+
+  async function runGitCompare() {
+    const source = gitSetupSource
+    if (!source) {
+      errorMessage = 'Select a valid Git repository and compare type first.'
+      return
+    }
+
+    const options = getPendingCompareOptions()
+    loading = true
+    errorMessage = ''
+
+    // Save the recent repo first, independent of the dispatch below, so the repo
+    // is remembered even though the backend git provider is still a stub.
+    try {
+      await addRecentSource(source)
+    } catch {
+      // Persisting recents is best-effort; ignore failures here.
+    }
+
+    try {
+      const session = await createDiffSession(source, options)
+      // The backend git provider is unimplemented and rejects today; navigation
+      // to the compare screen is wired in a later task.
+      void session
+    } catch (error) {
+      errorMessage = error instanceof Error
+        ? error.message
+        : 'Diff sessions for git sources are not implemented yet.'
+    } finally {
+      loading = false
+    }
+  }
+
   async function runCompare() {
-    // Only Local has a working setup panel in this step; other modes have no source yet.
+    if (setupMode === 'git') {
+      await runGitCompare()
+      return
+    }
+
+    // Only Local has a working setup panel for path-based compares; GitHub has no source yet.
     if (setupMode !== 'local') {
       return
     }
@@ -2320,9 +2368,13 @@
     setupMode === 'local'
       ? sameSelectionWarning || setupHintMessage || 'Compare selected targets'
       : setupMode === 'git'
-        ? 'Git setup coming soon'
+        ? gitSetupSource
+          ? 'Create Git diff session'
+          : 'Select a valid Git repository and compare type'
         : 'GitHub setup coming soon'
-  $: setupCanCompare = setupMode === 'local' && pickerCanCompare
+  $: setupCanCompare =
+    (setupMode === 'local' && pickerCanCompare) ||
+    (setupMode === 'git' && gitSetupSource !== null)
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: comparePairsLabel = (() => {
@@ -2363,6 +2415,7 @@
     {runCompare}
     {openSettings}
     {errorMessage}
+    onGitSourceChange={handleGitSourceChange}
     {pickerSides}
     {pickerLoading}
     {canGoBack}

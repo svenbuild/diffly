@@ -3,10 +3,20 @@
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
   import { listGitRefs, loadRecentSources, validateGitRepository } from '../api'
-  import type { GitRefsResponse, GitWorkingTreeScope, RecentGitRepository } from '../types'
+  import type {
+    GitDiffSource,
+    GitRefsResponse,
+    GitSelection,
+    GitWorkingTreeScope,
+    RecentGitRepository,
+  } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
+
+  // Emits the constructed Git source (or null when the current setup cannot
+  // produce a valid one) so the parent can drive the Compare button.
+  export let onChange: (source: GitDiffSource | null) => void = () => {}
 
   // GitSetupState — this panel is the single source of truth for Git setup.
   let inputPath = ''
@@ -229,6 +239,37 @@
   function handleCommitRefChange(value: string) {
     commitRef = value
   }
+
+  // Build the Git source from the current setup state. Returns null whenever the
+  // setup cannot yield a valid source (no validated repo, or an incomplete
+  // ref/commit selection). The inlined IIFE references every dependency directly
+  // so Svelte tracks them all and re-emits on any change.
+  $: gitSource = ((): GitDiffSource | null => {
+    if (validationStatus !== 'valid' || !repositoryRoot || !validatedPath) {
+      return null
+    }
+
+    let selection: GitSelection | null = null
+    if (selectionKind === 'workingTree') {
+      selection = { kind: 'workingTree', initialScope: workingTreeScope }
+    } else if (selectionKind === 'refRange') {
+      if (baseRef.trim() && headRef.trim()) {
+        selection = {
+          kind: 'refRange',
+          baseRef: baseRef.trim(),
+          headRef: headRef.trim(),
+          notation,
+        }
+      }
+    } else if (commitRef.trim()) {
+      selection = { kind: 'commit', commitRef: commitRef.trim() }
+    }
+
+    return selection
+      ? { kind: 'git', repoPath: validatedPath, repositoryRoot, selection }
+      : null
+  })()
+  $: onChange(gitSource)
 </script>
 
 <section class="git-setup-workspace" aria-label="Git compare setup">

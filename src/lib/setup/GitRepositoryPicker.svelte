@@ -45,7 +45,7 @@
   ]
 
   const scopeOptions: Array<{ value: GitWorkingTreeScope; label: string }> = [
-    { value: 'all', label: 'All changes' },
+    { value: 'all', label: 'All' },
     { value: 'staged', label: 'Staged' },
     { value: 'unstaged', label: 'Unstaged' },
     { value: 'untracked', label: 'Untracked' },
@@ -179,17 +179,23 @@
 
     {#if selectionKind === 'workingTree'}
       <div class="git-setup-suboption">
-        <label class="git-setup-label" for="git-setup-scope">Scope</label>
-        <select
-          id="git-setup-scope"
-          value={workingTreeScope}
-          on:change={(event) =>
-            onScopeChange(event.currentTarget.value as GitWorkingTreeScope)}
+        <span class="git-setup-label" id="git-setup-scope-label">Initial view</span>
+        <div
+          class="segmented-control toolbar-segmented-control git-setup-scope-control"
+          role="group"
+          aria-labelledby="git-setup-scope-label"
         >
           {#each scopeOptions as scope}
-            <option value={scope.value}>{scope.label}</option>
+            <button
+              type="button"
+              aria-pressed={workingTreeScope === scope.value}
+              class:active={workingTreeScope === scope.value}
+              on:click={() => onScopeChange(scope.value)}
+            >
+              <span>{scope.label}</span>
+            </button>
           {/each}
-        </select>
+        </div>
       </div>
     {:else if selectionKind === 'refRange'}
       <div class="git-setup-suboption git-setup-suboption-grid">
@@ -385,6 +391,14 @@
     gap: 4px;
     margin-top: 4px;
     padding-left: 24px;
+  }
+
+  .git-setup-scope-control {
+    width: 100%;
+  }
+
+  .git-setup-scope-control button {
+    flex: 1 1 0;
   }
 
   .git-setup-suboption-grid {

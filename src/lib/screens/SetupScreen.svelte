@@ -4,7 +4,7 @@
   import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
   import GitSetupPanel from '../setup/GitSetupPanel.svelte'
   import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
-  import type { ExplorerEntry, SetupMode } from '../types'
+  import type { ExplorerEntry, GitDiffSource, SetupMode } from '../types'
   import type {
     ExplorerPaneState,
     SettingsSection,
@@ -23,9 +23,10 @@
   export let loading = false
   export let pickerCanCompare = false
   export let compareButtonTitle = ''
-  export let runCompare: () => void
+  export let runCompare: () => void | Promise<void>
   export let openSettings: (section?: SettingsSection) => void
   export let errorMessage = ''
+  export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
   export let canGoBack: (pane: ExplorerPaneState) => boolean
@@ -117,7 +118,7 @@
         {isTargetSelected}
       />
     {:else if setupMode === 'git'}
-      <GitSetupPanel />
+      <GitSetupPanel onChange={onGitSourceChange} />
     {:else}
       <GithubSetupPanel />
     {/if}
