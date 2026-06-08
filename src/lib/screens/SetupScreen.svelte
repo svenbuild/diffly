@@ -27,6 +27,7 @@
   export let openSettings: (section?: SettingsSection) => void
   export let errorMessage = ''
   export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
+  export let reloadRecentsRequestId = 0
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
   export let canGoBack: (pane: ExplorerPaneState) => boolean
@@ -118,7 +119,7 @@
         {isTargetSelected}
       />
     {:else if setupMode === 'git'}
-      <GitSetupPanel onChange={onGitSourceChange} />
+      <GitSetupPanel onChange={onGitSourceChange} {reloadRecentsRequestId} />
     {:else}
       <GithubSetupPanel />
     {/if}

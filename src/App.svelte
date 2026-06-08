@@ -168,6 +168,8 @@
   // Latest Git source emitted by GitSetupPanel, or null when its setup is
   // incomplete. Transient setup-draft state — intentionally not persisted.
   let gitSetupSource: GitDiffSource | null = null
+  // Bumped after a Git recent repo is saved so GitSetupPanel reloads its list.
+  let recentsReloadRequestId = 0
   let viewMode: ViewMode = 'sideBySide'
   let appearanceSettings: AppearanceSettings = normalizeAppearanceSettings(
     initialSession?.appearance,
@@ -1859,6 +1861,9 @@
     // is remembered even though the backend git provider is still a stub.
     try {
       await addRecentSource(source)
+      // Signal the setup panel to reload its recents so the new entry shows
+      // immediately without an app restart.
+      recentsReloadRequestId += 1
     } catch {
       // Persisting recents is best-effort; ignore failures here.
     }
@@ -2416,6 +2421,7 @@
     {openSettings}
     {errorMessage}
     onGitSourceChange={handleGitSourceChange}
+    reloadRecentsRequestId={recentsReloadRequestId}
     {pickerSides}
     {pickerLoading}
     {canGoBack}

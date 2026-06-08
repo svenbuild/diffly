@@ -109,10 +109,14 @@
     ]
   }
 
-  function currentDrive(): string {
-    const match = roots.find((root) => currentPath.startsWith(root.path))
+  // Reactive so the Dropdown's selected label updates once roots/currentPath
+  // load — a bare currentDrive() call in the template has no tracked deps and
+  // would stay stuck on its initial empty value.
+  $: currentDriveValue = (() => {
+    const normalized = currentPath.toLowerCase()
+    const match = roots.find((root) => normalized.startsWith(root.path.toLowerCase()))
     return match?.path ?? roots[0]?.path ?? ''
-  }
+  })()
 
   async function loadDirectory(path: string, options: { push: boolean }) {
     const token = (navToken += 1)
@@ -384,7 +388,7 @@
       <Dropdown
         ariaLabel="Drive"
         options={roots.map((root) => ({ value: root.path, label: root.name }))}
-        value={currentDrive()}
+        value={currentDriveValue}
         onChange={changeDrive}
       />
     </div>

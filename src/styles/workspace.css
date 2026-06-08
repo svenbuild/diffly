@@ -254,7 +254,7 @@
 
 .picker-nav-row {
   display: grid;
-  grid-template-columns: auto 72px minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--border-subtle);
@@ -264,6 +264,7 @@
 .drive-select {
   flex: 0 0 auto;
   width: 96px;
+  min-width: 0;
 }
 
 .path-input {

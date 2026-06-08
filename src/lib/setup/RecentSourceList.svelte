@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { compactMiddlePath } from '../path-utils'
   import type { RecentGitRepository } from '../types'
 
   export let title = 'Recent Git repositories'
@@ -28,7 +29,7 @@
             on:click={() => onSelect(repo)}
           >
             <span class="git-setup-recent-name">{repo.name}</span>
-            <span class="git-setup-recent-path">{repo.repoPath}</span>
+            <span class="git-setup-recent-path">{compactMiddlePath(repo.repoPath)}</span>
             {#if repo.lastBranch}
               <span class="git-setup-recent-branch">{repo.lastBranch}</span>
             {/if}

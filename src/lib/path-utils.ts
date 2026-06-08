@@ -73,6 +73,20 @@ export function formatCompactPath(path: string, maxSegments = 3) {
   return visibleSegments.join('\\')
 }
 
+// Like formatCompactPath but preserves the original casing and the drive
+// prefix, e.g. "C:\Users\me\Documents\Projects\Repo" -> "C:\...\Projects\Repo".
+// Used for compact display of full filesystem paths (recents, headers).
+export function compactMiddlePath(path: string, tailSegments = 3) {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+
+  if (parts.length <= tailSegments + 1) {
+    return path
+  }
+
+  const root = /^[A-Za-z]:$/.test(parts[0]) ? `${parts[0]}\\` : ''
+  return `${root}...\\${parts.slice(-tailSegments).join('\\')}`
+}
+
 export function formatBreadcrumbSegments(segments: string[], maxSegments = 5) {
   if (segments.length === 0) {
     return ''

@@ -17,6 +17,9 @@
   // Emits the constructed Git source (or null when the current setup cannot
   // produce a valid one) so the parent can drive the Compare button.
   export let onChange: (source: GitDiffSource | null) => void = () => {}
+  // Bumped by the parent after a recent repository is added (e.g. on Compare)
+  // so this panel reloads the list without waiting for a remount.
+  export let reloadRecentsRequestId = 0
 
   // GitSetupState — this panel is the single source of truth for Git setup.
   let inputPath = ''
@@ -52,14 +55,25 @@
   // The path whose validation result is currently reflected in the status block.
   let validatedPath = ''
 
-  onMount(async () => {
+  let lastReloadRecentsRequestId = reloadRecentsRequestId
+
+  async function loadRecents() {
     try {
       const recents = await loadRecentSources()
       recentRepositories = recents.gitRepositories ?? []
+      recentLoadError = false
     } catch {
       recentLoadError = true
     }
-  })
+  }
+
+  onMount(loadRecents)
+
+  // Reload when the parent signals a new recent was added (bumped on Compare).
+  $: if (reloadRecentsRequestId !== lastReloadRecentsRequestId) {
+    lastReloadRecentsRequestId = reloadRecentsRequestId
+    void loadRecents()
+  }
 
   function clearValidation() {
     validationStatus = 'idle'
