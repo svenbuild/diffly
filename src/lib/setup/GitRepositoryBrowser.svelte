@@ -63,6 +63,7 @@
   let filterQuery = ''
   let highlightedIndex = -1
   let lastListedPath = ''
+  let lastFilterQuery = ''
 
   $: canGoBack = historyIndex > 0
   $: canGoForward = historyIndex >= 0 && historyIndex < history.length - 1
@@ -95,6 +96,16 @@
     lastListedPath = currentPath
     filterQuery = ''
     highlightedIndex = -1
+  }
+
+  // Jump back to the top whenever the filter text changes so the matches are
+  // always visible instead of stranded below a leftover scroll position.
+  $: if (filterQuery !== lastFilterQuery) {
+    lastFilterQuery = filterQuery
+    rowsScrollTop = 0
+    if (rowsHost) {
+      rowsHost.scrollTop = 0
+    }
   }
 
   function handleListKeydown(event: KeyboardEvent) {
@@ -375,6 +386,9 @@
     if (startPath) {
       await navigateTo(startPath)
     }
+
+    // Focus the list so the keyboard works immediately without a click.
+    rowsHost?.focus({ preventScroll: true })
   })
 
   async function resolveStartPath(): Promise<string> {
@@ -485,28 +499,32 @@
 
   <section class="list-pane explorer-list-pane">
     <div class="list-pane-header">
-      <div class="list-columns">
-        <span>Name</span>
-        <span>Type</span>
-        <span>Modified</span>
-        <span>Size</span>
-      </div>
+      {#if filterQuery}
+        <div class="list-filter-row">
+          <svg aria-hidden="true" class="list-filter-icon" viewBox="0 0 16 16">
+            <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+            <path d="m10.5 10.5 3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" />
+          </svg>
+          <span class="list-filter-query">{filterQuery}</span>
+          <span class="list-filter-count">{filteredRows.length} match{filteredRows.length === 1 ? '' : 'es'}</span>
+          <kbd class="list-filter-hint">Esc</kbd>
+        </div>
+      {:else}
+        <div class="list-columns">
+          <span>Name</span>
+          <span>Type</span>
+          <span>Modified</span>
+          <span>Size</span>
+        </div>
+      {/if}
     </div>
-
-    {#if filterQuery}
-      <div class="list-filter-bar">
-        <span class="list-filter-label">Filter</span>
-        <span class="list-filter-query">{filterQuery}</span>
-        <span class="list-filter-count">{filteredRows.length} match{filteredRows.length === 1 ? '' : 'es'}</span>
-      </div>
-    {/if}
 
     <div
       class="list-rows"
       bind:this={rowsHost}
       tabindex="0"
       role="listbox"
-      aria-label="Repository folder entries"
+      aria-label="Repository folder entries — type to filter"
       on:scroll={handleRowsScroll}
       on:keydown={handleListKeydown}
     >

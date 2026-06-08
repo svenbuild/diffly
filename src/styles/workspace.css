@@ -447,21 +447,20 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* Filter status bar shown above the entry list while a type-ahead query runs. */
-.list-filter-bar {
+/* Type-ahead filter shown inside the list header row while a query is active. */
+.list-filter-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-alt);
+  height: 28px;
   font-size: 11px;
 }
 
-.list-filter-label {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.list-filter-icon {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--accent);
 }
 
 .list-filter-query {
@@ -474,9 +473,22 @@
 }
 
 .list-filter-count {
+  flex: 0 0 auto;
   margin-left: auto;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.list-filter-hint {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-family: var(--code);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .entry-name,
