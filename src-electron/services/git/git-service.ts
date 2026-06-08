@@ -1,0 +1,245 @@
+import { spawn } from 'node:child_process'
+import { realpath, stat } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
+const DEFAULT_GIT_TIMEOUT_MS = 15_000
+const DEFAULT_GIT_STDOUT_LIMIT_BYTES = 1024 * 1024 * 8
+const DEFAULT_GIT_STDERR_LIMIT_BYTES = 1024 * 1024
+
+export interface GitRunOptions {
+  timeoutMs?: number
+  maxStdoutBytes?: number
+  maxStderrBytes?: number
+  allowNonZeroExit?: boolean
+}
+
+export interface GitRunResult {
+  stdout: string
+  stderr: string
+  exitCode: number
+  timedOut: boolean
+}
+
+interface NormalizedGitRunOptions {
+  timeoutMs: number
+  maxStdoutBytes: number
+  maxStderrBytes: number
+  allowNonZeroExit: boolean
+}
+
+export async function runGit(
+  repoPath: string,
+  args: string[],
+  options?: GitRunOptions,
+): Promise<GitRunResult> {
+  const canonicalRepoPath = await validateGitRepoPath(repoPath)
+  const gitArgs = validateGitArgs(args)
+  const runOptions = normalizeGitRunOptions(options)
+
+  return new Promise<GitRunResult>((resolveRun, rejectRun) => {
+    const child = spawn('git', gitArgs, {
+      cwd: canonicalRepoPath,
+      shell: false,
+      windowsHide: true,
+    })
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+    let stdoutBytes = 0
+    let stderrBytes = 0
+    let timedOut = false
+    let failure: Error | null = null
+    let closeHandled = false
+
+    const timeoutId = setTimeout(() => {
+      if (failure) {
+        return
+      }
+
+      timedOut = true
+      failure = new Error(`Git command timed out after ${runOptions.timeoutMs}ms.`)
+      child.kill()
+    }, runOptions.timeoutMs)
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (failure) {
+        return
+      }
+
+      stdoutBytes += chunk.byteLength
+      if (stdoutBytes > runOptions.maxStdoutBytes) {
+        failure = new Error('Git command exceeded stdout buffer limit.')
+        child.kill()
+        return
+      }
+
+      stdoutChunks.push(chunk)
+    })
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (failure) {
+        return
+      }
+
+      stderrBytes += chunk.byteLength
+      if (stderrBytes > runOptions.maxStderrBytes) {
+        failure = new Error('Git command exceeded stderr buffer limit.')
+        child.kill()
+        return
+      }
+
+      stderrChunks.push(chunk)
+    })
+
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (failure) {
+        return
+      }
+
+      failure = error.code === 'ENOENT'
+        ? new Error('Git executable was not found. Ensure Git is installed and available on PATH.')
+        : new Error(`Failed to start Git command: ${error.message}`)
+    })
+
+    child.on('close', (code, signal) => {
+      if (closeHandled) {
+        return
+      }
+      closeHandled = true
+      clearTimeout(timeoutId)
+
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8')
+      const stderr = Buffer.concat(stderrChunks).toString('utf8')
+
+      if (failure) {
+        rejectRun(failure)
+        return
+      }
+
+      if (code === 0) {
+        resolveRun({
+          stdout,
+          stderr,
+          exitCode: code,
+          timedOut,
+        })
+        return
+      }
+
+      if (typeof code === 'number') {
+        if (runOptions.allowNonZeroExit) {
+          resolveRun({
+            stdout,
+            stderr,
+            exitCode: code,
+            timedOut,
+          })
+          return
+        }
+
+        rejectRun(new Error(`Git command failed with exit code ${code}: ${gitErrorOutput(stdout, stderr)}`))
+        return
+      }
+
+      if (signal) {
+        rejectRun(new Error(`Git command was terminated by signal ${signal}.`))
+        return
+      }
+
+      rejectRun(new Error('Git command failed before producing an exit code.'))
+    })
+  })
+}
+
+async function validateGitRepoPath(repoPath: string) {
+  if (typeof repoPath !== 'string' || !repoPath.trim()) {
+    throw new Error('Git repository path is required.')
+  }
+
+  if (repoPath.includes('\0')) {
+    throw new Error('Git repository path contains an invalid character.')
+  }
+
+  let canonicalPath: string
+  try {
+    canonicalPath = await realpath(resolve(repoPath))
+  } catch {
+    throw new Error('Git repository path does not exist or cannot be accessed.')
+  }
+
+  let pathInfo
+  try {
+    pathInfo = await stat(canonicalPath)
+  } catch {
+    throw new Error('Git repository path does not exist or cannot be accessed.')
+  }
+
+  if (!pathInfo.isDirectory()) {
+    throw new Error('Git repository path must be a directory.')
+  }
+
+  return canonicalPath
+}
+
+function validateGitArgs(args: string[]) {
+  if (!Array.isArray(args)) {
+    throw new Error('Git arguments must be provided as an array.')
+  }
+
+  if (args.length === 0) {
+    throw new Error('Git arguments must not be empty.')
+  }
+
+  for (const [index, arg] of args.entries()) {
+    if (typeof arg !== 'string') {
+      throw new Error(`Git argument at index ${index} must be a string.`)
+    }
+
+    if (arg.includes('\0')) {
+      throw new Error(`Git argument at index ${index} contains an invalid character.`)
+    }
+  }
+
+  return [...args]
+}
+
+function normalizeGitRunOptions(options?: GitRunOptions): NormalizedGitRunOptions {
+  return {
+    timeoutMs: normalizePositiveNumber(
+      options?.timeoutMs,
+      DEFAULT_GIT_TIMEOUT_MS,
+      'Git timeout must be a positive number.',
+    ),
+    maxStdoutBytes: normalizePositiveNumber(
+      options?.maxStdoutBytes,
+      DEFAULT_GIT_STDOUT_LIMIT_BYTES,
+      'Git stdout buffer limit must be a positive number.',
+    ),
+    maxStderrBytes: normalizePositiveNumber(
+      options?.maxStderrBytes,
+      DEFAULT_GIT_STDERR_LIMIT_BYTES,
+      'Git stderr buffer limit must be a positive number.',
+    ),
+    allowNonZeroExit: options?.allowNonZeroExit === true,
+  }
+}
+
+function normalizePositiveNumber(
+  value: number | undefined,
+  defaultValue: number,
+  errorMessage: string,
+) {
+  if (value === undefined) {
+    return defaultValue
+  }
+
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(errorMessage)
+  }
+
+  return Math.trunc(value)
+}
+
+function gitErrorOutput(stdout: string, stderr: string) {
+  return stderr.trim() || stdout.trim() || 'No error output was produced.'
+}
