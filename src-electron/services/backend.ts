@@ -9,7 +9,12 @@ import { basename, join } from 'node:path'
 import type {
   CompareOptions,
   CompareResponse,
+  CreateDiffSessionResponse,
+  DiffEntry,
+  DiffEntryFilter,
+  DiffSource,
   DirectoryEntryResult,
+  FileDiffResult,
   PersistedSession,
   PollDirectoryCompareResponse,
   UpdateChannel,
@@ -71,8 +76,34 @@ interface DirectoryCacheSession {
   entries: Map<string, CachedDirectoryEntry>
 }
 
+interface DiffSessionRecord {
+  id: string
+  source: DiffSource
+  options: CompareOptions
+  entries: DiffEntry[]
+  createdAt: number
+  updatedAt: number
+  localEntries: Map<string, LocalSessionEntry>
+}
+
+type LocalSessionEntry =
+  | {
+      kind: 'file'
+      leftPath: string
+      rightPath: string
+      leftLabel: string
+      rightLabel: string
+    }
+  | {
+      kind: 'directory'
+      relativePath: string
+      leftBase: string
+      rightBase: string
+    }
+
 const directoryCache = new Map<string, DirectoryCacheSession>()
 const directoryJobs = new Map<string, DirectoryJob>()
+const diffSessions = new Map<string, DiffSessionRecord>()
 
 export {
   clearDirectoryListingCache,
@@ -126,6 +157,21 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:openCompareItem', (_event, payload) =>
     openCompareItem(payload.leftBase, payload.rightBase, payload.relativePath, payload.options),
+  )
+  ipcMain.handle('diffly:createDiffSession', (_event, payload) =>
+    createDiffSession(payload.source, payload.options),
+  )
+  ipcMain.handle('diffly:listDiffEntries', (_event, payload) =>
+    listDiffEntries(payload.sessionId, payload.filter),
+  )
+  ipcMain.handle('diffly:openDiffEntry', (_event, payload) =>
+    openDiffEntry(payload.sessionId, payload.entryId, payload.options),
+  )
+  ipcMain.handle('diffly:refreshDiffSession', (_event, payload) =>
+    refreshDiffSession(payload.sessionId),
+  )
+  ipcMain.handle('diffly:disposeDiffSession', (_event, payload) =>
+    disposeDiffSession(payload.sessionId),
   )
 }
 
@@ -206,6 +252,224 @@ export function cancelDirectoryCompare(jobId: string) {
   job.completedAt = Date.now()
   directoryJobs.delete(jobId)
   return true
+}
+
+export async function createDiffSession(
+  source: DiffSource,
+  options: CompareOptions,
+): Promise<CreateDiffSessionResponse> {
+  if (!isDiffSourceLike(source)) {
+    throw new Error('Invalid diff source.')
+  }
+
+  if (source.kind !== 'local') {
+    throw createUnsupportedSourceError(source)
+  }
+
+  const session = await buildLocalDiffSessionRecord(source, options)
+  diffSessions.set(session.id, session)
+  return toCreateDiffSessionResponse(session)
+}
+
+export function listDiffEntries(
+  sessionId: string,
+  filter?: DiffEntryFilter,
+): DiffEntry[] {
+  const session = getDiffSession(sessionId)
+  return session.entries.filter((entry) => matchesDiffEntryFilter(entry, filter))
+}
+
+export async function openDiffEntry(
+  sessionId: string,
+  entryId: string,
+  options: CompareOptions,
+): Promise<FileDiffResult> {
+  const session = getDiffSession(sessionId)
+  const entry = session.localEntries.get(entryId)
+  if (!entry) {
+    throw new Error('Diff entry was not found.')
+  }
+
+  if (entry.kind === 'file') {
+    return buildFileDiff(entry.leftPath, entry.rightPath, entry.leftLabel, entry.rightLabel, options)
+  }
+
+  return openCompareItem(entry.leftBase, entry.rightBase, entry.relativePath, options)
+}
+
+export async function refreshDiffSession(sessionId: string): Promise<CreateDiffSessionResponse> {
+  const existing = getDiffSession(sessionId)
+  if (existing.source.kind !== 'local') {
+    throw createUnsupportedSourceError(existing.source)
+  }
+
+  const session = await buildLocalDiffSessionRecord(
+    existing.source,
+    existing.options,
+    existing.id,
+    existing.createdAt,
+  )
+  diffSessions.set(session.id, session)
+  return toCreateDiffSessionResponse(session)
+}
+
+export function disposeDiffSession(sessionId: string): void {
+  diffSessions.delete(sessionId)
+}
+
+async function buildLocalDiffSessionRecord(
+  source: DiffSource,
+  options: CompareOptions,
+  sessionId: string = randomUUID(),
+  createdAt = Date.now(),
+): Promise<DiffSessionRecord> {
+  if (source.kind !== 'local') {
+    throw new Error('Expected a local diff source.')
+  }
+  if (source.compareMode !== 'file' && source.compareMode !== 'directory') {
+    throw new Error('Invalid local compare mode.')
+  }
+
+  const updatedAt = Date.now()
+  const localEntries = new Map<string, LocalSessionEntry>()
+  const entries: DiffEntry[] = []
+
+  if (source.compareMode === 'file') {
+    const displayPath = basename(source.rightPath) || basename(source.leftPath) || 'File'
+    const entry: DiffEntry = {
+      id: 'file',
+      path: displayPath,
+      oldPath: null,
+      displayPath,
+      status: 'modified',
+      leftSize: await getFileSize(source.leftPath),
+      rightSize: await getFileSize(source.rightPath),
+    }
+    entries.push(entry)
+    localEntries.set(entry.id, {
+      kind: 'file',
+      leftPath: source.leftPath,
+      rightPath: source.rightPath,
+      leftLabel: basename(source.leftPath),
+      rightLabel: basename(source.rightPath),
+    })
+  } else {
+    const directoryEntries = await compareDirectories(source.leftPath, source.rightPath, options)
+    for (const directoryEntry of directoryEntries) {
+      const entry = mapDirectoryEntryToDiffEntry(directoryEntry)
+      entries.push(entry)
+      localEntries.set(entry.id, {
+        kind: 'directory',
+        leftBase: source.leftPath,
+        rightBase: source.rightPath,
+        relativePath: directoryEntry.relativePath,
+      })
+    }
+  }
+
+  return {
+    id: sessionId,
+    source,
+    options,
+    entries,
+    createdAt,
+    updatedAt,
+    localEntries,
+  }
+}
+
+function getDiffSession(sessionId: string): DiffSessionRecord {
+  const session = diffSessions.get(sessionId)
+  if (!session) {
+    throw new Error('Diff session was not found.')
+  }
+
+  return session
+}
+
+function createUnsupportedSourceError(source: DiffSource) {
+  if (source.kind === 'git') {
+    return new Error('Diff sessions for git sources are not implemented yet.')
+  }
+  if (source.kind === 'githubPullRequest') {
+    return new Error('Diff sessions for GitHub pull request sources are not implemented yet.')
+  }
+
+  return new Error('Diff sessions for this source are not implemented yet.')
+}
+
+function matchesDiffEntryFilter(entry: DiffEntry, filter?: DiffEntryFilter) {
+  if (!filter) {
+    return true
+  }
+
+  if (filter.scope && entry.scope !== filter.scope) {
+    return false
+  }
+
+  const search = filter.search?.trim().toLowerCase()
+  if (!search) {
+    return true
+  }
+
+  return [
+    entry.displayPath,
+    entry.path,
+    entry.oldPath ?? '',
+  ].some((value) => value.toLowerCase().includes(search))
+}
+
+function mapDirectoryEntryToDiffEntry(entry: DirectoryEntryResult): DiffEntry {
+  return {
+    id: encodeURIComponent(entry.relativePath),
+    path: entry.relativePath,
+    oldPath: null,
+    displayPath: entry.relativePath,
+    status: mapDirectoryEntryStatus(entry.status),
+    leftSize: entry.leftSize,
+    rightSize: entry.rightSize,
+    binary: entry.status === 'unsupported' ? true : undefined,
+  }
+}
+
+function mapDirectoryEntryStatus(status: DirectoryEntryResult['status']): DiffEntry['status'] {
+  switch (status) {
+    case 'modified':
+      return 'modified'
+    case 'leftOnly':
+      return 'deleted'
+    case 'rightOnly':
+      return 'added'
+    case 'unsupported':
+      return 'unsupported'
+  }
+}
+
+function toCreateDiffSessionResponse(session: DiffSessionRecord): CreateDiffSessionResponse {
+  return {
+    sessionId: session.id,
+    source: session.source,
+    entries: session.entries,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  }
+}
+
+async function getFileSize(pathValue: string): Promise<number | null> {
+  try {
+    return (await stat(pathValue)).size
+  } catch {
+    return null
+  }
+}
+
+function isDiffSourceLike(source: unknown): source is DiffSource {
+  if (!source || typeof source !== 'object' || !('kind' in source)) {
+    return false
+  }
+
+  const kind = (source as { kind?: unknown }).kind
+  return kind === 'local' || kind === 'git' || kind === 'githubPullRequest'
 }
 
 function pruneDirectoryJobs() {

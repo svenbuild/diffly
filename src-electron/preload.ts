@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   CompareOptions,
+  DiffEntryFilter,
+  DiffSource,
   PathKind,
   PersistedSession,
   UpdateChannel,
@@ -70,4 +72,24 @@ contextBridge.exposeInMainWorld('diffly', {
       relativePath,
       options,
     }),
+  createDiffSession: (
+    source: DiffSource,
+    options: CompareOptions,
+  ) =>
+    invoke('diffly:createDiffSession', { source, options }),
+  listDiffEntries: (
+    sessionId: string,
+    filter?: DiffEntryFilter,
+  ) =>
+    invoke('diffly:listDiffEntries', { sessionId, filter }),
+  openDiffEntry: (
+    sessionId: string,
+    entryId: string,
+    options: CompareOptions,
+  ) =>
+    invoke('diffly:openDiffEntry', { sessionId, entryId, options }),
+  refreshDiffSession: (sessionId: string) =>
+    invoke('diffly:refreshDiffSession', { sessionId }),
+  disposeDiffSession: (sessionId: string) =>
+    invoke('diffly:disposeDiffSession', { sessionId }),
 })

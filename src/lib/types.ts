@@ -83,6 +83,19 @@ export interface DiffEntry {
   binary?: boolean
 }
 
+export interface DiffEntryFilter {
+  scope?: GitWorkingTreeScope
+  search?: string
+}
+
+export interface CreateDiffSessionResponse {
+  sessionId: string
+  source: DiffSource
+  entries: DiffEntry[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface CompareViewerSettings {
   diffStyle: 'split' | 'unified'
   codeOverflow: 'scroll' | 'wrap'

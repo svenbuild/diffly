@@ -1,6 +1,10 @@
 import type {
   CompareOptions,
   CompareResponse,
+  CreateDiffSessionResponse,
+  DiffEntry,
+  DiffEntryFilter,
+  DiffSource,
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
@@ -49,6 +53,21 @@ declare global {
         relativePath: string,
         options: CompareOptions,
       ): Promise<FileDiffResult>
+      createDiffSession(
+        source: DiffSource,
+        options: CompareOptions,
+      ): Promise<CreateDiffSessionResponse>
+      listDiffEntries(
+        sessionId: string,
+        filter?: DiffEntryFilter,
+      ): Promise<DiffEntry[]>
+      openDiffEntry(
+        sessionId: string,
+        entryId: string,
+        options: CompareOptions,
+      ): Promise<FileDiffResult>
+      refreshDiffSession(sessionId: string): Promise<CreateDiffSessionResponse>
+      disposeDiffSession(sessionId: string): Promise<void>
     }
   }
 }

@@ -1,6 +1,10 @@
 import type {
   CompareOptions,
   CompareResponse,
+  CreateDiffSessionResponse,
+  DiffEntry,
+  DiffEntryFilter,
+  DiffSource,
   FileDiffResult,
   PathKind,
   PersistedSession,
@@ -75,6 +79,33 @@ export const openCompareItem = (
   window.diffly
     .openCompareItem(leftBase, rightBase, relativePath, options)
     .then(normalizeFileDiffResult)
+
+export const createDiffSession = (
+  source: DiffSource,
+  options: CompareOptions,
+): Promise<CreateDiffSessionResponse> =>
+  window.diffly.createDiffSession(source, options)
+
+export const listDiffEntries = (
+  sessionId: string,
+  filter?: DiffEntryFilter,
+): Promise<DiffEntry[]> =>
+  window.diffly.listDiffEntries(sessionId, filter)
+
+export const openDiffEntry = (
+  sessionId: string,
+  entryId: string,
+  options: CompareOptions,
+) =>
+  window.diffly
+    .openDiffEntry(sessionId, entryId, options)
+    .then(normalizeFileDiffResult)
+
+export const refreshDiffSession = (sessionId: string): Promise<CreateDiffSessionResponse> =>
+  window.diffly.refreshDiffSession(sessionId)
+
+export const disposeDiffSession = (sessionId: string) =>
+  window.diffly.disposeDiffSession(sessionId)
 
 function normalizeCompareResponse(response: CompareResponse): CompareResponse {
   if (response.kind === 'file') {
