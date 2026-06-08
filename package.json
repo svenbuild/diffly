@@ -13,7 +13,8 @@
     "build:ensure:debug": "node scripts/ensure-frontend-build.mjs --debug",
     "preview": "electron-vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.electron.json --noEmit",
-    "test": "npm run check",
+    "test": "npm run check && npm run test:unit",
+    "test:unit": "vitest run",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "electron:package": "npm run build && electron-builder --win nsis portable --config.npmRebuild=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
@@ -38,7 +39,8 @@
     "svelte": "^5.45.2",
     "svelte-check": "^4.3.4",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.1.8"
   },
   "build": {
     "appId": "com.diffly.desktop",
