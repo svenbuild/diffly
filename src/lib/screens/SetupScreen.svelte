@@ -1,7 +1,9 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
-  import PickerPane from '../PickerPane.svelte'
   import SetupModeSlider from '../setup/SetupModeSlider.svelte'
+  import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
+  import GitSetupPanel from '../setup/GitSetupPanel.svelte'
+  import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
   import type { ExplorerEntry, SetupMode } from '../types'
   import type {
     ExplorerPaneState,
@@ -20,8 +22,7 @@
   export let setupTopbarWarning = ''
   export let loading = false
   export let pickerCanCompare = false
-  export let sameSelectionWarning = ''
-  export let setupHintMessage = ''
+  export let compareButtonTitle = ''
   export let runCompare: () => void
   export let openSettings: (section?: SettingsSection) => void
   export let errorMessage = ''
@@ -44,13 +45,6 @@
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
-
-  $: placeholderMessage =
-    setupMode === 'git' ? 'Git setup coming soon' : 'GitHub setup coming soon'
-  $: compareButtonTitle =
-    setupMode === 'local'
-      ? sameSelectionWarning || setupHintMessage || 'Compare selected targets'
-      : placeholderMessage
 </script>
 
 <main class="screen setup-screen">
@@ -66,7 +60,7 @@
 
     {#snippet middle()}
       <SetupModeSlider mode={setupMode} onChange={onSetupModeChange} />
-      {#if setupTopbarWarning && setupMode === 'local'}
+      {#if setupTopbarWarning}
         <p class="setup-topbar-warning">{setupTopbarWarning}</p>
       {/if}
     {/snippet}
@@ -101,38 +95,31 @@
 
   <section class="setup-body">
     {#if setupMode === 'local'}
-      <section class="setup-launcher" aria-label="Compare setup">
-        <section class="picker-workspace">
-          {#each pickerSides as item}
-            <PickerPane
-              side={item.side}
-              pane={item.pane}
-              {pickerLoading}
-              {canGoBack}
-              {canGoForward}
-              {currentDrive}
-              {formatModified}
-              {formatSize}
-              {entryTypeLabel}
-              {changeDrive}
-              {navigateHistory}
-              {navigateTo}
-              {updatePathInput}
-              {submitPathInput}
-              {browseSystem}
-              setCurrentFolderAsTarget={useCurrentFolder}
-              {isCurrentFolderSelected}
-              {selectListEntry}
-              {activateListEntry}
-              {isTargetSelected}
-            />
-          {/each}
-        </section>
-      </section>
+      <LocalSetupPanel
+        {pickerSides}
+        {pickerLoading}
+        {canGoBack}
+        {canGoForward}
+        {currentDrive}
+        {formatModified}
+        {formatSize}
+        {entryTypeLabel}
+        {changeDrive}
+        {navigateHistory}
+        {navigateTo}
+        {updatePathInput}
+        {submitPathInput}
+        {browseSystem}
+        {useCurrentFolder}
+        {isCurrentFolderSelected}
+        {selectListEntry}
+        {activateListEntry}
+        {isTargetSelected}
+      />
+    {:else if setupMode === 'git'}
+      <GitSetupPanel />
     {:else}
-      <section class="setup-placeholder" aria-label="{setupMode} setup">
-        <p>{placeholderMessage}</p>
-      </section>
+      <GithubSetupPanel />
     {/if}
   </section>
 </main>

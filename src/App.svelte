@@ -2315,6 +2315,13 @@
         ? `Select the left ${mode === 'directory' ? 'folder' : 'file'}.`
         : `Select the right ${mode === 'directory' ? 'folder' : 'file'}.`
   $: setupTopbarWarning = sameSelectionWarning || setupHintMessage
+  $: setupTopbarWarningGated = setupMode === 'local' ? setupTopbarWarning : ''
+  $: setupCompareButtonTitle =
+    setupMode === 'local'
+      ? sameSelectionWarning || setupHintMessage || 'Compare selected targets'
+      : setupMode === 'git'
+        ? 'Git setup coming soon'
+        : 'GitHub setup coming soon'
   $: setupCanCompare = setupMode === 'local' && pickerCanCompare
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
@@ -2349,11 +2356,10 @@
     {openUpdateSettings}
     {setupMode}
     onSetupModeChange={setSetupMode}
-    {setupTopbarWarning}
+    setupTopbarWarning={setupTopbarWarningGated}
     {loading}
     pickerCanCompare={setupCanCompare}
-    {sameSelectionWarning}
-    {setupHintMessage}
+    compareButtonTitle={setupCompareButtonTitle}
     {runCompare}
     {openSettings}
     {errorMessage}
