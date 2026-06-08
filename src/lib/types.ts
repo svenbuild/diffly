@@ -60,6 +60,41 @@ export interface GithubPullRequestSource {
   url: string
 }
 
+export interface RecentSources {
+  defaultSetupMode: SetupMode
+  gitRepositories: RecentGitRepository[]
+  githubPullRequests: RecentGithubPullRequest[]
+  localTargets: RecentLocalTarget[]
+}
+
+export interface RecentGitRepository {
+  id: string
+  repoPath: string
+  repositoryRoot: string
+  name: string
+  lastBranch: string | null
+  lastUsedAt: string
+}
+
+export interface RecentGithubPullRequest {
+  id: string
+  url: string
+  owner: string
+  repo: string
+  pullNumber: number
+  title: string | null
+  lastUsedAt: string
+}
+
+export interface RecentLocalTarget {
+  id: string
+  leftPath: string
+  rightPath: string
+  compareMode: CompareMode
+  name: string
+  lastUsedAt: string
+}
+
 export type DiffEntryStatus =
   | 'modified'
   | 'added'

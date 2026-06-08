@@ -5,6 +5,7 @@ import type {
   DiffSource,
   PathKind,
   PersistedSession,
+  RecentSources,
   UpdateChannel,
 } from '../src/lib/types'
 
@@ -35,6 +36,15 @@ contextBridge.exposeInMainWorld('diffly', {
   },
   saveSessionState: (session: PersistedSession) =>
     invoke('diffly:saveSessionState', { session }),
+  loadRecentSources: () =>
+    invoke<RecentSources>('diffly:loadRecentSources'),
+  addRecentSource: (
+    source: DiffSource,
+    metadata?: unknown,
+  ) =>
+    invoke<RecentSources>('diffly:addRecentSource', { source, metadata }),
+  removeRecentSource: (id: string) =>
+    invoke<RecentSources>('diffly:removeRecentSource', { id }),
   getAppVersion: () =>
     invoke('diffly:getAppVersion'),
   checkForUpdates: (channel: UpdateChannel) =>

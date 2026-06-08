@@ -8,6 +8,7 @@ import type {
   FileDiffResult,
   PathKind,
   PersistedSession,
+  RecentSources,
   UpdateChannel,
 } from './types'
 
@@ -34,6 +35,18 @@ export const onLaunchContext = (callback: (context: unknown) => void) =>
 
 export const saveSessionState = (session: PersistedSession) =>
   window.diffly.saveSessionState(session)
+
+export const loadRecentSources = (): Promise<RecentSources> =>
+  window.diffly.loadRecentSources()
+
+export const addRecentSource = (
+  source: DiffSource,
+  metadata?: unknown,
+): Promise<RecentSources> =>
+  window.diffly.addRecentSource(source, metadata)
+
+export const removeRecentSource = (id: string): Promise<RecentSources> =>
+  window.diffly.removeRecentSource(id)
 
 export const getAppVersion = () =>
   window.diffly.getAppVersion()

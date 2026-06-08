@@ -13,6 +13,7 @@ import type {
   PathKind,
   PersistedSession,
   PollDirectoryCompareResponse,
+  RecentSources,
   StartDirectoryCompareResponse,
   UpdateActionResult,
   UpdateChannel,
@@ -30,6 +31,9 @@ declare global {
       loadLaunchContext(): Promise<LaunchContext | null>
       onLaunchContext(callback: (context: LaunchContext) => void): () => void
       saveSessionState(session: PersistedSession): Promise<void>
+      loadRecentSources(): Promise<RecentSources>
+      addRecentSource(source: DiffSource, metadata?: unknown): Promise<RecentSources>
+      removeRecentSource(id: string): Promise<RecentSources>
       getAppVersion(): Promise<string>
       checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResult>
       downloadUpdate(channel: UpdateChannel): Promise<UpdateActionResult>

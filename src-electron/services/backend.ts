@@ -20,6 +20,11 @@ import {
 import { loadLaunchContext } from './launch-context'
 import { LocalProvider } from './providers/local-provider'
 import {
+  addRecentSource,
+  loadRecentSources,
+  removeRecentSource,
+} from './recents-store'
+import {
   loadSessionState,
   saveSessionState,
 } from './session-store'
@@ -41,6 +46,11 @@ export {
   getLaunchContextFromArgs,
   registerWindowLaunchContext,
 } from './launch-context'
+export {
+  addRecentSource,
+  loadRecentSources,
+  removeRecentSource,
+} from './recents-store'
 export { loadSessionState, saveSessionState } from './session-store'
 export { clearFileDiffCache } from './file-diff'
 
@@ -59,6 +69,13 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:loadLaunchContext', (event) => loadLaunchContext(event.sender.id))
   ipcMain.handle('diffly:saveSessionState', (_event, payload: { session: PersistedSession }) =>
     saveSessionState(payload.session),
+  )
+  ipcMain.handle('diffly:loadRecentSources', () => loadRecentSources())
+  ipcMain.handle('diffly:addRecentSource', (_event, payload) =>
+    addRecentSource(payload?.source, payload?.metadata),
+  )
+  ipcMain.handle('diffly:removeRecentSource', (_event, payload: { id: string }) =>
+    removeRecentSource(payload.id),
   )
   ipcMain.handle('diffly:getAppVersion', () => app.getVersion())
   ipcMain.handle('diffly:checkForUpdates', (_event, payload: { channel: UpdateChannel }) =>
