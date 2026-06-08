@@ -488,7 +488,8 @@
         title={currentPath || pathInput}
         type="text"
         bind:value={pathInput}
-        on:keydown={(event) => event.key === 'Enter' && submitPathInput()}
+        on:keydown={(event) =>
+          event.key === 'Enter' && !event.ctrlKey && !event.metaKey && submitPathInput()}
       />
     </label>
   </div>

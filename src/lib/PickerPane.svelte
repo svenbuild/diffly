@@ -104,6 +104,14 @@
   }
 
   function handleListKeydown(event: KeyboardEvent) {
+    // Tab toggles focus between the left and right target lists.
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      const other: Side = side === 'left' ? 'right' : 'left'
+      document.getElementById(`picker-list-${other}`)?.focus({ preventScroll: true })
+      return
+    }
+
     const result = reduceTypeAheadKey(event, {
       query: filterQuery,
       highlightedIndex,
@@ -352,7 +360,8 @@
         type="text"
         value={pane.pathInput}
         on:input={(event) => updatePathInput(side, event.currentTarget.value)}
-        on:keydown={(event) => event.key === 'Enter' && submitPathInput(side)}
+        on:keydown={(event) =>
+          event.key === 'Enter' && !event.ctrlKey && !event.metaKey && submitPathInput(side)}
       />
     </label>
   </div>
@@ -381,6 +390,7 @@
 
     <div
       class="list-rows"
+      id="picker-list-{side}"
       bind:this={rowsHost}
       tabindex="0"
       role="listbox"

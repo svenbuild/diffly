@@ -1846,6 +1846,21 @@
     gitSetupSource = source
   }
 
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    // Ctrl/Cmd+Enter runs the compare from anywhere on the setup screen.
+    if (
+      screen === 'setup' &&
+      event.key === 'Enter' &&
+      (event.ctrlKey || event.metaKey)
+    ) {
+      if (!setupCanCompare || loading) {
+        return
+      }
+      event.preventDefault()
+      void runCompare()
+    }
+  }
+
   async function runGitCompare() {
     const source = gitSetupSource
     if (!source) {
@@ -2404,6 +2419,8 @@
 <svelte:head>
   <title>Diffly</title>
 </svelte:head>
+
+<svelte:window on:keydown={handleGlobalKeydown} />
 
 {#if screen === 'setup'}
   <SetupScreen
