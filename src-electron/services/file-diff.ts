@@ -1,4 +1,3 @@
-import type { Stats } from 'node:fs'
 import {
   open,
   readFile,
@@ -22,19 +21,20 @@ const CRLF_BYTES = Buffer.from('\r\n')
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 
 export type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
+export type DetectedFileKind = Exclude<FileKind, 'missing' | 'readError'>
 
-interface LoadedFile {
-  kind: FileKind
-  text?: string
-  bytes?: Uint8Array
-  cacheKey?: string
-  sha256?: string
-  lineEnding?: 'lf' | 'crlf'
-  hasTrailingNewline?: boolean
-  path: string
+export interface DiffSnapshot {
+  exists: boolean
+  label: string
+  logicalPath: string
+  cacheKey: string | null
+  bytes: Uint8Array | null
+  text: string | null
   size: number | null
-  format: string | null
-  truncated: boolean
+  lineEnding: 'lf' | 'crlf' | null
+  hasTrailingNewline: boolean | null
+  kind: FileKind
+  error: string | null
 }
 
 export interface FileIdentity {
@@ -44,9 +44,7 @@ export interface FileIdentity {
 
 interface CachedFileDiffEntry {
   bytes: number
-  left: FileIdentity | null
   result: FileDiffResult
-  right: FileIdentity | null
 }
 
 const fileDiffCache = new Map<string, CachedFileDiffEntry>()
@@ -74,66 +72,66 @@ export async function openCompareItem(
 ) {
   const leftPath = resolveChildPath(leftBase, relativePathValue)
   const rightPath = resolveChildPath(rightBase, relativePathValue)
-  return buildFileDiff(leftPath, rightPath, relativePathValue, relativePathValue, options)
+  return buildFileDiffFromPaths(leftPath, rightPath, relativePathValue, relativePathValue, options)
 }
 
-export async function buildFileDiff(
+export async function buildFileDiffFromPaths(
   leftPath: string,
   rightPath: string,
   leftLabel: string,
   rightLabel: string,
   options: CompareOptions,
 ): Promise<FileDiffResult> {
-  const [leftSnapshot, rightSnapshot] = await Promise.all([
-    loadFileSnapshot(leftPath),
-    loadFileSnapshot(rightPath),
+  const [left, right] = await Promise.all([
+    loadFileSnapshotFromPath(leftPath, leftLabel),
+    loadFileSnapshotFromPath(rightPath, rightLabel),
   ])
-  const cacheKey = buildFileDiffCacheKey(
-    leftPath,
-    rightPath,
-    leftLabel,
-    rightLabel,
-    options,
-  )
-  const cached = getCachedFileDiff(
-    cacheKey,
-    leftSnapshot.identity,
-    rightSnapshot.identity,
-  )
 
+  return buildFileDiffFromSnapshots(left, right, options)
+}
+
+export const buildFileDiff = buildFileDiffFromPaths
+
+export async function buildFileDiffFromSnapshots(
+  left: DiffSnapshot,
+  right: DiffSnapshot,
+  options: CompareOptions,
+): Promise<FileDiffResult> {
+  const cacheKey = buildFileDiffCacheKey(left, right, options)
+  const cached = cacheKey ? getCachedFileDiff(cacheKey) : null
   if (cached) {
     return cached
   }
 
-  const [leftLoaded, rightLoaded] = await Promise.all([
-    loadFile(leftPath, leftSnapshot.info),
-    loadFile(rightPath, rightSnapshot.info),
-  ])
-  const summary = buildSummary(leftLoaded, rightLoaded)
+  const summary = buildSummary(left, right)
 
-  if (canBuildTextDiff(leftLoaded, rightLoaded)) {
-    const textPayload = buildTextPayload(leftLoaded, rightLoaded)
+  if (canBuildTextDiff(left, right)) {
+    const textPayload = buildTextPayload(left, right)
     const result: FileDiffResult = {
       contentKind: 'text',
       summary,
-      leftLabel,
-      rightLabel,
+      leftLabel: left.label,
+      rightLabel: right.label,
       text: textPayload,
       unsupported: null,
     }
-    setCachedFileDiff(cacheKey, leftSnapshot.identity, rightSnapshot.identity, result)
+    if (cacheKey) {
+      setCachedFileDiff(cacheKey, result)
+    }
     return result
   }
 
   const result: FileDiffResult = {
     contentKind: 'unsupported',
     summary,
-    leftLabel,
-    rightLabel,
+    leftLabel: left.label,
+    rightLabel: right.label,
     text: null,
-    unsupported: buildUnsupportedPayload(leftPath, rightPath, leftLoaded, rightLoaded),
+    unsupported: buildUnsupportedPayload(left, right),
   }
-  setCachedFileDiff(cacheKey, leftSnapshot.identity, rightSnapshot.identity, result)
+  if (cacheKey) {
+    setCachedFileDiff(cacheKey, result)
+  }
   return result
 }
 
@@ -141,7 +139,11 @@ export async function sampleFile(pathValue: string) {
   return readPartial(pathValue, BINARY_SAMPLE_BYTES)
 }
 
-export function detectFileKind(pathValue: string, size: number, sample: Uint8Array): FileKind {
+export function detectFileKind(
+  pathValue: string,
+  size: number,
+  sample: Uint8Array,
+): DetectedFileKind {
   const imageFormat = detectImageFormat(sample, pathValue)
   if (size > MAX_TEXT_BYTES && !imageFormat) {
     return 'tooLarge'
@@ -220,17 +222,9 @@ export async function filesEqual(leftPath: string, rightPath: string, startOffse
   }
 }
 
-function getCachedFileDiff(
-  cacheKey: string,
-  leftIdentity: FileIdentity | null,
-  rightIdentity: FileIdentity | null,
-) {
+function getCachedFileDiff(cacheKey: string) {
   const cached = fileDiffCache.get(cacheKey)
-  if (
-    !cached ||
-    !identityEquals(cached.left, leftIdentity) ||
-    !identityEquals(cached.right, rightIdentity)
-  ) {
+  if (!cached) {
     return null
   }
 
@@ -241,8 +235,6 @@ function getCachedFileDiff(
 
 function setCachedFileDiff(
   cacheKey: string,
-  leftIdentity: FileIdentity | null,
-  rightIdentity: FileIdentity | null,
   result: FileDiffResult,
 ) {
   const previous = fileDiffCache.get(cacheKey)
@@ -254,9 +246,7 @@ function setCachedFileDiff(
   const bytes = estimatedFileDiffBytes(result)
   fileDiffCache.set(cacheKey, {
     bytes,
-    left: leftIdentity,
     result,
-    right: rightIdentity,
   })
   fileDiffCacheBytes += bytes
 
@@ -278,17 +268,17 @@ function setCachedFileDiff(
 }
 
 function buildFileDiffCacheKey(
-  leftPath: string,
-  rightPath: string,
-  leftLabel: string,
-  rightLabel: string,
+  left: DiffSnapshot,
+  right: DiffSnapshot,
   options: CompareOptions,
 ) {
+  if (left.cacheKey === null || right.cacheKey === null) {
+    return null
+  }
+
   return [
-    leftPath,
-    rightPath,
-    leftLabel,
-    rightLabel,
+    left.cacheKey,
+    right.cacheKey,
     options.ignoreWhitespace ? '1' : '0',
     options.ignoreCase ? '1' : '0',
   ].join('\u0000')
@@ -322,89 +312,65 @@ function resolveChildPath(base: string, relativePathValue: string) {
   return resolvedChild
 }
 
-async function loadFileSnapshot(pathValue: string) {
+async function loadFileSnapshotFromPath(
+  pathValue: string,
+  label: string,
+): Promise<DiffSnapshot> {
+  const resolvedPath = resolve(pathValue)
+  let info
+
   try {
-    const info = await stat(pathValue)
-    return {
-      identity: { size: info.size, modifiedMs: Math.trunc(info.mtimeMs) },
-      info,
-    }
+    info = await stat(pathValue)
   } catch {
-    return {
-      identity: null,
-      info: null,
-    }
+    return buildMissingSnapshot(label, resolvedPath, buildLocalSnapshotCacheKey(resolvedPath, 'missing'))
   }
-}
 
-async function loadFile(pathValue: string, knownInfo?: Stats | null): Promise<LoadedFile> {
-  let info = knownInfo
-  if (info === undefined) {
+  const identity = `${info.size}:${Math.trunc(info.mtimeMs)}`
+  const cacheKey = buildLocalSnapshotCacheKey(resolvedPath, identity)
+
+  try {
+    const sample = await readPartial(pathValue, Math.min(info.size, BINARY_SAMPLE_BYTES))
+    const kind = detectFileKind(pathValue, info.size, sample)
+    if (kind === 'tooLarge') {
+      return buildNonTextSnapshot(kind, label, resolvedPath, cacheKey, info.size, null)
+    }
+
+    if (kind !== 'text') {
+      return buildNonTextSnapshot(kind, label, resolvedPath, cacheKey, info.size, null)
+    }
+
     try {
-      info = await stat(pathValue)
-    } catch {
-      info = null
-    }
-  }
-
-  if (!info) {
-    return {
-      kind: 'missing',
-      path: pathValue,
-      size: null,
-      format: null,
-      truncated: false,
-    }
-  }
-
-  const sample = await readPartial(pathValue, Math.min(info.size, BINARY_SAMPLE_BYTES))
-  const kind = detectFileKind(pathValue, info.size, sample)
-  if (kind === 'tooLarge') {
-    return {
-      kind,
-      path: pathValue,
-      size: info.size,
-      format: null,
-      truncated: true,
-    }
-  }
-
-  if (kind === 'text') {
-    let bytes: Buffer
-    let text: string
-    try {
-      bytes = await readFile(pathValue)
-      text = UTF8_DECODER.decode(bytes)
-    } catch {
+      const bytes = await readFile(pathValue)
+      return buildTextSnapshot(label, resolvedPath, cacheKey, bytes)
+    } catch (error) {
       return {
         kind: 'readError',
-        path: pathValue,
+        exists: true,
+        label,
+        logicalPath: resolvedPath,
+        cacheKey,
+        bytes: null,
+        text: null,
         size: info.size,
-        format: null,
-        truncated: false,
+        lineEnding: null,
+        hasTrailingNewline: null,
+        error: errorMessage(error),
       }
     }
-
+  } catch (error) {
     return {
-      kind,
-      path: pathValue,
+      kind: 'readError',
+      exists: true,
+      label,
+      logicalPath: resolvedPath,
+      cacheKey,
+      bytes: null,
+      text: null,
       size: info.size,
-      format: null,
-      truncated: false,
-      text,
-      cacheKey: `${pathValue}:${info.size}:${Math.trunc(info.mtimeMs)}`,
-      lineEnding: bytes.includes(CRLF_BYTES) ? 'crlf' : 'lf',
-      hasTrailingNewline: bytes[bytes.length - 1] === 10,
+      lineEnding: null,
+      hasTrailingNewline: null,
+      error: errorMessage(error),
     }
-  }
-
-  return {
-    kind,
-    path: pathValue,
-    size: info.size,
-    format: detectImageFormat(sample, pathValue),
-    truncated: false,
-    sha256: undefined,
   }
 }
 
@@ -426,7 +392,82 @@ async function readPartial(pathValue: string, length: number): Promise<Uint8Arra
   }
 }
 
-function canBuildTextDiff(left: LoadedFile, right: LoadedFile) {
+function buildLocalSnapshotCacheKey(resolvedPath: string, identity: string) {
+  return [
+    'local',
+    'FILESYSTEM',
+    resolvedPath,
+    identity,
+  ].join('\u0000')
+}
+
+function buildMissingSnapshot(
+  label: string,
+  logicalPath: string,
+  cacheKey: string | null,
+): DiffSnapshot {
+  return {
+    kind: 'missing',
+    exists: false,
+    label,
+    logicalPath,
+    cacheKey,
+    bytes: null,
+    text: null,
+    size: null,
+    lineEnding: null,
+    hasTrailingNewline: null,
+    error: null,
+  }
+}
+
+function buildNonTextSnapshot(
+  kind: Exclude<FileKind, 'missing' | 'text'>,
+  label: string,
+  logicalPath: string,
+  cacheKey: string | null,
+  size: number | null,
+  error: string | null,
+): DiffSnapshot {
+  return {
+    kind,
+    exists: true,
+    label,
+    logicalPath,
+    cacheKey,
+    bytes: null,
+    text: null,
+    size,
+    lineEnding: null,
+    hasTrailingNewline: null,
+    error,
+  }
+}
+
+function buildTextSnapshot(
+  label: string,
+  logicalPath: string,
+  cacheKey: string | null,
+  bytes: Uint8Array,
+): DiffSnapshot {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const text = UTF8_DECODER.decode(buffer)
+  return {
+    kind: 'text',
+    exists: true,
+    label,
+    logicalPath,
+    cacheKey,
+    bytes,
+    text,
+    size: bytes.byteLength,
+    lineEnding: buffer.includes(CRLF_BYTES) ? 'crlf' : 'lf',
+    hasTrailingNewline: bytes[bytes.byteLength - 1] === 10,
+    error: null,
+  }
+}
+
+function canBuildTextDiff(left: DiffSnapshot, right: DiffSnapshot) {
   return (
     (left.kind === 'text' && (right.kind === 'text' || right.kind === 'missing')) ||
     (right.kind === 'text' && (left.kind === 'text' || left.kind === 'missing'))
@@ -479,7 +520,7 @@ function detectImageFormat(bytes: Uint8Array, pathValue: string) {
     : null
 }
 
-function buildSummary(left: LoadedFile, right: LoadedFile) {
+function buildSummary(left: DiffSnapshot, right: DiffSnapshot) {
   if (left.kind === 'missing' && right.kind === 'missing') {
     return 'Neither file exists.'
   }
@@ -492,16 +533,16 @@ function buildSummary(left: LoadedFile, right: LoadedFile) {
   return 'Comparison ready.'
 }
 
-function buildTextPayload(left: LoadedFile, right: LoadedFile): TextDiffPayload {
+function buildTextPayload(left: DiffSnapshot, right: DiffSnapshot): TextDiffPayload {
   return {
     leftText: left.kind === 'text' ? left.text ?? '' : '',
     rightText: right.kind === 'text' ? right.text ?? '' : '',
     leftExists: left.kind === 'text',
     rightExists: right.kind === 'text',
-    leftCacheKey: left.kind === 'text' ? left.cacheKey ?? null : null,
-    rightCacheKey: right.kind === 'text' ? right.cacheKey ?? null : null,
-    leftSha256: left.kind === 'text' ? left.sha256 ?? null : null,
-    rightSha256: right.kind === 'text' ? right.sha256 ?? null : null,
+    leftCacheKey: left.kind === 'text' ? left.cacheKey : null,
+    rightCacheKey: right.kind === 'text' ? right.cacheKey : null,
+    leftSha256: null,
+    rightSha256: null,
     leftLineEnding: left.lineEnding ?? 'lf',
     rightLineEnding: right.lineEnding ?? 'lf',
     leftHasTrailingNewline: left.hasTrailingNewline ?? false,
@@ -510,23 +551,21 @@ function buildTextPayload(left: LoadedFile, right: LoadedFile): TextDiffPayload 
 }
 
 function buildUnsupportedPayload(
-  leftPath: string,
-  rightPath: string,
-  left: LoadedFile,
-  right: LoadedFile,
+  left: DiffSnapshot,
+  right: DiffSnapshot,
 ): UnsupportedDiffPayload {
   return {
     reason: unsupportedReason(left, right),
-    leftPath: left.kind === 'missing' ? null : leftPath,
-    rightPath: right.kind === 'missing' ? null : rightPath,
+    leftPath: left.kind === 'missing' ? null : left.logicalPath,
+    rightPath: right.kind === 'missing' ? null : right.logicalPath,
     leftSize: left.kind === 'missing' ? null : left.size,
     rightSize: right.kind === 'missing' ? null : right.size,
   }
 }
 
 function unsupportedReason(
-  left: LoadedFile,
-  right: LoadedFile,
+  left: DiffSnapshot,
+  right: DiffSnapshot,
 ): UnsupportedDiffPayload['reason'] {
   if (left.kind === 'readError' || right.kind === 'readError') {
     return 'readError'
@@ -544,4 +583,8 @@ function unsupportedReason(
     return 'missing'
   }
   return 'readError'
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
