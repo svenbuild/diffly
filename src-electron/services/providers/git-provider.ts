@@ -15,6 +15,10 @@ import type {
   ProviderSessionData,
 } from '../diff/provider'
 import {
+  buildFileDiffFromGit,
+  type GitSnapshotSource,
+} from '../file-diff'
+import {
   parseGitNameStatusOutput,
   type GitNameStatusEntry,
 } from '../git/git-parser'
@@ -36,15 +40,24 @@ export class GitProvider implements DiffSessionProvider {
     return this.buildGitProviderSessionData(source)
   }
 
-  openEntry(
+  async openEntry(
     session: DiffSessionRecordLike,
     entryId: string,
     options: CompareOptions,
   ): Promise<FileDiffResult> {
-    void session
-    void entryId
-    void options
-    throw new Error('Git file details are not implemented yet.')
+    const entry = session.entryData.get(entryId)
+    if (!entry) {
+      throw new Error('Diff entry was not found.')
+    }
+    if (entry.kind !== 'gitWorkingTree') {
+      throw new Error('Unsupported git diff entry data.')
+    }
+    if (entry.status === 'conflicted') {
+      throw new Error('Git conflicted file details are not implemented yet.')
+    }
+
+    const [left, right] = gitWorkingTreeSnapshots(entry)
+    return buildFileDiffFromGit(left, right, options)
   }
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
@@ -123,6 +136,162 @@ export class GitProvider implements DiffSessionProvider {
       entries,
       entryData,
     }
+  }
+}
+
+function gitWorkingTreeSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): [GitSnapshotSource, GitSnapshotSource] {
+  switch (entry.scope) {
+    case 'staged':
+      return stagedSnapshots(entry)
+    case 'unstaged':
+      return unstagedSnapshots(entry)
+    case 'untracked':
+      return [
+        emptySource(entry),
+        workingTreeSource(entry),
+      ]
+    case 'all':
+      return allSnapshots(entry)
+  }
+}
+
+function stagedSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): [GitSnapshotSource, GitSnapshotSource] {
+  switch (entry.status) {
+    case 'added':
+    case 'untracked':
+      return [
+        emptySource(entry),
+        indexSource(entry, entry.path),
+      ]
+    case 'deleted':
+      return [
+        headSource(entry, leftPath(entry)),
+        emptySource(entry),
+      ]
+    case 'modified':
+    case 'renamed':
+    case 'copied':
+    case 'typeChanged':
+    case 'unsupported':
+      return [
+        headSource(entry, leftPath(entry)),
+        indexSource(entry, entry.path),
+      ]
+    case 'conflicted':
+      throw new Error('Git conflicted file details are not implemented yet.')
+  }
+}
+
+function unstagedSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): [GitSnapshotSource, GitSnapshotSource] {
+  switch (entry.status) {
+    case 'added':
+    case 'untracked':
+      return [
+        emptySource(entry),
+        workingTreeSource(entry),
+      ]
+    case 'deleted':
+      return [
+        indexSource(entry, leftPath(entry)),
+        emptySource(entry),
+      ]
+    case 'modified':
+    case 'renamed':
+    case 'copied':
+    case 'typeChanged':
+    case 'unsupported':
+      return [
+        indexSource(entry, leftPath(entry)),
+        workingTreeSource(entry),
+      ]
+    case 'conflicted':
+      throw new Error('Git conflicted file details are not implemented yet.')
+  }
+}
+
+function allSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): [GitSnapshotSource, GitSnapshotSource] {
+  switch (entry.status) {
+    case 'added':
+    case 'untracked':
+      return [
+        emptySource(entry),
+        workingTreeSource(entry),
+      ]
+    case 'deleted':
+      return [
+        headSource(entry, leftPath(entry)),
+        emptySource(entry),
+      ]
+    case 'modified':
+    case 'renamed':
+    case 'copied':
+    case 'typeChanged':
+    case 'unsupported':
+      return [
+        headSource(entry, leftPath(entry)),
+        workingTreeSource(entry),
+      ]
+    case 'conflicted':
+      throw new Error('Git conflicted file details are not implemented yet.')
+  }
+}
+
+function leftPath(entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>) {
+  return entry.oldPath ?? entry.path
+}
+
+function emptySource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): GitSnapshotSource {
+  return {
+    kind: 'empty',
+    label: entry.path,
+    logicalPath: entry.path,
+  }
+}
+
+function headSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  path: string,
+): GitSnapshotSource {
+  return {
+    kind: 'head',
+    repoPath: entry.repoPath,
+    repositoryRoot: entry.repositoryRoot,
+    path,
+    label: `HEAD:${path}`,
+  }
+}
+
+function indexSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  path: string,
+): GitSnapshotSource {
+  return {
+    kind: 'index',
+    repoPath: entry.repoPath,
+    repositoryRoot: entry.repositoryRoot,
+    path,
+    label: `:${path}`,
+  }
+}
+
+function workingTreeSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): GitSnapshotSource {
+  return {
+    kind: 'workingTree',
+    repositoryRoot: entry.repositoryRoot,
+    path: entry.path,
+    label: entry.path,
   }
 }
 
