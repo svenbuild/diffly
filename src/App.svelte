@@ -2012,13 +2012,17 @@
     const target =
       mapped.find((entry) => entry.relativePath === previousPath) ??
       defaultDirectoryEntry(filteredDirectoryEntries)
+    // Invalidate any in-flight detail request first. The target keeps the same
+    // relativePath but a scope-specific diffEntryId, and selectEntry's dedupe
+    // guard short-circuits on relativePath while detailLoading — so without this
+    // a stale openDiffEntry from the old scope could land, and the new scope's
+    // diff would never be requested.
+    activeDetailRequestId += 1
+    detailLoading = false
     if (target) {
       // The entry id encodes the scope, so this reloads the correct diff.
       void selectEntry(target, compareRevision)
     } else {
-      // Empty scope: invalidate any in-flight detail request before clearing so
-      // a slow prior openDiffEntry can't resurrect activeDiff afterwards.
-      activeDetailRequestId += 1
       selectedRelativePath = ''
       activeDiff = null
     }
