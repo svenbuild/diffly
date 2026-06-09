@@ -4,7 +4,7 @@
   import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
   import GitSetupPanel from '../setup/GitSetupPanel.svelte'
   import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
-  import type { ExplorerEntry, GitDiffSource, SetupMode } from '../types'
+  import type { ExplorerEntry, GitDiffSource, PersistedGitSetup, SetupMode } from '../types'
   import type {
     ExplorerPaneState,
     SettingsSection,
@@ -27,6 +27,8 @@
   export let openSettings: (section?: SettingsSection) => void
   export let errorMessage = ''
   export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
+  export let gitSetup: PersistedGitSetup = {}
+  export let onGitSetupChange: (setup: PersistedGitSetup) => void = () => {}
   export let reloadRecentsRequestId = 0
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
@@ -119,7 +121,12 @@
         {isTargetSelected}
       />
     {:else if setupMode === 'git'}
-      <GitSetupPanel onChange={onGitSourceChange} {reloadRecentsRequestId} />
+      <GitSetupPanel
+        onChange={onGitSourceChange}
+        {gitSetup}
+        onSetupChange={onGitSetupChange}
+        {reloadRecentsRequestId}
+      />
     {:else}
       <GithubSetupPanel />
     {/if}

@@ -5,7 +5,7 @@
   import { detectGitRepositories, listDirectory, listRoots, pathInfo } from '../api'
   import { entryTypeLabel, formatModified, formatSize } from '../format'
   import { filterRows, reduceTypeAheadKey } from './explorer-typeahead'
-  import type { DirectoryListing, ExplorerEntry } from '../types'
+  import type { DirectoryListing, ExplorerEntry, PersistedGitSetupBrowser } from '../types'
 
   // The repo that is currently validated/selected by GitSetupPanel. Used purely
   // for row highlighting — selection state itself lives in the panel.
@@ -17,6 +17,8 @@
   export let revealPath = ''
   export let revealRequestId = 0
   export let onSelectRepo: (path: string) => void
+  export let initialBrowserState: PersistedGitSetupBrowser | undefined = undefined
+  export let onBrowserStateChange: (state: PersistedGitSetupBrowser) => void = () => {}
 
   const ROW_HEIGHT = 30
   const ROW_OVERSCAN = 8
@@ -227,6 +229,7 @@
         historyIndex = history.length - 1
       }
       loading = false
+      emitBrowserState()
       void runDetection(listing)
     } catch {
       if (token !== navToken) {
@@ -235,6 +238,18 @@
       error = 'Could not open this folder.'
       loading = false
     }
+  }
+
+  function emitBrowserState() {
+    if (!currentPath) {
+      return
+    }
+
+    onBrowserStateChange({
+      currentPath,
+      history,
+      historyIndex,
+    })
   }
 
   async function runDetection(listing: DirectoryListing) {
@@ -384,7 +399,8 @@
 
     const startPath = await resolveStartPath()
     if (startPath) {
-      await navigateTo(startPath)
+      applyInitialHistory(startPath)
+      await loadDirectory(startPath, { push: false })
     }
 
     // Focus the list so the keyboard works immediately without a click.
@@ -392,6 +408,17 @@
   })
 
   async function resolveStartPath(): Promise<string> {
+    if (initialBrowserState?.currentPath) {
+      try {
+        const info = await pathInfo(initialBrowserState.currentPath)
+        if (info.exists && info.isDirectory) {
+          return info.path
+        }
+      } catch {
+        // fall through to the selected repo or first root
+      }
+    }
+
     if (selectedRepoPath) {
       try {
         const info = await pathInfo(selectedRepoPath)
@@ -403,6 +430,25 @@
       }
     }
     return roots[0]?.path ?? ''
+  }
+
+  function applyInitialHistory(startPath: string) {
+    const initialHistory = initialBrowserState?.history
+      ?.filter((path): path is string => typeof path === 'string' && path.trim().length > 0)
+      ?? []
+    const initialIndex = initialBrowserState?.historyIndex ?? -1
+    const clampedIndex = initialIndex >= 0 && initialIndex < initialHistory.length
+      ? initialIndex
+      : initialHistory.indexOf(startPath)
+
+    if (initialHistory.length > 0 && clampedIndex >= 0) {
+      history = initialHistory
+      historyIndex = clampedIndex
+      return
+    }
+
+    history = [startPath]
+    historyIndex = 0
   }
 
   onDestroy(() => {

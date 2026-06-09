@@ -256,6 +256,16 @@ export interface PersistedExplorerPane {
   selectedTargetKind: PathKind | null
 }
 
+export interface PersistedGitSetupBrowser {
+  currentPath: string
+  history: string[]
+  historyIndex: number
+}
+
+export interface PersistedGitSetup {
+  browser?: PersistedGitSetupBrowser
+}
+
 export interface PersistedSession {
   mode: CompareMode
   setupMode?: SetupMode
@@ -281,6 +291,7 @@ export interface PersistedSession {
   lastUpdateMetadata?: UpdateMetadata | null
   leftPane: PersistedExplorerPane
   rightPane: PersistedExplorerPane
+  gitSetup?: PersistedGitSetup
 }
 
 export interface CompareOptions {

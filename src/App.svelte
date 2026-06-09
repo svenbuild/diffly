@@ -124,6 +124,7 @@
     GitDiffSource,
     GitWorkingTreeScope,
     PersistedExplorerPane,
+    PersistedGitSetup,
     PersistedSession,
     SetupMode,
     SystemMonitorSnapshot,
@@ -179,6 +180,7 @@
   // Latest Git source emitted by GitSetupPanel, or null when its setup is
   // incomplete. Transient setup-draft state — intentionally not persisted.
   let gitSetupSource: GitDiffSource | null = null
+  let gitSetup: PersistedGitSetup = {}
   let activeDiffSource: DiffSource | null = null
   let activeDiffSessionId: string | null = null
   // How the directory diff list loads each entry: local paths for local compares,
@@ -1386,6 +1388,8 @@
       setupMode = session.setupMode
     }
 
+    gitSetup = session.gitSetup ?? {}
+
     if (session.viewMode === 'sideBySide' || session.viewMode === 'unified') {
       viewMode = session.viewMode
     }
@@ -1898,6 +1902,11 @@
     gitSetupSource = source
   }
 
+  function handleGitSetupChange(nextSetup: PersistedGitSetup) {
+    gitSetup = nextSetup
+    scheduleSessionSave()
+  }
+
   function handleGlobalKeydown(event: KeyboardEvent) {
     // Ctrl/Cmd+Enter runs the compare from anywhere on the setup screen.
     if (
@@ -2376,6 +2385,7 @@
       leftPane: leftExplorer,
       rightPane: rightExplorer,
       setupMode,
+      gitSetup,
     })
   }
 
@@ -2518,6 +2528,9 @@
     rightExplorer.selectedTargetKind
     rightExplorer.history
     rightExplorer.historyIndex
+    gitSetup.browser?.currentPath
+    gitSetup.browser?.history
+    gitSetup.browser?.historyIndex
     scheduleSessionSave()
   }
 
@@ -2601,6 +2614,8 @@
     {openSettings}
     {errorMessage}
     onGitSourceChange={handleGitSourceChange}
+    {gitSetup}
+    onGitSetupChange={handleGitSetupChange}
     reloadRecentsRequestId={recentsReloadRequestId}
     {pickerSides}
     {pickerLoading}

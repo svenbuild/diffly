@@ -1,7 +1,7 @@
 <script lang="ts">
   import Dropdown from '../components/Dropdown.svelte'
   import GitRepositoryBrowser from './GitRepositoryBrowser.svelte'
-  import type { GitRefsResponse, GitWorkingTreeScope } from '../types'
+  import type { GitRefsResponse, GitWorkingTreeScope, PersistedGitSetupBrowser } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
@@ -29,8 +29,10 @@
   export let headRef = ''
   export let notation: Notation = 'twoDot'
   export let commitRef = ''
+  export let initialBrowserState: PersistedGitSetupBrowser | undefined = undefined
 
   export let onSelectRepo: (path: string) => void
+  export let onBrowserStateChange: (state: PersistedGitSetupBrowser) => void = () => {}
   export let onSelectionKindChange: (kind: SelectionKind) => void
   export let onScopeChange: (scope: GitWorkingTreeScope) => void
   export let onBaseRefChange: (value: string) => void
@@ -130,7 +132,14 @@
   <h2 class="git-setup-picker-title">Git repository</h2>
 
   <div class="git-setup-browser">
-    <GitRepositoryBrowser {selectedRepoPath} {revealPath} {revealRequestId} {onSelectRepo} />
+    <GitRepositoryBrowser
+      {selectedRepoPath}
+      {revealPath}
+      {revealRequestId}
+      {onSelectRepo}
+      {initialBrowserState}
+      {onBrowserStateChange}
+    />
   </div>
 
   <div class="git-setup-status" aria-live="polite">

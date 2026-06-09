@@ -8,6 +8,8 @@
     GitRefsResponse,
     GitSelection,
     GitWorkingTreeScope,
+    PersistedGitSetup,
+    PersistedGitSetupBrowser,
     RecentGitRepository,
   } from '../types'
 
@@ -17,6 +19,8 @@
   // Emits the constructed Git source (or null when the current setup cannot
   // produce a valid one) so the parent can drive the Compare button.
   export let onChange: (source: GitDiffSource | null) => void = () => {}
+  export let gitSetup: PersistedGitSetup = {}
+  export let onSetupChange: (setup: PersistedGitSetup) => void = () => {}
   // Bumped by the parent after a recent repository is added (e.g. on Compare)
   // so this panel reloads the list without waiting for a remount.
   export let reloadRecentsRequestId = 0
@@ -230,6 +234,13 @@
     void validate(repo.repoPath)
   }
 
+  function handleBrowserStateChange(browser: PersistedGitSetupBrowser) {
+    onSetupChange({
+      ...gitSetup,
+      browser,
+    })
+  }
+
   function handleSelectionKindChange(kind: SelectionKind) {
     selectionKind = kind
   }
@@ -318,6 +329,8 @@
     {notation}
     {commitRef}
     onSelectRepo={handleSelectRepo}
+    initialBrowserState={gitSetup.browser}
+    onBrowserStateChange={handleBrowserStateChange}
     onSelectionKindChange={handleSelectionKindChange}
     onScopeChange={handleScopeChange}
     onBaseRefChange={handleBaseRefChange}

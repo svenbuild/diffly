@@ -3,6 +3,7 @@ import type {
   CompareViewerSettings,
   CompareMode,
   PersistedExplorerPane,
+  PersistedGitSetup,
   PersistedSession,
   SetupMode,
   UpdateChannel,
@@ -26,6 +27,7 @@ export interface BuildPersistedSessionArgs {
   lastUpdateMetadata: UpdateMetadata | null
   leftPane: ExplorerPaneState
   rightPane: ExplorerPaneState
+  gitSetup: PersistedGitSetup
 }
 
 export function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPane {
@@ -63,5 +65,6 @@ export function buildPersistedSession(args: BuildPersistedSessionArgs): Persiste
     lastUpdateMetadata: args.lastUpdateMetadata,
     leftPane: buildPersistedPane(args.leftPane),
     rightPane: buildPersistedPane(args.rightPane),
+    gitSetup: args.gitSetup,
   }
 }
