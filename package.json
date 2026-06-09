@@ -96,7 +96,8 @@
     "publish": {
       "provider": "github",
       "owner": "svenbuild",
-      "repo": "diffly"
+      "repo": "diffly",
+      "releaseType": "release"
     },
     "afterPack": "scripts/set-windows-icon.cjs"
   }
