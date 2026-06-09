@@ -2,7 +2,9 @@ import type {
   CompareOptions,
   DiffEntry,
   DiffSource,
+  DiffEntryStatus,
   FileDiffResult,
+  GitWorkingTreeScope,
 } from '../../../src/lib/types'
 
 export interface DiffSessionProvider {
@@ -40,4 +42,13 @@ export type ProviderEntryData =
       relativePath: string
       leftBase: string
       rightBase: string
+    }
+  | {
+      kind: 'gitWorkingTree'
+      repoPath: string
+      repositoryRoot: string
+      scope: GitWorkingTreeScope
+      path: string
+      oldPath: string | null
+      status: DiffEntryStatus
     }

@@ -97,7 +97,7 @@ export class LocalProvider implements DiffSessionProvider {
           options,
         )
       default:
-        return assertUnsupportedLocalEntry(entry)
+        return throwUnsupportedLocalEntry(entry)
     }
   }
 
@@ -661,7 +661,7 @@ function mapDirectoryEntryStatus(status: DirectoryEntryResult['status']): DiffEn
   }
 }
 
-function assertUnsupportedLocalEntry(entry: never): Promise<FileDiffResult> {
+function throwUnsupportedLocalEntry(entry: ProviderEntryData): Promise<FileDiffResult> {
   void entry
   throw new Error('Unsupported local diff entry data.')
 }

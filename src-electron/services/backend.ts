@@ -18,6 +18,7 @@ import {
   pathInfo,
 } from './explorer-service'
 import { loadLaunchContext } from './launch-context'
+import { GitProvider } from './providers/git-provider'
 import { LocalProvider } from './providers/local-provider'
 import {
   addRecentSource,
@@ -38,7 +39,8 @@ import {
 } from './update-service'
 
 const localProvider = new LocalProvider()
-const diffSessionService = new DiffSessionService({ localProvider })
+const gitProvider = new GitProvider()
+const diffSessionService = new DiffSessionService({ localProvider, gitProvider })
 
 export {
   clearDirectoryListingCache,
