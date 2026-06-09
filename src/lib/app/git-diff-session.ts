@@ -26,7 +26,9 @@ export function countGitEntriesByScope(
   return counts
 }
 
-export function mapGitDiffEntry(entry: DiffEntry): DirectoryEntryResult {
+// Maps a diff-session entry (git working tree, ref range, commit, or GitHub PR)
+// onto the directory result shape the continuous compare viewer renders.
+export function mapSessionDiffEntry(entry: DiffEntry): DirectoryEntryResult {
   return {
     relativePath: entry.path,
     displayPath: entry.displayPath !== entry.path ? entry.displayPath : undefined,

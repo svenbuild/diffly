@@ -67,6 +67,15 @@ export type GitSnapshotSource =
       path: string
       label: string
     }
+  | {
+      kind: 'ref'
+      repoPath: string
+      repositoryRoot: string
+      // Resolved rev (commit sha or rev expression) used as `<ref>:<path>`.
+      ref: string
+      path: string
+      label: string
+    }
 
 export interface GithubSnapshotSource {
   owner: string
@@ -78,6 +87,10 @@ export interface GithubSnapshotSource {
   exists: boolean
   bytes: Uint8Array | null
   text?: string | null
+  // Set when the download was cut off because the file exceeds the fetch cap;
+  // the snapshot then renders as a tooLarge state instead of partial content.
+  truncated?: boolean
+  size?: number | null
 }
 
 export interface FileIdentity {
@@ -456,7 +469,39 @@ async function loadGitSnapshot(source: GitSnapshotSource): Promise<DiffSnapshot>
       return loadGitObjectSnapshot(source, 'INDEX')
     case 'workingTree':
       return loadGitWorkingTreeSnapshot(source)
+    case 'ref':
+      return loadGitRefSnapshot(source)
   }
+}
+
+async function loadGitRefSnapshot(
+  source: Extract<GitSnapshotSource, { kind: 'ref' }>,
+): Promise<DiffSnapshot> {
+  const logicalPath = gitLogicalPath(source.path)
+  const refLabel = `REF:${source.ref}`
+  const contentResult = await runGitBytes(source.repositoryRoot, [
+    'show',
+    '--no-textconv',
+    `${source.ref}:${source.path}`,
+  ], {
+    allowNonZeroExit: true,
+  })
+
+  if (contentResult.exitCode !== 0) {
+    return buildMissingSnapshot(
+      source.label,
+      logicalPath,
+      buildGitSnapshotCacheKey(refLabel, source.path, 'missing'),
+    )
+  }
+
+  const cacheKey = buildGitSnapshotCacheKey(refLabel, source.path, sha256(contentResult.stdout))
+  return buildSnapshotFromBytes(
+    source.label,
+    logicalPath,
+    cacheKey,
+    contentResult.stdout,
+  )
 }
 
 async function loadGitObjectSnapshot(
@@ -533,6 +578,17 @@ function loadGithubSnapshot(source: GithubSnapshotSource): DiffSnapshot {
     ? buildGithubSnapshotCacheKey(source, source.sha)
     : null
 
+  if (source.truncated) {
+    return buildNonTextSnapshot(
+      'tooLarge',
+      source.label,
+      logicalPath,
+      cacheKey,
+      source.size ?? null,
+      null,
+    )
+  }
+
   if (source.bytes) {
     return buildSnapshotFromBytes(source.label, logicalPath, cacheKey, source.bytes)
   }
@@ -583,7 +639,7 @@ function buildLocalSnapshotCacheKey(resolvedPath: string, identity: string) {
   ].join('\u0000')
 }
 
-function buildGitSnapshotCacheKey(ref: 'HEAD' | 'INDEX' | 'WORKTREE' | 'EMPTY', pathValue: string, identity: string) {
+function buildGitSnapshotCacheKey(ref: string, pathValue: string, identity: string) {
   return [
     'git',
     ref,

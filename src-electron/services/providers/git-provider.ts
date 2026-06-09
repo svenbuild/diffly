@@ -61,14 +61,16 @@ export class GitProvider implements DiffSessionProvider {
     if (!entry) {
       throw new Error('Diff entry was not found.')
     }
-    if (entry.kind !== 'gitWorkingTree') {
+    if (entry.kind !== 'gitWorkingTree' && entry.kind !== 'gitRef') {
       throw new Error('Unsupported git diff entry data.')
     }
     if (entry.status === 'conflicted') {
       throw new Error('Git conflicted file details are not implemented yet.')
     }
 
-    const [left, right] = gitWorkingTreeSnapshots(entry)
+    const [left, right] = entry.kind === 'gitWorkingTree'
+      ? gitWorkingTreeSnapshots(entry)
+      : gitRefSnapshots(entry)
     return buildFileDiffFromGit(left, right, options)
   }
 
@@ -85,10 +87,98 @@ export class GitProvider implements DiffSessionProvider {
       case 'workingTree':
         return this.buildWorkingTreeSessionData(source)
       case 'refRange':
-        throw new Error('Git ref range diff sessions are not implemented yet.')
+        return this.buildRefRangeSessionData(source)
       case 'commit':
-        throw new Error('Git commit diff sessions are not implemented yet.')
+        return this.buildCommitSessionData(source)
     }
+  }
+
+  // Compares baseRef and headRef. Two-dot diffs base directly against head;
+  // three-dot diffs the merge base of both refs against head (PR-style view).
+  private async buildRefRangeSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
+    if (source.selection.kind !== 'refRange') {
+      throw new Error('Expected a git ref range selection.')
+    }
+
+    const repositoryRoot = source.repositoryRoot
+    const { baseRef, headRef, notation } = source.selection
+    const baseSha = await resolveCommitSha(
+      repositoryRoot,
+      baseRef,
+      `Base ref '${baseRef}' could not be resolved.`,
+    )
+    const headSha = await resolveCommitSha(
+      repositoryRoot,
+      headRef,
+      `Head ref '${headRef}' could not be resolved.`,
+    )
+
+    let leftSha = baseSha
+    let leftLabelRef = baseRef
+    if (notation === 'threeDot') {
+      leftSha = await resolveMergeBase(repositoryRoot, baseSha, headSha)
+      // The merge base usually differs from the base ref tip, so the label
+      // shows the resolved sha instead of pretending to be the base ref.
+      leftLabelRef = leftSha === baseSha ? baseRef : shortSha(leftSha)
+    }
+
+    const diff = await readRawNumstat(repositoryRoot, [
+      'diff',
+      ...GIT_DIFF_ENTRY_ARGS,
+      leftSha,
+      headSha,
+    ])
+
+    return buildGitRefSessionData(source, {
+      idPrefix: 'range',
+      leftRef: leftSha,
+      rightRef: headSha,
+      leftLabelRef,
+      rightLabelRef: headRef,
+      diff,
+    })
+  }
+
+  // Shows a single commit as `commit^1` against `commit`. Merge commits diff
+  // against their first parent; root commits diff against an empty left side.
+  private async buildCommitSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
+    if (source.selection.kind !== 'commit') {
+      throw new Error('Expected a git commit selection.')
+    }
+
+    const repositoryRoot = source.repositoryRoot
+    const commitRef = source.selection.commitRef
+    const commitSha = await resolveCommitSha(
+      repositoryRoot,
+      commitRef,
+      `Commit '${commitRef}' could not be resolved.`,
+    )
+    const parentSha = await tryResolveCommitSha(repositoryRoot, `${commitSha}^1`)
+
+    const diff = parentSha
+      ? await readRawNumstat(repositoryRoot, [
+          'diff',
+          ...GIT_DIFF_ENTRY_ARGS,
+          parentSha,
+          commitSha,
+        ])
+      : await readRawNumstat(repositoryRoot, [
+          'diff-tree',
+          '--no-commit-id',
+          '--root',
+          '-r',
+          ...GIT_DIFF_ENTRY_ARGS,
+          commitSha,
+        ])
+
+    return buildGitRefSessionData(source, {
+      idPrefix: 'commit',
+      leftRef: parentSha,
+      rightRef: commitSha,
+      leftLabelRef: parentSha ? shortSha(parentSha) : 'empty',
+      rightLabelRef: shortSha(commitSha),
+      diff,
+    })
   }
 
   private async buildWorkingTreeSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
@@ -253,6 +343,179 @@ function allSnapshots(
     case 'conflicted':
       throw new Error('Git conflicted file details are not implemented yet.')
   }
+}
+
+function gitRefSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitRef' }>,
+): [GitSnapshotSource, GitSnapshotSource] {
+  const rightSource = refSource(entry, entry.rightRef, entry.rightLabelRef, entry.path)
+
+  switch (entry.status) {
+    case 'added':
+    case 'untracked':
+      return [
+        emptyRefSource(entry),
+        rightSource,
+      ]
+    case 'deleted':
+      return [
+        leftRefSource(entry),
+        emptyRefSource(entry),
+      ]
+    case 'modified':
+    case 'renamed':
+    case 'copied':
+    case 'typeChanged':
+    case 'unsupported':
+      return [
+        leftRefSource(entry),
+        rightSource,
+      ]
+    case 'conflicted':
+      throw new Error('Git conflicted file details are not implemented yet.')
+  }
+}
+
+function leftRefSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitRef' }>,
+): GitSnapshotSource {
+  if (entry.leftRef === null) {
+    return emptyRefSource(entry)
+  }
+
+  return refSource(entry, entry.leftRef, entry.leftLabelRef, entry.oldPath ?? entry.path)
+}
+
+function emptyRefSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitRef' }>,
+): GitSnapshotSource {
+  return {
+    kind: 'empty',
+    label: entry.path,
+    logicalPath: entry.path,
+  }
+}
+
+function refSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitRef' }>,
+  ref: string,
+  labelRef: string,
+  path: string,
+): GitSnapshotSource {
+  return {
+    kind: 'ref',
+    repoPath: entry.repoPath,
+    repositoryRoot: entry.repositoryRoot,
+    ref,
+    path,
+    label: `${labelRef}:${path}`,
+  }
+}
+
+interface GitRefSessionInput {
+  idPrefix: string
+  leftRef: string | null
+  rightRef: string
+  leftLabelRef: string
+  rightLabelRef: string
+  diff: GitRawNumstatResult
+}
+
+function buildGitRefSessionData(
+  source: Extract<DiffSource, { kind: 'git' }>,
+  input: GitRefSessionInput,
+): ProviderSessionData {
+  const entries: DiffEntry[] = []
+  const entryData = new Map<string, ProviderEntryData>()
+
+  for (const item of input.diff.entries) {
+    const entry: DiffEntry = {
+      id: gitRefEntryId(input.idPrefix, item.path, item.oldPath),
+      path: item.path,
+      oldPath: item.oldPath,
+      displayPath: displayPath(item.path, item.oldPath, item.status),
+      status: item.status,
+      leftSize: null,
+      rightSize: null,
+      binary: input.diff.binaryPaths.has(item.path) ||
+        Boolean(item.oldPath && input.diff.binaryPaths.has(item.oldPath)),
+    }
+    entries.push(entry)
+    entryData.set(entry.id, {
+      kind: 'gitRef',
+      repoPath: source.repoPath,
+      repositoryRoot: source.repositoryRoot,
+      leftRef: input.leftRef,
+      rightRef: input.rightRef,
+      leftLabelRef: input.leftLabelRef,
+      rightLabelRef: input.rightLabelRef,
+      path: item.path,
+      oldPath: item.oldPath,
+      status: item.status,
+    })
+  }
+
+  return {
+    entries,
+    entryData,
+  }
+}
+
+function gitRefEntryId(prefix: string, path: string, oldPath: string | null) {
+  return `git:${prefix}:${encodeURIComponent(oldPath ?? '')}:${encodeURIComponent(path)}`
+}
+
+const SHORT_SHA_LENGTH = 7
+const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/i
+
+function shortSha(ref: string) {
+  return FULL_SHA_PATTERN.test(ref) ? ref.slice(0, SHORT_SHA_LENGTH) : ref
+}
+
+async function resolveCommitSha(repoPath: string, ref: string, errorMessage: string) {
+  const sha = await tryResolveCommitSha(repoPath, ref)
+  if (!sha) {
+    throw new Error(errorMessage)
+  }
+
+  return sha
+}
+
+async function tryResolveCommitSha(repoPath: string, ref: string) {
+  const trimmed = ref.trim()
+  // Refs are passed as positional git args; a leading '-' could otherwise be
+  // parsed as an option.
+  if (!trimmed || trimmed.startsWith('-')) {
+    return null
+  }
+
+  const result = await runGit(repoPath, [
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `${trimmed}^{commit}`,
+  ], GIT_OPTIONAL_HEAD_OPTIONS)
+
+  if (result.exitCode !== 0) {
+    return null
+  }
+
+  return result.stdout.trim() || null
+}
+
+async function resolveMergeBase(repoPath: string, baseSha: string, headSha: string) {
+  const result = await runGit(repoPath, [
+    'merge-base',
+    baseSha,
+    headSha,
+  ], GIT_OPTIONAL_HEAD_OPTIONS)
+
+  const mergeBase = result.stdout.trim()
+  if (result.exitCode !== 0 || !mergeBase) {
+    throw new Error('The selected refs do not share a merge base.')
+  }
+
+  return mergeBase
 }
 
 function leftPath(entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>) {

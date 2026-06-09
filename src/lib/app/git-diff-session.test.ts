@@ -6,7 +6,7 @@ import {
 import type { DiffEntry } from '../types'
 import {
   countGitEntriesByScope,
-  mapGitDiffEntry,
+  mapSessionDiffEntry,
   mapGitEntryStatus,
 } from './git-diff-session'
 
@@ -31,7 +31,7 @@ describe('git diff session mapping', () => {
       status: 'renamed',
     })
 
-    const mapped = mapGitDiffEntry(entry)
+    const mapped = mapSessionDiffEntry(entry)
 
     expect(mapped.relativePath).toBe('new-name.txt')
     expect(mapped.displayPath).toBe('old-name.txt -> new-name.txt')
@@ -46,7 +46,7 @@ describe('git diff session mapping', () => {
       status: 'modified',
     })
 
-    const mapped = mapGitDiffEntry(entry)
+    const mapped = mapSessionDiffEntry(entry)
 
     expect(mapped.diffEntryId).toBe('git:unstaged::tracked.txt')
     expect(mapped.diffEntryStatus).toBe('modified')
@@ -54,17 +54,17 @@ describe('git diff session mapping', () => {
   })
 
   it('maps added, deleted, and untracked file sides', () => {
-    expect(mapGitDiffEntry(diffEntry({ status: 'added' }))).toMatchObject({
+    expect(mapSessionDiffEntry(diffEntry({ status: 'added' }))).toMatchObject({
       status: 'rightOnly',
       leftPath: null,
       rightPath: 'tracked.txt',
     })
-    expect(mapGitDiffEntry(diffEntry({ status: 'deleted' }))).toMatchObject({
+    expect(mapSessionDiffEntry(diffEntry({ status: 'deleted' }))).toMatchObject({
       status: 'leftOnly',
       leftPath: 'tracked.txt',
       rightPath: null,
     })
-    expect(mapGitDiffEntry(diffEntry({ status: 'untracked' }))).toMatchObject({
+    expect(mapSessionDiffEntry(diffEntry({ status: 'untracked' }))).toMatchObject({
       status: 'rightOnly',
       leftPath: null,
       rightPath: 'tracked.txt',

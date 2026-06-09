@@ -282,10 +282,226 @@ describe('GitProvider working tree entries', () => {
   })
 })
 
+describe('GitProvider ref range and commit entries', () => {
+  afterEach(async () => {
+    await Promise.all(tempRepos.splice(0).map((path) =>
+      rm(path, { recursive: true, force: true }),
+    ))
+  })
+
+  it('diffs base against head for two-dot ranges', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'shared.txt', 'base\n')
+    await git(repoPath, ['checkout', '-b', 'feature/topic'])
+    await commitFile(repoPath, 'feature.txt', 'feature\n')
+    await commitFile(repoPath, 'shared.txt', 'feature change\n')
+
+    const provider = new GitProvider()
+    const sessionData = await provider.create(
+      refRangeSource(repoPath, 'main', 'feature/topic', 'twoDot'),
+      defaultOptions(),
+    )
+
+    const paths = sessionData.entries.map((entry) => entry.path).sort()
+    expect(paths).toEqual(['feature.txt', 'shared.txt'])
+    expect(sessionData.entries.find((entry) => entry.path === 'feature.txt')?.status).toBe('added')
+    expect(sessionData.entries.find((entry) => entry.path === 'shared.txt')?.status).toBe('modified')
+  })
+
+  it('ignores base-only changes for three-dot ranges', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'shared.txt', 'base\n')
+    await git(repoPath, ['checkout', '-b', 'feature/topic'])
+    await commitFile(repoPath, 'feature.txt', 'feature\n')
+    await git(repoPath, ['checkout', 'main'])
+    await commitFile(repoPath, 'base-only.txt', 'base only\n')
+
+    const provider = new GitProvider()
+    const threeDot = await provider.create(
+      refRangeSource(repoPath, 'main', 'feature/topic', 'threeDot'),
+      defaultOptions(),
+    )
+    const twoDot = await provider.create(
+      refRangeSource(repoPath, 'main', 'feature/topic', 'twoDot'),
+      defaultOptions(),
+    )
+
+    expect(threeDot.entries.map((entry) => entry.path)).toEqual(['feature.txt'])
+    expect(twoDot.entries.map((entry) => entry.path).sort()).toEqual([
+      'base-only.txt',
+      'feature.txt',
+    ])
+  })
+
+  it('opens ref range entries with base content left and head content right', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'shared.txt', 'base\n')
+    await git(repoPath, ['checkout', '-b', 'feature/topic'])
+    await commitFile(repoPath, 'shared.txt', 'feature change\n')
+
+    const provider = new GitProvider()
+    const source = refRangeSource(repoPath, 'main', 'feature/topic', 'twoDot')
+    const sessionData = await provider.create(source, defaultOptions())
+    const entry = sessionData.entries.find((item) => item.path === 'shared.txt')
+    if (!entry) {
+      throw new Error('Missing shared.txt range entry.')
+    }
+
+    const result = await provider.openEntry({
+      source,
+      options: defaultOptions(),
+      entryData: sessionData.entryData,
+    }, entry.id, defaultOptions())
+
+    expect(result.contentKind).toBe('text')
+    expect(result.leftLabel).toBe('main:shared.txt')
+    expect(result.rightLabel).toBe('feature/topic:shared.txt')
+    expect(result.text?.leftText).toBe('base\n')
+    expect(result.text?.rightText).toBe('feature change\n')
+  })
+
+  it('preserves renames in ref range diffs', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'old-name.txt', 'stable content\n')
+    await git(repoPath, ['checkout', '-b', 'feature/rename'])
+    await git(repoPath, ['mv', 'old-name.txt', 'new-name.txt'])
+    await git(repoPath, ['commit', '-m', 'Rename file'])
+
+    const provider = new GitProvider()
+    const source = refRangeSource(repoPath, 'main', 'feature/rename', 'threeDot')
+    const sessionData = await provider.create(source, defaultOptions())
+    const entry = sessionData.entries[0]
+
+    expect(entry?.status).toBe('renamed')
+    expect(entry?.oldPath).toBe('old-name.txt')
+    expect(entry?.path).toBe('new-name.txt')
+
+    const result = await provider.openEntry({
+      source,
+      options: defaultOptions(),
+      entryData: sessionData.entryData,
+    }, entry.id, defaultOptions())
+
+    expect(result.text?.leftText).toBe('stable content\n')
+    expect(result.text?.rightText).toBe('stable content\n')
+  })
+
+  it('rejects unresolvable refs with a clear error', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+
+    const provider = new GitProvider()
+
+    await expect(provider.create(
+      refRangeSource(repoPath, 'does-not-exist', 'main', 'twoDot'),
+      defaultOptions(),
+    )).rejects.toThrow("Base ref 'does-not-exist' could not be resolved.")
+    await expect(provider.create(
+      commitSource(repoPath, 'not-a-commit'),
+      defaultOptions(),
+    )).rejects.toThrow("Commit 'not-a-commit' could not be resolved.")
+  })
+
+  it('diffs a single commit against its parent', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'first\n')
+    await commitFile(repoPath, 'tracked.txt', 'second\n')
+
+    const provider = new GitProvider()
+    const source = commitSource(repoPath, 'HEAD')
+    const sessionData = await provider.create(source, defaultOptions())
+
+    expect(sessionData.entries.map((entry) => entry.path)).toEqual(['tracked.txt'])
+    expect(sessionData.entries[0]?.status).toBe('modified')
+
+    const result = await provider.openEntry({
+      source,
+      options: defaultOptions(),
+      entryData: sessionData.entryData,
+    }, sessionData.entries[0].id, defaultOptions())
+
+    expect(result.text?.leftText).toBe('first\n')
+    expect(result.text?.rightText).toBe('second\n')
+  })
+
+  it('treats a root commit as empty left against the commit', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'first\n')
+
+    const provider = new GitProvider()
+    const source = commitSource(repoPath, 'HEAD')
+    const sessionData = await provider.create(source, defaultOptions())
+
+    expect(sessionData.entries.map((entry) => entry.path)).toEqual(['tracked.txt'])
+    expect(sessionData.entries[0]?.status).toBe('added')
+
+    const result = await provider.openEntry({
+      source,
+      options: defaultOptions(),
+      entryData: sessionData.entryData,
+    }, sessionData.entries[0].id, defaultOptions())
+
+    expect(result.summary).toBe('Only the right file exists.')
+    expect(result.text?.leftExists).toBe(false)
+    expect(result.text?.rightText).toBe('first\n')
+  })
+
+  it('diffs a merge commit against its first parent', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'main.txt', 'main\n')
+    await git(repoPath, ['checkout', '-b', 'feature/merge'])
+    await commitFile(repoPath, 'feature.txt', 'feature\n')
+    await git(repoPath, ['checkout', 'main'])
+    await commitFile(repoPath, 'main.txt', 'main update\n')
+    await git(repoPath, ['merge', '--no-ff', '-m', 'Merge feature', 'feature/merge'])
+
+    const provider = new GitProvider()
+    const sessionData = await provider.create(
+      commitSource(repoPath, 'HEAD'),
+      defaultOptions(),
+    )
+
+    // First-parent diff shows only what the merge brought in from the branch.
+    expect(sessionData.entries.map((entry) => entry.path)).toEqual(['feature.txt'])
+    expect(sessionData.entries[0]?.status).toBe('added')
+  })
+})
+
+function refRangeSource(
+  repoPath: string,
+  baseRef: string,
+  headRef: string,
+  notation: 'twoDot' | 'threeDot',
+): DiffSource {
+  return {
+    kind: 'git',
+    repoPath,
+    repositoryRoot: repoPath,
+    selection: {
+      kind: 'refRange',
+      baseRef,
+      headRef,
+      notation,
+    },
+  }
+}
+
+function commitSource(repoPath: string, commitRef: string): DiffSource {
+  return {
+    kind: 'git',
+    repoPath,
+    repositoryRoot: repoPath,
+    selection: {
+      kind: 'commit',
+      commitRef,
+    },
+  }
+}
+
 async function createRepo() {
   const repoPath = await mkdtemp(join(tmpdir(), 'diffly-git-provider-'))
   tempRepos.push(repoPath)
-  await git(repoPath, ['init'])
+  await git(repoPath, ['init', '-b', 'main'])
   await git(repoPath, ['config', 'user.email', 'test@example.com'])
   await git(repoPath, ['config', 'user.name', 'Test User'])
   return repoPath

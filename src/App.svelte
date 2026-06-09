@@ -40,7 +40,7 @@
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
     countGitEntriesByScope,
-    mapGitDiffEntry,
+    mapSessionDiffEntry,
   } from './lib/app/git-diff-session'
   import {
     buildDirectoryComparePairs,
@@ -1932,10 +1932,6 @@
     }
 
     const options = getPendingCompareOptions()
-    if (source.selection.kind !== 'workingTree') {
-      errorMessage = 'Only Git working tree diff sessions are implemented yet.'
-      return
-    }
 
     loading = true
     errorMessage = ''
@@ -1946,17 +1942,25 @@
       })
       .catch(() => undefined)
 
-    // Preserve the active tab across Refresh; seed from the picker on a fresh
-    // compare entered from setup.
+    // Scope tabs only exist for working-tree sources. Preserve the active tab
+    // across Refresh; seed from the picker on a fresh compare entered from setup.
     const isRefresh = screen === 'compare' && activeDiffSource?.kind === 'git'
-    const targetScope = isRefresh ? gitScope : source.selection.initialScope
+    const isWorkingTree = source.selection.kind === 'workingTree'
+    const targetScope: GitWorkingTreeScope | null =
+      source.selection.kind === 'workingTree'
+        ? isRefresh
+          ? gitScope
+          : source.selection.initialScope
+        : null
 
     try {
       const session = await createDiffSession(source, options)
       const entries = session.entries
-      const mappedEntries = entries
-        .filter((entry) => entry.scope === targetScope)
-        .map(mapGitDiffEntry)
+      const mappedEntries = (
+        targetScope === null
+          ? entries
+          : entries.filter((entry) => entry.scope === targetScope)
+      ).map(mapSessionDiffEntry)
       const previousSessionId = activeDiffSessionId
 
       compareRevision += 1
@@ -1969,8 +1973,8 @@
       leftPath = source.repositoryRoot
       rightPath = source.repositoryRoot
       screen = 'compare'
-      gitScopeEntries = entries
-      gitScope = targetScope
+      gitScopeEntries = isWorkingTree ? entries : []
+      gitScope = targetScope ?? 'all'
       directoryEntries = mappedEntries
       directoryEntriesRevision += 1
       syncFilteredDirectoryState(mappedEntries)
@@ -1998,7 +2002,7 @@
     } catch (error) {
       errorMessage = error instanceof Error
         ? error.message
-        : 'Diff sessions for git sources are not implemented yet.'
+        : 'Git compare failed.'
     } finally {
       loading = false
     }
@@ -2015,7 +2019,7 @@
     gitScope = scope
     const mapped = gitScopeEntries
       .filter((entry) => entry.scope === scope)
-      .map(mapGitDiffEntry)
+      .map(mapSessionDiffEntry)
     directoryEntries = mapped
     // Bump the compare generation so DirectoryDiffList drops its per-path diff
     // cache and reloads with the new scope's diffEntryId. Staged and unstaged
@@ -2466,7 +2470,11 @@
     : { kind: 'localPaths' }
   $: directoryEmptyMessage =
     activeDiffSource?.kind === 'git'
-      ? 'No changes in working tree.'
+      ? activeDiffSource.selection.kind === 'workingTree'
+        ? 'No changes in working tree.'
+        : activeDiffSource.selection.kind === 'refRange'
+          ? 'No changes between the selected refs.'
+          : 'No changes in this commit.'
       : activeDiffSource?.kind === 'githubPullRequest'
         ? 'No changed files in this pull request.'
         : 'No file changes.'
