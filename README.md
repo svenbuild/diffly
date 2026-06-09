@@ -4,9 +4,9 @@ Diffly is a local desktop diff tool for comparing files and folders. It is built
 
 ## Download
 
-Install the latest Windows build from [GitHub Releases](https://github.com/svenbuild/diffly/releases/latest).
+Install the latest Windows, macOS, or Linux build from [GitHub Releases](https://github.com/svenbuild/diffly/releases/latest).
 
-Current release: `v0.2.2`
+Current release: `v0.2.3`
 
 ## Features
 
@@ -37,6 +37,14 @@ Build the Windows installer and portable app:
 
 ```bash
 npm run electron:package
+```
+
+Build platform-specific release packages on the matching OS:
+
+```bash
+npm run electron:package:win
+npm run electron:package:mac
+npm run electron:package:linux
 ```
 
 ## Links

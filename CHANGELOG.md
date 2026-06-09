@@ -1,5 +1,22 @@
 # Changelog
 
+## Diffly v0.2.3
+
+### What's Changed
+
+- Added Git working-tree, ref-range, and single-commit compare sessions.
+- Added GitHub pull request and compare URL support, including `.diff`/`.patch`, `..`, `...`, fork refs, and branch names with slashes.
+- Loaded public GitHub diffs through raw `.diff` URLs to avoid the low unauthenticated REST API rate limit and per-file REST content requests.
+- Added source-neutral diff sessions shared by local, Git, and GitHub compares.
+- Added Git and GitHub setup flows with validation, recent sources, restored setup mode, and URL prefill.
+- Rendered Git and GitHub sessions in the continuous directory diff viewer with source-aware headers, status badges, stale-load guards, and throttled detail loading.
+- Hardened setup, recents, and diff-session IPC payload validation.
+- Added GitHub Actions release builds for Windows, macOS, and Linux.
+- Added Windows NSIS and portable, macOS DMG and ZIP, and Linux AppImage and DEB release artifacts.
+- Added platform-specific package scripts for Windows, macOS, and Linux builds.
+
+**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.2...v0.2.3
+
 ## Diffly v0.2.2
 
 ### What's Changed

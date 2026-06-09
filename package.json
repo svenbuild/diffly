@@ -1,7 +1,7 @@
 {
   "name": "diffly",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Desktop file and directory diff tool built with Svelte and Electron.",
   "license": "GPL-3.0-only",
   "type": "module",
@@ -17,10 +17,13 @@
     "test:unit": "vitest run",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
-    "electron:package": "npm run build && electron-builder --win nsis portable --config.npmRebuild=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
+    "electron:package": "npm run electron:package:win",
+    "electron:package:win": "npm run build && electron-builder --win nsis portable --config.npmRebuild=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
+    "electron:package:mac": "npm run build && electron-builder --mac dmg zip --config.npmRebuild=false",
+    "electron:package:linux": "npm run build && electron-builder --linux AppImage deb --config.npmRebuild=false",
     "electron:portable": "npm run build && electron-builder --win portable --config.npmRebuild=false --config.win.compression=store && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
     "electron:portable:debug": "electron-vite build --mode debug && electron-builder --win portable --config.npmRebuild=false --config.win.compression=store && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-portable.ps1",
-    "electron:package:all": "npm run build && electron-builder"
+    "electron:package:all": "npm run build && electron-builder --config.npmRebuild=false"
   },
   "main": "out/main/main.cjs",
   "dependencies": {
@@ -73,10 +76,22 @@
       "uninstallerIcon": "build/icons/icon.ico"
     },
     "mac": {
-      "icon": "build/icons/icon.icns"
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icons/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": null
     },
     "linux": {
-      "icon": "build/icons/icon.png"
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icons/icon.png",
+      "category": "Development",
+      "maintainer": "svenbuild"
     },
     "publish": {
       "provider": "github",

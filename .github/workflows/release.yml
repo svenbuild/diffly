@@ -15,11 +15,27 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    name: Build ${{ matrix.name }} release artifacts
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            build-command: npx electron-builder --win nsis portable --publish always
+          - name: macOS
+            os: macos-latest
+            build-command: npx electron-builder --mac dmg zip --publish always
+          - name: Linux
+            os: ubuntu-latest
+            build-command: npx electron-builder --linux AppImage deb --publish always
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,7 +52,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Build and publish Windows release artifacts
+      - name: Build and publish release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis portable --publish always
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: ${{ matrix.build-command }}
