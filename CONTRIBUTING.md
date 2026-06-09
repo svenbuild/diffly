@@ -27,4 +27,12 @@ npm run build
 npm run electron:package
 ```
 
-Publish releases from `main` with a `v*` tag. The GitHub release workflow builds and publishes the Windows installer and portable artifact.
+Platform-specific package commands must be run on the matching OS:
+
+```bash
+npm run electron:package:win
+npm run electron:package:mac
+npm run electron:package:linux
+```
+
+Publish releases from `main` with a `v*` tag. The GitHub release workflow builds and publishes Windows NSIS and portable artifacts, macOS DMG and ZIP artifacts, and Linux AppImage and DEB artifacts.

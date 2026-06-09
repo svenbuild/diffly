@@ -14,6 +14,7 @@
 - Added GitHub Actions release builds for Windows, macOS, and Linux.
 - Added Windows NSIS and portable, macOS DMG and ZIP, and Linux AppImage and DEB release artifacts.
 - Added platform-specific package scripts for Windows, macOS, and Linux builds.
+- Documented supported desktop systems and release artifact types.
 
 **Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.2...v0.2.3
 
