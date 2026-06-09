@@ -178,7 +178,9 @@
   let settingsReturnScreen: Exclude<Screen, 'settings'> = 'setup'
   let activeSettingsSection: SettingsSection = 'appearance'
   let mode: CompareMode = 'directory'
-  let setupMode: SetupMode = 'local'
+  // Git is the default setup mode for fresh sessions; persisted sessions
+  // restore their saved mode (or derive it from the saved source).
+  let setupMode: SetupMode = 'git'
   // Latest Git source emitted by GitSetupPanel, or null when its setup is
   // incomplete. Transient setup-draft state — intentionally not persisted.
   let gitSetupSource: GitDiffSource | null = null
@@ -188,10 +190,9 @@
   let githubSetupSource: GithubPullRequestSource | null = null
   // Metadata for the parsed PR (title etc.), used when saving recents.
   let githubSetupMetadata: GithubPullRequestMetadata | null = null
-  // Prefill for the GitHub URL input, restored from the persisted session.
-  let initialGithubUrl = initialSession?.source?.kind === 'githubPullRequest'
-    ? initialSession.source.url
-    : ''
+  // Prefill for the GitHub URL input, restored from the persisted session in
+  // applyPersistedSession.
+  let initialGithubUrl = ''
   let activeDiffSource: DiffSource | null = null
   let activeDiffSessionId: string | null = null
   // How the directory diff list loads each entry: local paths for local compares,
@@ -1397,6 +1398,20 @@
       session.setupMode === 'github'
     ) {
       setupMode = session.setupMode
+    } else if (session.source?.kind === 'local') {
+      // Sessions written before setupMode existed only carry a source.
+      setupMode = 'local'
+    } else if (session.source?.kind === 'git') {
+      setupMode = 'git'
+    } else if (session.source?.kind === 'githubPullRequest') {
+      setupMode = 'github'
+    }
+
+    if (
+      session.source?.kind === 'githubPullRequest' &&
+      typeof session.source.url === 'string'
+    ) {
+      initialGithubUrl = session.source.url
     }
 
     gitSetup = session.gitSetup ?? {}
@@ -2467,6 +2482,7 @@
       rightPane: rightExplorer,
       setupMode,
       gitSetup,
+      activeSource: activeDiffSource,
     })
   }
 
@@ -2593,6 +2609,7 @@
   $: if (persistenceReady) {
     mode
     setupMode
+    activeDiffSource
     viewMode
     appearanceSettings
     viewerSettings

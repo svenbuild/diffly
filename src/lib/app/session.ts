@@ -2,6 +2,7 @@ import type {
   CompareTreeSettings,
   CompareViewerSettings,
   CompareMode,
+  DiffSource,
   PersistedExplorerPane,
   PersistedGitSetup,
   PersistedSession,
@@ -28,6 +29,9 @@ export interface BuildPersistedSessionArgs {
   leftPane: ExplorerPaneState
   rightPane: ExplorerPaneState
   gitSetup: PersistedGitSetup
+  // The source of the last started compare (git, GitHub), if any. Local
+  // compares fall back to the explorer pane selection below.
+  activeSource: DiffSource | null
 }
 
 export function buildPersistedPane(pane: ExplorerPaneState): PersistedExplorerPane {
@@ -44,7 +48,7 @@ export function buildPersistedSession(args: BuildPersistedSessionArgs): Persiste
   return {
     mode: args.mode,
     setupMode: args.setupMode,
-    source: {
+    source: args.activeSource ?? {
       kind: 'local',
       leftPath: args.leftPane.selectedTargetPath,
       rightPath: args.rightPane.selectedTargetPath,
