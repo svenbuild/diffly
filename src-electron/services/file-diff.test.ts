@@ -17,10 +17,12 @@ import {
 } from 'vitest'
 import {
   buildFileDiffFromGit,
+  buildFileDiffFromGithub,
   buildFileDiffFromPaths,
   buildFileDiffFromSnapshots,
   clearFileDiffCache,
   type DiffSnapshot,
+  type GithubSnapshotSource,
 } from './file-diff'
 
 const execFileAsync = promisify(execFile)
@@ -338,6 +340,107 @@ describe('file diff snapshots', () => {
     expect(result.summary).toBe('Neither file exists.')
     expect(result.unsupported?.reason).toBe('missing')
   })
+
+  it('diffs provided GitHub base and head blob bytes without local files', async () => {
+    const result = await buildFileDiffFromGithub(
+      githubSnapshot({
+        ref: 'base-sha',
+        sha: 'base-blob-sha',
+        path: 'src/app.ts',
+        label: 'base:src/app.ts',
+        bytes: new TextEncoder().encode('base\n'),
+      }),
+      githubSnapshot({
+        ref: 'head-sha',
+        sha: 'head-blob-sha',
+        path: 'src/app.ts',
+        label: 'head:src/app.ts',
+        bytes: new TextEncoder().encode('head\n'),
+      }),
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.text?.leftText).toBe('base\n')
+    expect(result.text?.rightText).toBe('head\n')
+    expect(result.text?.leftCacheKey).toBe('github\u0000svenbuild/diffly@base-sha\u0000src/app.ts\u0000base-blob-sha')
+    expect(result.text?.rightCacheKey).toBe('github\u0000svenbuild/diffly@head-sha\u0000src/app.ts\u0000head-blob-sha')
+  })
+
+  it('diffs a missing GitHub base snapshot against provided head text', async () => {
+    const result = await buildFileDiffFromGithub(
+      githubSnapshot({
+        ref: 'base-sha',
+        sha: null,
+        path: 'new.txt',
+        label: 'base:new.txt',
+        exists: false,
+      }),
+      githubSnapshot({
+        ref: 'head-sha',
+        sha: 'head-blob-sha',
+        path: 'new.txt',
+        label: 'head:new.txt',
+        text: 'new\n',
+      }),
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.summary).toBe('Only the right file exists.')
+    expect(result.text?.leftExists).toBe(false)
+    expect(result.text?.rightText).toBe('new\n')
+    expect(result.text?.rightCacheKey).toBe('github\u0000svenbuild/diffly@head-sha\u0000new.txt\u0000head-blob-sha')
+  })
+
+  it('skips GitHub text cache keys when an existing blob has no SHA', async () => {
+    const result = await buildFileDiffFromGithub(
+      githubSnapshot({
+        ref: 'base-sha',
+        sha: null,
+        path: 'src/app.ts',
+        label: 'base:src/app.ts',
+        text: 'base\n',
+      }),
+      githubSnapshot({
+        ref: 'head-sha',
+        sha: 'head-blob-sha',
+        path: 'src/app.ts',
+        label: 'head:src/app.ts',
+        text: 'head\n',
+      }),
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.text?.leftCacheKey).toBeNull()
+    expect(result.text?.rightCacheKey).toBe('github\u0000svenbuild/diffly@head-sha\u0000src/app.ts\u0000head-blob-sha')
+  })
+
+  it('maps existing GitHub snapshots without content to read errors', async () => {
+    const result = await buildFileDiffFromGithub(
+      githubSnapshot({
+        ref: 'base-sha',
+        sha: 'base-blob-sha',
+        path: 'broken.txt',
+        label: 'base:broken.txt',
+        bytes: null,
+        text: null,
+      }),
+      githubSnapshot({
+        ref: 'head-sha',
+        sha: 'head-blob-sha',
+        path: 'broken.txt',
+        label: 'head:broken.txt',
+        text: 'head\n',
+      }),
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('unsupported')
+    expect(result.unsupported?.reason).toBe('readError')
+    expect(result.unsupported?.leftPath).toBe('github:svenbuild/diffly@base-sha:broken.txt')
+  })
 })
 
 function defaultOptions() {
@@ -435,5 +538,18 @@ function nonTextSnapshot(
     lineEnding: null,
     hasTrailingNewline: null,
     error: kind === 'readError' ? 'failed' : null,
+  }
+}
+
+function githubSnapshot(
+  input: Partial<GithubSnapshotSource> & Pick<GithubSnapshotSource, 'ref' | 'path' | 'label'>,
+): GithubSnapshotSource {
+  return {
+    owner: 'svenbuild',
+    repo: 'diffly',
+    sha: null,
+    exists: true,
+    bytes: null,
+    ...input,
   }
 }

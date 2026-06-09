@@ -69,6 +69,18 @@ export type GitSnapshotSource =
       label: string
     }
 
+export interface GithubSnapshotSource {
+  owner: string
+  repo: string
+  ref: string
+  path: string
+  sha: string | null
+  label: string
+  exists: boolean
+  bytes: Uint8Array | null
+  text?: string | null
+}
+
 export interface FileIdentity {
   size: number
   modifiedMs: number | null
@@ -135,6 +147,18 @@ export async function buildFileDiffFromGit(
   ])
 
   return buildFileDiffFromSnapshots(leftSnapshot, rightSnapshot, options)
+}
+
+export async function buildFileDiffFromGithub(
+  left: GithubSnapshotSource,
+  right: GithubSnapshotSource,
+  options: CompareOptions,
+): Promise<FileDiffResult> {
+  return buildFileDiffFromSnapshots(
+    loadGithubSnapshot(left),
+    loadGithubSnapshot(right),
+    options,
+  )
 }
 
 export async function buildFileDiffFromSnapshots(
@@ -526,6 +550,43 @@ async function loadGitWorkingTreeSnapshot(
   }
 }
 
+function loadGithubSnapshot(source: GithubSnapshotSource): DiffSnapshot {
+  const logicalPath = githubLogicalPath(source)
+  if (!source.exists) {
+    return buildMissingSnapshot(
+      source.label,
+      logicalPath,
+      buildGithubSnapshotCacheKey(source, 'missing'),
+    )
+  }
+
+  const cacheKey = source.sha
+    ? buildGithubSnapshotCacheKey(source, source.sha)
+    : null
+
+  if (source.bytes) {
+    return buildSnapshotFromBytes(source.label, logicalPath, cacheKey, source.bytes)
+  }
+
+  if (source.text !== undefined && source.text !== null) {
+    return buildSnapshotFromBytes(
+      source.label,
+      logicalPath,
+      cacheKey,
+      new TextEncoder().encode(source.text),
+    )
+  }
+
+  return buildNonTextSnapshot(
+    'readError',
+    source.label,
+    logicalPath,
+    null,
+    null,
+    'GitHub snapshot content was not provided.',
+  )
+}
+
 async function readPartial(pathValue: string, length: number): Promise<Uint8Array> {
   if (length <= 0) {
     return new Uint8Array(0)
@@ -564,6 +625,19 @@ function buildGitSnapshotCacheKey(ref: 'HEAD' | 'INDEX' | 'WORKTREE' | 'EMPTY', 
 
 function gitLogicalPath(pathValue: string) {
   return `git:${pathValue}`
+}
+
+function buildGithubSnapshotCacheKey(source: GithubSnapshotSource, identity: string) {
+  return [
+    'github',
+    `${source.owner}/${source.repo}@${source.ref}`,
+    source.path,
+    identity,
+  ].join('\u0000')
+}
+
+function githubLogicalPath(source: GithubSnapshotSource) {
+  return `github:${source.owner}/${source.repo}@${source.ref}:${source.path}`
 }
 
 function buildMissingSnapshot(
