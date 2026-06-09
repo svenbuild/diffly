@@ -59,7 +59,8 @@ A10 SourceHeader
 A11 Git Scope Tabs
 A12 Status Badges
 A13 Source Buttons
-A14 Empty/Error States
+A14 Session-backed Directory Diff View
+A15 Empty/Error States
 A7  Branch/Ref UI
 B13 Branch/Ref Backend
 A8  Commit UI
@@ -1208,9 +1209,9 @@ Keine falschen Aktionen anzeigen.
 | Source           |     Swap | Scope Tabs |        Open external |
 | ---------------- | -------: | ---------: | -------------------: |
 | Local            |       ja |       nein |                 nein |
-| Git Working Tree |     nein |         ja | optional `Open repo` |
-| Git Branch/Ref   | optional |       nein | optional `Open repo` |
-| Git Commit       |     nein |       nein | optional `Open repo` |
+| Git Working Tree |     nein |         ja |                 nein |
+| Git Branch/Ref   |     nein |       nein |                 nein |
+| Git Commit       |     nein |       nein |                 nein |
 | GitHub PR        |     nein |       nein |         ja `Open PR` |
 
 ### Akzeptanz
@@ -1221,7 +1222,74 @@ Keine falschen Aktionen anzeigen.
 
 ---
 
-## A14 — Empty/Error/Loading States pro Modus
+## A14 — Session-backed Directory Diff View
+
+### Ziel
+
+Git- und GitHub-Diffs sollen in der Compare View wie lokale Directory-Diffs
+funktionieren: alle Dateien der aktiven Liste werden in einer fortlaufenden,
+virtualisierten Diff-Seite gerendert. Klicks im Tree springen zur passenden
+Datei im Viewer, statt den Viewer auf genau eine Datei umzuschalten.
+
+Aktuell lädt Git nach B12 zwar echte File Details über `openDiffEntry(sessionId,
+entry.id)`, aber die UI benutzt diesen Pfad wie einen Einzeldatei-Viewer. A14
+zieht daraus eine allgemeine session-basierte Directory-Diff-Ansicht, die später
+auch GitHub PRs nutzt.
+
+### Verhalten
+
+* Local bleibt unverändert und nutzt weiter den bestehenden pfadbasierten
+  Directory-Diff-Flow.
+* Git Working Tree nutzt `activeDiffSessionId` und `diffEntryId`, um Details
+  über `openDiffEntry(...)` zu laden.
+* GitHub PR nutzt denselben session-basierten Viewer, sobald B17 Entries und
+  File Details liefert.
+* Tree-Klicks setzen die Auswahl und scrollen zur passenden Datei im
+  fortlaufenden Diff.
+* Scope-Wechsel bei Git baut die sichtbare Liste neu auf und lädt Details für
+  die neue Scope-Liste, ohne auf `openCompareItem` zurückzufallen.
+* Eine Datei, die in mehreren Git-Scopes existiert, benutzt weiterhin die
+  scope-spezifische `diffEntryId`, damit `staged`, `unstaged` und `all` korrekt
+  unterschiedliche Inhalte öffnen.
+* Binary, Image, Too-large und Unsupported bleiben normale
+  `FileDiffResult`-States im bestehenden Viewer.
+
+### Technische Richtung
+
+* Die bestehende `DirectoryDiffList`/Compare-Viewer-Strecke um einen
+  Detail-Loader erweitern:
+
+```ts
+type DirectoryDetailLoader =
+  | { kind: 'localPaths'; leftBase: string; rightBase: string }
+  | { kind: 'diffSession'; sessionId: string }
+```
+
+* Für `localPaths` bleibt `openCompareItem(leftBase, rightBase, relativePath,
+  options)` der Loader.
+* Für `diffSession` wird `openDiffEntry(sessionId, entry.diffEntryId, options)`
+  der Loader.
+* `DirectoryEntryResult.diffEntryId` ist für session-basierte Einträge Pflicht;
+  fehlt sie, wird der Eintrag sichtbar als Unsupported/Error behandelt.
+* Background Preload und Cache dürfen in session-basiertem Modus keine lokalen
+  Pfade ableiten.
+* Die Scroll-/Jump-Logik soll sich am bestehenden lokalen Directory-Viewer
+  orientieren und nicht pro Source neu implementiert werden.
+
+### Akzeptanz
+
+* Git Working Tree zeigt im aktiven Scope alle Dateien auf einer Seite.
+* Klick auf eine Datei im Tree springt zur passenden Diff-Sektion.
+* Wechsel zwischen `All`, `Staged`, `Unstaged`, `Untracked` aktualisiert Liste,
+  Counts und fortlaufenden Viewer.
+* Eine staged+unstaged Datei zeigt je nach aktivem Scope den richtigen Inhalt.
+* Local Directory Compare sieht gleich aus und verhält sich gleich wie vorher.
+* GitHub PRs können nach B17 ohne neuen Viewer dieselbe fortlaufende Ansicht
+  verwenden.
+
+---
+
+## A15 — Empty/Error/Loading States pro Modus
 
 ### Ziel
 
@@ -1630,7 +1698,9 @@ src/lib/setup/RecentSourceList.svelte
 
 ### Ziel
 
-GitHub PR in normalen DiffSession-Flow einhängen.
+GitHub PR in normalen DiffSession-Flow einhängen. Die Compare View soll danach
+denselben session-basierten Directory-Diff-Viewer wie Git nutzen: alle PR-Dateien
+auf einer fortlaufenden Seite, Tree-Klick springt zur Datei.
 
 ### Entry Mapping
 
@@ -1661,6 +1731,16 @@ left:  baseSha:path oder previousFilename
 right: headSha:path
 ```
 
+### UI-Integration
+
+* Provider liefert `DiffEntry[]` mit stabilen `id`s.
+* Frontend mappt GitHub Entries auf `DirectoryEntryResult` mit `diffEntryId`,
+  `diffEntryStatus` und bei Renames `displayPath`.
+* File Details werden über `openDiffEntry(sessionId, diffEntryId, options)`
+  geladen.
+* Keine separate GitHub-Einzeldatei-Ansicht bauen; GitHub hängt sich an A14
+  `diffSession`-Loader und die bestehende fortlaufende Directory-Diff-Ansicht.
+
 ### Akzeptanz
 
 * Modified file rendert.
@@ -1668,6 +1748,7 @@ right: headSha:path
 * Deleted file rendert.
 * Renamed file rendert mit altem und neuem Pfad.
 * Binary/too large zeigt Unsupported State.
+* Tree-Klick springt zur Datei im fortlaufenden PR-Diff.
 
 ---
 
@@ -1832,7 +1913,7 @@ A1, A2, A3,
 B6, B7, B8,
 A4, A5, A6,
 B10, B11, B5, B12,
-A10, A11, A12, A13, A14
+A10, A11, A12, A13, A14, A15
 ```
 
 GitHub und Branch/Commit kannst du danach sauber ergänzen, ohne das Fundament wieder umzubauen.
