@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process'
 import {
+  mkdir,
   mkdtemp,
   rm,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import {
   afterEach,
@@ -203,6 +204,38 @@ describe('file diff snapshots', () => {
     expect(result.text?.rightCacheKey).toContain('git\u0000INDEX\u0000tracked.txt\u0000')
   })
 
+  it('diffs git blobs for paths with spaces and unicode characters', async () => {
+    const repoPath = await createRepo()
+    const path = 'path with spaces/überblick.txt'
+    await commitFile(repoPath, path, 'base\n')
+    await writeFile(join(repoPath, ...path.split('/')), 'staged\n')
+    await git(repoPath, ['add', path])
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'head',
+        repoPath,
+        repositoryRoot: repoPath,
+        path,
+        label: `HEAD:${path}`,
+      },
+      {
+        kind: 'index',
+        repoPath,
+        repositoryRoot: repoPath,
+        path,
+        label: `:${path}`,
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.text?.leftText).toBe('base\n')
+    expect(result.text?.rightText).toBe('staged\n')
+    expect(result.text?.leftCacheKey).toContain(`git\u0000HEAD\u0000${path}\u0000`)
+    expect(result.text?.rightCacheKey).toContain(`git\u0000INDEX\u0000${path}\u0000`)
+  })
+
   it('diffs a git working tree snapshot with a SHA based cache key', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'tracked.txt', 'base\n')
@@ -329,7 +362,9 @@ async function createRepo() {
 }
 
 async function commitFile(repoPath: string, relativePath: string, content: string) {
-  await writeFile(join(repoPath, relativePath), content)
+  const absolutePath = join(repoPath, ...relativePath.split('/'))
+  await mkdir(dirname(absolutePath), { recursive: true })
+  await writeFile(absolutePath, content)
   await git(repoPath, ['add', relativePath])
   await git(repoPath, ['commit', '-m', `Commit ${relativePath}`])
 }
