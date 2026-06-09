@@ -39,7 +39,10 @@
     createCompareSidebarResizeController,
   } from './lib/app/compare-sidebar-resize'
   import { createDiffCacheController } from './lib/app/diff-cache'
-  import { mapGitDiffEntry } from './lib/app/git-diff-session'
+  import {
+    countGitEntriesByScope,
+    mapGitDiffEntry,
+  } from './lib/app/git-diff-session'
   import {
     buildDirectoryComparePairs,
     findDirectoryComparePairForPath as findDirectoryComparePairInList,
@@ -110,6 +113,7 @@
     CompareOptions,
     CompareTreeSettings,
     CompareViewerSettings,
+    DiffEntry,
     DiffStatsSnapshot,
     DiffSource,
     DirectoryEntryResult,
@@ -117,6 +121,7 @@
     ExplorerEntry,
     FileDiffResult,
     GitDiffSource,
+    GitWorkingTreeScope,
     PersistedExplorerPane,
     PersistedSession,
     SetupMode,
@@ -213,6 +218,11 @@
   let selectedRelativePath = ''
   let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
+  // Git working-tree scope tabs (A11). The active session stores entries for
+  // every scope at once, so we keep the full list and filter client-side per tab.
+  let gitScope: GitWorkingTreeScope = 'all'
+  let gitScopeEntries: DiffEntry[] = []
+  $: gitScopeCounts = countGitEntriesByScope(gitScopeEntries)
   let diffStats: DiffStatsSnapshot = {
     files: 0,
     additions: 0,
@@ -1461,6 +1471,8 @@
     const previousSessionId = activeDiffSessionId
     activeDiffSource = null
     activeDiffSessionId = null
+    gitScopeEntries = []
+    gitScope = 'all'
     disposeDiffSessionQuietly(previousSessionId)
     activeDetailRequestId += 1
     compareRevision += 1
@@ -1922,12 +1934,18 @@
       // Persisting recents is best-effort; ignore failures here.
     }
 
+    // Preserve the active tab across Refresh; seed from the picker on a fresh
+    // compare entered from setup.
+    const isRefresh = screen === 'compare' && activeDiffSource?.kind === 'git'
+    const targetScope = isRefresh ? gitScope : source.selection.initialScope
+
     try {
       const session = await createDiffSession(source, options)
-      const entries = await listDiffEntries(session.sessionId, {
-        scope: source.selection.initialScope,
-      })
-      const mappedEntries = entries.map(mapGitDiffEntry)
+      // Fetch every scope once; the tabs filter this list client-side.
+      const entries = await listDiffEntries(session.sessionId)
+      const mappedEntries = entries
+        .filter((entry) => entry.scope === targetScope)
+        .map(mapGitDiffEntry)
       const previousSessionId = activeDiffSessionId
 
       compareRevision += 1
@@ -1940,6 +1958,8 @@
       leftPath = source.repositoryRoot
       rightPath = source.repositoryRoot
       screen = 'compare'
+      gitScopeEntries = entries
+      gitScope = targetScope
       directoryEntries = mappedEntries
       directoryEntriesRevision += 1
       syncFilteredDirectoryState(mappedEntries)
@@ -1971,6 +1991,38 @@
     } finally {
       loading = false
     }
+  }
+
+  // Switch the active git working-tree scope tab. Re-filters the already-loaded
+  // entries client-side and reloads the active file diff for the new scope.
+  function applyGitScope(scope: GitWorkingTreeScope) {
+    if (scope === gitScope || !activeDiffSessionId) {
+      return
+    }
+
+    const previousPath = selectedRelativePath
+    gitScope = scope
+    const mapped = gitScopeEntries
+      .filter((entry) => entry.scope === scope)
+      .map(mapGitDiffEntry)
+    directoryEntries = mapped
+    directoryEntriesRevision += 1
+    syncFilteredDirectoryState(mapped)
+
+    const target =
+      mapped.find((entry) => entry.relativePath === previousPath) ??
+      defaultDirectoryEntry(filteredDirectoryEntries)
+    if (target) {
+      // The entry id encodes the scope, so this reloads the correct diff.
+      void selectEntry(target, compareRevision)
+    } else {
+      // Empty scope: invalidate any in-flight detail request before clearing so
+      // a slow prior openDiffEntry can't resurrect activeDiff afterwards.
+      activeDetailRequestId += 1
+      selectedRelativePath = ''
+      activeDiff = null
+    }
+    pulseCompareSurface()
   }
 
   async function runCompare() {
@@ -2015,6 +2067,8 @@
     const previousSessionId = activeDiffSessionId
     activeDiffSource = null
     activeDiffSessionId = null
+    gitScopeEntries = []
+    gitScope = 'all'
     disposeDiffSessionQuietly(previousSessionId)
 
     const nextLeftPath = leftSelected[0]
@@ -2647,6 +2701,9 @@
     {resetCompareSidebarWidth}
     {startCompareSidebarResize}
     {activeDiff}
+    {gitScope}
+    {gitScopeCounts}
+    setGitScope={applyGitScope}
     sessionEntryMode={activeDiffSessionId !== null}
     {directoryScrollTargetRevision}
     {viewerSettings}

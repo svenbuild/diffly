@@ -4,11 +4,13 @@
   let {
     context = '',
     status,
+    leading,
     middle,
     actions,
   }: {
     context?: string
     status?: Snippet
+    leading?: Snippet
     middle?: Snippet
     actions?: Snippet
   } = $props()
@@ -22,6 +24,11 @@
         <span>{context}</span>
       </div>
     </div>
+    {#if leading}
+      <div class="app-bar-leading">
+        {@render leading()}
+      </div>
+    {/if}
   </div>
 
   <div class="app-bar-context">

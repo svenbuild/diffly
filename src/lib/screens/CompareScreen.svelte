@@ -1,6 +1,7 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
+  import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import SourceHeader from '../compare/SourceHeader.svelte'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -12,6 +13,7 @@
     DiffStatsSnapshot,
     DirectoryEntryResult,
     FileDiffResult,
+    GitWorkingTreeScope,
     SystemMonitorSnapshot,
     ViewMode,
   } from '../types'
@@ -55,6 +57,14 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
+  export let gitScope: GitWorkingTreeScope = 'all'
+  export let gitScopeCounts: Record<GitWorkingTreeScope, number> = {
+    all: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+  }
+  export let setGitScope: (scope: GitWorkingTreeScope) => void = () => {}
   export let resetCompareSidebarWidth: () => void
   export let startCompareSidebarResize: (event: PointerEvent) => void
   export let activeDiff: FileDiffResult | null = null
@@ -76,6 +86,11 @@
   }
 
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
+
+  $: showGitScopeTabs =
+    mode === 'directory' &&
+    activeDiffSource?.kind === 'git' &&
+    activeDiffSource.selection.kind === 'workingTree'
 
   function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
     activeSidebarPanel = activeSidebarPanel === panel ? null : panel
@@ -131,6 +146,17 @@
         status={updateIndicatorState.status}
         onOpen={openUpdateSettings}
       />
+    {/snippet}
+
+    {#snippet leading()}
+      {#if showGitScopeTabs}
+        <GitScopeTabs
+          scope={gitScope}
+          counts={gitScopeCounts}
+          onSelect={setGitScope}
+          disabled={loading}
+        />
+      {/if}
     {/snippet}
 
     {#snippet middle()}

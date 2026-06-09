@@ -2,7 +2,29 @@ import type {
   DiffEntry,
   DirectoryEntryResult,
   EntryStatus,
+  GitWorkingTreeScope,
 } from '../types'
+
+export const EMPTY_GIT_SCOPE_COUNTS = {
+  all: 0,
+  staged: 0,
+  unstaged: 0,
+  untracked: 0,
+} satisfies Record<GitWorkingTreeScope, number>
+
+// Count loaded working-tree entries per scope for the Compare View scope tabs.
+// Always returns all four scope keys so callers never see partial objects.
+export function countGitEntriesByScope(
+  entries: DiffEntry[],
+): Record<GitWorkingTreeScope, number> {
+  const counts = { ...EMPTY_GIT_SCOPE_COUNTS }
+  for (const entry of entries) {
+    if (entry.scope) {
+      counts[entry.scope] += 1
+    }
+  }
+  return counts
+}
 
 export function mapGitDiffEntry(entry: DiffEntry): DirectoryEntryResult {
   return {

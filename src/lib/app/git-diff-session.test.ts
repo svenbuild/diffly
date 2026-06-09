@@ -5,6 +5,7 @@ import {
 } from 'vitest'
 import type { DiffEntry } from '../types'
 import {
+  countGitEntriesByScope,
   mapGitDiffEntry,
   mapGitEntryStatus,
 } from './git-diff-session'
@@ -67,6 +68,34 @@ describe('git diff session mapping', () => {
       status: 'rightOnly',
       leftPath: null,
       rightPath: 'tracked.txt',
+    })
+  })
+})
+
+describe('countGitEntriesByScope', () => {
+  it('returns all four scope keys with zero counts for an empty list', () => {
+    expect(countGitEntriesByScope([])).toEqual({
+      all: 0,
+      staged: 0,
+      unstaged: 0,
+      untracked: 0,
+    })
+  })
+
+  it('counts entries per scope, including untracked appearing in all and untracked', () => {
+    const entries = [
+      diffEntry({ scope: 'all', path: 'a.txt' }),
+      diffEntry({ scope: 'all', path: 'new.txt', status: 'untracked' }),
+      diffEntry({ scope: 'staged', path: 'a.txt' }),
+      diffEntry({ scope: 'unstaged', path: 'a.txt' }),
+      diffEntry({ scope: 'untracked', path: 'new.txt', status: 'untracked' }),
+    ]
+
+    expect(countGitEntriesByScope(entries)).toEqual({
+      all: 2,
+      staged: 1,
+      unstaged: 1,
+      untracked: 1,
     })
   })
 })
