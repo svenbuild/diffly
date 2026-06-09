@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseGithubPullRequestUrl } from './github-url'
+import { parseGithubDiffUrl, parseGithubPullRequestUrl } from './github-url'
 
 describe('parseGithubPullRequestUrl', () => {
   it('parses standard pull request URLs', () => {
@@ -33,6 +33,11 @@ describe('parseGithubPullRequestUrl', () => {
     expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/9#discussion')?.pullNumber).toBe(9)
   })
 
+  it('accepts raw pull request diff and patch URLs', () => {
+    expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/9.diff')?.pullNumber).toBe(9)
+    expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/9.patch')?.pullNumber).toBe(9)
+  })
+
   it('normalizes repository names with dots, dashes, and .git suffixes', () => {
     expect(parseGithubPullRequestUrl('github.com/my-org/my.repo-name/pull/4')?.repo).toBe('my.repo-name')
     expect(parseGithubPullRequestUrl('github.com/my-org/repo.git/pull/4')?.repo).toBe('repo')
@@ -58,5 +63,72 @@ describe('parseGithubPullRequestUrl', () => {
     expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/0')).toBeNull()
     expect(parseGithubPullRequestUrl('ftp://github.com/owner/repo/pull/12')).toBeNull()
     expect(parseGithubPullRequestUrl('https://github.com/owner/.git/pull/12')).toBeNull()
+  })
+})
+
+describe('parseGithubDiffUrl', () => {
+  it('parses three-dot compare URLs', () => {
+    expect(parseGithubDiffUrl('https://github.com/torvalds/linux/compare/v6.9...v7.1-rc7')).toEqual({
+      kind: 'githubCompare',
+      owner: 'torvalds',
+      repo: 'linux',
+      baseRef: 'v6.9',
+      headRef: 'v7.1-rc7',
+      notation: 'threeDot',
+      url: 'https://github.com/torvalds/linux/compare/v6.9...v7.1-rc7',
+    })
+  })
+
+  it('parses two-dot compare URLs', () => {
+    expect(parseGithubDiffUrl('github.com/owner/repo/compare/f75c570..3391dcc')).toEqual({
+      kind: 'githubCompare',
+      owner: 'owner',
+      repo: 'repo',
+      baseRef: 'f75c570',
+      headRef: '3391dcc',
+      notation: 'twoDot',
+      url: 'https://github.com/owner/repo/compare/f75c570..3391dcc',
+    })
+  })
+
+  it('parses compare URLs for forks and branch names with slashes', () => {
+    const source = parseGithubDiffUrl('https://github.com/octocat/linguist/compare/master...octocat:feature/topic')
+    expect(source).toMatchObject({
+      kind: 'githubCompare',
+      owner: 'octocat',
+      repo: 'linguist',
+      baseRef: 'master',
+      headRef: 'octocat:feature/topic',
+      notation: 'threeDot',
+    })
+  })
+
+  it('parses compare URLs with explicit fork repository notation', () => {
+    const source = parseGithubDiffUrl('https://github.com/octocat/awesome-app/compare/octocat:main...octo-org:awesome-app:main')
+    expect(source).toMatchObject({
+      kind: 'githubCompare',
+      owner: 'octocat',
+      repo: 'awesome-app',
+      baseRef: 'octocat:main',
+      headRef: 'octo-org:awesome-app:main',
+    })
+  })
+
+  it('accepts raw compare diff and patch URLs', () => {
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/base...head.diff')).toMatchObject({
+      kind: 'githubCompare',
+      baseRef: 'base',
+      headRef: 'head',
+    })
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/base...head.patch')).toMatchObject({
+      kind: 'githubCompare',
+      baseRef: 'base',
+      headRef: 'head',
+    })
+  })
+
+  it('still rejects unsupported GitHub URLs', () => {
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/base')).toBeNull()
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/commits/main')).toBeNull()
   })
 })

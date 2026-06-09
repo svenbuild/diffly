@@ -105,6 +105,8 @@ function addRecentSourceToStore(
           metadata,
         ),
       }
+    case 'githubCompare':
+      return current
     case 'local':
       return {
         ...current,

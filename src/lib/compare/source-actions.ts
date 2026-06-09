@@ -26,8 +26,19 @@ export function sourceActions(source: DiffSource | null): SourceActions {
     return { showSwap: true, openExternal: null }
   }
 
-  // Only a valid http(s) PR URL yields a button; file:/empty/broken → none.
-  if (source.kind === 'githubPullRequest' && isHttpUrl(source.url)) {
+  // Only a valid http(s) GitHub URL yields a button; file:/empty/broken -> none.
+  if ((source.kind === 'githubPullRequest' || source.kind === 'githubCompare') && isHttpUrl(source.url)) {
+    if (source.kind === 'githubCompare') {
+      return {
+        showSwap: false,
+        openExternal: {
+          label: 'Open Compare',
+          ariaLabel: `Open compare ${source.baseRef}${source.notation === 'threeDot' ? '...' : '..'}${source.headRef} in browser`,
+          url: source.url,
+        },
+      }
+    }
+
     return {
       showSwap: false,
       openExternal: {
@@ -38,6 +49,6 @@ export function sourceActions(source: DiffSource | null): SourceActions {
     }
   }
 
-  // git (workingTree / refRange / commit) and PR without a valid URL.
+  // git (workingTree / refRange / commit) and GitHub sources without a valid URL.
   return { showSwap: false, openExternal: null }
 }

@@ -17,6 +17,7 @@ import {
 } from '../file-diff'
 import {
   fetchPullRequestFileContent,
+  fetchCompareMetadataAndFiles,
   fetchPullRequestFiles,
   fetchPullRequestMetadata,
   type GithubPullRequestFile,
@@ -30,26 +31,25 @@ const SHORT_SHA_LENGTH = 7
 export class GithubProvider implements DiffSessionProvider {
   async create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
     void options
-    if (source.kind !== 'githubPullRequest') {
-      throw new Error('Expected a GitHub pull request diff source.')
+    if (source.kind !== 'githubPullRequest' && source.kind !== 'githubCompare') {
+      throw new Error('Expected a GitHub diff source.')
     }
 
-    const metadata = await fetchPullRequestMetadata(source)
-    const files = await fetchPullRequestFiles(source)
+    const { baseSha, headSha, files } = await loadGithubDiff(source)
 
     const entries: DiffEntry[] = []
     const entryData = new Map<string, ProviderEntryData>()
 
     for (const file of files) {
-      const entry = mapPullRequestFile(source.pullNumber, file)
+      const entry = mapGithubFile(source, file)
       entries.push(entry)
       entryData.set(entry.id, {
         kind: 'githubPullRequest',
         owner: source.owner,
         repo: source.repo,
-        pullNumber: source.pullNumber,
-        baseSha: metadata.baseSha,
-        headSha: metadata.headSha,
+        sourceId: githubSourceId(source),
+        baseSha,
+        headSha,
         path: file.filename,
         oldPath: file.previousFilename ?? null,
         status: entry.status,
@@ -86,6 +86,33 @@ export class GithubProvider implements DiffSessionProvider {
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
   }
+}
+
+async function loadGithubDiff(source: DiffSource): Promise<{
+  baseSha: string
+  headSha: string
+  files: GithubPullRequestFile[]
+}> {
+  if (source.kind === 'githubPullRequest') {
+    const metadata = await fetchPullRequestMetadata(source)
+    const files = await fetchPullRequestFiles(source)
+    return {
+      baseSha: metadata.baseSha,
+      headSha: metadata.headSha,
+      files,
+    }
+  }
+
+  if (source.kind === 'githubCompare') {
+    const result = await fetchCompareMetadataAndFiles(source)
+    return {
+      baseSha: result.metadata.baseSha,
+      headSha: result.metadata.headSha,
+      files: result.files,
+    }
+  }
+
+  throw new Error('Expected a GitHub diff source.')
 }
 
 async function loadGithubSide(
@@ -140,9 +167,12 @@ function missingSnapshot(
   }
 }
 
-function mapPullRequestFile(pullNumber: number, file: GithubPullRequestFile): DiffEntry {
+function mapGithubFile(
+  source: Extract<DiffSource, { kind: 'githubPullRequest' | 'githubCompare' }>,
+  file: GithubPullRequestFile,
+): DiffEntry {
   return {
-    id: githubEntryId(pullNumber, file.filename, file.previousFilename ?? null),
+    id: githubEntryId(githubSourceId(source), file.filename, file.previousFilename ?? null),
     path: file.filename,
     oldPath: file.previousFilename ?? null,
     displayPath: displayPath(file.filename, file.previousFilename ?? null, file.status),
@@ -152,8 +182,17 @@ function mapPullRequestFile(pullNumber: number, file: GithubPullRequestFile): Di
   }
 }
 
-function githubEntryId(pullNumber: number, path: string, oldPath: string | null) {
-  return `github:${pullNumber}:${encodeURIComponent(oldPath ?? '')}:${encodeURIComponent(path)}`
+function githubEntryId(sourceId: string, path: string, oldPath: string | null) {
+  return `github:${encodeURIComponent(sourceId)}:${encodeURIComponent(oldPath ?? '')}:${encodeURIComponent(path)}`
+}
+
+function githubSourceId(source: Extract<DiffSource, { kind: 'githubPullRequest' | 'githubCompare' }>) {
+  if (source.kind === 'githubPullRequest') {
+    return `pr:${source.pullNumber}`
+  }
+
+  const dots = source.notation === 'threeDot' ? '...' : '..'
+  return `compare:${source.baseRef}${dots}${source.headRef}`
 }
 
 function displayPath(path: string, oldPath: string | null, status: DiffEntryStatus) {

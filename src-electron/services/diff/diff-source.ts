@@ -31,6 +31,17 @@ export function isDiffSourcePayload(value: unknown): value is DiffSource {
         Number.isInteger(value.pullNumber) &&
         value.pullNumber > 0
       )
+    case 'githubCompare':
+      return (
+        typeof value.owner === 'string' &&
+        typeof value.repo === 'string' &&
+        typeof value.url === 'string' &&
+        typeof value.baseRef === 'string' &&
+        value.baseRef.trim() !== '' &&
+        typeof value.headRef === 'string' &&
+        value.headRef.trim() !== '' &&
+        (value.notation === 'twoDot' || value.notation === 'threeDot')
+      )
     default:
       return false
   }

@@ -49,7 +49,7 @@ export class DiffSessionService {
       'Diff sessions for git sources are not implemented yet.',
     )
     this.githubProvider = providers.githubProvider ?? createUnsupportedProvider(
-      'Diff sessions for GitHub pull request sources are not implemented yet.',
+      'Diff sessions for GitHub sources are not implemented yet.',
     )
   }
 
@@ -125,6 +125,7 @@ export class DiffSessionService {
       case 'git':
         return this.gitProvider
       case 'githubPullRequest':
+      case 'githubCompare':
         return this.githubProvider
     }
   }
@@ -188,5 +189,5 @@ function isDiffSourceLike(source: unknown): source is DiffSource {
   }
 
   const kind = (source as { kind?: unknown }).kind
-  return kind === 'local' || kind === 'git' || kind === 'githubPullRequest'
+  return kind === 'local' || kind === 'git' || kind === 'githubPullRequest' || kind === 'githubCompare'
 }

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { GithubPullRequestMetadata, GithubPullRequestSource } from '../types'
+  import { notationDots } from '../compare/source-header-labels'
+  import type { GithubDiffSource, GithubPullRequestMetadata } from '../types'
 
   export let url = ''
-  export let parsed: GithubPullRequestSource | null = null
+  export let parsed: GithubDiffSource | null = null
   export let metadataStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   export let metadata: GithubPullRequestMetadata | null = null
   export let metadataError = ''
@@ -12,27 +13,34 @@
 </script>
 
 <div class="github-pr-input">
-  <label class="github-pr-label" for="github-pr-url">PR URL</label>
+  <label class="github-pr-label" for="github-pr-url">GitHub diff URL</label>
   <input
     id="github-pr-url"
     type="text"
     autocomplete="off"
     spellcheck="false"
-    placeholder="https://github.com/owner/repo/pull/123"
+    placeholder="https://github.com/owner/repo/compare/base...head"
     value={url}
     on:input={(event) => onInput(event.currentTarget.value)}
   />
 
   <div class="github-pr-status" aria-live="polite">
     {#if url.trim() === ''}
-      <p class="github-pr-hint">Enter a GitHub pull request URL.</p>
+      <p class="github-pr-hint">Enter a GitHub pull request or compare URL.</p>
     {:else if showInvalid}
-      <p class="github-pr-error">This is not a GitHub pull request URL.</p>
+      <p class="github-pr-error">This is not a supported GitHub diff URL.</p>
     {:else if parsed}
       <p class="github-pr-parsed">
-        Parsed: <code>{parsed.owner}/{parsed.repo}</code> #{parsed.pullNumber}
+        Parsed: <code>{parsed.owner}/{parsed.repo}</code>
+        {#if parsed.kind === 'githubPullRequest'}
+          #{parsed.pullNumber}
+        {:else}
+          {parsed.baseRef}{notationDots(parsed.notation)}{parsed.headRef}
+        {/if}
       </p>
-      {#if metadataStatus === 'loading'}
+      {#if parsed.kind === 'githubCompare'}
+        <p class="github-pr-ready">Status: Ready</p>
+      {:else if metadataStatus === 'loading'}
         <p class="github-pr-hint">Loading pull request details…</p>
       {:else if metadataStatus === 'loaded' && metadata}
         <dl class="github-pr-details">

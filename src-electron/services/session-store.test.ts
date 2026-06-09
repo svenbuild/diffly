@@ -81,6 +81,27 @@ describe('session-store', () => {
     expect(loaded?.source).toEqual(session.source)
   })
 
+  it('round-trips a session with a GitHub compare DiffSource intact', async () => {
+    const session = baseSession({
+      setupMode: 'github',
+      source: {
+        kind: 'githubCompare',
+        owner: 'owner',
+        repo: 'repo',
+        baseRef: 'v1.0.0',
+        headRef: 'v1.1.0',
+        notation: 'threeDot',
+        url: 'https://github.com/owner/repo/compare/v1.0.0...v1.1.0',
+      },
+    })
+
+    await saveSessionState(session)
+    const loaded = await loadSessionState()
+
+    expect(loaded?.setupMode).toBe('github')
+    expect(loaded?.source).toEqual(session.source)
+  })
+
   it('loads legacy sessions without setupMode or source', async () => {
     // Shape written by builds that predate the setup-mode system.
     const legacySession = {

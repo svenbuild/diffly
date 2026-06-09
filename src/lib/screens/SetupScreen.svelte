@@ -7,8 +7,8 @@
   import type {
     ExplorerEntry,
     GitDiffSource,
+    GithubDiffSource,
     GithubPullRequestMetadata,
-    GithubPullRequestSource,
     PersistedGitSetup,
     SetupMode,
   } from '../types'
@@ -36,7 +36,7 @@
   export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
   export let gitSetup: PersistedGitSetup = {}
   export let onGitSetupChange: (setup: PersistedGitSetup) => void = () => {}
-  export let onGithubSourceChange: (source: GithubPullRequestSource | null) => void = () => {}
+  export let onGithubSourceChange: (source: GithubDiffSource | null) => void = () => {}
   export let onGithubMetadataChange: (metadata: GithubPullRequestMetadata | null) => void = () => {}
   export let initialGithubUrl = ''
   export let reloadRecentsRequestId = 0

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   GitDiffSource,
+  GithubCompareSource,
   GithubPullRequestSource,
   LocalDiffSource,
 } from '../types'
@@ -25,6 +26,16 @@ const pr: GithubPullRequestSource = {
   repo: 'hello',
   pullNumber: 123,
   url: 'https://github.com/octocat/hello/pull/123',
+}
+
+const compare: GithubCompareSource = {
+  kind: 'githubCompare',
+  owner: 'octocat',
+  repo: 'hello',
+  baseRef: 'v1',
+  headRef: 'feature/topic',
+  notation: 'threeDot',
+  url: 'https://github.com/octocat/hello/compare/v1...feature/topic',
 }
 
 describe('sourceActions', () => {
@@ -67,6 +78,17 @@ describe('sourceActions', () => {
     expect(sourceActions({ ...pr, url: 'javascript:alert(1)' })).toEqual({
       showSwap: false,
       openExternal: null,
+    })
+  })
+
+  it('offers Open Compare for a GitHub compare URL', () => {
+    expect(sourceActions(compare)).toEqual({
+      showSwap: false,
+      openExternal: {
+        label: 'Open Compare',
+        ariaLabel: 'Open compare v1...feature/topic in browser',
+        url: 'https://github.com/octocat/hello/compare/v1...feature/topic',
+      },
     })
   })
 })

@@ -1,5 +1,6 @@
 import type {
   DiffEntryStatus,
+  GithubCompareSource,
   GithubPullRequestMetadata,
   GithubPullRequestSource,
 } from '../../../src/lib/types'
@@ -46,6 +47,17 @@ export interface GithubPullRequestFile {
   patch?: string
   rawUrl?: string
   blobUrl?: string
+}
+
+export interface GithubCompareMetadata {
+  owner: string
+  repo: string
+  baseRef: string
+  headRef: string
+  baseSha: string
+  headSha: string
+  htmlUrl: string
+  changedFiles: number | null
 }
 
 export interface GithubFileContent {
@@ -117,6 +129,50 @@ export async function fetchPullRequestFiles(
     'too-large',
     'This pull request changes more files than GitHub exposes through its API.',
   )
+}
+
+export async function fetchCompareMetadataAndFiles(
+  source: GithubCompareSource,
+): Promise<{ metadata: GithubCompareMetadata; files: GithubPullRequestFile[] }> {
+  const payload = await fetchGithubJson(
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/compare/${encodeURIComponent(compareBasehead(source))}`,
+  )
+
+  if (!isRecord(payload) || !isRecord(payload.base_commit) || !isRecord(payload.head_commit)) {
+    throw new GithubServiceError('api-error', 'GitHub returned an unexpected compare payload.')
+  }
+
+  const baseSha = readString(payload.base_commit.sha)
+  const headSha = readString(payload.head_commit.sha)
+  if (!baseSha || !headSha) {
+    throw new GithubServiceError('api-error', 'GitHub returned a compare without base or head commit.')
+  }
+
+  if (!Array.isArray(payload.files)) {
+    throw new GithubServiceError('api-error', 'GitHub returned an unexpected compare file list.')
+  }
+
+  const files: GithubPullRequestFile[] = []
+  for (const item of payload.files) {
+    const file = readPullRequestFile(item)
+    if (file) {
+      files.push(file)
+    }
+  }
+
+  return {
+    metadata: {
+      owner: source.owner,
+      repo: source.repo,
+      baseRef: source.baseRef,
+      headRef: source.headRef,
+      baseSha,
+      headSha,
+      htmlUrl: readString(payload.html_url) ?? source.url,
+      changedFiles: readNonNegativeInteger(payload.total_files) ?? files.length,
+    },
+    files,
+  }
 }
 
 // Loads raw file bytes at a specific commit. A missing path (e.g. the base
@@ -328,6 +384,11 @@ function mapGithubFileStatus(status: string | null): DiffEntryStatus {
     default:
       return 'unsupported'
   }
+}
+
+function compareBasehead(source: GithubCompareSource) {
+  const dots = source.notation === 'threeDot' ? '...' : '..'
+  return `${source.baseRef}${dots}${source.headRef}`
 }
 
 function readString(value: unknown): string | null {

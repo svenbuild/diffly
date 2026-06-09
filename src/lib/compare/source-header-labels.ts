@@ -1,4 +1,4 @@
-import type { GitDiffSource, GithubPullRequestSource } from '../types'
+import type { GitDiffSource, GithubDiffSource } from '../types'
 import { getFileName } from '../path-utils'
 
 // Pure label/tooltip formatting for the Compare View source header. Kept
@@ -66,10 +66,14 @@ export function gitTooltip(source: GitDiffSource): string {
   return [`Repository: ${root}`, `Commit: ${selection.commitRef}`].join('\n')
 }
 
-export function githubLabel(source: GithubPullRequestSource): string {
-  return `${source.owner}/${source.repo} #${source.pullNumber}`
+export function githubLabel(source: GithubDiffSource): string {
+  if (source.kind === 'githubPullRequest') {
+    return `${source.owner}/${source.repo} #${source.pullNumber}`
+  }
+
+  return `${source.owner}/${source.repo} ${source.baseRef}${notationDots(source.notation)}${source.headRef}`
 }
 
-export function githubTooltip(source: GithubPullRequestSource): string {
+export function githubTooltip(source: GithubDiffSource): string {
   return source.url || githubLabel(source)
 }

@@ -3,8 +3,9 @@
   import GithubPrInput from './GithubPrInput.svelte'
   import RecentSourceList from './RecentSourceList.svelte'
   import { fetchGithubPullRequestMetadata, loadRecentSources } from '../api'
-  import { parseGithubPullRequestUrl } from '../github/github-url'
+  import { parseGithubDiffUrl } from '../github/github-url'
   import type {
+    GithubDiffSource,
     GithubPullRequestMetadata,
     GithubPullRequestSource,
     RecentGithubPullRequest,
@@ -12,9 +13,9 @@
 
   const METADATA_DEBOUNCE_MS = 400
 
-  // Emits the parsed PR source (or null while the URL is not parseable) so the
-  // parent can drive the Compare button.
-  export let onChange: (source: GithubPullRequestSource | null) => void = () => {}
+  // Emits the parsed GitHub diff source (or null while the URL is not parseable)
+  // so the parent can drive the Compare button.
+  export let onChange: (source: GithubDiffSource | null) => void = () => {}
   // Latest successfully loaded metadata for the currently parsed PR, used by
   // the parent to store the PR title with the recent entry.
   export let onMetadataChange: (metadata: GithubPullRequestMetadata | null) => void = () => {}
@@ -25,7 +26,7 @@
   export let initialUrl = ''
 
   let url = initialUrl
-  let parsed: GithubPullRequestSource | null = null
+  let parsed: GithubDiffSource | null = null
   let metadataStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   let metadata: GithubPullRequestMetadata | null = null
   let metadataError = ''
@@ -74,18 +75,18 @@
   }
 
   // Live parse drives both the Compare button and the metadata preview.
-  $: parsed = parseGithubPullRequestUrl(url)
+  $: parsed = parseGithubDiffUrl(url)
   $: onChange(parsed)
   $: scheduleMetadataLoad(parsed)
   $: onMetadataChange(metadataStatus === 'loaded' ? metadata : null)
 
-  function scheduleMetadataLoad(source: GithubPullRequestSource | null) {
+  function scheduleMetadataLoad(source: GithubDiffSource | null) {
     if (metadataDebounceTimer !== null) {
       window.clearTimeout(metadataDebounceTimer)
       metadataDebounceTimer = null
     }
 
-    if (!source) {
+    if (!source || source.kind !== 'githubPullRequest') {
       metadataRequestToken += 1
       metadataStatus = 'idle'
       metadata = null
@@ -141,11 +142,13 @@
     extra: recent.title,
   }))
   $: activeRecentId = parsed
-    ? recentPullRequests.find((recent) =>
+    ? parsed.kind === 'githubPullRequest'
+      ? recentPullRequests.find((recent) =>
         recent.owner.toLowerCase() === parsed.owner.toLowerCase() &&
         recent.repo.toLowerCase() === parsed.repo.toLowerCase() &&
         recent.pullNumber === parsed.pullNumber,
       )?.id ?? ''
+      : ''
     : ''
 </script>
 
@@ -160,8 +163,8 @@
     onSelect={handleSelectRecent}
   />
 
-  <section class="github-setup-panel" aria-label="GitHub pull request">
-    <h2 class="github-setup-title">GitHub pull request</h2>
+  <section class="github-setup-panel" aria-label="GitHub diff">
+    <h2 class="github-setup-title">GitHub diff</h2>
 
     <GithubPrInput
       {url}

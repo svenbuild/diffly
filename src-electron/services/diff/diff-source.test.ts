@@ -41,6 +41,15 @@ describe('isDiffSourcePayload', () => {
         pullNumber: 123,
         url: 'https://github.com/owner/repo/pull/123',
       },
+      {
+        kind: 'githubCompare',
+        owner: 'owner',
+        repo: 'repo',
+        baseRef: 'v1.0.0',
+        headRef: 'v1.1.0',
+        notation: 'threeDot',
+        url: 'https://github.com/owner/repo/compare/v1.0.0...v1.1.0',
+      },
     ]
 
     for (const source of sources) {
@@ -79,6 +88,24 @@ describe('isDiffSourcePayload', () => {
       repo: 'repo',
       pullNumber: 1.5,
       url: 'https://github.com/owner/repo/pull/1',
+    })).toBe(false)
+    expect(isDiffSourcePayload({
+      kind: 'githubCompare',
+      owner: 'owner',
+      repo: 'repo',
+      baseRef: '',
+      headRef: 'head',
+      notation: 'threeDot',
+      url: 'https://github.com/owner/repo/compare/base...head',
+    })).toBe(false)
+    expect(isDiffSourcePayload({
+      kind: 'githubCompare',
+      owner: 'owner',
+      repo: 'repo',
+      baseRef: 'base',
+      headRef: 'head',
+      notation: 'fourDot',
+      url: 'https://github.com/owner/repo/compare/base...head',
     })).toBe(false)
   })
 })

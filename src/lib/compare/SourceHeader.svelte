@@ -16,14 +16,14 @@
   $: label =
     source?.kind === 'git'
       ? gitLabel(source)
-      : source?.kind === 'githubPullRequest'
+      : source?.kind === 'githubPullRequest' || source?.kind === 'githubCompare'
         ? githubLabel(source)
         : localLabel
 
   $: title =
     source?.kind === 'git'
       ? gitTooltip(source)
-      : source?.kind === 'githubPullRequest'
+      : source?.kind === 'githubPullRequest' || source?.kind === 'githubCompare'
         ? githubTooltip(source)
         : localTooltip
 </script>

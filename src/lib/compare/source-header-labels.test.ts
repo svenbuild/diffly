@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GitDiffSource, GithubPullRequestSource } from '../types'
+import type { GitDiffSource, GithubCompareSource, GithubPullRequestSource } from '../types'
 import {
   gitLabel,
   gitTooltip,
@@ -112,6 +112,15 @@ describe('github label and tooltip', () => {
     pullNumber: 123,
     url: 'https://github.com/octocat/hello/pull/123',
   }
+  const compare: GithubCompareSource = {
+    kind: 'githubCompare',
+    owner: 'octocat',
+    repo: 'hello',
+    baseRef: 'v1.0.0',
+    headRef: 'feature/topic',
+    notation: 'threeDot',
+    url: 'https://github.com/octocat/hello/compare/v1.0.0...feature/topic',
+  }
 
   it('renders owner/repo #number', () => {
     expect(githubLabel(pr)).toBe('octocat/hello #123')
@@ -123,5 +132,14 @@ describe('github label and tooltip', () => {
 
   it('falls back to the label when the url is empty', () => {
     expect(githubTooltip({ ...pr, url: '' })).toBe('octocat/hello #123')
+  })
+
+  it('renders GitHub compare refs with notation-specific dots', () => {
+    expect(githubLabel(compare)).toBe('octocat/hello v1.0.0...feature/topic')
+    expect(githubLabel({ ...compare, notation: 'twoDot' })).toBe('octocat/hello v1.0.0..feature/topic')
+  })
+
+  it('uses the compare url in the tooltip when present', () => {
+    expect(githubTooltip(compare)).toBe('https://github.com/octocat/hello/compare/v1.0.0...feature/topic')
   })
 })

@@ -122,8 +122,8 @@
     ExplorerEntry,
     FileDiffResult,
     GitDiffSource,
+    GithubDiffSource,
     GithubPullRequestMetadata,
-    GithubPullRequestSource,
     GitWorkingTreeScope,
     PersistedExplorerPane,
     PersistedGitSetup,
@@ -187,7 +187,7 @@
   let gitSetup: PersistedGitSetup = {}
   // Latest GitHub source parsed by GithubSetupPanel, or null while the URL is
   // not parseable. Transient setup-draft state — intentionally not persisted.
-  let githubSetupSource: GithubPullRequestSource | null = null
+  let githubSetupSource: GithubDiffSource | null = null
   // Metadata for the parsed PR (title etc.), used when saving recents.
   let githubSetupMetadata: GithubPullRequestMetadata | null = null
   // Prefill for the GitHub URL input, restored from the persisted session in
@@ -1403,15 +1403,13 @@
       setupMode = 'local'
     } else if (session.source?.kind === 'git') {
       setupMode = 'git'
-    } else if (session.source?.kind === 'githubPullRequest') {
+    } else if (isGithubDiffSource(session.source ?? null)) {
       setupMode = 'github'
     }
 
-    if (
-      session.source?.kind === 'githubPullRequest' &&
-      typeof session.source.url === 'string'
-    ) {
-      initialGithubUrl = session.source.url
+    const restoredGithubSource = session.source ?? null
+    if (isGithubDiffSource(restoredGithubSource) && typeof restoredGithubSource.url === 'string') {
+      initialGithubUrl = restoredGithubSource.url
     }
 
     gitSetup = session.gitSetup ?? {}
@@ -1928,12 +1926,16 @@
     gitSetupSource = source
   }
 
-  function handleGithubSourceChange(source: GithubPullRequestSource | null) {
+  function handleGithubSourceChange(source: GithubDiffSource | null) {
     githubSetupSource = source
   }
 
   function handleGithubMetadataChange(metadata: GithubPullRequestMetadata | null) {
     githubSetupMetadata = metadata
+  }
+
+  function isGithubDiffSource(source: DiffSource | null): source is GithubDiffSource {
+    return source?.kind === 'githubPullRequest' || source?.kind === 'githubCompare'
   }
 
   function handleGitSetupChange(nextSetup: PersistedGitSetup) {
@@ -1975,11 +1977,11 @@
   }
 
   async function runGithubCompare() {
-    const source = screen === 'compare' && activeDiffSource?.kind === 'githubPullRequest'
+    const source = screen === 'compare' && isGithubDiffSource(activeDiffSource)
       ? activeDiffSource
       : githubSetupSource
     if (!source) {
-      errorMessage = 'Enter a GitHub pull request URL.'
+      errorMessage = 'Enter a GitHub pull request or compare URL.'
       return
     }
 
@@ -1990,6 +1992,10 @@
 
     // Only store PRs that actually loaded, and only attach a title when the
     // setup metadata belongs to this PR (a refresh may have stale metadata).
+    if (source.kind !== 'githubPullRequest') {
+      return
+    }
+
     const metadataMatchesSource =
       githubSetupMetadata !== null &&
       githubSetupMetadata.owner.toLowerCase() === source.owner.toLowerCase() &&
@@ -2007,11 +2013,11 @@
       .catch(() => undefined)
   }
 
-  // Shared compare entry point for diff-session sources (git, GitHub PR): the
+  // Shared compare entry point for diff-session sources (git, GitHub): the
   // backend session provides all entries up front and the continuous directory
   // viewer loads file details through openDiffEntry.
   async function runSessionCompare(
-    source: GitDiffSource | GithubPullRequestSource,
+    source: GitDiffSource | GithubDiffSource,
   ): Promise<boolean> {
     if (loading) {
       return false
@@ -2135,7 +2141,7 @@
       return
     }
 
-    if (screen === 'compare' && activeDiffSource?.kind === 'githubPullRequest') {
+    if (screen === 'compare' && isGithubDiffSource(activeDiffSource)) {
       await runGithubCompare()
       return
     }
@@ -2576,6 +2582,8 @@
           : 'No changes in this commit.'
       : activeDiffSource?.kind === 'githubPullRequest'
         ? 'No changed files in this pull request.'
+        : activeDiffSource?.kind === 'githubCompare'
+          ? 'No changed files in this compare.'
         : 'No file changes.'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false
@@ -2670,8 +2678,8 @@
           ? 'Create Git diff session'
           : 'Select a valid Git repository and compare type'
         : githubSetupSource
-          ? 'Load GitHub pull request diff'
-          : 'Enter a GitHub pull request URL'
+          ? 'Load GitHub diff'
+          : 'Enter a GitHub pull request or compare URL'
   $: setupCanCompare =
     (setupMode === 'local' && pickerCanCompare) ||
     (setupMode === 'git' && gitSetupSource !== null) ||

@@ -70,7 +70,7 @@ export type ProviderEntryData =
       kind: 'githubPullRequest'
       owner: string
       repo: string
-      pullNumber: number
+      sourceId: string
       baseSha: string
       headSha: string
       path: string
