@@ -121,7 +121,7 @@ describe('GitProvider working tree entries', () => {
     await commitFile(repoPath, 'baseline.txt', 'baseline\n')
 
     const spacedPath = 'path with spaces.txt'
-    const unicodePath = 'Ã¼berblick.txt'
+    const unicodePath = 'überblick.txt'
     await writeFile(join(repoPath, spacedPath), 'space\n')
     await writeFile(join(repoPath, unicodePath), 'unicode\n')
     await git(repoPath, ['add', spacedPath, unicodePath])
