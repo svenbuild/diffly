@@ -20,6 +20,13 @@ export interface GitRunResult {
   timedOut: boolean
 }
 
+export interface GitRunBytesResult {
+  stdout: Uint8Array
+  stderr: string
+  exitCode: number
+  timedOut: boolean
+}
+
 interface NormalizedGitRunOptions {
   timeoutMs: number
   maxStdoutBytes: number
@@ -32,11 +39,29 @@ export async function runGit(
   args: string[],
   options?: GitRunOptions,
 ): Promise<GitRunResult> {
+  const result = await runGitBytes(repoPath, args, options)
+  return {
+    stdout: Buffer.from(
+      result.stdout.buffer,
+      result.stdout.byteOffset,
+      result.stdout.byteLength,
+    ).toString('utf8'),
+    stderr: result.stderr,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+  }
+}
+
+export async function runGitBytes(
+  repoPath: string,
+  args: string[],
+  options?: GitRunOptions,
+): Promise<GitRunBytesResult> {
   const canonicalRepoPath = await validateGitRepoPath(repoPath)
   const gitArgs = validateGitArgs(args)
   const runOptions = normalizeGitRunOptions(options)
 
-  return new Promise<GitRunResult>((resolveRun, rejectRun) => {
+  return new Promise<GitRunBytesResult>((resolveRun, rejectRun) => {
     const child = spawn('git', gitArgs, {
       cwd: canonicalRepoPath,
       shell: false,
@@ -108,7 +133,7 @@ export async function runGit(
       closeHandled = true
       clearTimeout(timeoutId)
 
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8')
+      const stdout = Buffer.concat(stdoutChunks)
       const stderr = Buffer.concat(stderrChunks).toString('utf8')
 
       if (failure) {
@@ -118,7 +143,7 @@ export async function runGit(
 
       if (code === 0) {
         resolveRun({
-          stdout,
+          stdout: Uint8Array.prototype.slice.call(stdout, 0),
           stderr,
           exitCode: code,
           timedOut,
@@ -129,7 +154,7 @@ export async function runGit(
       if (typeof code === 'number') {
         if (runOptions.allowNonZeroExit) {
           resolveRun({
-            stdout,
+            stdout: Uint8Array.prototype.slice.call(stdout, 0),
             stderr,
             exitCode: code,
             timedOut,
@@ -137,7 +162,7 @@ export async function runGit(
           return
         }
 
-        rejectRun(new Error(`Git command failed with exit code ${code}: ${gitErrorOutput(stdout, stderr)}`))
+        rejectRun(new Error(`Git command failed with exit code ${code}: ${gitErrorOutput(stdout.toString('utf8'), stderr)}`))
         return
       }
 

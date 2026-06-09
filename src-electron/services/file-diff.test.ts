@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import {
   mkdtemp,
   rm,
@@ -5,6 +6,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   afterEach,
   beforeEach,
@@ -13,12 +15,14 @@ import {
   it,
 } from 'vitest'
 import {
+  buildFileDiffFromGit,
   buildFileDiffFromPaths,
   buildFileDiffFromSnapshots,
   clearFileDiffCache,
   type DiffSnapshot,
 } from './file-diff'
 
+const execFileAsync = promisify(execFile)
 const tempDirs: string[] = []
 
 describe('file diff snapshots', () => {
@@ -167,6 +171,140 @@ describe('file diff snapshots', () => {
     expect(cached.text?.leftText).toBe('left x\n')
     expect(changed.text?.leftText).toBe('left y\n')
   })
+
+  it('diffs HEAD and index git blobs without temporary files', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'staged\n')
+    await git(repoPath, ['add', 'tracked.txt'])
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'head',
+        repoPath,
+        repositoryRoot: repoPath,
+        path: 'tracked.txt',
+        label: 'HEAD:tracked.txt',
+      },
+      {
+        kind: 'index',
+        repoPath,
+        repositoryRoot: repoPath,
+        path: 'tracked.txt',
+        label: ':tracked.txt',
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.text?.leftText).toBe('base\n')
+    expect(result.text?.rightText).toBe('staged\n')
+    expect(result.text?.leftCacheKey).toContain('git\u0000HEAD\u0000tracked.txt\u0000')
+    expect(result.text?.rightCacheKey).toContain('git\u0000INDEX\u0000tracked.txt\u0000')
+  })
+
+  it('diffs a git working tree snapshot with a SHA based cache key', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'worktree\n')
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'head',
+        repoPath,
+        repositoryRoot: repoPath,
+        path: 'tracked.txt',
+        label: 'HEAD:tracked.txt',
+      },
+      {
+        kind: 'workingTree',
+        repositoryRoot: repoPath,
+        path: 'tracked.txt',
+        label: 'tracked.txt',
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.text?.leftText).toBe('base\n')
+    expect(result.text?.rightText).toBe('worktree\n')
+    expect(result.text?.rightCacheKey).toMatch(/git\u0000WORKTREE\u0000tracked\.txt\u0000[0-9a-f]{64}/)
+  })
+
+  it('diffs empty and working tree git snapshots', async () => {
+    const repoPath = await createRepo()
+    await writeFile(join(repoPath, 'new.txt'), 'new\n')
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'empty',
+        label: 'new.txt',
+        logicalPath: 'new.txt',
+      },
+      {
+        kind: 'workingTree',
+        repositoryRoot: repoPath,
+        path: 'new.txt',
+        label: 'new.txt',
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.summary).toBe('Only the right file exists.')
+    expect(result.text?.leftExists).toBe(false)
+    expect(result.text?.rightText).toBe('new\n')
+  })
+
+  it('keeps binary git blobs unsupported', async () => {
+    const repoPath = await createRepo()
+    await writeFile(join(repoPath, 'binary.bin'), Uint8Array.from([0, 1, 2, 3]))
+    await git(repoPath, ['add', 'binary.bin'])
+    await git(repoPath, ['commit', '-m', 'Commit binary'])
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'head',
+        repoPath,
+        repositoryRoot: repoPath,
+        path: 'binary.bin',
+        label: 'HEAD:binary.bin',
+      },
+      {
+        kind: 'empty',
+        label: 'binary.bin',
+        logicalPath: 'binary.bin',
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('unsupported')
+    expect(result.unsupported?.reason).toBe('binary')
+  })
+
+  it('maps missing git objects to missing snapshots', async () => {
+    const repoPath = await createRepo()
+
+    const result = await buildFileDiffFromGit(
+      {
+        kind: 'head',
+        repoPath,
+        repositoryRoot: repoPath,
+        path: 'missing.txt',
+        label: 'HEAD:missing.txt',
+      },
+      {
+        kind: 'empty',
+        label: 'missing.txt',
+        logicalPath: 'missing.txt',
+      },
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('unsupported')
+    expect(result.summary).toBe('Neither file exists.')
+    expect(result.unsupported?.reason).toBe('missing')
+  })
 })
 
 function defaultOptions() {
@@ -180,6 +318,27 @@ async function createTempDir() {
   const dir = await mkdtemp(join(tmpdir(), 'diffly-file-diff-'))
   tempDirs.push(dir)
   return dir
+}
+
+async function createRepo() {
+  const repoPath = await createTempDir()
+  await git(repoPath, ['init'])
+  await git(repoPath, ['config', 'user.email', 'test@example.com'])
+  await git(repoPath, ['config', 'user.name', 'Test User'])
+  return repoPath
+}
+
+async function commitFile(repoPath: string, relativePath: string, content: string) {
+  await writeFile(join(repoPath, relativePath), content)
+  await git(repoPath, ['add', relativePath])
+  await git(repoPath, ['commit', '-m', `Commit ${relativePath}`])
+}
+
+async function git(repoPath: string, args: string[]) {
+  await execFileAsync('git', args, {
+    cwd: repoPath,
+    windowsHide: true,
+  })
 }
 
 function textSnapshot(

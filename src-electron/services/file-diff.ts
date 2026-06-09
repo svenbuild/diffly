@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   open,
   readFile,
@@ -10,6 +11,10 @@ import type {
   TextDiffPayload,
   UnsupportedDiffPayload,
 } from '../../src/lib/types'
+import {
+  runGit,
+  runGitBytes,
+} from './git/git-service'
 
 export const MAX_TEXT_BYTES = 1024 * 1024
 
@@ -36,6 +41,33 @@ export interface DiffSnapshot {
   kind: FileKind
   error: string | null
 }
+
+export type GitSnapshotSource =
+  | {
+      kind: 'empty'
+      label: string
+      logicalPath: string
+    }
+  | {
+      kind: 'head'
+      repoPath: string
+      repositoryRoot: string
+      path: string
+      label: string
+    }
+  | {
+      kind: 'index'
+      repoPath: string
+      repositoryRoot: string
+      path: string
+      label: string
+    }
+  | {
+      kind: 'workingTree'
+      repositoryRoot: string
+      path: string
+      label: string
+    }
 
 export interface FileIdentity {
   size: number
@@ -91,6 +123,19 @@ export async function buildFileDiffFromPaths(
 }
 
 export const buildFileDiff = buildFileDiffFromPaths
+
+export async function buildFileDiffFromGit(
+  left: GitSnapshotSource,
+  right: GitSnapshotSource,
+  options: CompareOptions,
+): Promise<FileDiffResult> {
+  const [leftSnapshot, rightSnapshot] = await Promise.all([
+    loadGitSnapshot(left),
+    loadGitSnapshot(right),
+  ])
+
+  return buildFileDiffFromSnapshots(leftSnapshot, rightSnapshot, options)
+}
 
 export async function buildFileDiffFromSnapshots(
   left: DiffSnapshot,
@@ -374,6 +419,113 @@ async function loadFileSnapshotFromPath(
   }
 }
 
+async function loadGitSnapshot(source: GitSnapshotSource): Promise<DiffSnapshot> {
+  switch (source.kind) {
+    case 'empty':
+      return buildMissingSnapshot(
+        source.label,
+        source.logicalPath,
+        buildGitSnapshotCacheKey('EMPTY', source.logicalPath, 'missing'),
+      )
+    case 'head':
+      return loadGitObjectSnapshot(source, 'HEAD')
+    case 'index':
+      return loadGitObjectSnapshot(source, 'INDEX')
+    case 'workingTree':
+      return loadGitWorkingTreeSnapshot(source)
+  }
+}
+
+async function loadGitObjectSnapshot(
+  source: Extract<GitSnapshotSource, { kind: 'head' | 'index' }>,
+  refLabel: 'HEAD' | 'INDEX',
+): Promise<DiffSnapshot> {
+  const objectRef = source.kind === 'head'
+    ? `HEAD:${source.path}`
+    : `:${source.path}`
+  const shaResult = await runGit(source.repoPath, [
+    'rev-parse',
+    objectRef,
+  ], {
+    allowNonZeroExit: true,
+  })
+  const logicalPath = gitLogicalPath(source.path)
+
+  if (shaResult.exitCode !== 0) {
+    return buildMissingSnapshot(
+      source.label,
+      logicalPath,
+      buildGitSnapshotCacheKey(refLabel, source.path, 'missing'),
+    )
+  }
+
+  const sha = shaResult.stdout.trim()
+  if (!sha) {
+    return buildNonTextSnapshot(
+      'readError',
+      source.label,
+      logicalPath,
+      null,
+      null,
+      'Git object did not produce a SHA.',
+    )
+  }
+
+  const cacheKey = buildGitSnapshotCacheKey(refLabel, source.path, sha)
+  const contentResult = await runGitBytes(source.repoPath, [
+    'show',
+    '--no-textconv',
+    objectRef,
+  ], {
+    allowNonZeroExit: true,
+  })
+
+  if (contentResult.exitCode !== 0) {
+    return buildNonTextSnapshot(
+      'readError',
+      source.label,
+      logicalPath,
+      cacheKey,
+      null,
+      contentResult.stderr.trim() || 'Git object content could not be read.',
+    )
+  }
+
+  return buildSnapshotFromBytes(
+    source.label,
+    logicalPath,
+    cacheKey,
+    contentResult.stdout,
+  )
+}
+
+async function loadGitWorkingTreeSnapshot(
+  source: Extract<GitSnapshotSource, { kind: 'workingTree' }>,
+): Promise<DiffSnapshot> {
+  const logicalPath = gitLogicalPath(source.path)
+  const absolutePath = resolveChildPath(source.repositoryRoot, source.path)
+
+  try {
+    const bytes = await readFile(absolutePath)
+    const sha = sha256(bytes)
+    return buildSnapshotFromBytes(
+      source.label,
+      logicalPath,
+      buildGitSnapshotCacheKey('WORKTREE', source.path, sha),
+      bytes,
+    )
+  } catch (error) {
+    return buildNonTextSnapshot(
+      'readError',
+      source.label,
+      logicalPath,
+      null,
+      null,
+      errorMessage(error),
+    )
+  }
+}
+
 async function readPartial(pathValue: string, length: number): Promise<Uint8Array> {
   if (length <= 0) {
     return new Uint8Array(0)
@@ -399,6 +551,19 @@ function buildLocalSnapshotCacheKey(resolvedPath: string, identity: string) {
     resolvedPath,
     identity,
   ].join('\u0000')
+}
+
+function buildGitSnapshotCacheKey(ref: 'HEAD' | 'INDEX' | 'WORKTREE' | 'EMPTY', pathValue: string, identity: string) {
+  return [
+    'git',
+    ref,
+    pathValue,
+    identity,
+  ].join('\u0000')
+}
+
+function gitLogicalPath(pathValue: string) {
+  return `git:${pathValue}`
 }
 
 function buildMissingSnapshot(
@@ -465,6 +630,43 @@ function buildTextSnapshot(
     hasTrailingNewline: bytes[bytes.byteLength - 1] === 10,
     error: null,
   }
+}
+
+function buildSnapshotFromBytes(
+  label: string,
+  logicalPath: string,
+  cacheKey: string | null,
+  bytes: Uint8Array,
+): DiffSnapshot {
+  const sample = Uint8Array.prototype.slice.call(
+    bytes,
+    0,
+    Math.min(bytes.byteLength, BINARY_SAMPLE_BYTES),
+  )
+  const kind = detectFileKind(logicalPath, bytes.byteLength, sample)
+  if (kind === 'tooLarge') {
+    return buildNonTextSnapshot(kind, label, logicalPath, cacheKey, bytes.byteLength, null)
+  }
+  if (kind !== 'text') {
+    return buildNonTextSnapshot(kind, label, logicalPath, cacheKey, bytes.byteLength, null)
+  }
+
+  try {
+    return buildTextSnapshot(label, logicalPath, cacheKey, bytes)
+  } catch (error) {
+    return buildNonTextSnapshot(
+      'readError',
+      label,
+      logicalPath,
+      cacheKey,
+      bytes.byteLength,
+      errorMessage(error),
+    )
+  }
+}
+
+function sha256(bytes: Uint8Array) {
+  return createHash('sha256').update(bytes).digest('hex')
 }
 
 function canBuildTextDiff(left: DiffSnapshot, right: DiffSnapshot) {
