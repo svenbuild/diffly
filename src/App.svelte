@@ -11,13 +11,16 @@
     comparePaths,
     cancelDirectoryCompare,
     createDiffSession,
+    disposeDiffSession,
     downloadUpdate,
     getAppVersion,
     installUpdate,
+    listDiffEntries,
     listDirectory,
     listRoots,
     loadSessionState,
     onLaunchContext,
+    openDiffEntry,
     openCompareItem,
     pollDirectoryCompare,
     pathInfo,
@@ -36,6 +39,7 @@
     createCompareSidebarResizeController,
   } from './lib/app/compare-sidebar-resize'
   import { createDiffCacheController } from './lib/app/diff-cache'
+  import { mapGitDiffEntry } from './lib/app/git-diff-session'
   import {
     buildDirectoryComparePairs,
     findDirectoryComparePairForPath as findDirectoryComparePairInList,
@@ -107,6 +111,7 @@
     CompareTreeSettings,
     CompareViewerSettings,
     DiffStatsSnapshot,
+    DiffSource,
     DirectoryEntryResult,
     EntryStatus,
     ExplorerEntry,
@@ -168,6 +173,8 @@
   // Latest Git source emitted by GitSetupPanel, or null when its setup is
   // incomplete. Transient setup-draft state — intentionally not persisted.
   let gitSetupSource: GitDiffSource | null = null
+  let activeDiffSource: DiffSource | null = null
+  let activeDiffSessionId: string | null = null
   // Bumped after a Git recent repo is saved so GitSetupPanel reloads its list.
   let recentsReloadRequestId = 0
   let viewMode: ViewMode = 'sideBySide'
@@ -540,6 +547,7 @@
 
       removeLaunchContextListener()
       diffCache.cancelBackgroundPreload()
+      disposeDiffSessionQuietly(activeDiffSessionId)
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -874,6 +882,10 @@
     revision = compareRevision,
     options: { force?: boolean } = {},
   ) {
+    if (activeDiffSessionId) {
+      throw new Error('Session-backed diffs must be opened through the diff session.')
+    }
+
     const bases = getDetailBasesForPath(relativePath)
     return diffCache.getOrCreateDetailDiffPromise({
       revision,
@@ -884,6 +896,18 @@
       ignoreCase: activeCompareOptions.ignoreCase,
       force: options.force,
     })
+  }
+
+  function canUseLocalDirectoryPreload() {
+    return mode === 'directory' && activeDiffSessionId === null
+  }
+
+  function disposeDiffSessionQuietly(sessionId: string | null) {
+    if (!sessionId) {
+      return
+    }
+
+    void disposeDiffSession(sessionId).catch(() => undefined)
   }
 
   function captureDiffScrollSnapshot(): DiffScrollSnapshot | null {
@@ -905,6 +929,10 @@
     centerRelativePath: string,
     revision = compareRevision,
   ) {
+    if (!canUseLocalDirectoryPreload()) {
+      return
+    }
+
     // Background preload assumes a single (leftPath, rightPath) pair. With
     // multi-folder compares the entries span multiple base pairs, so skip
     // preloading until the cache layer is taught to look up bases per entry.
@@ -1430,6 +1458,10 @@
   }
 
   function goToSetup() {
+    const previousSessionId = activeDiffSessionId
+    activeDiffSource = null
+    activeDiffSessionId = null
+    disposeDiffSessionQuietly(previousSessionId)
     activeDetailRequestId += 1
     compareRevision += 1
     stopDirectoryComparePolling(false)
@@ -1862,13 +1894,20 @@
   }
 
   async function runGitCompare() {
-    const source = gitSetupSource
+    const source = screen === 'compare' && activeDiffSource?.kind === 'git'
+      ? activeDiffSource
+      : gitSetupSource
     if (!source) {
       errorMessage = 'Select a valid Git repository and compare type first.'
       return
     }
 
     const options = getPendingCompareOptions()
+    if (source.selection.kind !== 'workingTree') {
+      errorMessage = 'Only Git working tree diff sessions are implemented yet.'
+      return
+    }
+
     loading = true
     errorMessage = ''
 
@@ -1885,9 +1924,46 @@
 
     try {
       const session = await createDiffSession(source, options)
-      // The backend git provider is unimplemented and rejects today; navigation
-      // to the compare screen is wired in a later task.
-      void session
+      const entries = await listDiffEntries(session.sessionId, {
+        scope: source.selection.initialScope,
+      })
+      const mappedEntries = entries.map(mapGitDiffEntry)
+      const previousSessionId = activeDiffSessionId
+
+      compareRevision += 1
+      diffCache.clearDetailDiffs()
+      activeCompareOptions = { ...options }
+      compareDirtyReason = null
+      activeDiffSource = source
+      activeDiffSessionId = session.sessionId
+      mode = 'directory'
+      leftPath = source.repositoryRoot
+      rightPath = source.repositoryRoot
+      screen = 'compare'
+      directoryEntries = mappedEntries
+      directoryEntriesRevision += 1
+      syncFilteredDirectoryState(mappedEntries)
+      selectedRelativePath = ''
+      activeDiff = null
+      activeDetailRequestId += 1
+      cancelBackgroundDiffPreload()
+      stopDirectoryComparePolling(true)
+      directoryComparePairs = []
+      directoryComparePairSlots = []
+      directoryComparePairChangedIndices = []
+      directoryComparePairIndexSets = []
+      directoryComparePairIndexOrderDirty = []
+      directoryComparePairTimers = []
+      directoryComparePairJobs = []
+      activeDirectoryCompareJobId = ''
+      resetCompareMetrics()
+      pulseCompareSurface()
+      disposeDiffSessionQuietly(previousSessionId)
+
+      const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
+      if (nextEntry) {
+        void selectEntry(nextEntry, compareRevision)
+      }
     } catch (error) {
       errorMessage = error instanceof Error
         ? error.message
@@ -1935,6 +2011,11 @@
       errorMessage = `Select the same number of folders on both sides (left has ${leftSelected.length}, right has ${rightSelected.length}).`
       return
     }
+
+    const previousSessionId = activeDiffSessionId
+    activeDiffSource = null
+    activeDiffSessionId = null
+    disposeDiffSessionQuietly(previousSessionId)
 
     const nextLeftPath = leftSelected[0]
     const nextRightPath = rightSelected[0]
@@ -2078,6 +2159,73 @@
     revision = compareRevision,
     restoreScroll: DiffScrollSnapshot | null = null,
   ) {
+    if (activeDiffSessionId) {
+      const switchingEntry = selectedRelativePath !== entry.relativePath
+
+      if (revision === compareRevision) {
+        if (switchingEntry) {
+          pulseCompareSurface()
+        }
+        selectedRelativePath = entry.relativePath
+        if (arguments.length <= 1) {
+          directoryScrollTargetRevision += 1
+        }
+      }
+
+      if (!entry.diffEntryId) {
+        activeDiff = null
+        errorMessage = 'Unable to open the file diff.'
+        return
+      }
+
+      if (entry.diffEntryStatus === 'conflicted') {
+        activeDiff = null
+        errorMessage = 'Git conflicted file details are not implemented yet.'
+        return
+      }
+
+      if (selectedRelativePath === entry.relativePath && detailLoading) {
+        return
+      }
+
+      const requestId = activeDetailRequestId + 1
+
+      activeDetailRequestId = requestId
+      selectedRelativePath = entry.relativePath
+      detailLoading = true
+      errorMessage = ''
+      cancelBackgroundDiffPreload()
+
+      try {
+        if (switchingEntry) {
+          activeDiff = null
+        }
+
+        if (revision !== compareRevision || requestId !== activeDetailRequestId) {
+          return
+        }
+
+        const result = await openDiffEntry(activeDiffSessionId, entry.diffEntryId, {
+          ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
+          ignoreCase: activeCompareOptions.ignoreCase,
+        })
+
+        if (revision === compareRevision && requestId === activeDetailRequestId) {
+          activeDiff = result
+          await restoreDiffScrollSnapshot(restoreScroll)
+        }
+      } catch (error) {
+        if (requestId === activeDetailRequestId) {
+          errorMessage = error instanceof Error ? error.message : 'Unable to open the file diff.'
+        }
+      } finally {
+        if (requestId === activeDetailRequestId) {
+          detailLoading = false
+        }
+      }
+      return
+    }
+
     if (mode === 'directory') {
       if (revision === compareRevision) {
         if (selectedRelativePath !== entry.relativePath) {
@@ -2301,7 +2449,9 @@
   }
 
   $: textDiffActive = mode === 'directory'
-    ? directoryRenderableEntryCount > 0
+    ? activeDiffSessionId
+      ? activeDiff?.contentKind === 'text'
+      : directoryRenderableEntryCount > 0
     : activeDiff?.contentKind === 'text'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false
@@ -2496,6 +2646,7 @@
     {resetCompareSidebarWidth}
     {startCompareSidebarResize}
     {activeDiff}
+    sessionEntryMode={activeDiffSessionId !== null}
     {directoryScrollTargetRevision}
     {viewerSettings}
     {compareRevision}

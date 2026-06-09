@@ -31,7 +31,7 @@ export function buildDirectoryCodeViewFile(
       : text.rightCacheKey ?? text.rightSha256
 
   return {
-    name: entry.relativePath,
+    name: entry.displayPath ?? entry.relativePath,
     contents,
     cacheKey: cacheKey ?? `${entry.relativePath}:${side}:${contents.length}`,
     lang: getFiletypeFromFileName(entry.relativePath),
@@ -93,7 +93,7 @@ export function buildPlaceholderFile(
   const contents = buildPlaceholderContents(label, lineCount, blankLineSuffixes)
 
   return {
-    name: entry.relativePath,
+    name: entry.displayPath ?? entry.relativePath,
     contents,
     cacheKey: ['placeholder', key, contents.length].join('\u0000'),
     lang: 'text',

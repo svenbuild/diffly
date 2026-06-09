@@ -313,11 +313,15 @@ export interface PathInfo {
 
 export interface DirectoryEntryResult {
   relativePath: string
+  displayPath?: string
   status: EntryStatus
   leftPath: string | null
   rightPath: string | null
   leftSize: number | null
   rightSize: number | null
+  diffEntryId?: string
+  diffEntryStatus?: DiffEntryStatus
+  diffEntryScope?: GitWorkingTreeScope
 }
 
 export interface TextDiffPayload {

@@ -16,6 +16,7 @@
 
   export let mode: CompareMode = 'file'
   export let activeDiff: FileDiffResult | null
+  export let sessionEntryMode = false
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
   export let scrollTargetRevision = 0
@@ -47,7 +48,7 @@
 </script>
 
 <section class:compare-viewer-transitioning={transitionActive} class="compare-viewer">
-  {#if mode === 'directory'}
+  {#if mode === 'directory' && !sessionEntryMode}
     <DirectoryDiffList
       {directoryEntries}
       {selectedRelativePath}
@@ -65,6 +66,10 @@
       {onSystemMonitorChange}
       {resolveEntryBases}
     />
+  {:else if sessionEntryMode && directoryEntries.length === 0 && !loading}
+    <div class="compare-viewer-state">
+      <p>No changes in working tree.</p>
+    </div>
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">
       <span class="refresh-spinner visible"></span>

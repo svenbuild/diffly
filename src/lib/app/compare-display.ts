@@ -41,11 +41,13 @@ export function directoryCompareEntryLabel(
   entries: DirectoryEntryResult[],
   emptyLabel: string,
 ) {
-  const entry = selectedRelativePath
-    ? selectedRelativePath
-    : defaultDirectoryEntry(entries)?.relativePath
+  if (selectedRelativePath) {
+    const entry = entries.find((candidate) => candidate.relativePath === selectedRelativePath)
+    return formatRelativePathLabel(entry?.displayPath ?? entry?.relativePath ?? selectedRelativePath)
+  }
 
-  return entry ? formatRelativePathLabel(entry) : emptyLabel
+  const entry = defaultDirectoryEntry(entries)
+  return entry ? formatRelativePathLabel(entry.displayPath ?? entry.relativePath) : emptyLabel
 }
 
 export function fileCompareLabel(activeDiff: FileDiffResult | null, emptyLabel: string) {

@@ -19,6 +19,7 @@ import type {
   DiffSource,
   GitWorkingTreeScope,
 } from '../../../src/lib/types'
+import { MAX_TEXT_BYTES } from '../file-diff'
 import { GitProvider } from './git-provider'
 
 const execFileAsync = promisify(execFile)
@@ -228,6 +229,17 @@ describe('GitProvider working tree entries', () => {
 
     expect(result.contentKind).toBe('unsupported')
     expect(result.unsupported?.reason).toBe('binary')
+  })
+
+  it('opens too-large files as unsupported', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'large.txt', 'base\n')
+    await writeFile(join(repoPath, 'large.txt'), `${'a'.repeat(MAX_TEXT_BYTES + 1)}\n`)
+
+    const result = await openEntry(repoPath, 'all', 'large.txt')
+
+    expect(result.contentKind).toBe('unsupported')
+    expect(result.unsupported?.reason).toBe('tooLarge')
   })
 
   it('throws for conflicted entries', async () => {
