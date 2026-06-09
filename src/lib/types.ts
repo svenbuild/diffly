@@ -325,6 +325,14 @@ export interface DirectoryEntryResult {
   diffEntryScope?: GitWorkingTreeScope
 }
 
+// Selects how the directory diff list loads each entry's details. Local paths
+// resolve through the existing base/relativePath loader; session-backed sources
+// (git working tree, later GitHub PRs) load by diff-session entry id instead, so
+// no local filesystem paths are derived.
+export type DirectoryDetailLoader =
+  | { kind: 'localPaths' }
+  | { kind: 'diffSession'; sessionId: string }
+
 export interface TextDiffPayload {
   leftText: string
   rightText: string

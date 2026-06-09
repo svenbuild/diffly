@@ -20,7 +20,6 @@
     listRoots,
     loadSessionState,
     onLaunchContext,
-    openDiffEntry,
     openCompareItem,
     openExternalUrl as openExternalUrlApi,
     pollDirectoryCompare,
@@ -117,6 +116,7 @@
     DiffEntry,
     DiffStatsSnapshot,
     DiffSource,
+    DirectoryDetailLoader,
     DirectoryEntryResult,
     EntryStatus,
     ExplorerEntry,
@@ -181,6 +181,9 @@
   let gitSetupSource: GitDiffSource | null = null
   let activeDiffSource: DiffSource | null = null
   let activeDiffSessionId: string | null = null
+  // How the directory diff list loads each entry: local paths for local compares,
+  // a diff session for git working-tree (and later GitHub PR) sources.
+  let directoryDetailLoader: DirectoryDetailLoader = { kind: 'localPaths' }
   // Bumped after a Git recent repo is saved so GitSetupPanel reloads its list.
   let recentsReloadRequestId = 0
   let viewMode: ViewMode = 'sideBySide'
@@ -2011,25 +2014,26 @@
       .filter((entry) => entry.scope === scope)
       .map(mapGitDiffEntry)
     directoryEntries = mapped
+    // Bump the compare generation so DirectoryDiffList drops its per-path diff
+    // cache and reloads with the new scope's diffEntryId. Staged and unstaged
+    // share a relativePath but resolve to different content, so reusing the
+    // cache here would show the previous scope's diff.
+    compareRevision += 1
     directoryEntriesRevision += 1
     syncFilteredDirectoryState(mapped)
+    // Git renders through the continuous list, not the single-file activeDiff;
+    // clear any residual detail state so it can't leak into the header.
+    activeDiff = null
 
     const target =
       mapped.find((entry) => entry.relativePath === previousPath) ??
       defaultDirectoryEntry(filteredDirectoryEntries)
-    // Invalidate any in-flight detail request first. The target keeps the same
-    // relativePath but a scope-specific diffEntryId, and selectEntry's dedupe
-    // guard short-circuits on relativePath while detailLoading — so without this
-    // a stale openDiffEntry from the old scope could land, and the new scope's
-    // diff would never be requested.
-    activeDetailRequestId += 1
-    detailLoading = false
     if (target) {
-      // The entry id encodes the scope, so this reloads the correct diff.
+      // Selecting only moves the highlight; DirectoryDiffList loads the diff
+      // for the new scope via the entry's scope-encoded diffEntryId.
       void selectEntry(target, compareRevision)
     } else {
       selectedRelativePath = ''
-      activeDiff = null
     }
     pulseCompareSurface()
   }
@@ -2222,73 +2226,9 @@
     revision = compareRevision,
     restoreScroll: DiffScrollSnapshot | null = null,
   ) {
-    if (activeDiffSessionId) {
-      const switchingEntry = selectedRelativePath !== entry.relativePath
-
-      if (revision === compareRevision) {
-        if (switchingEntry) {
-          pulseCompareSurface()
-        }
-        selectedRelativePath = entry.relativePath
-        if (arguments.length <= 1) {
-          directoryScrollTargetRevision += 1
-        }
-      }
-
-      if (!entry.diffEntryId) {
-        activeDiff = null
-        errorMessage = 'Unable to open the file diff.'
-        return
-      }
-
-      if (entry.diffEntryStatus === 'conflicted') {
-        activeDiff = null
-        errorMessage = 'Git conflicted file details are not implemented yet.'
-        return
-      }
-
-      if (selectedRelativePath === entry.relativePath && detailLoading) {
-        return
-      }
-
-      const requestId = activeDetailRequestId + 1
-
-      activeDetailRequestId = requestId
-      selectedRelativePath = entry.relativePath
-      detailLoading = true
-      errorMessage = ''
-      cancelBackgroundDiffPreload()
-
-      try {
-        if (switchingEntry) {
-          activeDiff = null
-        }
-
-        if (revision !== compareRevision || requestId !== activeDetailRequestId) {
-          return
-        }
-
-        const result = await openDiffEntry(activeDiffSessionId, entry.diffEntryId, {
-          ignoreWhitespace: activeCompareOptions.ignoreWhitespace,
-          ignoreCase: activeCompareOptions.ignoreCase,
-        })
-
-        if (revision === compareRevision && requestId === activeDetailRequestId) {
-          activeDiff = result
-          await restoreDiffScrollSnapshot(restoreScroll)
-        }
-      } catch (error) {
-        if (requestId === activeDetailRequestId) {
-          errorMessage = error instanceof Error ? error.message : 'Unable to open the file diff.'
-        }
-      } finally {
-        if (requestId === activeDetailRequestId) {
-          detailLoading = false
-        }
-      }
-      return
-    }
-
+    // Session-backed directory sources (git working tree, later GitHub PRs) and
+    // local directory compares share the continuous viewer: selecting an entry
+    // only moves the selection and scrolls; DirectoryDiffList loads the details.
     if (mode === 'directory') {
       if (revision === compareRevision) {
         if (selectedRelativePath !== entry.relativePath) {
@@ -2511,11 +2451,21 @@
     }
   }
 
+  // Git working-tree compares now render through the continuous directory list
+  // (no single-file activeDiff), so the directory branch drives the view-mode
+  // toggle for every directory source, session-backed or not.
   $: textDiffActive = mode === 'directory'
-    ? activeDiffSessionId
-      ? activeDiff?.contentKind === 'text'
-      : directoryRenderableEntryCount > 0
+    ? directoryRenderableEntryCount > 0
     : activeDiff?.contentKind === 'text'
+  $: directoryDetailLoader = activeDiffSessionId
+    ? { kind: 'diffSession', sessionId: activeDiffSessionId }
+    : { kind: 'localPaths' }
+  $: directoryEmptyMessage =
+    activeDiffSource?.kind === 'git'
+      ? 'No changes in working tree.'
+      : activeDiffSource?.kind === 'githubPullRequest'
+        ? 'No changed files in this pull request.'
+        : 'No file changes.'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false
   $: canGoToNextDiff = false
@@ -2714,7 +2664,8 @@
     {gitScope}
     {gitScopeCounts}
     setGitScope={applyGitScope}
-    sessionEntryMode={activeDiffSessionId !== null}
+    detailLoader={directoryDetailLoader}
+    emptyMessage={directoryEmptyMessage}
     {directoryScrollTargetRevision}
     {viewerSettings}
     {compareRevision}

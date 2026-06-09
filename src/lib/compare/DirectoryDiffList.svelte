@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
-  import { openCompareItem } from '../api'
+  import { openCompareItem, openDiffEntry } from '../api'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareOptions,
     CompareViewerSettings,
     DiffStatsSnapshot,
+    DirectoryDetailLoader,
     DirectoryEntryResult,
     FileDiffResult,
     SystemMonitorSnapshot,
@@ -56,6 +57,8 @@
     rightBase: rightPath,
     relativePath,
   })
+  export let detailLoader: DirectoryDetailLoader = { kind: 'localPaths' }
+  export let emptyMessage = 'No file changes.'
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
@@ -372,13 +375,30 @@
     })
 
     try {
-      const bases = resolveEntryBases(entry.relativePath)
-      const diff = await openCompareItem(
-        bases.leftBase,
-        bases.rightBase,
-        bases.relativePath,
-        compareOptions,
-      )
+      let diff: FileDiffResult
+      if (detailLoader.kind === 'diffSession') {
+        if (!entry.diffEntryId) {
+          // Session-backed entries must carry a scope-specific diff entry id.
+          // Surface the gap as a visible error instead of deriving local paths.
+          setEntryState(path, {
+            diff: null,
+            error: 'No diff details are available for this file.',
+            generation,
+            loading: false,
+            revision: loadRevision,
+          })
+          return
+        }
+        diff = await openDiffEntry(detailLoader.sessionId, entry.diffEntryId, compareOptions)
+      } else {
+        const bases = resolveEntryBases(entry.relativePath)
+        diff = await openCompareItem(
+          bases.leftBase,
+          bases.rightBase,
+          bases.relativePath,
+          compareOptions,
+        )
+      }
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
       }
@@ -910,7 +930,7 @@
     </div>
   {:else if directoryEntries.length === 0}
     <div class="compare-viewer-state">
-      <p>No file changes.</p>
+      <p>{emptyMessage}</p>
     </div>
   {:else if !hasRenderableDirectoryItems}
     <div class="compare-viewer-state">

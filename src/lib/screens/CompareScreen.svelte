@@ -12,6 +12,7 @@
     CompareViewerSettings,
     DiffSource,
     DiffStatsSnapshot,
+    DirectoryDetailLoader,
     DirectoryEntryResult,
     FileDiffResult,
     GitWorkingTreeScope,
@@ -70,7 +71,8 @@
   export let resetCompareSidebarWidth: () => void
   export let startCompareSidebarResize: (event: PointerEvent) => void
   export let activeDiff: FileDiffResult | null = null
-  export let sessionEntryMode = false
+  export let detailLoader: DirectoryDetailLoader = { kind: 'localPaths' }
+  export let emptyMessage = 'No file changes.'
   export let directoryScrollTargetRevision = 0
   export let viewerSettings: CompareViewerSettings
   export let compareRevision = 0
@@ -345,7 +347,8 @@
         this={CompareViewerComponent}
         {mode}
         {activeDiff}
-        {sessionEntryMode}
+        {detailLoader}
+        {emptyMessage}
         {directoryEntries}
         {selectedRelativePath}
         scrollTargetRevision={directoryScrollTargetRevision}

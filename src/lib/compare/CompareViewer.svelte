@@ -9,6 +9,7 @@
     CompareViewerSettings,
     DiffStatsSnapshot,
     SystemMonitorSnapshot,
+    DirectoryDetailLoader,
     DirectoryEntryResult,
     FileDiffResult,
     ViewMode,
@@ -16,7 +17,8 @@
 
   export let mode: CompareMode = 'file'
   export let activeDiff: FileDiffResult | null
-  export let sessionEntryMode = false
+  export let detailLoader: DirectoryDetailLoader = { kind: 'localPaths' }
+  export let emptyMessage = 'No file changes.'
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
   export let scrollTargetRevision = 0
@@ -48,7 +50,7 @@
 </script>
 
 <section class:compare-viewer-transitioning={transitionActive} class="compare-viewer">
-  {#if mode === 'directory' && !sessionEntryMode}
+  {#if mode === 'directory'}
     <DirectoryDiffList
       {directoryEntries}
       {selectedRelativePath}
@@ -65,11 +67,9 @@
       {onDiffStatsChange}
       {onSystemMonitorChange}
       {resolveEntryBases}
+      {detailLoader}
+      {emptyMessage}
     />
-  {:else if sessionEntryMode && directoryEntries.length === 0 && !loading}
-    <div class="compare-viewer-state">
-      <p>No changes in working tree.</p>
-    </div>
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">
       <span class="refresh-spinner visible"></span>
