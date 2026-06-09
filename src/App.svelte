@@ -15,7 +15,6 @@
     downloadUpdate,
     getAppVersion,
     installUpdate,
-    listDiffEntries,
     listDirectory,
     listRoots,
     loadSessionState,
@@ -1941,16 +1940,11 @@
     loading = true
     errorMessage = ''
 
-    // Save the recent repo first, independent of the dispatch below, so the repo
-    // is remembered even though the backend git provider is still a stub.
-    try {
-      await addRecentSource(source)
-      // Signal the setup panel to reload its recents so the new entry shows
-      // immediately without an app restart.
-      recentsReloadRequestId += 1
-    } catch {
-      // Persisting recents is best-effort; ignore failures here.
-    }
+    void addRecentSource(source)
+      .then(() => {
+        recentsReloadRequestId += 1
+      })
+      .catch(() => undefined)
 
     // Preserve the active tab across Refresh; seed from the picker on a fresh
     // compare entered from setup.
@@ -1959,8 +1953,7 @@
 
     try {
       const session = await createDiffSession(source, options)
-      // Fetch every scope once; the tabs filter this list client-side.
-      const entries = await listDiffEntries(session.sessionId)
+      const entries = session.entries
       const mappedEntries = entries
         .filter((entry) => entry.scope === targetScope)
         .map(mapGitDiffEntry)

@@ -462,6 +462,10 @@
   }
 
   function scheduleBackgroundLoadPump() {
+    if (detailLoader.kind === 'diffSession') {
+      return
+    }
+
     if (backgroundLoadTimer !== null) {
       return
     }
@@ -672,7 +676,9 @@
     if (selectedEntry) {
       scheduleEntryWindow(selectedEntry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
     }
-    scheduleInitialLoads()
+    if (detailLoader.kind === 'localPaths') {
+      scheduleInitialLoads()
+    }
   }
 
   function requestVisibleEntries(paths: string[]) {
@@ -926,6 +932,7 @@
     entryByPath,
     revision,
     loadGeneration,
+    detailLoader,
     scheduleBackgroundLoadPump()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)

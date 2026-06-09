@@ -21,8 +21,9 @@ import {
   type GitSnapshotSource,
 } from '../file-diff'
 import {
-  parseGitNameStatusOutput,
+  parseGitRawNumstatOutput,
   type GitNameStatusEntry,
+  type GitRawNumstatResult,
 } from '../git/git-parser'
 import { runGit } from '../git/git-service'
 
@@ -35,6 +36,15 @@ const GIT_OPTIONAL_HEAD_OPTIONS = {
   ...GIT_ENTRY_OPTIONS,
   allowNonZeroExit: true,
 }
+
+const GIT_DIFF_ENTRY_ARGS = [
+  '--raw',
+  '--numstat',
+  '-z',
+  '--find-renames',
+  '--no-ext-diff',
+  '--no-textconv',
+]
 
 export class GitProvider implements DiffSessionProvider {
   create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
@@ -88,60 +98,31 @@ export class GitProvider implements DiffSessionProvider {
       staged,
       unstaged,
       untracked,
-      allBinaryPaths,
-      stagedBinaryPaths,
-      unstagedBinaryPaths,
     ] = await Promise.all([
-      readOptionalNameStatus(repositoryRoot, [
+      readOptionalRawNumstat(repositoryRoot, [
         'diff',
         'HEAD',
-        '--name-status',
-        '-z',
-        '--find-renames',
+        ...GIT_DIFF_ENTRY_ARGS,
       ]),
-      readOptionalNameStatus(repositoryRoot, [
+      readOptionalRawNumstat(repositoryRoot, [
         'diff',
         '--cached',
-        '--name-status',
-        '-z',
-        '--find-renames',
+        ...GIT_DIFF_ENTRY_ARGS,
       ]),
-      readNameStatus(repositoryRoot, [
+      readRawNumstat(repositoryRoot, [
         'diff',
-        '--name-status',
-        '-z',
-        '--find-renames',
+        ...GIT_DIFF_ENTRY_ARGS,
       ]),
       readUntrackedPaths(repositoryRoot),
-      readOptionalBinaryPaths(repositoryRoot, [
-        'diff',
-        'HEAD',
-        '--numstat',
-        '-z',
-        '--find-renames',
-      ]),
-      readOptionalBinaryPaths(repositoryRoot, [
-        'diff',
-        '--cached',
-        '--numstat',
-        '-z',
-        '--find-renames',
-      ]),
-      readBinaryPaths(repositoryRoot, [
-        'diff',
-        '--numstat',
-        '-z',
-        '--find-renames',
-      ]),
     ])
 
     const entries: DiffEntry[] = []
     const entryData = new Map<string, ProviderEntryData>()
     const allTrackedPaths = new Set<string>()
 
-    for (const item of allTracked) {
+    for (const item of allTracked.entries) {
       allTrackedPaths.add(item.path)
-      await addNameStatusEntry(entries, entryData, source, 'all', item, allBinaryPaths)
+      await addNameStatusEntry(entries, entryData, source, 'all', item, allTracked.binaryPaths)
     }
 
     for (const path of untracked) {
@@ -150,12 +131,12 @@ export class GitProvider implements DiffSessionProvider {
       }
     }
 
-    for (const item of staged) {
-      await addNameStatusEntry(entries, entryData, source, 'staged', item, stagedBinaryPaths)
+    for (const item of staged.entries) {
+      await addNameStatusEntry(entries, entryData, source, 'staged', item, staged.binaryPaths)
     }
 
-    for (const item of unstaged) {
-      await addNameStatusEntry(entries, entryData, source, 'unstaged', item, unstagedBinaryPaths)
+    for (const item of unstaged.entries) {
+      await addNameStatusEntry(entries, entryData, source, 'unstaged', item, unstaged.binaryPaths)
     }
 
     for (const path of untracked) {
@@ -325,32 +306,25 @@ function workingTreeSource(
   }
 }
 
-async function readOptionalNameStatus(repoPath: string, args: string[]) {
+function emptyRawNumstatResult(): GitRawNumstatResult {
+  return {
+    entries: [],
+    binaryPaths: new Set(),
+  }
+}
+
+async function readOptionalRawNumstat(repoPath: string, args: string[]) {
   const result = await runGit(repoPath, args, GIT_OPTIONAL_HEAD_OPTIONS)
   if (result.exitCode !== 0) {
-    return []
+    return emptyRawNumstatResult()
   }
 
-  return parseGitNameStatusOutput(result.stdout)
+  return parseGitRawNumstatOutput(result.stdout)
 }
 
-async function readNameStatus(repoPath: string, args: string[]) {
+async function readRawNumstat(repoPath: string, args: string[]) {
   const result = await runGit(repoPath, args, GIT_ENTRY_OPTIONS)
-  return parseGitNameStatusOutput(result.stdout)
-}
-
-async function readOptionalBinaryPaths(repoPath: string, args: string[]) {
-  const result = await runGit(repoPath, args, GIT_OPTIONAL_HEAD_OPTIONS)
-  if (result.exitCode !== 0) {
-    return new Set<string>()
-  }
-
-  return parseBinaryPathsFromNumstatOutput(result.stdout)
-}
-
-async function readBinaryPaths(repoPath: string, args: string[]) {
-  const result = await runGit(repoPath, args, GIT_ENTRY_OPTIONS)
-  return parseBinaryPathsFromNumstatOutput(result.stdout)
+  return parseGitRawNumstatOutput(result.stdout)
 }
 
 async function readUntrackedPaths(repoPath: string) {
@@ -362,22 +336,6 @@ async function readUntrackedPaths(repoPath: string) {
   ], GIT_ENTRY_OPTIONS)
 
   return parseNulPathList(result.stdout)
-}
-
-function parseBinaryPathsFromNumstatOutput(output: string) {
-  const paths = new Set<string>()
-  for (const record of output.split('\0')) {
-    const trimmed = record.trim()
-    if (!trimmed) {
-      continue
-    }
-
-    const parts = trimmed.split('\t')
-    if (parts[0] === '-' && parts[1] === '-' && parts[2]) {
-      paths.add(parts[parts.length - 1])
-    }
-  }
-  return paths
 }
 
 function parseNulPathList(output: string) {
