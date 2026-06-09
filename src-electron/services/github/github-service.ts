@@ -17,6 +17,7 @@ const FILES_PER_PAGE = 100
 const MAX_FILE_PAGES = 30
 // Snapshot downloads are cut off past this size and rendered as tooLarge.
 export const MAX_GITHUB_CONTENT_BYTES = MAX_TEXT_BYTES * 4
+const MAX_GITHUB_DIFF_BYTES = 192 * 1024 * 1024
 
 export type GithubErrorKind =
   | 'invalid-url'
@@ -49,6 +50,13 @@ export interface GithubPullRequestFile {
   blobUrl?: string
 }
 
+export interface GithubRawDiff {
+  baseLabel: string
+  headLabel: string
+  htmlUrl: string
+  files: GithubPullRequestFile[]
+}
+
 export interface GithubCompareMetadata {
   owner: string
   repo: string
@@ -65,6 +73,23 @@ export interface GithubFileContent {
   bytes: Uint8Array | null
   truncated: boolean
   size: number | null
+}
+
+export async function fetchGithubRawDiff(
+  source: GithubPullRequestSource | GithubCompareSource,
+): Promise<GithubRawDiff> {
+  const diffUrl = source.kind === 'githubPullRequest'
+    ? `https://github.com/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/pull/${source.pullNumber}.diff`
+    : `${source.url}.diff`
+  const text = await fetchGithubText(diffUrl, 'text/plain')
+  const files = parseUnifiedDiffFiles(text)
+
+  return {
+    baseLabel: source.kind === 'githubCompare' ? source.baseRef : 'base',
+    headLabel: source.kind === 'githubCompare' ? source.headRef : `PR #${source.pullNumber}`,
+    htmlUrl: source.url,
+    files,
+  }
 }
 
 export async function fetchPullRequestMetadata(
@@ -233,6 +258,32 @@ async function fetchGithubJson(url: string): Promise<unknown> {
   }
 }
 
+async function fetchGithubText(url: string, accept: string): Promise<string> {
+  const response = await githubFetch(url, accept)
+  if (!response.ok) {
+    throw await githubResponseError(response)
+  }
+
+  const declaredSize = readContentLength(response)
+  if (declaredSize !== null && declaredSize > MAX_GITHUB_DIFF_BYTES) {
+    await discardResponseBody(response)
+    throw new GithubServiceError(
+      'too-large',
+      'This GitHub diff is too large to load safely.',
+    )
+  }
+
+  const body = await readBodyWithCap(response, MAX_GITHUB_DIFF_BYTES)
+  if (body.truncated) {
+    throw new GithubServiceError(
+      'too-large',
+      'This GitHub diff is too large to load safely.',
+    )
+  }
+
+  return new TextDecoder('utf-8').decode(body.bytes)
+}
+
 async function githubFetch(url: string, accept: string): Promise<Response> {
   try {
     return await fetch(url, {
@@ -266,7 +317,7 @@ async function githubResponseError(response: Response): Promise<GithubServiceErr
     const rateLimited = response.headers.get('x-ratelimit-remaining') === '0'
     return new GithubServiceError(
       rateLimited ? 'rate-limited' : 'private-repo',
-      'GitHub could not load this PR. It may be private or rate-limited.',
+      'GitHub could not load this diff. It may be private or rate-limited.',
     )
   }
 
@@ -365,6 +416,161 @@ function readPullRequestFile(value: unknown): GithubPullRequestFile | null {
     rawUrl: readString(value.raw_url) ?? undefined,
     blobUrl: readString(value.blob_url) ?? undefined,
   }
+}
+
+function parseUnifiedDiffFiles(text: string): GithubPullRequestFile[] {
+  const files: GithubPullRequestFile[] = []
+  const lines = text.split(/\r?\n/)
+  let current: ParsedDiffFile | null = null
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      if (current) {
+        files.push(toGithubDiffFile(current))
+      }
+      current = startParsedDiffFile(line)
+      continue
+    }
+
+    if (!current) {
+      continue
+    }
+
+    current.patchLines.push(line)
+    if (line.startsWith('new file mode ')) {
+      current.status = 'added'
+    } else if (line.startsWith('deleted file mode ')) {
+      current.status = 'deleted'
+    } else if (line.startsWith('rename from ')) {
+      current.previousFilename = line.slice('rename from '.length)
+      current.status = 'renamed'
+    } else if (line.startsWith('rename to ')) {
+      current.filename = line.slice('rename to '.length)
+      current.status = 'renamed'
+    } else if (line.startsWith('copy from ')) {
+      current.previousFilename = line.slice('copy from '.length)
+      current.status = 'copied'
+    } else if (line.startsWith('copy to ')) {
+      current.filename = line.slice('copy to '.length)
+      current.status = 'copied'
+    } else if (line.startsWith('Binary files ')) {
+      current.status = current.status === 'modified' ? 'unsupported' : current.status
+    }
+  }
+
+  if (current) {
+    files.push(toGithubDiffFile(current))
+  }
+
+  return files.filter((file) => file.filename !== '')
+}
+
+interface ParsedDiffFile {
+  filename: string
+  previousFilename?: string
+  status: DiffEntryStatus
+  patchLines: string[]
+}
+
+function startParsedDiffFile(line: string): ParsedDiffFile {
+  const paths = parseDiffGitPaths(line)
+  return {
+    filename: paths?.right ?? '',
+    previousFilename: paths?.left,
+    status: 'modified',
+    patchLines: [line],
+  }
+}
+
+function toGithubDiffFile(file: ParsedDiffFile): GithubPullRequestFile {
+  const additions = countPatchLines(file.patchLines, '+')
+  const deletions = countPatchLines(file.patchLines, '-')
+  const previousFilename =
+    file.previousFilename && file.previousFilename !== file.filename
+      ? file.previousFilename
+      : undefined
+
+  return {
+    filename: file.filename,
+    previousFilename,
+    status: file.status,
+    additions,
+    deletions,
+    changes: additions + deletions,
+    patch: file.patchLines.join('\n'),
+  }
+}
+
+function countPatchLines(lines: string[], prefix: '+' | '-') {
+  let count = 0
+  for (const line of lines) {
+    if (line.startsWith(prefix) && !line.startsWith(`${prefix}${prefix}${prefix} `)) {
+      count += 1
+    }
+  }
+  return count
+}
+
+function parseDiffGitPaths(line: string): { left: string; right: string } | null {
+  const value = line.slice('diff --git '.length)
+  const first = readDiffPathToken(value, 0)
+  if (!first) {
+    return null
+  }
+  const second = readDiffPathToken(value, first.nextIndex)
+  if (!second) {
+    return null
+  }
+
+  return {
+    left: stripDiffPrefix(first.value),
+    right: stripDiffPrefix(second.value),
+  }
+}
+
+function readDiffPathToken(
+  value: string,
+  startIndex: number,
+): { value: string; nextIndex: number } | null {
+  let index = startIndex
+  while (value[index] === ' ') {
+    index += 1
+  }
+  if (index >= value.length) {
+    return null
+  }
+
+  if (value[index] !== '"') {
+    const end = value.indexOf(' ', index)
+    return {
+      value: end === -1 ? value.slice(index) : value.slice(index, end),
+      nextIndex: end === -1 ? value.length : end + 1,
+    }
+  }
+
+  let token = ''
+  index += 1
+  while (index < value.length) {
+    const char = value[index]
+    if (char === '"') {
+      return { value: token, nextIndex: index + 1 }
+    }
+    if (char === '\\' && index + 1 < value.length) {
+      token += value[index + 1]
+      index += 2
+      continue
+    }
+    token += char
+    index += 1
+  }
+
+  return null
+}
+
+function stripDiffPrefix(path: string) {
+  return path.startsWith('a/') || path.startsWith('b/')
+    ? path.slice(2)
+    : path
 }
 
 function mapGithubFileStatus(status: string | null): DiffEntryStatus {

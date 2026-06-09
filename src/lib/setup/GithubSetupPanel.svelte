@@ -131,7 +131,7 @@
       metadataStatus = 'error'
       metadataError = error instanceof Error
         ? error.message
-        : 'GitHub could not load this PR. It may be private or rate-limited.'
+        : 'GitHub could not load this pull request. It may be private or rate-limited.'
     }
   }
 

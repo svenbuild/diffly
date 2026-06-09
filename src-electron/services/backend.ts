@@ -19,7 +19,7 @@ import {
   pathInfo,
 } from './explorer-service'
 import { loadLaunchContext } from './launch-context'
-import { fetchPullRequestMetadata } from './github/github-service'
+import { fetchPullRequestMetadata, GithubServiceError } from './github/github-service'
 import { parseGithubPullRequestUrl } from './github/github-url'
 import { GithubProvider } from './providers/github-provider'
 import { GitProvider } from './providers/git-provider'
@@ -226,13 +226,32 @@ export function disposeDiffSession(sessionId: string): void {
 
 // Parses and re-validates the PR URL in the main process before any network
 // request; renderer-supplied owner/repo values are never trusted directly.
-export function fetchGithubPullRequestMetadata(url: unknown) {
+export async function fetchGithubPullRequestMetadata(url: unknown) {
   const source = typeof url === 'string' ? parseGithubPullRequestUrl(url) : null
   if (!source) {
     throw new Error('Enter a GitHub pull request URL.')
   }
 
-  return fetchPullRequestMetadata(source)
+  try {
+    return await fetchPullRequestMetadata(source)
+  } catch (error) {
+    if (error instanceof GithubServiceError && error.kind === 'rate-limited') {
+      return {
+        owner: source.owner,
+        repo: source.repo,
+        pullNumber: source.pullNumber,
+        title: '',
+        state: 'unknown',
+        baseRef: '',
+        headRef: '',
+        baseSha: '',
+        headSha: '',
+        htmlUrl: source.url,
+        changedFiles: null,
+      }
+    }
+    throw error
+  }
 }
 
 function readAddRecentSourcePayload(payload: unknown): {

@@ -68,7 +68,7 @@
         <p class="github-pr-ready">Status: Ready</p>
       {:else if metadataStatus === 'error'}
         <p class="github-pr-warning">
-          {metadataError || 'GitHub could not load this PR. It may be private or rate-limited.'}
+          {metadataError || 'GitHub could not load this pull request. It may be private or rate-limited.'}
         </p>
       {:else}
         <p class="github-pr-ready">Status: Ready</p>

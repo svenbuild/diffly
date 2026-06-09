@@ -159,20 +159,35 @@ describe('github compare flow', () => {
     expect(source).not.toBeNull()
 
     stubGithubFetch({
-      files: [
-        { filename: 'src/changed.ts', status: 'modified' },
-        { filename: 'src/added.ts', status: 'added' },
-        { filename: 'src/removed.ts', status: 'removed' },
-        { filename: 'src/renamed.ts', status: 'renamed', previous_filename: 'src/old.ts' },
-      ],
-      contents: {
-        'base:src/changed.ts': 'left\n',
-        'head:src/changed.ts': 'right\n',
-        'head:src/added.ts': 'added\n',
-        'base:src/removed.ts': 'removed\n',
-        'base:src/old.ts': 'same\n',
-        'head:src/renamed.ts': 'same\n',
-      },
+      diff: [
+        'diff --git a/src/changed.ts b/src/changed.ts',
+        'index 111..222 100644',
+        '--- a/src/changed.ts',
+        '+++ b/src/changed.ts',
+        '@@ -1 +1 @@',
+        '-left',
+        '+right',
+        'diff --git a/src/added.ts b/src/added.ts',
+        'new file mode 100644',
+        '--- /dev/null',
+        '+++ b/src/added.ts',
+        '@@ -0,0 +1 @@',
+        '+added',
+        'diff --git a/src/removed.ts b/src/removed.ts',
+        'deleted file mode 100644',
+        '--- a/src/removed.ts',
+        '+++ /dev/null',
+        '@@ -1 +0,0 @@',
+        '-removed',
+        'diff --git a/src/old.ts b/src/renamed.ts',
+        'similarity index 100%',
+        'rename from src/old.ts',
+        'rename to src/renamed.ts',
+        '--- a/src/old.ts',
+        '+++ b/src/renamed.ts',
+        '@@ -1 +1 @@',
+        ' same',
+      ].join('\n'),
     })
 
     const service = createService()
@@ -188,32 +203,32 @@ describe('github compare flow', () => {
     const byPath = new Map(session.entries.map((entry) => [entry.path, entry]))
 
     const modified = await service.openEntry(session.sessionId, byPath.get('src/changed.ts')!.id, options)
-    expect(modified.text?.leftText).toBe('left\n')
-    expect(modified.text?.rightText).toBe('right\n')
+    expect(modified.text?.leftText).toBe('@@ -1 +1 @@\nleft')
+    expect(modified.text?.rightText).toBe('@@ -1 +1 @@\nright')
 
     const added = await service.openEntry(session.sessionId, byPath.get('src/added.ts')!.id, options)
     expect(added.summary).toBe('Only the right file exists.')
-    expect(added.text?.rightText).toBe('added\n')
+    expect(added.text?.rightText).toBe('@@ -0,0 +1 @@\nadded')
 
     const removed = await service.openEntry(session.sessionId, byPath.get('src/removed.ts')!.id, options)
     expect(removed.summary).toBe('Only the left file exists.')
-    expect(removed.text?.leftText).toBe('removed\n')
+    expect(removed.text?.leftText).toBe('@@ -1 +0,0 @@\nremoved')
 
     const renamedEntry = byPath.get('src/renamed.ts')!
     expect(renamedEntry.oldPath).toBe('src/old.ts')
     expect(renamedEntry.displayPath).toBe('src/old.ts -> src/renamed.ts')
     const renamed = await service.openEntry(session.sessionId, renamedEntry.id, options)
-    expect(renamed.text?.leftText).toBe('same\n')
-    expect(renamed.text?.rightText).toBe('same\n')
+    expect(renamed.text?.leftText).toBe('@@ -1 +1 @@\nsame')
+    expect(renamed.text?.rightText).toBe('@@ -1 +1 @@\nsame')
   })
 
   it('renders binary PR files as unsupported', async () => {
     stubGithubFetch({
-      files: [{ filename: 'image.bin', status: 'modified' }],
-      contents: {
-        'base:image.bin': Uint8Array.from([0, 1, 2, 3]),
-        'head:image.bin': Uint8Array.from([3, 2, 1, 0]),
-      },
+      diff: [
+        'diff --git a/image.bin b/image.bin',
+        'index 111..222 100644',
+        'Binary files a/image.bin and b/image.bin differ',
+      ].join('\n'),
     })
 
     const service = createService()
@@ -233,7 +248,7 @@ describe('github compare flow', () => {
     const service = createService()
 
     await expect(service.create(githubSource(), options)).rejects.toThrow(
-      'GitHub could not load this PR. It may be private or rate-limited.',
+      'GitHub could not load this diff. It may be private or rate-limited.',
     )
   })
 
@@ -249,62 +264,19 @@ describe('github compare flow', () => {
 })
 
 interface GithubFetchStub {
-  files: Array<Record<string, unknown>>
-  contents: Record<string, string | Uint8Array>
+  diff: string
 }
 
-// Minimal GitHub API double: pull metadata, files pages, and raw contents keyed
-// by "<base|head>:<path>".
+// Minimal GitHub web diff double. The provider intentionally avoids the REST
+// API here so public diffs still work when the unauthenticated core limit is 0.
 function stubGithubFetch(stub: GithubFetchStub) {
-  const baseSha = 'b'.repeat(40)
-  const headSha = 'h'.repeat(39) + 'a'
-
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     const url = new URL(String(input))
-    const pathname = decodeURIComponent(url.pathname)
-
-    if (/\/repos\/[^/]+\/[^/]+\/pulls\/\d+$/.test(pathname)) {
-      return jsonResponse({
-        title: 'Smoke test PR',
-        state: 'open',
-        merged_at: null,
-        html_url: 'https://github.com/owner/repo/pull/12',
-        changed_files: stub.files.length,
-        base: { ref: 'main', sha: baseSha },
-        head: { ref: 'feature', sha: headSha },
-      })
-    }
-
-    if (/\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/files$/.test(pathname)) {
-      const page = Number.parseInt(url.searchParams.get('page') ?? '1', 10)
-      return jsonResponse(page === 1
-        ? stub.files.map((file) => ({ additions: 1, deletions: 1, changes: 2, ...file }))
-        : [])
-    }
-
-    const contentsMatch = /\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/.exec(pathname)
-    if (contentsMatch) {
-      const ref = url.searchParams.get('ref')
-      const side = ref === baseSha ? 'base' : 'head'
-      const content = stub.contents[`${side}:${contentsMatch[1]}`]
-      if (content === undefined) {
-        return new Response('{}', { status: 404 })
-      }
-
-      const bytes = typeof content === 'string'
-        ? new TextEncoder().encode(content)
-        : content
-      return new Response(Buffer.from(bytes), { status: 200 })
+    if (url.hostname === 'github.com' && url.pathname.endsWith('.diff')) {
+      return new Response(stub.diff, { status: 200 })
     }
 
     return new Response('{}', { status: 404 })
-  })
-}
-
-function jsonResponse(payload: unknown) {
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
   })
 }
 

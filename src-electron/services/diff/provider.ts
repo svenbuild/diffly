@@ -73,7 +73,10 @@ export type ProviderEntryData =
       sourceId: string
       baseSha: string
       headSha: string
+      leftLabel: string
+      rightLabel: string
       path: string
       oldPath: string | null
       status: DiffEntryStatus
+      patch: string | null
     }
