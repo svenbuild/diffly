@@ -2622,6 +2622,7 @@
     {selectedRelativePath}
     {comparePairsTooltip}
     {comparePairsLabel}
+    {activeDiffSource}
     {viewMode}
     {textDiffActive}
     {toggleViewMode}

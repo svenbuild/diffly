@@ -265,7 +265,11 @@
 
     let selection: GitSelection | null = null
     if (selectionKind === 'workingTree') {
-      selection = { kind: 'workingTree', initialScope: workingTreeScope }
+      selection = {
+        kind: 'workingTree',
+        initialScope: workingTreeScope,
+        currentBranch: currentBranch.trim() || null,
+      }
     } else if (selectionKind === 'refRange') {
       if (baseRef.trim() && headRef.trim()) {
         selection = {

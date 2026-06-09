@@ -71,6 +71,7 @@ export type GitSelection =
   | {
       kind: 'workingTree'
       initialScope: GitWorkingTreeScope
+      currentBranch?: string | null
     }
   | {
       kind: 'refRange'

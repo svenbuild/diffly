@@ -1,12 +1,14 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
+  import SourceHeader from '../compare/SourceHeader.svelte'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
     CompareOptions,
     CompareTreeSettings,
     CompareViewerSettings,
+    DiffSource,
     DiffStatsSnapshot,
     DirectoryEntryResult,
     FileDiffResult,
@@ -31,6 +33,7 @@
   export let selectedRelativePath = ''
   export let comparePairsTooltip = ''
   export let comparePairsLabel = ''
+  export let activeDiffSource: DiffSource | null = null
   export let viewMode: ViewMode = 'sideBySide'
   export let textDiffActive = false
   export let toggleViewMode: () => void
@@ -139,9 +142,11 @@
       <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
         {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
       </strong>
-      <span title={comparePairsTooltip}>
-        {comparePairsLabel}
-      </span>
+      <SourceHeader
+        source={activeDiffSource}
+        localLabel={comparePairsLabel}
+        localTooltip={comparePairsTooltip}
+      />
     </div>
     {/snippet}
 
