@@ -3,6 +3,7 @@
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
   import { listGitRefs, loadRecentSources, validateGitRepository } from '../api'
+  import { compactMiddlePath } from '../path-utils'
   import type {
     GitDiffSource,
     GitRefsResponse,
@@ -227,7 +228,12 @@
   }
 
   // Selected from the recents list: validate and ask the browser to reveal it.
-  function handleSelectRecent(repo: RecentGitRepository) {
+  function handleSelectRecent(id: string) {
+    const repo = recentRepositories.find((entry) => entry.id === id)
+    if (!repo) {
+      return
+    }
+
     inputPath = repo.repoPath
     revealPath = repo.repoPath
     revealRequestId += 1
@@ -299,14 +305,26 @@
       : null
   })()
   $: onChange(gitSource)
+
+  $: recentItems = recentRepositories.map((repo) => ({
+    id: repo.id,
+    name: repo.name,
+    detail: compactMiddlePath(repo.repoPath),
+    detailTitle: repo.repoPath,
+    extra: repo.lastBranch,
+  }))
+  $: activeRecentId =
+    recentRepositories.find((repo) => repo.repoPath === inputPath)?.id ?? ''
 </script>
 
 <section class="git-setup-workspace" aria-label="Git compare setup">
   <RecentSourceList
     title="Recent Git repositories"
-    repositories={recentRepositories}
+    items={recentItems}
     loadError={recentLoadError}
-    activePath={inputPath}
+    loadErrorMessage="Recent repositories could not be loaded."
+    emptyMessage="No recent repositories"
+    activeId={activeRecentId}
     onSelect={handleSelectRecent}
   />
 

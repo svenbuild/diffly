@@ -122,6 +122,8 @@
     ExplorerEntry,
     FileDiffResult,
     GitDiffSource,
+    GithubPullRequestMetadata,
+    GithubPullRequestSource,
     GitWorkingTreeScope,
     PersistedExplorerPane,
     PersistedGitSetup,
@@ -181,6 +183,15 @@
   // incomplete. Transient setup-draft state — intentionally not persisted.
   let gitSetupSource: GitDiffSource | null = null
   let gitSetup: PersistedGitSetup = {}
+  // Latest GitHub source parsed by GithubSetupPanel, or null while the URL is
+  // not parseable. Transient setup-draft state — intentionally not persisted.
+  let githubSetupSource: GithubPullRequestSource | null = null
+  // Metadata for the parsed PR (title etc.), used when saving recents.
+  let githubSetupMetadata: GithubPullRequestMetadata | null = null
+  // Prefill for the GitHub URL input, restored from the persisted session.
+  let initialGithubUrl = initialSession?.source?.kind === 'githubPullRequest'
+    ? initialSession.source.url
+    : ''
   let activeDiffSource: DiffSource | null = null
   let activeDiffSessionId: string | null = null
   // How the directory diff list loads each entry: local paths for local compares,
@@ -1902,6 +1913,14 @@
     gitSetupSource = source
   }
 
+  function handleGithubSourceChange(source: GithubPullRequestSource | null) {
+    githubSetupSource = source
+  }
+
+  function handleGithubMetadataChange(metadata: GithubPullRequestMetadata | null) {
+    githubSetupMetadata = metadata
+  }
+
   function handleGitSetupChange(nextSetup: PersistedGitSetup) {
     gitSetup = nextSetup
     scheduleSessionSave()
@@ -1931,23 +1950,69 @@
       return
     }
 
-    const options = getPendingCompareOptions()
-
-    loading = true
-    errorMessage = ''
-
     void addRecentSource(source)
       .then(() => {
         recentsReloadRequestId += 1
       })
       .catch(() => undefined)
 
-    // Scope tabs only exist for working-tree sources. Preserve the active tab
-    // across Refresh; seed from the picker on a fresh compare entered from setup.
-    const isRefresh = screen === 'compare' && activeDiffSource?.kind === 'git'
-    const isWorkingTree = source.selection.kind === 'workingTree'
+    await runSessionCompare(source)
+  }
+
+  async function runGithubCompare() {
+    const source = screen === 'compare' && activeDiffSource?.kind === 'githubPullRequest'
+      ? activeDiffSource
+      : githubSetupSource
+    if (!source) {
+      errorMessage = 'Enter a GitHub pull request URL.'
+      return
+    }
+
+    const succeeded = await runSessionCompare(source)
+    if (!succeeded) {
+      return
+    }
+
+    // Only store PRs that actually loaded, and only attach a title when the
+    // setup metadata belongs to this PR (a refresh may have stale metadata).
+    const metadataMatchesSource =
+      githubSetupMetadata !== null &&
+      githubSetupMetadata.owner.toLowerCase() === source.owner.toLowerCase() &&
+      githubSetupMetadata.repo.toLowerCase() === source.repo.toLowerCase() &&
+      githubSetupMetadata.pullNumber === source.pullNumber
+    void addRecentSource(
+      source,
+      metadataMatchesSource && githubSetupMetadata
+        ? { title: githubSetupMetadata.title || null }
+        : undefined,
+    )
+      .then(() => {
+        recentsReloadRequestId += 1
+      })
+      .catch(() => undefined)
+  }
+
+  // Shared compare entry point for diff-session sources (git, GitHub PR): the
+  // backend session provides all entries up front and the continuous directory
+  // viewer loads file details through openDiffEntry.
+  async function runSessionCompare(
+    source: GitDiffSource | GithubPullRequestSource,
+  ): Promise<boolean> {
+    if (loading) {
+      return false
+    }
+
+    const options = getPendingCompareOptions()
+
+    loading = true
+    errorMessage = ''
+
+    // Scope tabs only exist for git working-tree sources. Preserve the active
+    // tab across Refresh; seed from the picker on a fresh compare from setup.
+    const isRefresh = screen === 'compare' && activeDiffSource?.kind === source.kind
+    const isWorkingTree = source.kind === 'git' && source.selection.kind === 'workingTree'
     const targetScope: GitWorkingTreeScope | null =
-      source.selection.kind === 'workingTree'
+      source.kind === 'git' && source.selection.kind === 'workingTree'
         ? isRefresh
           ? gitScope
           : source.selection.initialScope
@@ -1970,8 +2035,8 @@
       activeDiffSource = source
       activeDiffSessionId = session.sessionId
       mode = 'directory'
-      leftPath = source.repositoryRoot
-      rightPath = source.repositoryRoot
+      leftPath = source.kind === 'git' ? source.repositoryRoot : ''
+      rightPath = source.kind === 'git' ? source.repositoryRoot : ''
       screen = 'compare'
       gitScopeEntries = isWorkingTree ? entries : []
       gitScope = targetScope ?? 'all'
@@ -1999,10 +2064,12 @@
       if (nextEntry) {
         void selectEntry(nextEntry, compareRevision)
       }
+      return true
     } catch (error) {
       errorMessage = error instanceof Error
         ? error.message
-        : 'Git compare failed.'
+        : 'Compare failed.'
+      return false
     } finally {
       loading = false
     }
@@ -2046,12 +2113,28 @@
   }
 
   async function runCompare() {
+    // On the compare screen, Refresh follows the active source; the setup-mode
+    // slider only matters while the setup screen chooses what to compare next.
+    if (screen === 'compare' && activeDiffSource?.kind === 'git') {
+      await runGitCompare()
+      return
+    }
+
+    if (screen === 'compare' && activeDiffSource?.kind === 'githubPullRequest') {
+      await runGithubCompare()
+      return
+    }
+
     if (setupMode === 'git') {
       await runGitCompare()
       return
     }
 
-    // Only Local has a working setup panel for path-based compares; GitHub has no source yet.
+    if (setupMode === 'github') {
+      await runGithubCompare()
+      return
+    }
+
     if (setupMode !== 'local') {
       return
     }
@@ -2569,10 +2652,13 @@
         ? gitSetupSource
           ? 'Create Git diff session'
           : 'Select a valid Git repository and compare type'
-        : 'GitHub setup coming soon'
+        : githubSetupSource
+          ? 'Load GitHub pull request diff'
+          : 'Enter a GitHub pull request URL'
   $: setupCanCompare =
     (setupMode === 'local' && pickerCanCompare) ||
-    (setupMode === 'git' && gitSetupSource !== null)
+    (setupMode === 'git' && gitSetupSource !== null) ||
+    (setupMode === 'github' && githubSetupSource !== null)
   $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
   $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
   $: comparePairsLabel = (() => {
@@ -2618,6 +2704,9 @@
     onGitSourceChange={handleGitSourceChange}
     {gitSetup}
     onGitSetupChange={handleGitSetupChange}
+    onGithubSourceChange={handleGithubSourceChange}
+    onGithubMetadataChange={handleGithubMetadataChange}
+    {initialGithubUrl}
     reloadRecentsRequestId={recentsReloadRequestId}
     {pickerSides}
     {pickerLoading}

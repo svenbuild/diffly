@@ -144,7 +144,7 @@
 
   <div class="git-setup-status" aria-live="polite">
     {#if validationStatus === 'idle'}
-      <p class="git-setup-status-hint">Select a Git repository.</p>
+      <p class="git-setup-status-hint">Select a local Git repository.</p>
     {:else if validationStatus === 'validating'}
       <p class="git-setup-status-hint">Validating…</p>
     {:else if validationStatus === 'valid'}

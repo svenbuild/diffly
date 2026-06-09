@@ -1,37 +1,48 @@
-<script lang="ts">
-  import { compactMiddlePath } from '../path-utils'
-  import type { RecentGitRepository } from '../types'
+<script context="module" lang="ts">
+  // Presentational recents column shared by the Git and GitHub setup panels.
+  // Panels map their stored recents (repos, pull requests) onto plain items.
+  export interface RecentSourceListItem {
+    id: string
+    name: string
+    detail: string
+    detailTitle?: string
+    extra?: string | null
+  }
+</script>
 
-  export let title = 'Recent Git repositories'
-  export let repositories: RecentGitRepository[] = []
+<script lang="ts">
+  export let title = 'Recent sources'
+  export let items: RecentSourceListItem[] = []
   export let loadError = false
-  export let activePath = ''
-  export let onSelect: (repo: RecentGitRepository) => void
+  export let loadErrorMessage = 'Recent sources could not be loaded.'
+  export let emptyMessage = 'No recent sources'
+  export let activeId = ''
+  export let onSelect: (id: string) => void
 </script>
 
 <section class="git-setup-recent" aria-label={title}>
   <h2 class="git-setup-recent-title">{title}</h2>
 
   {#if loadError}
-    <p class="git-setup-recent-empty">Recent repositories could not be loaded.</p>
-  {:else if repositories.length === 0}
-    <p class="git-setup-recent-empty">No recent repositories</p>
+    <p class="git-setup-recent-empty">{loadErrorMessage}</p>
+  {:else if items.length === 0}
+    <p class="git-setup-recent-empty">{emptyMessage}</p>
   {:else}
     <ul class="git-setup-recent-list">
-      {#each repositories as repo (repo.id)}
+      {#each items as item (item.id)}
         <li>
           <button
             type="button"
             class="git-setup-recent-item"
-            class:active={repo.repoPath === activePath}
-            aria-pressed={repo.repoPath === activePath}
-            title={repo.repoPath}
-            on:click={() => onSelect(repo)}
+            class:active={item.id === activeId}
+            aria-pressed={item.id === activeId}
+            title={item.detailTitle ?? item.detail}
+            on:click={() => onSelect(item.id)}
           >
-            <span class="git-setup-recent-name">{repo.name}</span>
-            <span class="git-setup-recent-path">{compactMiddlePath(repo.repoPath)}</span>
-            {#if repo.lastBranch}
-              <span class="git-setup-recent-branch">{repo.lastBranch}</span>
+            <span class="git-setup-recent-name">{item.name}</span>
+            <span class="git-setup-recent-path">{item.detail}</span>
+            {#if item.extra}
+              <span class="git-setup-recent-branch">{item.extra}</span>
             {/if}
           </button>
         </li>

@@ -4,7 +4,14 @@
   import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
   import GitSetupPanel from '../setup/GitSetupPanel.svelte'
   import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
-  import type { ExplorerEntry, GitDiffSource, PersistedGitSetup, SetupMode } from '../types'
+  import type {
+    ExplorerEntry,
+    GitDiffSource,
+    GithubPullRequestMetadata,
+    GithubPullRequestSource,
+    PersistedGitSetup,
+    SetupMode,
+  } from '../types'
   import type {
     ExplorerPaneState,
     SettingsSection,
@@ -29,6 +36,9 @@
   export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
   export let gitSetup: PersistedGitSetup = {}
   export let onGitSetupChange: (setup: PersistedGitSetup) => void = () => {}
+  export let onGithubSourceChange: (source: GithubPullRequestSource | null) => void = () => {}
+  export let onGithubMetadataChange: (metadata: GithubPullRequestMetadata | null) => void = () => {}
+  export let initialGithubUrl = ''
   export let reloadRecentsRequestId = 0
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
@@ -128,7 +138,12 @@
         {reloadRecentsRequestId}
       />
     {:else}
-      <GithubSetupPanel />
+      <GithubSetupPanel
+        onChange={onGithubSourceChange}
+        onMetadataChange={onGithubMetadataChange}
+        initialUrl={initialGithubUrl}
+        {reloadRecentsRequestId}
+      />
     {/if}
   </section>
 </main>
