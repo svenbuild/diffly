@@ -6,6 +6,7 @@ import type {
   DiffEntryFilter,
   DiffSource,
   FileDiffResult,
+  GithubPullRequestMetadata,
   GitRefsResponse,
   GitRepositoryValidation,
   PathKind,
@@ -61,6 +62,11 @@ export const listGitRefs = (repoPath: string): Promise<GitRefsResponse> =>
 
 export const detectGitRepositories = (paths: string[]): Promise<string[]> =>
   window.diffly.detectGitRepositories(paths)
+
+export const fetchGithubPullRequestMetadata = (
+  url: string,
+): Promise<GithubPullRequestMetadata> =>
+  window.diffly.fetchGithubPullRequestMetadata(url)
 
 export const getAppVersion = () =>
   window.diffly.getAppVersion()

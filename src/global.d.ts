@@ -8,6 +8,7 @@ import type {
   DirectoryListing,
   ExplorerEntry,
   FileDiffResult,
+  GithubPullRequestMetadata,
   GitRefsResponse,
   GitRepositoryValidation,
   LaunchContext,
@@ -40,6 +41,7 @@ declare global {
       validateGitRepository(path: string): Promise<GitRepositoryValidation>
       listGitRefs(repoPath: string): Promise<GitRefsResponse>
       detectGitRepositories(paths: string[]): Promise<string[]>
+      fetchGithubPullRequestMetadata(url: string): Promise<GithubPullRequestMetadata>
       getAppVersion(): Promise<string>
       checkForUpdates(channel: UpdateChannel): Promise<UpdateCheckResult>
       downloadUpdate(channel: UpdateChannel): Promise<UpdateActionResult>

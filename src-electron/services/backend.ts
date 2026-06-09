@@ -18,6 +18,9 @@ import {
   pathInfo,
 } from './explorer-service'
 import { loadLaunchContext } from './launch-context'
+import { fetchPullRequestMetadata } from './github/github-service'
+import { parseGithubPullRequestUrl } from './github/github-url'
+import { GithubProvider } from './providers/github-provider'
 import { GitProvider } from './providers/git-provider'
 import { LocalProvider } from './providers/local-provider'
 import {
@@ -40,7 +43,8 @@ import {
 
 const localProvider = new LocalProvider()
 const gitProvider = new GitProvider()
-const diffSessionService = new DiffSessionService({ localProvider, gitProvider })
+const githubProvider = new GithubProvider()
+const diffSessionService = new DiffSessionService({ localProvider, gitProvider, githubProvider })
 
 export {
   clearDirectoryListingCache,
@@ -97,6 +101,9 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:detectGitRepositories', (_event, payload) =>
     detectGitRepositories(payload?.paths),
+  )
+  ipcMain.handle('diffly:fetchGithubPullRequestMetadata', (_event, payload) =>
+    fetchGithubPullRequestMetadata(payload?.url),
   )
   ipcMain.handle('diffly:getAppVersion', () => app.getVersion())
   ipcMain.handle('diffly:checkForUpdates', (_event, payload: { channel: UpdateChannel }) =>
@@ -214,6 +221,17 @@ export function refreshDiffSession(sessionId: string): Promise<CreateDiffSession
 
 export function disposeDiffSession(sessionId: string): void {
   diffSessionService.dispose(sessionId)
+}
+
+// Parses and re-validates the PR URL in the main process before any network
+// request; renderer-supplied owner/repo values are never trusted directly.
+export function fetchGithubPullRequestMetadata(url: unknown) {
+  const source = typeof url === 'string' ? parseGithubPullRequestUrl(url) : null
+  if (!source) {
+    throw new Error('Enter a GitHub pull request URL.')
+  }
+
+  return fetchPullRequestMetadata(source)
 }
 
 function readAddRecentSourcePayload(payload: unknown): {

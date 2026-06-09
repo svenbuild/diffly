@@ -98,6 +98,20 @@ export interface GithubPullRequestSource {
   url: string
 }
 
+export interface GithubPullRequestMetadata {
+  owner: string
+  repo: string
+  pullNumber: number
+  title: string
+  state: 'open' | 'closed' | 'merged' | string
+  baseRef: string
+  headRef: string
+  baseSha: string
+  headSha: string
+  htmlUrl: string
+  changedFiles: number | null
+}
+
 export interface RecentSources {
   defaultSetupMode: SetupMode
   gitRepositories: RecentGitRepository[]
