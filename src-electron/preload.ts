@@ -17,6 +17,8 @@ const invoke = <T>(channel: string, payload?: unknown) =>
 contextBridge.exposeInMainWorld('diffly', {
   choosePath: (kind: PathKind) =>
     invoke('diffly:choosePath', { kind }),
+  openExternal: (url: string) =>
+    invoke<void>('diffly:openExternal', { url }),
   listRoots: () =>
     invoke('diffly:listRoots'),
   listDirectory: (path: string) =>

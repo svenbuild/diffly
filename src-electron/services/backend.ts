@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, shell } from 'electron'
 import type {
   CompareOptions,
   CompareResponse,
@@ -65,6 +65,9 @@ export { clearFileDiffCache } from './file-diff'
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
     choosePath(payload.kind),
+  )
+  ipcMain.handle('diffly:openExternal', (_event, payload: { url: string }) =>
+    openExternalUrl(payload?.url ?? ''),
   )
   ipcMain.handle('diffly:listRoots', () => listRoots())
   ipcMain.handle('diffly:listDirectory', (_event, payload: { path: string }) =>
@@ -135,6 +138,14 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:disposeDiffSession', (_event, payload) =>
     disposeDiffSession(payload?.sessionId),
   )
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  // Fail closed: only http(s) is opened externally; empty/invalid schemes
+  // (file:, javascript:, …) are ignored without throwing.
+  if (/^https?:\/\//i.test(url)) {
+    await shell.openExternal(url)
+  }
 }
 
 export function comparePaths(

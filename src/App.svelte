@@ -22,6 +22,7 @@
     onLaunchContext,
     openDiffEntry,
     openCompareItem,
+    openExternalUrl as openExternalUrlApi,
     pollDirectoryCompare,
     pathInfo,
     saveSessionState,
@@ -1566,6 +1567,10 @@
     }
   }
 
+  function openExternalUrl(url: string) {
+    void openExternalUrlApi(url)
+  }
+
   async function browseSystem(side: Side, kind: 'file' | 'directory' = 'file') {
     const selected = await choosePath(kind)
 
@@ -2688,6 +2693,7 @@
     {detailLoading}
     {pickerLoading}
     {swapComparedSides}
+    {openExternalUrl}
     {compareNeedsRefresh}
     {runCompare}
     {openSettings}

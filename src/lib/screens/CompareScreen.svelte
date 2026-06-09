@@ -3,6 +3,7 @@
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import SourceHeader from '../compare/SourceHeader.svelte'
+  import { sourceActions } from '../compare/source-actions'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
@@ -43,6 +44,7 @@
   export let detailLoading = false
   export let pickerLoading = false
   export let swapComparedSides: () => Promise<void>
+  export let openExternalUrl: (url: string) => void = () => {}
   export let compareNeedsRefresh = false
   export let runCompare: () => Promise<void> | void
   export let openSettings: (section?: SettingsSection) => void
@@ -91,6 +93,8 @@
     mode === 'directory' &&
     activeDiffSource?.kind === 'git' &&
     activeDiffSource.selection.kind === 'workingTree'
+
+  $: srcActions = sourceActions(activeDiffSource)
 
   function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
     activeSidebarPanel = activeSidebarPanel === panel ? null : panel
@@ -202,22 +206,38 @@
         </button>
       </div>
 
+      {#if srcActions.openExternal}
+        <div class="compare-action-group external-actions">
+          <button
+            class="secondary toolbar-button"
+            aria-label={srcActions.openExternal.ariaLabel}
+            title={srcActions.openExternal.ariaLabel}
+            type="button"
+            on:click={() => srcActions.openExternal && openExternalUrl(srcActions.openExternal.url)}
+          >
+            {srcActions.openExternal.label}
+          </button>
+        </div>
+      {/if}
+
       <div class="compare-action-group utility-actions">
-        <button
-          class="secondary toolbar-button icon-button swap-button"
-          aria-label="Switch left and right sides"
-          disabled={loading || detailLoading || pickerLoading}
-          title="Switch left and right sides"
-          type="button"
-          on:click={swapComparedSides}
-        >
-          <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
-            <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-            <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
-            <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
-        </button>
+        {#if srcActions.showSwap}
+          <button
+            class="secondary toolbar-button icon-button swap-button"
+            aria-label="Switch left and right sides"
+            disabled={loading || detailLoading || pickerLoading}
+            title="Switch left and right sides"
+            type="button"
+            on:click={swapComparedSides}
+          >
+            <svg aria-hidden="true" class="swap-icon" viewBox="0 0 16 16">
+              <path d="M2.5 5h6.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m8.9 2.4 2.6 2.6-2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+              <path d="M13.5 11H6.9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" />
+              <path d="m7.1 8.4-2.6 2.6 2.6 2.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+            </svg>
+          </button>
+        {/if}
 
         <button
           aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}

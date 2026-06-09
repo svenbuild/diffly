@@ -17,6 +17,9 @@ import type {
 export const choosePath = (kind: PathKind) =>
   window.diffly.choosePath(kind)
 
+export const openExternalUrl = (url: string) =>
+  window.diffly.openExternal(url)
+
 export const listRoots = () =>
   window.diffly.listRoots()
 

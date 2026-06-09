@@ -26,6 +26,7 @@ declare global {
   interface Window {
     diffly: {
       choosePath(kind: PathKind): Promise<string | null>
+      openExternal(url: string): Promise<void>
       listRoots(): Promise<ExplorerEntry[]>
       listDirectory(path: string): Promise<DirectoryListing>
       pathInfo(path: string): Promise<PathInfo>
