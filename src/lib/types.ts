@@ -334,6 +334,7 @@ export interface DirectoryEntryResult {
   diffEntryId?: string
   diffEntryStatus?: DiffEntryStatus
   diffEntryScope?: GitWorkingTreeScope
+  binary?: boolean
 }
 
 // Selects how the directory diff list loads each entry's details. Local paths

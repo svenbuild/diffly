@@ -87,6 +87,7 @@
   } from './lib/path-utils'
   import {
     defaultDirectoryEntry,
+    isDiffableDirectoryEntry,
   } from './lib/app/directory-state'
   import {
     buildNextHistoryState,
@@ -2335,7 +2336,7 @@
 
     for (const entry of entries) {
       entryPaths.add(entry.relativePath)
-      if (entry.status !== 'unsupported') {
+      if (isDiffableDirectoryEntry(entry)) {
         renderableCount += 1
       }
     }

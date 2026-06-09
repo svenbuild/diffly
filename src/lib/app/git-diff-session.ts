@@ -38,6 +38,7 @@ export function mapGitDiffEntry(entry: DiffEntry): DirectoryEntryResult {
     diffEntryId: entry.id,
     diffEntryStatus: entry.status,
     diffEntryScope: entry.scope,
+    binary: entry.binary,
   }
 }
 

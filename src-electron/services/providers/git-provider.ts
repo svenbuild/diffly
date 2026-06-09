@@ -16,6 +16,8 @@ import type {
 } from '../diff/provider'
 import {
   buildFileDiffFromGit,
+  detectFileKind,
+  sampleFile,
   type GitSnapshotSource,
 } from '../file-diff'
 import {
@@ -81,7 +83,15 @@ export class GitProvider implements DiffSessionProvider {
 
   private async buildWorkingTreeSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
     const repositoryRoot = source.repositoryRoot
-    const [allTracked, staged, unstaged, untracked] = await Promise.all([
+    const [
+      allTracked,
+      staged,
+      unstaged,
+      untracked,
+      allBinaryPaths,
+      stagedBinaryPaths,
+      unstagedBinaryPaths,
+    ] = await Promise.all([
       readOptionalNameStatus(repositoryRoot, [
         'diff',
         'HEAD',
@@ -103,6 +113,26 @@ export class GitProvider implements DiffSessionProvider {
         '--find-renames',
       ]),
       readUntrackedPaths(repositoryRoot),
+      readOptionalBinaryPaths(repositoryRoot, [
+        'diff',
+        'HEAD',
+        '--numstat',
+        '-z',
+        '--find-renames',
+      ]),
+      readOptionalBinaryPaths(repositoryRoot, [
+        'diff',
+        '--cached',
+        '--numstat',
+        '-z',
+        '--find-renames',
+      ]),
+      readBinaryPaths(repositoryRoot, [
+        'diff',
+        '--numstat',
+        '-z',
+        '--find-renames',
+      ]),
     ])
 
     const entries: DiffEntry[] = []
@@ -111,7 +141,7 @@ export class GitProvider implements DiffSessionProvider {
 
     for (const item of allTracked) {
       allTrackedPaths.add(item.path)
-      await addNameStatusEntry(entries, entryData, source, 'all', item)
+      await addNameStatusEntry(entries, entryData, source, 'all', item, allBinaryPaths)
     }
 
     for (const path of untracked) {
@@ -121,11 +151,11 @@ export class GitProvider implements DiffSessionProvider {
     }
 
     for (const item of staged) {
-      await addNameStatusEntry(entries, entryData, source, 'staged', item)
+      await addNameStatusEntry(entries, entryData, source, 'staged', item, stagedBinaryPaths)
     }
 
     for (const item of unstaged) {
-      await addNameStatusEntry(entries, entryData, source, 'unstaged', item)
+      await addNameStatusEntry(entries, entryData, source, 'unstaged', item, unstagedBinaryPaths)
     }
 
     for (const path of untracked) {
@@ -309,6 +339,20 @@ async function readNameStatus(repoPath: string, args: string[]) {
   return parseGitNameStatusOutput(result.stdout)
 }
 
+async function readOptionalBinaryPaths(repoPath: string, args: string[]) {
+  const result = await runGit(repoPath, args, GIT_OPTIONAL_HEAD_OPTIONS)
+  if (result.exitCode !== 0) {
+    return new Set<string>()
+  }
+
+  return parseBinaryPathsFromNumstatOutput(result.stdout)
+}
+
+async function readBinaryPaths(repoPath: string, args: string[]) {
+  const result = await runGit(repoPath, args, GIT_ENTRY_OPTIONS)
+  return parseBinaryPathsFromNumstatOutput(result.stdout)
+}
+
 async function readUntrackedPaths(repoPath: string) {
   const result = await runGit(repoPath, [
     'ls-files',
@@ -318,6 +362,22 @@ async function readUntrackedPaths(repoPath: string) {
   ], GIT_ENTRY_OPTIONS)
 
   return parseNulPathList(result.stdout)
+}
+
+function parseBinaryPathsFromNumstatOutput(output: string) {
+  const paths = new Set<string>()
+  for (const record of output.split('\0')) {
+    const trimmed = record.trim()
+    if (!trimmed) {
+      continue
+    }
+
+    const parts = trimmed.split('\t')
+    if (parts[0] === '-' && parts[1] === '-' && parts[2]) {
+      paths.add(parts[parts.length - 1])
+    }
+  }
+  return paths
 }
 
 function parseNulPathList(output: string) {
@@ -339,8 +399,9 @@ async function addNameStatusEntry(
   source: Extract<DiffSource, { kind: 'git' }>,
   scope: GitWorkingTreeScope,
   item: GitNameStatusEntry,
+  binaryPaths: Set<string>,
 ) {
-  const entry = await mapNameStatusEntry(source.repositoryRoot, scope, item)
+  const entry = await mapNameStatusEntry(source.repositoryRoot, scope, item, binaryPaths)
   entries.push(entry)
   entryData.set(entry.id, {
     kind: 'gitWorkingTree',
@@ -377,6 +438,7 @@ async function mapNameStatusEntry(
   repositoryRoot: string,
   scope: GitWorkingTreeScope,
   item: GitNameStatusEntry,
+  binaryPaths: Set<string>,
 ): Promise<DiffEntry> {
   return {
     id: gitEntryId(scope, item.path, item.oldPath),
@@ -387,6 +449,7 @@ async function mapNameStatusEntry(
     scope,
     leftSize: null,
     rightSize: await getRightSize(repositoryRoot, item.path, item.status),
+    binary: binaryPaths.has(item.path) || Boolean(item.oldPath && binaryPaths.has(item.oldPath)),
   }
 }
 
@@ -395,6 +458,7 @@ async function mapUntrackedEntry(
   scope: GitWorkingTreeScope,
   path: string,
 ): Promise<DiffEntry> {
+  const size = await getFileSize(repositoryRoot, path)
   return {
     id: gitEntryId(scope, path, null),
     path,
@@ -403,7 +467,26 @@ async function mapUntrackedEntry(
     status: 'untracked',
     scope,
     leftSize: null,
-    rightSize: await getFileSize(repositoryRoot, path),
+    rightSize: size,
+    binary: await isNonTextWorkingTreeFile(repositoryRoot, path, size),
+  }
+}
+
+async function isNonTextWorkingTreeFile(
+  repositoryRoot: string,
+  path: string,
+  size: number | null,
+) {
+  if (size === null) {
+    return false
+  }
+
+  try {
+    const filePath = join(repositoryRoot, path)
+    const kind = detectFileKind(filePath, size, await sampleFile(filePath))
+    return kind !== 'text'
+  } catch {
+    return false
   }
 }
 

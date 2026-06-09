@@ -37,8 +37,18 @@ export function filterDirectoryEntries(
   return entries.filter((entry) => statusFilters.includes(entry.status))
 }
 
+export function isDiffableDirectoryEntry(
+  entry: DirectoryEntryResult | null | undefined,
+): entry is DirectoryEntryResult {
+  return Boolean(entry && entry.status !== 'unsupported' && !entry.binary)
+}
+
 export function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {
-  return entries.find((entry) => getParentPath(entry.relativePath) === ROOT_GROUP) ?? entries[0]
+  const firstRootDiffable = entries.find(
+    (entry) => getParentPath(entry.relativePath) === ROOT_GROUP && isDiffableDirectoryEntry(entry),
+  )
+  const firstDiffable = entries.find(isDiffableDirectoryEntry)
+  return firstRootDiffable ?? firstDiffable ?? entries[0]
 }
 
 export function reconcileCollapsedState(

@@ -7,6 +7,7 @@
     FileTreeRowDecorationContext,
   } from '@pierre/trees'
   import type { AppearanceSettings } from '../theme'
+  import { isDiffableDirectoryEntry } from '../app/directory-state'
   import { buildPierreTreeUnsafeCss } from '../theme/pierre'
   import type { CompareTreeSettings, DirectoryEntryResult } from '../types'
   import { buildChangedDirectorySet, getEntryStatusBadge } from './diffStatusBadge'
@@ -33,6 +34,9 @@
   let hostViewportHeight = 0
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let changedDirectories = new Set<string>()
+  let nonDiffablePaths = new Set<string>()
+  let treeRowMutationObserver: MutationObserver | null = null
+  let observedTreeRoot: ShadowRoot | null = null
 
   $: visibleEntries = directoryEntries
   $: currentStructureKey = JSON.stringify({
@@ -84,6 +88,50 @@
 
     const badge = getEntryStatusBadge(entry)
     return badge ? { text: badge.text, title: badge.title } : null
+  }
+
+  function markNonDiffableRows() {
+    const root = fileTree?.getFileTreeContainer()?.shadowRoot
+    if (!root) {
+      return
+    }
+
+    root
+      .querySelectorAll<HTMLElement>('[data-diffly-non-diffable="true"]')
+      .forEach((row) => {
+        row.removeAttribute('data-diffly-non-diffable')
+        row.removeAttribute('data-diffly-non-diffable-title')
+      })
+
+    root
+      .querySelectorAll<HTMLElement>('button[data-type="item"][data-item-type="file"]')
+      .forEach((row) => {
+        const path = row.getAttribute('data-item-path')
+        if (!path || !nonDiffablePaths.has(path)) {
+          return
+        }
+
+        row.setAttribute('data-diffly-non-diffable', 'true')
+        row.setAttribute('data-diffly-non-diffable-title', 'No text diff is available')
+      })
+  }
+
+  function syncTreeRowMutationObserver() {
+    const root = fileTree?.getFileTreeContainer()?.shadowRoot ?? null
+    if (root === observedTreeRoot) {
+      return
+    }
+
+    treeRowMutationObserver?.disconnect()
+    observedTreeRoot = root
+
+    if (!root) {
+      return
+    }
+
+    treeRowMutationObserver = new MutationObserver(() => markNonDiffableRows())
+    treeRowMutationObserver.observe(root, { childList: true, subtree: true })
+    markNonDiffableRows()
   }
 
   function buildOptions(paths: string[], selectedPath: string): FileTreeOptions {
@@ -218,6 +266,13 @@
 
     entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
     changedDirectories = buildChangedDirectorySet(visibleEntries)
+    const nextNonDiffablePaths = new Set<string>()
+    for (const entry of visibleEntries) {
+      if (entry.status === 'unsupported' || entry.binary) {
+        nextNonDiffablePaths.add(entry.relativePath)
+      }
+    }
+    nonDiffablePaths = nextNonDiffablePaths
     const paths = buildTreePaths(visibleEntries)
     const nextStructureKey = currentStructureKey
     const entriesChanged = entriesRevision !== renderedEntriesRevision
@@ -227,10 +282,12 @@
       fileTree = new FileTree(buildOptions(paths, selectedRelativePath))
       fileTree.render({ containerWrapper: host })
       measureHostViewport()
+      syncTreeRowMutationObserver()
       renderedStructureKey = nextStructureKey
       renderedEntriesRevision = entriesRevision
       lastSyncedSelectionPath = ''
       selectCurrentPath()
+      markNonDiffableRows()
       return
     }
 
@@ -244,10 +301,13 @@
       if (host) {
         fileTree.render({ containerWrapper: host })
       }
+      syncTreeRowMutationObserver()
+      markNonDiffableRows()
       renderedEntriesRevision = entriesRevision
     }
 
     selectCurrentPath(selectedRelativePath !== lastSyncedSelectionPath)
+    markNonDiffableRows()
   }
 
   $: host, visibleEntries, entriesRevision, treeSettings, appearanceSettings, resolvedThemeMode, void syncTreeData()
@@ -264,6 +324,9 @@
   onDestroy(() => {
     hostResizeObserver?.disconnect()
     hostResizeObserver = null
+    treeRowMutationObserver?.disconnect()
+    treeRowMutationObserver = null
+    observedTreeRoot = null
     fileTree?.cleanUp()
     fileTree = null
     resetRenderedKeys()

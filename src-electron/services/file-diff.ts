@@ -12,7 +12,6 @@ import type {
   UnsupportedDiffPayload,
 } from '../../src/lib/types'
 import {
-  runGit,
   runGitBytes,
 } from './git/git-service'
 
@@ -467,35 +466,7 @@ async function loadGitObjectSnapshot(
   const objectRef = source.kind === 'head'
     ? `HEAD:${source.path}`
     : `:${source.path}`
-  const shaResult = await runGit(source.repoPath, [
-    'rev-parse',
-    objectRef,
-  ], {
-    allowNonZeroExit: true,
-  })
   const logicalPath = gitLogicalPath(source.path)
-
-  if (shaResult.exitCode !== 0) {
-    return buildMissingSnapshot(
-      source.label,
-      logicalPath,
-      buildGitSnapshotCacheKey(refLabel, source.path, 'missing'),
-    )
-  }
-
-  const sha = shaResult.stdout.trim()
-  if (!sha) {
-    return buildNonTextSnapshot(
-      'readError',
-      source.label,
-      logicalPath,
-      null,
-      null,
-      'Git object did not produce a SHA.',
-    )
-  }
-
-  const cacheKey = buildGitSnapshotCacheKey(refLabel, source.path, sha)
   const contentResult = await runGitBytes(source.repoPath, [
     'show',
     '--no-textconv',
@@ -505,16 +476,14 @@ async function loadGitObjectSnapshot(
   })
 
   if (contentResult.exitCode !== 0) {
-    return buildNonTextSnapshot(
-      'readError',
+    return buildMissingSnapshot(
       source.label,
       logicalPath,
-      cacheKey,
-      null,
-      contentResult.stderr.trim() || 'Git object content could not be read.',
+      buildGitSnapshotCacheKey(refLabel, source.path, 'missing'),
     )
   }
 
+  const cacheKey = buildGitSnapshotCacheKey(refLabel, source.path, sha256(contentResult.stdout))
   return buildSnapshotFromBytes(
     source.label,
     logicalPath,

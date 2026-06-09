@@ -102,6 +102,15 @@ export function buildPierreTreeUnsafeCss(
       border-radius: 4px;
     }
 
+    button[data-type='item'][data-diffly-non-diffable='true'] {
+      color: ${tokens.mutedText};
+      opacity: 0.52;
+    }
+
+    button[data-type='item'][data-diffly-non-diffable='true'] [data-item-section='decoration'] {
+      color: ${tokens.mutedText};
+    }
+
     [data-file-tree-search-container] {
       padding: 3px 4px 5px;
     }

@@ -193,6 +193,17 @@ describe('GitProvider working tree entries', () => {
     expect(result.text?.rightText).toBe('untracked\n')
   })
 
+  it('marks untracked binary files', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'baseline.txt', 'baseline\n')
+    await writeFile(join(repoPath, 'untracked.bin'), Uint8Array.from([0, 1, 2, 3]))
+
+    const entries = await createEntries(repoPath)
+
+    expect(findEntry(entries, 'all', 'untracked.bin')?.binary).toBe(true)
+    expect(findEntry(entries, 'untracked', 'untracked.bin')?.binary).toBe(true)
+  })
+
   it('opens deleted files as HEAD left and empty right', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'deleted.txt', 'delete me\n')
@@ -224,6 +235,10 @@ describe('GitProvider working tree entries', () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'binary.bin', 'base\n')
     await writeFile(join(repoPath, 'binary.bin'), Uint8Array.from([0, 1, 2, 3]))
+
+    const entries = await createEntries(repoPath)
+    expect(findEntry(entries, 'all', 'binary.bin')?.binary).toBe(true)
+    expect(findEntry(entries, 'unstaged', 'binary.bin')?.binary).toBe(true)
 
     const result = await openEntry(repoPath, 'all', 'binary.bin')
 

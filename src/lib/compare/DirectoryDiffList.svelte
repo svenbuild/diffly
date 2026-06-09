@@ -3,6 +3,7 @@
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem, openDiffEntry } from '../api'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
+  import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareOptions,
@@ -82,6 +83,7 @@
   let pendingEntryStateUpdates = new Map<string, EntryDiffState>()
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let entryIndexByPath = new Map<string, number>()
+  let textEntryIndexByPath = new Map<string, number>()
   let loadedEntryCache = new Map<string, LoadedDirectoryDiff>()
   let changedEntryPaths: string[] = []
   let changedEntryRevision = 0
@@ -98,6 +100,7 @@
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
   let hasRenderableDirectoryItems = false
+  let hasDiffableDirectoryItems = false
   let pendingEntryCount = 0
   let unresolvedEntryCount = 0
   let diffStatsByPath = new Map<string, {
@@ -189,6 +192,7 @@
 
   function syncEntryCollections() {
     const nextPaths = new Set<string>()
+    const nextDiffablePaths = new Set<string>()
     const nextEntryByPath = new Map<string, DirectoryEntryResult>()
     const nextEntryIndexByPath = new Map<string, number>()
     const nextCollapsedPaths = new Set<string>()
@@ -199,6 +203,9 @@
       nextPaths.add(key)
       nextEntryByPath.set(key, entry)
       nextEntryIndexByPath.set(key, index)
+      if (isDiffableDirectoryEntry(entry)) {
+        nextDiffablePaths.add(key)
+      }
 
       const state = entryStates.get(key)
       if (state && entryStateIsCurrent(state)) {
@@ -223,21 +230,21 @@
     cancelEntryStateFlush()
     priorityLoadQueue = priorityLoadQueue
       .slice(priorityLoadQueueHead)
-      .filter((path) => nextPaths.has(path))
+      .filter((path) => nextDiffablePaths.has(path))
     normalLoadQueue = normalLoadQueue
       .slice(normalLoadQueueHead)
-      .filter((path) => nextPaths.has(path))
+      .filter((path) => nextDiffablePaths.has(path))
     priorityLoadQueueHead = 0
     normalLoadQueueHead = 0
     loadQueueKeys = new Set([...priorityLoadQueue, ...normalLoadQueue])
     loadedEntryCache = new Map(
-      Array.from(loadedEntryCache).filter(([path]) => nextPaths.has(path)),
+      Array.from(loadedEntryCache).filter(([path]) => nextDiffablePaths.has(path)),
     )
     entryByPath = nextEntryByPath
     entryIndexByPath = nextEntryIndexByPath
     changedEntryPaths = []
     entryStructureRevision += 1
-    pruneDiffStats(nextPaths)
+    pruneDiffStats(nextDiffablePaths)
     publishDiffStats()
     rebuildVisibleEntries(nextStates)
   }
@@ -258,7 +265,7 @@
 
   function publishDiffStats() {
     onDiffStatsChange({
-      files: directoryEntries.length,
+      files: directoryEntries.filter(isDiffableDirectoryEntry).length,
       additions: diffStatsTotals.additions,
       deletions: diffStatsTotals.deletions,
       lines: diffStatsTotals.lines,
@@ -323,7 +330,7 @@
   function entryNeedsLoad(
     entry: DirectoryEntryResult | null | undefined,
   ): entry is DirectoryEntryResult {
-    if (!entry || entry.status === 'unsupported') {
+    if (!isDiffableDirectoryEntry(entry)) {
       return false
     }
 
@@ -455,10 +462,6 @@
   }
 
   function scheduleBackgroundLoadPump() {
-    if (detailLoader.kind === 'diffSession') {
-      return
-    }
-
     if (backgroundLoadTimer !== null) {
       return
     }
@@ -549,7 +552,7 @@
       loadQueueKeys.delete(nextPath)
 
       const entry = entryByPath.get(nextPath)
-      if (entry && entry.status !== 'unsupported') {
+      if (isDiffableDirectoryEntry(entry)) {
         return entry
       }
     }
@@ -654,7 +657,7 @@
         return
       }
 
-      if (entry.status !== 'unsupported') {
+      if (isDiffableDirectoryEntry(entry)) {
         scheduleEntryLoad(entry)
         scheduledCount += 1
       }
@@ -664,14 +667,12 @@
   function scheduleActiveLoads() {
     const selectedEntry = selectedRelativePath
       ? entryByPath.get(selectedRelativePath)
-      : directoryEntries.find((entry) => entry.status !== 'unsupported')
+      : directoryEntries.find(isDiffableDirectoryEntry)
 
     if (selectedEntry) {
       scheduleEntryWindow(selectedEntry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
     }
-    if (detailLoader.kind === 'localPaths') {
-      scheduleInitialLoads()
-    }
+    scheduleInitialLoads()
   }
 
   function requestVisibleEntries(paths: string[]) {
@@ -698,7 +699,7 @@
     }
 
     const entry = entryByPath.get(path)
-    if (!entry) {
+    if (!isDiffableDirectoryEntry(entry)) {
       return
     }
 
@@ -745,10 +746,6 @@
             renderKey,
           }
 
-    if (entry.status === 'unsupported') {
-      return createEntry(null, 'No text diff is available for this file.', false)
-    }
-
     if (state?.diff?.contentKind === 'text' && state.diff.text) {
       return createEntry(state.diff, '', state.loading)
     }
@@ -768,7 +765,7 @@
     entry: DirectoryEntryResult,
     state: EntryDiffState | null | undefined,
   ) {
-    if (entry.status === 'unsupported') {
+    if (!isDiffableDirectoryEntry(entry)) {
       return true
     }
 
@@ -782,11 +779,16 @@
 
   function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
+    const nextTextEntryIndexByPath = new Map<string, number>()
     const nextLoadedEntryCache = new Map<string, LoadedDirectoryDiff>()
     let nextPendingEntryCount = 0
     let nextUnresolvedEntryCount = 0
 
     for (const entry of directoryEntries) {
+      if (!isDiffableDirectoryEntry(entry)) {
+        continue
+      }
+
       const state = states.get(entry.relativePath) ?? null
       if (entryStateIsPending(state)) {
         nextPendingEntryCount += 1
@@ -797,10 +799,12 @@
 
       const loadedEntry = buildLoadedEntry(entry, state)
       nextLoadedEntryCache.set(entry.relativePath, loadedEntry)
+      nextTextEntryIndexByPath.set(entry.relativePath, nextTextEntries.length)
       nextTextEntries.push(loadedEntry)
     }
 
     loadedEntryCache = nextLoadedEntryCache
+    textEntryIndexByPath = nextTextEntryIndexByPath
     textEntries = nextTextEntries
     pendingEntryCount = nextPendingEntryCount
     unresolvedEntryCount = nextUnresolvedEntryCount
@@ -823,7 +827,7 @@
 
     for (const path of paths) {
       const entry = entryByPath.get(path)
-      const index = entryIndexByPath.get(path)
+      const index = textEntryIndexByPath.get(path)
       if (!entry || index === undefined) {
         continue
       }
@@ -922,11 +926,11 @@
     entryByPath,
     revision,
     loadGeneration,
-    detailLoader,
     scheduleBackgroundLoadPump()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
   $: hasRenderableDirectoryItems = textEntries.length > 0
+  $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
 </script>
 
 <section class="directory-diff-list">
@@ -938,6 +942,10 @@
   {:else if directoryEntries.length === 0}
     <div class="compare-viewer-state">
       <p>{emptyMessage}</p>
+    </div>
+  {:else if !hasDiffableDirectoryItems}
+    <div class="compare-viewer-state">
+      <p>No text file changes.</p>
     </div>
   {:else if !hasRenderableDirectoryItems}
     <div class="compare-viewer-state">
