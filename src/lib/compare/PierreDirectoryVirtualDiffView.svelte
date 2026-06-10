@@ -38,6 +38,7 @@
     renderCommentAnnotationElement,
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
+  import { findOpenDraft, focusDraftEditor } from './comment-drafts'
   import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
@@ -391,6 +392,12 @@
     applyControlledSelection({ id: itemId, range })
     const side = range.endSide ?? range.side ?? 'additions'
     const lineNumber = range.end
+    const openDraft = findOpenDraft(annotationsFor(itemId), side, lineNumber)
+    if (openDraft) {
+      focusDraftEditor(openDraft.metadata.id)
+      return
+    }
+
     updateAnnotations(itemId, [
       ...annotationsFor(itemId),
       {
@@ -399,6 +406,7 @@
         metadata: {
           id: `comment-${commentId += 1}-${Math.random().toString(36).slice(2, 8)}`,
           text: '',
+          draft: true,
         },
       },
     ])

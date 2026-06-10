@@ -30,6 +30,7 @@
     renderCommentAnnotationElement,
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
+  import { findOpenDraft, focusDraftEditor } from './comment-drafts'
   import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
@@ -128,6 +129,12 @@
   function handleGutterUtilityClick(range: SelectedLineRange) {
     applyControlledSelection(range)
     const side = range.endSide ?? range.side ?? 'additions'
+    const openDraft = findOpenDraft(commentAnnotations, side, range.end)
+    if (openDraft) {
+      focusDraftEditor(openDraft.metadata.id)
+      return
+    }
+
     commentAnnotations = [
       ...commentAnnotations,
       {
@@ -136,6 +143,7 @@
         metadata: {
           id: `comment-${commentId += 1}-${Math.random().toString(36).slice(2, 8)}`,
           text: '',
+          draft: true,
         },
       },
     ]

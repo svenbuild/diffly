@@ -4,10 +4,13 @@ import type {
   LineAnnotation,
 } from '@pierre/diffs'
 import { pickAvatar } from '../assets/avatars'
+import { markDraftSaved, registerDraftEditor } from './comment-drafts'
 
 export interface DifflyCommentAnnotation {
   id: string
   text: string
+  draft?: boolean
+  savedAt?: string
 }
 
 type CommentAnnotation =
@@ -247,6 +250,7 @@ function buildComposer(
       callbacks.onDelete(annotation)
     }
   })
+  const unregisterDraftEditor = registerDraftEditor(annotation.metadata.id, input)
   form.addEventListener('submit', (event) => {
     event.preventDefault()
     const value = input.value.trim()
@@ -255,6 +259,8 @@ function buildComposer(
       return
     }
     annotation.metadata.text = value
+    markDraftSaved(annotation)
+    unregisterDraftEditor()
     callbacks.onSave()
     onSaved()
   })
