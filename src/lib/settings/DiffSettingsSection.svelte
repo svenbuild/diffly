@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { CompareViewerSettings, ViewMode } from '../types'
   import Dropdown from '../components/Dropdown.svelte'
+  import { PIERRE_SETTING_LABELS } from './pierre-setting-labels'
+
+  const labels = PIERRE_SETTING_LABELS
 
   export let activeSection: string = 'layout'
   export let viewMode: ViewMode
@@ -55,8 +58,8 @@
     <div class="settings-group-grid">
       <div class="settings-row settings-row-span-full">
         <div class="settings-row-copy">
-          <strong>View mode</strong>
-          <p>Use split or unified layout.</p>
+          <strong>{labels.diffStyle.label}</strong>
+          <p>{labels.diffStyle.description}</p>
         </div>
         <div class="settings-control">
           <button
@@ -85,8 +88,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Wrap long lines</strong>
-          <p>Wrap code instead of using horizontal scrolling.</p>
+          <strong>{labels.overflow.label}</strong>
+          <p>{labels.overflow.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -103,8 +106,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Expand unchanged</strong>
-          <p>Open diffs with unchanged regions expanded.</p>
+          <strong>{labels.expandUnchanged.label}</strong>
+          <p>{labels.expandUnchanged.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -121,8 +124,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Collapsed context threshold</strong>
-          <p>Minimum unchanged lines before a region can collapse.</p>
+          <strong>{labels.collapsedContextThreshold.label}</strong>
+          <p>{labels.collapsedContextThreshold.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -137,8 +140,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Expansion line count</strong>
-          <p>How many lines Pierre expands when opening collapsed regions.</p>
+          <strong>{labels.expansionLineCount.label}</strong>
+          <p>{labels.expansionLineCount.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -153,8 +156,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Sticky header</strong>
-          <p>Keep the file header pinned while scrolling inside the diff.</p>
+          <strong>{labels.stickyHeader.label}</strong>
+          <p>{labels.stickyHeader.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -177,12 +180,12 @@
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Inline diff</strong>
-          <p>Choose word, character, or no inline highlighting.</p>
+          <strong>{labels.lineDiffType.label}</strong>
+          <p>{labels.lineDiffType.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Inline diff"
+            ariaLabel={labels.lineDiffType.label}
             options={lineDiffTypeOptions}
             value={viewerSettings.lineDiffType}
             onChange={(value) => updateViewerSettings({ lineDiffType: value as CompareViewerSettings['lineDiffType'] })}
@@ -192,12 +195,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Diff indicators</strong>
-          <p>Choose change bars, classic +/- prefixes, or no indicators.</p>
+          <strong>{labels.diffIndicators.label}</strong>
+          <p>{labels.diffIndicators.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Diff indicators"
+            ariaLabel={labels.diffIndicators.label}
             options={diffIndicatorOptions}
             value={viewerSettings.diffIndicators}
             onChange={(value) => updateViewerSettings({ diffIndicators: value as CompareViewerSettings['diffIndicators'] })}
@@ -207,12 +210,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Hunk separators</strong>
-          <p>Choose the separator style between changed regions.</p>
+          <strong>{labels.hunkSeparators.label}</strong>
+          <p>{labels.hunkSeparators.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Hunk separators"
+            ariaLabel={labels.hunkSeparators.label}
             options={hunkSeparatorOptions}
             value={viewerSettings.hunkSeparators}
             onChange={(value) => updateViewerSettings({ hunkSeparators: value as CompareViewerSettings['hunkSeparators'] })}
@@ -222,8 +225,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Line numbers</strong>
-          <p>Show or hide the gutter line number text.</p>
+          <strong>{labels.disableLineNumbers.label}</strong>
+          <p>{labels.disableLineNumbers.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -240,8 +243,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>File header</strong>
-          <p>Show or hide Pierre's default file header.</p>
+          <strong>{labels.disableFileHeader.label}</strong>
+          <p>{labels.disableFileHeader.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -258,8 +261,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Diff backgrounds</strong>
-          <p>Show or hide added and deleted line backgrounds.</p>
+          <strong>{labels.disableBackground.label}</strong>
+          <p>{labels.disableBackground.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -282,8 +285,8 @@
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Syntax highlighting</strong>
-          <p>Use Shiki highlighting for supported languages.</p>
+          <strong>{labels.useTokenTransformer.label}</strong>
+          <p>{labels.useTokenTransformer.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -300,12 +303,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Highlighter engine</strong>
-          <p>Select the Shiki JavaScript or WASM engine.</p>
+          <strong>{labels.preferredHighlighter.label}</strong>
+          <p>{labels.preferredHighlighter.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Preferred highlighter"
+            ariaLabel={labels.preferredHighlighter.label}
             options={highlighterOptions}
             value={viewerSettings.preferredHighlighter}
             onChange={(value) => updateViewerSettings({ preferredHighlighter: value as CompareViewerSettings['preferredHighlighter'] })}
@@ -315,8 +318,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>CSS classes</strong>
-          <p>Use Pierre's class-based token style output.</p>
+          <strong>{labels.useCSSClasses.label}</strong>
+          <p>{labels.useCSSClasses.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -333,8 +336,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Tokenize max line length</strong>
-          <p>Skip syntax tokens for lines beyond this length.</p>
+          <strong>{labels.tokenizeMaxLineLength.label}</strong>
+          <p>{labels.tokenizeMaxLineLength.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -349,8 +352,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Tokenize max length</strong>
-          <p>Skip syntax tokens after this total content length.</p>
+          <strong>{labels.tokenizeMaxLength.label}</strong>
+          <p>{labels.tokenizeMaxLength.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -365,8 +368,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Max line diff length</strong>
-          <p>Skip inline diffing when paired lines exceed this length.</p>
+          <strong>{labels.maxLineDiffLength.label}</strong>
+          <p>{labels.maxLineDiffLength.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -387,12 +390,12 @@
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Line hover highlight</strong>
-          <p>Choose which part of a row highlights on pointer hover.</p>
+          <strong>{labels.lineHoverHighlight.label}</strong>
+          <p>{labels.lineHoverHighlight.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Line hover highlight"
+            ariaLabel={labels.lineHoverHighlight.label}
             options={lineHoverOptions}
             value={viewerSettings.lineHoverHighlight}
             onChange={(value) => updateViewerSettings({ lineHoverHighlight: value as CompareViewerSettings['lineHoverHighlight'] })}
@@ -402,8 +405,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Whitespace token interactions</strong>
-          <p>Include whitespace tokens in Pierre token callbacks.</p>
+          <strong>{labels.enableTokenInteractionsOnWhitespace.label}</strong>
+          <p>{labels.enableTokenInteractionsOnWhitespace.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -420,8 +423,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Token hover</strong>
-          <p>Show an info tooltip when hovering known syntax tokens.</p>
+          <strong>{labels.tokenHover.label}</strong>
+          <p>{labels.tokenHover.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -438,8 +441,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Gutter utility</strong>
-          <p>Show Pierre's gutter utility button and report clicked ranges.</p>
+          <strong>{labels.enableGutterUtility.label}</strong>
+          <p>{labels.enableGutterUtility.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -456,8 +459,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Line selection</strong>
-          <p>Allow selecting ranges inside the rendered diff.</p>
+          <strong>{labels.enableLineSelection.label}</strong>
+          <p>{labels.enableLineSelection.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -474,8 +477,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Controlled selection</strong>
-          <p>Keep selected ranges in Diffly state and write them back to Pierre.</p>
+          <strong>{labels.controlledSelection.label}</strong>
+          <p>{labels.controlledSelection.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -492,8 +495,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Disable virtualization buffers</strong>
-          <p>Force Pierre to render without buffer rows.</p>
+          <strong>{labels.disableVirtualizationBuffers.label}</strong>
+          <p>{labels.disableVirtualizationBuffers.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">

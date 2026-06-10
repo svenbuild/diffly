@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { CompareTreeSettings } from '../types'
   import Dropdown from '../components/Dropdown.svelte'
+  import { PIERRE_SETTING_LABELS } from './pierre-setting-labels'
+
+  const labels = PIERRE_SETTING_LABELS
 
   export let activeSection: string = 'structure'
   export let treeSettings: CompareTreeSettings
@@ -78,12 +81,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>File icons</strong>
-          <p>Built-in icon set. "Complete" is the full colored file-type suite.</p>
+          <strong>{labels.iconSet.label}</strong>
+          <p>{labels.iconSet.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="File icons"
+            ariaLabel={labels.iconSet.label}
             options={iconSetOptions}
             value={treeSettings.iconSet}
             onChange={(value) => updateTreeSettings({ iconSet: value as CompareTreeSettings['iconSet'] })}
@@ -93,8 +96,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Colored icons</strong>
-          <p>Use per-file-type colors for the "Complete" icon set.</p>
+          <strong>{labels.coloredIcons.label}</strong>
+          <p>{labels.coloredIcons.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -111,12 +114,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Initial expansion</strong>
-          <p>Choose whether the tree starts closed, open, or expanded by depth.</p>
+          <strong>{labels.initialExpansion.label}</strong>
+          <p>{labels.initialExpansion.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Initial expansion"
+            ariaLabel={labels.initialExpansion.label}
             options={initialExpansionOptions}
             value={treeSettings.initialExpansion}
             onChange={(value) => updateTreeSettings({ initialExpansion: value as CompareTreeSettings['initialExpansion'] })}
@@ -144,8 +147,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Flatten empty folders</strong>
-          <p>Compress folder chains with no branching.</p>
+          <strong>{labels.flattenEmptyDirectories.label}</strong>
+          <p>{labels.flattenEmptyDirectories.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -162,8 +165,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Sticky folders</strong>
-          <p>Keep parent folders visible while scrolling.</p>
+          <strong>{labels.stickyFolders.label}</strong>
+          <p>{labels.stickyFolders.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -180,8 +183,8 @@
 
       <div class="settings-row settings-row-span-full settings-row-block">
         <div class="settings-row-copy">
-          <strong>Initial expanded paths</strong>
-          <p>Optional newline-separated paths that Pierre should expand on mount.</p>
+          <strong>{labels.initialExpandedPaths.label}</strong>
+          <p>{labels.initialExpandedPaths.description}</p>
         </div>
         <div class="settings-control settings-control-wide">
           <textarea
@@ -200,12 +203,12 @@
     <div class="settings-group-grid">
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Density preset</strong>
-          <p>Use Pierre's preset density or a custom scale factor.</p>
+          <strong>{labels.density.label}</strong>
+          <p>{labels.density.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Row density"
+            ariaLabel={labels.density.label}
             options={densityOptions}
             value={treeSettings.density}
             onChange={(value) => updateTreeSettings({ density: value as CompareTreeSettings['density'] })}
@@ -234,8 +237,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Item height</strong>
-          <p>Explicit row height in pixels.</p>
+          <strong>{labels.itemHeight.label}</strong>
+          <p>{labels.itemHeight.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -250,8 +253,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Initial visible rows</strong>
-          <p>Rows used for initial tree viewport estimation.</p>
+          <strong>{labels.initialVisibleRowCount.label}</strong>
+          <p>{labels.initialVisibleRowCount.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -266,8 +269,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Overscan</strong>
-          <p>Extra rows rendered outside the visible tree window.</p>
+          <strong>{labels.overscan.label}</strong>
+          <p>{labels.overscan.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -288,8 +291,8 @@
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Search</strong>
-          <p>Enable Pierre's built-in search input in the tree.</p>
+          <strong>{labels.search.label}</strong>
+          <p>{labels.search.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -306,12 +309,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Search mode</strong>
-          <p>Choose how non-matching tree rows behave.</p>
+          <strong>{labels.fileTreeSearchMode.label}</strong>
+          <p>{labels.fileTreeSearchMode.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Search mode"
+            ariaLabel={labels.fileTreeSearchMode.label}
             options={searchModeOptions}
             value={treeSettings.searchMode}
             onChange={(value) => updateTreeSettings({ searchMode: value as CompareTreeSettings['searchMode'] })}
@@ -321,12 +324,12 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Search blur behavior</strong>
-          <p>Close or retain the search session when it loses focus.</p>
+          <strong>{labels.searchBlurBehavior.label}</strong>
+          <p>{labels.searchBlurBehavior.description}</p>
         </div>
         <div class="settings-control">
           <Dropdown
-            ariaLabel="Search blur behavior"
+            ariaLabel={labels.searchBlurBehavior.label}
             options={searchBlurBehaviorOptions}
             value={treeSettings.searchBlurBehavior}
             onChange={(value) => updateTreeSettings({ searchBlurBehavior: value as CompareTreeSettings['searchBlurBehavior'] })}
@@ -336,8 +339,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Fake search focus</strong>
-          <p>Use Pierre's visual fake-focus state for search.</p>
+          <strong>{labels.searchFakeFocus.label}</strong>
+          <p>{labels.searchFakeFocus.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -354,8 +357,8 @@
 
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>Initial search query</strong>
-          <p>Optional query applied when the tree mounts.</p>
+          <strong>{labels.initialSearchQuery.label}</strong>
+          <p>{labels.initialSearchQuery.description}</p>
         </div>
         <div class="settings-control">
           <input
@@ -374,8 +377,8 @@
     <div class="settings-group-grid">
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Drag and drop</strong>
-          <p>Allow Pierre's local drag and drop behavior in the tree.</p>
+          <strong>{labels.dragAndDrop.label}</strong>
+          <p>{labels.dragAndDrop.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
@@ -392,8 +395,8 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>Renaming</strong>
-          <p>Allow Pierre's local inline rename behavior in the tree.</p>
+          <strong>{labels.renaming.label}</strong>
+          <p>{labels.renaming.description}</p>
         </div>
         <span class="settings-control">
           <span class="settings-switch">
