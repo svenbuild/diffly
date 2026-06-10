@@ -39,6 +39,7 @@
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
   import { findOpenDraft, focusDraftEditor } from './comment-drafts'
+  import { DIFF_HEADER_UNSAFE_CSS } from './diff-header-renderers'
   import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
@@ -516,7 +517,7 @@
         paddingBottom: 8,
         gap: 8,
       },
-      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + `
+      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + `
         :host([data-diffly-placeholder]) [data-metadata] > [data-deletions-count],
         :host([data-diffly-placeholder]) [data-metadata] > [data-additions-count] {
           display: none;

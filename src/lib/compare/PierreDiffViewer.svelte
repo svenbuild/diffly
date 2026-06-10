@@ -12,9 +12,11 @@
     DiffLineAnnotation,
     DiffTokenEventBaseProps,
     FileContents,
+    FileDiffMetadata,
     FileDiffOptions,
     SelectedLineRange,
   } from '@pierre/diffs'
+  import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
     buildPierreDiffUnsafeCss,
@@ -31,6 +33,11 @@
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
   import { findOpenDraft, focusDraftEditor } from './comment-drafts'
+  import {
+    DIFF_HEADER_UNSAFE_CSS,
+    renderDiffHeaderMetadata,
+    renderDiffHeaderPrefix,
+  } from './diff-header-renderers'
   import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
@@ -162,6 +169,24 @@
     }
   }
 
+  function headerDirectory(label: string) {
+    const normalized = label.replace(/[\\/]+$/, '')
+    const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+    return separatorIndex > 0 ? normalized.slice(0, separatorIndex) : ''
+  }
+
+  function renderFileHeaderPrefix(fileDiff: FileDiffMetadata) {
+    // File mode has no collapse toggle wired to the header, so render the
+    // file-type icon only — no dead chevron control.
+    return renderDiffHeaderPrefix(fileDiff.name)
+  }
+
+  function renderFileHeaderMetadata() {
+    const label = rightLabel || leftLabel
+    const directory = headerDirectory(label)
+    return directory ? renderDiffHeaderMetadata({ text: directory, title: label }) : null
+  }
+
   function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
     return renderCommentAnnotationElement(annotation, {
       onSave: () => setInteractionMessage('Comment saved.'),
@@ -211,13 +236,15 @@
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
       onPostRender: applyCollapsedState,
+      renderHeaderPrefix: renderFileHeaderPrefix,
+      renderHeaderMetadata: renderFileHeaderMetadata,
       // Providing token handlers auto-enables Pierre's token transformer, so we
       // only attach them when the feature is on. Toggling changes the options
       // identity, which areOptionsEqual/setOptions detects and re-renders.
       ...(viewerSettings.tokenHover
         ? { onTokenEnter: handleTokenEnter, onTokenLeave: handleTokenLeave }
         : {}),
-      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
+      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS,
     }
   }
 
