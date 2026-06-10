@@ -1017,6 +1017,123 @@ img.diffly-comment-avatar {
   overflow: hidden;
 }
 
+.planned-operations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-height: 180px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  background: var(--pane-bg);
+  font-size: 12px;
+}
+
+.planned-operations-notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.planned-operations-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.planned-operations-title {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planned-operations-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.planned-operations-button {
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.planned-operations-button:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.planned-operations-button:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.planned-operations-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planned-operation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.planned-operation-row:first-child {
+  border-top: 0;
+}
+
+.planned-operation-text {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planned-operation-discard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-faint);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.planned-operation-discard:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
 .compare-sidebar-metrics {
   display: flex;
   flex-direction: column;

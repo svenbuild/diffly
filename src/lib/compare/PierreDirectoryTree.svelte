@@ -5,7 +5,11 @@
     ContextMenuItem as FileTreeContextMenuItem,
     ContextMenuOpenContext as FileTreeContextMenuOpenContext,
     FileTreeDirectoryHandle,
+    FileTreeDropContext,
+    FileTreeDropResult,
+    FileTreeDropTarget,
     FileTreeOptions,
+    FileTreeRenameEvent,
     FileTreeRowDecoration,
     FileTreeRowDecorationContext,
   } from '@pierre/trees'
@@ -19,6 +23,14 @@
   import { getShellPathApi } from '../api'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import ContextMenu from '../components/ContextMenu.svelte'
+  import {
+    commitPlannedOperation,
+    describePlannedOperationRejection,
+    recordPlannedOperation,
+    setPlannedOperationNotice,
+    validatePlannedOperation,
+    type PlannedOperationValidation,
+  } from './file-operation-preview'
   import { buildPierreTreeUnsafeCss } from '../theme/pierre'
   import type { CompareTreeSettings, DiffSource, DirectoryEntryResult } from '../types'
   import { buildChangedDirectorySet, getEntryStatusBadge } from './diffStatusBadge'
@@ -55,10 +67,18 @@
   let observedTreeRoot: ShadowRoot | null = null
 
   $: visibleEntries = directoryEntries
+  // Planned file operations are preview-only and only make sense where an
+  // on-disk working copy exists; read-only sources keep drag & drop and
+  // renaming off regardless of settings.
+  $: fileOperationsRecordable = (() => {
+    const kind = compareSourceKind(contextMenuSource)
+    return kind === 'local' || kind === 'gitWorkingTree'
+  })()
   $: currentStructureKey = JSON.stringify({
     treeSettings,
     appearanceSettings,
     resolvedThemeMode,
+    fileOperationsRecordable,
   })
 
   function resolveDensity(settings: CompareTreeSettings) {
@@ -233,6 +253,91 @@
     return root
   }
 
+  // Occupancy answers against the live tree (existing entries with planned
+  // moves already applied visually), so chained plans validate correctly.
+  function isTreePathOccupied(path: string): boolean {
+    return fileTree?.getItem(path) != null
+  }
+
+  function dropDestinationPath(draggedPath: string, target: FileTreeDropTarget): string {
+    const separatorIndex = draggedPath.lastIndexOf('/')
+    const name = separatorIndex === -1 ? draggedPath : draggedPath.slice(separatorIndex + 1)
+    const directory = target.kind === 'directory' ? target.directoryPath ?? '' : ''
+    return directory ? `${directory}/${name}` : name
+  }
+
+  function validateDropContext(context: FileTreeDropContext): PlannedOperationValidation {
+    for (const draggedPath of context.draggedPaths) {
+      const validation = validatePlannedOperation(
+        {
+          fromRelativePath: draggedPath,
+          toRelativePath: dropDestinationPath(draggedPath, context.target),
+        },
+        isTreePathOccupied,
+      )
+      if (!validation.ok) {
+        return validation
+      }
+    }
+    return { ok: true }
+  }
+
+  // Drops are validated in canDrop before the library mutates the tree, so the
+  // completion callback records the plan without re-checking occupancy (the
+  // moved item already sits at its destination by then). No disk IO happens;
+  // the visual move is the preview.
+  function buildDragAndDropOptions(): FileTreeOptions['dragAndDrop'] {
+    if (!fileOperationsRecordable || !treeSettings.dragAndDrop) {
+      return false
+    }
+
+    return {
+      canDrop: (context) => {
+        const validation = validateDropContext(context)
+        if (!validation.ok) {
+          setPlannedOperationNotice(describePlannedOperationRejection(validation.reason))
+          return false
+        }
+        return true
+      },
+      onDropComplete: (result: FileTreeDropResult) => {
+        for (const draggedPath of result.draggedPaths) {
+          commitPlannedOperation({
+            fromRelativePath: draggedPath,
+            toRelativePath: dropDestinationPath(draggedPath, result.target),
+          })
+        }
+      },
+      onDropError: (error: string) => setPlannedOperationNotice(error),
+    }
+  }
+
+  // The library validates rename collisions/empty names itself (onError) and
+  // applies the visual rename after onRename returns. Diffly-side validation
+  // covers invalid Windows characters; a rejected rename is reverted visually
+  // once the library has applied it.
+  function buildRenamingOptions(): FileTreeOptions['renaming'] {
+    if (!fileOperationsRecordable || !treeSettings.renaming) {
+      return false
+    }
+
+    return {
+      onRename: (event: FileTreeRenameEvent) => {
+        const validation = recordPlannedOperation(
+          {
+            fromRelativePath: event.sourcePath,
+            toRelativePath: event.destinationPath,
+          },
+          isTreePathOccupied,
+        )
+        if (!validation.ok) {
+          queueMicrotask(() => fileTree?.move(event.destinationPath, event.sourcePath))
+        }
+      },
+      onError: (error: string) => setPlannedOperationNotice(error),
+    }
+  }
+
   function buildOptions(paths: string[], selectedPath: string): FileTreeOptions {
     return {
       paths,
@@ -250,8 +355,8 @@
       initialVisibleRowCount: treeSettings.initialVisibleRowCount,
       itemHeight: treeSettings.itemHeight,
       overscan: treeSettings.overscan,
-      dragAndDrop: treeSettings.dragAndDrop,
-      renaming: treeSettings.renaming,
+      dragAndDrop: buildDragAndDropOptions(),
+      renaming: buildRenamingOptions(),
       // Built-in icon set (configurable). The colored "complete" set gives the
       // per-file-type colors; git status only recolours the name + shows the
       // A/M/D letter in the git lane, so the file-type icon colours stay intact.

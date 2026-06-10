@@ -1,6 +1,7 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
+  import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import SourceHeader from '../compare/SourceHeader.svelte'
   import { sourceActions } from '../compare/source-actions'
@@ -97,6 +98,11 @@
     activeDiffSource.selection.kind === 'workingTree'
 
   $: srcActions = sourceActions(activeDiffSource)
+
+  // Planned file operations are preview state for one specific compare;
+  // switching source or compared paths invalidates every recorded plan.
+  $: compareIdentityKey = JSON.stringify({ activeDiffSource, leftPath, rightPath })
+  $: compareIdentityKey, clearPlannedOperations()
 
   function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
     activeSidebarPanel = activeSidebarPanel === panel ? null : panel
