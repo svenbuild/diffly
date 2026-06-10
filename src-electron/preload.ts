@@ -115,4 +115,24 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:refreshDiffSession', { sessionId }),
   disposeDiffSession: (sessionId: string) =>
     invoke('diffly:disposeDiffSession', { sessionId }),
+  // Only exposed where the window is frameless (Windows). Its presence is the
+  // renderer's feature detection for rendering the custom title bar.
+  windowControls:
+    process.platform === 'win32'
+      ? {
+          minimize: () => invoke<void>('diffly:windowMinimize'),
+          toggleMaximize: () => invoke<void>('diffly:windowToggleMaximize'),
+          close: () => invoke<void>('diffly:windowClose'),
+          isMaximized: () => invoke<boolean>('diffly:windowIsMaximized'),
+          onMaximizedChange: (callback: (maximized: boolean) => void) => {
+            const listener = (_event: Electron.IpcRendererEvent, maximized: unknown) => {
+              callback(maximized === true)
+            }
+            ipcRenderer.on('diffly:windowMaximizedChange', listener)
+            return () => {
+              ipcRenderer.removeListener('diffly:windowMaximizedChange', listener)
+            }
+          },
+        }
+      : undefined,
 })

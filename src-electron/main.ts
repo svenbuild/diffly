@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, screen, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, screen, shell } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LaunchContext } from '../src/lib/types'
@@ -59,6 +59,8 @@ function createWindow(launchContext: LaunchContext | null = null) {
     backgroundColor: '#171717',
     resizable: true,
     autoHideMenuBar: true,
+    // Custom title bar on Windows; keep the native frame elsewhere for now.
+    frame: process.platform !== 'win32',
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.cjs'),
@@ -78,6 +80,14 @@ function createWindow(launchContext: LaunchContext | null = null) {
 
   window.webContents.once('dom-ready', () => showWindow(window))
   window.once('ready-to-show', () => showWindow(window))
+
+  const sendMaximizedChange = () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('diffly:windowMaximizedChange', window.isMaximized())
+    }
+  }
+  window.on('maximize', sendMaximizedChange)
+  window.on('unmaximize', sendMaximizedChange)
 
   window.on('close', () => {
     saveWindowState(window)
@@ -102,6 +112,34 @@ function createWindow(launchContext: LaunchContext | null = null) {
     const rendererPath = join(__dirname, '../renderer/index.html')
     void window.loadFile(rendererPath)
   }
+}
+
+function windowFromIpcEvent(event: Electron.IpcMainInvokeEvent) {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  return window && !window.isDestroyed() ? window : null
+}
+
+function registerWindowControlIpcHandlers() {
+  ipcMain.handle('diffly:windowMinimize', (event) => {
+    windowFromIpcEvent(event)?.minimize()
+  })
+  ipcMain.handle('diffly:windowToggleMaximize', (event) => {
+    const window = windowFromIpcEvent(event)
+    if (!window) {
+      return
+    }
+    if (window.isMaximized()) {
+      window.unmaximize()
+    } else {
+      window.maximize()
+    }
+  })
+  ipcMain.handle('diffly:windowClose', (event) => {
+    windowFromIpcEvent(event)?.close()
+  })
+  ipcMain.handle('diffly:windowIsMaximized', (event) =>
+    windowFromIpcEvent(event)?.isMaximized() ?? false,
+  )
 }
 
 function openLaunchWindow(launchContext: LaunchContext) {
@@ -306,6 +344,7 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     registerIpcHandlers()
+    registerWindowControlIpcHandlers()
     createWindow(initialLaunchContext)
     for (const launchContext of pendingLaunchContexts.splice(0)) {
       routeLaunchContext(launchContext)

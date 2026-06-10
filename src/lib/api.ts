@@ -140,6 +140,21 @@ export const refreshDiffSession = (sessionId: string): Promise<CreateDiffSession
 export const disposeDiffSession = (sessionId: string) =>
   window.diffly.disposeDiffSession(sessionId)
 
+export interface WindowControls {
+  minimize(): Promise<void>
+  toggleMaximize(): Promise<void>
+  close(): Promise<void>
+  isMaximized(): Promise<boolean>
+  onMaximizedChange(callback: (maximized: boolean) => void): () => void
+}
+
+/**
+ * Window controls exist only on frameless (Windows) builds. Returns null when
+ * unavailable (native frame, older preload) so callers can feature-detect.
+ */
+export const getWindowControls = (): WindowControls | null =>
+  window.diffly?.windowControls ?? null
+
 function normalizeCompareResponse(response: CompareResponse): CompareResponse {
   if (response.kind === 'file') {
     return {

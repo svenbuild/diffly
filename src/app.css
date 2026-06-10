@@ -410,6 +410,21 @@ select:focus-visible {
   overflow: hidden;
 }
 
+/* App shell: custom window title bar (Windows frameless) above the screens. */
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.app-frame-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 h1,
 h2,
 strong {

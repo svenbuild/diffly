@@ -80,6 +80,14 @@ declare global {
       ): Promise<FileDiffResult>
       refreshDiffSession(sessionId: string): Promise<CreateDiffSessionResponse>
       disposeDiffSession(sessionId: string): Promise<void>
+      /** Present only on frameless (Windows) builds. */
+      windowControls?: {
+        minimize(): Promise<void>
+        toggleMaximize(): Promise<void>
+        close(): Promise<void>
+        isMaximized(): Promise<boolean>
+        onMaximizedChange(callback: (maximized: boolean) => void): () => void
+      }
     }
   }
 }
