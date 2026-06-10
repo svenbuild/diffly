@@ -35,6 +35,7 @@
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let changedDirectories = new Set<string>()
   let nonDiffablePaths = new Set<string>()
+  let unchangedPaths = new Set<string>()
   let treeRowMutationObserver: MutationObserver | null = null
   let observedTreeRoot: ShadowRoot | null = null
 
@@ -97,22 +98,31 @@
     }
 
     root
-      .querySelectorAll<HTMLElement>('[data-diffly-non-diffable="true"]')
+      .querySelectorAll<HTMLElement>('[data-diffly-non-diffable="true"], [data-diffly-unchanged="true"]')
       .forEach((row) => {
         row.removeAttribute('data-diffly-non-diffable')
         row.removeAttribute('data-diffly-non-diffable-title')
+        row.removeAttribute('data-diffly-unchanged')
       })
 
     root
       .querySelectorAll<HTMLElement>('button[data-type="item"][data-item-type="file"]')
       .forEach((row) => {
         const path = row.getAttribute('data-item-path')
-        if (!path || !nonDiffablePaths.has(path)) {
+        if (!path) {
           return
         }
 
-        row.setAttribute('data-diffly-non-diffable', 'true')
-        row.setAttribute('data-diffly-non-diffable-title', 'No text diff is available')
+        if (unchangedPaths.has(path)) {
+          row.setAttribute('data-diffly-unchanged', 'true')
+          row.setAttribute('data-diffly-non-diffable-title', 'No changes')
+          return
+        }
+
+        if (nonDiffablePaths.has(path)) {
+          row.setAttribute('data-diffly-non-diffable', 'true')
+          row.setAttribute('data-diffly-non-diffable-title', 'No text diff is available')
+        }
       })
   }
 
@@ -267,12 +277,16 @@
     entryByPath = new Map(visibleEntries.map((entry) => [entry.relativePath, entry]))
     changedDirectories = buildChangedDirectorySet(visibleEntries)
     const nextNonDiffablePaths = new Set<string>()
+    const nextUnchangedPaths = new Set<string>()
     for (const entry of visibleEntries) {
-      if (entry.status === 'unsupported' || entry.binary) {
+      if (entry.status === 'unchanged') {
+        nextUnchangedPaths.add(entry.relativePath)
+      } else if (entry.status === 'unsupported' || entry.binary) {
         nextNonDiffablePaths.add(entry.relativePath)
       }
     }
     nonDiffablePaths = nextNonDiffablePaths
+    unchangedPaths = nextUnchangedPaths
     const paths = buildTreePaths(visibleEntries)
     const nextStructureKey = currentStructureKey
     const entriesChanged = entriesRevision !== renderedEntriesRevision

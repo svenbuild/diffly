@@ -111,6 +111,11 @@ export function buildPierreTreeUnsafeCss(
       color: ${tokens.mutedText};
     }
 
+    button[data-type='item'][data-diffly-unchanged='true'] {
+      color: ${tokens.mutedText};
+      opacity: 0.62;
+    }
+
     [data-file-tree-search-container] {
       padding: 3px 4px 5px;
     }

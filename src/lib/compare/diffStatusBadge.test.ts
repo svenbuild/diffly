@@ -45,6 +45,7 @@ describe('getEntryStatusBadge — local fallback (status)', () => {
     ['leftOnly', 'D'],
     ['rightOnly', 'A'],
     ['unsupported', null],
+    ['unchanged', null],
   ]
 
   it.each(cases)('maps local %s to badge %s', (status, expected) => {
@@ -104,6 +105,13 @@ describe('buildChangedDirectorySet', () => {
   it('ignores unsupported entries (no badge)', () => {
     const set = buildChangedDirectorySet([
       entry({ relativePath: 'a/b/c.ts', status: 'unsupported', diffEntryStatus: 'unsupported' }),
+    ])
+    expect(set.size).toBe(0)
+  })
+
+  it('ignores unchanged entries (no badge, no folder dot)', () => {
+    const set = buildChangedDirectorySet([
+      entry({ relativePath: 'a/b/c.ts', status: 'unchanged' }),
     ])
     expect(set.size).toBe(0)
   })

@@ -138,6 +138,11 @@ export const PIERRE_SETTING_LABELS = {
     label: 'stickyFolders',
     description: 'Keep parent folders visible while scrolling.',
   },
+  // Diffly extension (not a Pierre option): local directory compare only.
+  showUnmodified: {
+    label: 'showUnmodified',
+    description: 'Also show unchanged files in the tree, dimmed and without a status badge.',
+  },
   initialExpandedPaths: {
     label: 'initialExpandedPaths',
     description: 'Optional newline-separated paths that Pierre should expand on mount.',

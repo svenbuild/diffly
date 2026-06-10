@@ -40,7 +40,9 @@ export function filterDirectoryEntries(
 export function isDiffableDirectoryEntry(
   entry: DirectoryEntryResult | null | undefined,
 ): entry is DirectoryEntryResult {
-  return Boolean(entry && entry.status !== 'unsupported' && !entry.binary)
+  return Boolean(
+    entry && entry.status !== 'unsupported' && entry.status !== 'unchanged' && !entry.binary,
+  )
 }
 
 export function defaultDirectoryEntry(entries: DirectoryEntryResult[]) {

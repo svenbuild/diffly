@@ -247,6 +247,10 @@ export class LocalProvider implements DiffSessionProvider {
         options,
       )
       for (const directoryEntry of directoryEntries) {
+        // Unchanged entries are tree-only; diff sessions list real diffs.
+        if (directoryEntry.status === 'unchanged') {
+          continue
+        }
         const entry = mapDirectoryEntryToDiffEntry(directoryEntry)
         entries.push(entry)
         entryData.set(entry.id, {
@@ -589,6 +593,20 @@ async function computeDirectoryEntry(
     return null
   }
 
+  // Reuses the identities/sizes the comparator already loaded — emitting
+  // unchanged entries must not trigger extra file reads.
+  const unchangedEntry = (): DirectoryEntryResult | null =>
+    options.includeUnchanged
+      ? {
+          relativePath,
+          status: 'unchanged',
+          leftPath,
+          rightPath,
+          leftSize: leftIdentity.size,
+          rightSize: rightIdentity.size,
+        }
+      : null
+
   const [leftSample, rightSample] = await Promise.all([
     sampleFile(leftPath),
     sampleFile(rightPath),
@@ -599,10 +617,10 @@ async function computeDirectoryEntry(
   if (leftIdentity.size === rightIdentity.size) {
     const samplesEqual = bytesEqual(leftSample, rightSample)
     if (samplesEqual && leftIdentity.size <= leftSample.byteLength) {
-      return null
+      return unchangedEntry()
     }
     if (samplesEqual && await filesEqual(leftPath, rightPath, leftSample.byteLength)) {
-      return null
+      return unchangedEntry()
     }
   }
 
@@ -616,7 +634,7 @@ async function computeDirectoryEntry(
         readFile(rightPath, 'utf8'),
       ])
       if (normalizeCompareText(leftText, options) === normalizeCompareText(rightText, options)) {
-        return null
+        return unchangedEntry()
       }
     }
   }
@@ -657,6 +675,9 @@ function mapDirectoryEntryStatus(status: DirectoryEntryResult['status']): DiffEn
     case 'rightOnly':
       return 'added'
     case 'unsupported':
+    // 'unchanged' is filtered out before mapping; treat defensively as
+    // unsupported so the mapping stays total.
+    case 'unchanged':
       return 'unsupported'
   }
 }

@@ -62,6 +62,7 @@ export function createDefaultTreeSettings(): CompareTreeSettings {
     renaming: false,
     iconSet: 'complete',
     coloredIcons: true,
+    showUnmodified: false,
   }
 }
 
@@ -144,6 +145,7 @@ export function normalizeTreeSettings(
     renaming: settings?.renaming ?? false,
     iconSet: isTreeIconSet(settings?.iconSet) ? settings.iconSet : current.iconSet,
     coloredIcons: settings?.coloredIcons ?? current.coloredIcons,
+    showUnmodified: settings?.showUnmodified ?? false,
   }
 }
 

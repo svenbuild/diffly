@@ -181,6 +181,24 @@
         </span>
       </label>
 
+      <label class="settings-row settings-row-interactive">
+        <div class="settings-row-copy">
+          <strong>{labels.showUnmodified.label}</strong>
+          <p>{labels.showUnmodified.description}</p>
+        </div>
+        <span class="settings-control">
+          <span class="settings-switch">
+            <input
+              checked={treeSettings.showUnmodified}
+              role="switch"
+              type="checkbox"
+              on:change={() => updateTreeSettings({ showUnmodified: !treeSettings.showUnmodified })}
+            />
+            <span aria-hidden="true" class="settings-switch-ui"></span>
+          </span>
+        </span>
+      </label>
+
       <div class="settings-row settings-row-span-full settings-row-block">
         <div class="settings-row-copy">
           <strong>{labels.initialExpandedPaths.label}</strong>

@@ -56,6 +56,7 @@ export function getEntryStatusBadge(entry: DirectoryEntryResult): DiffStatusBadg
     case 'rightOnly':
       return indicatorBadge('added', 'Only in right')
     case 'unsupported':
+    case 'unchanged':
       return null
   }
 

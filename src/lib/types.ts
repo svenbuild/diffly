@@ -5,7 +5,7 @@ export type SetupMode = 'git' | 'local' | 'github'
 export type ViewMode = 'sideBySide' | 'unified'
 export type ThemeMode = AppearanceMode
 export type ContextLinesSetting = 3 | 10 | 20
-export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'unsupported'
+export type EntryStatus = 'modified' | 'leftOnly' | 'rightOnly' | 'unsupported' | 'unchanged'
 export type ContentKind = 'text' | 'unsupported'
 export type PathKind = 'file' | 'directory'
 export type ExplorerEntryKind = 'drive' | 'directory' | 'file'
@@ -245,6 +245,7 @@ export interface CompareTreeSettings {
   renaming: boolean
   iconSet: 'minimal' | 'standard' | 'complete' | 'none'
   coloredIcons: boolean
+  showUnmodified: boolean
 }
 
 export type LegacyCompareSource =
@@ -324,6 +325,10 @@ export interface PersistedSession {
 export interface CompareOptions {
   ignoreWhitespace: boolean
   ignoreCase: boolean
+  // Local directory compare only: also return files that are equal on both
+  // sides with status 'unchanged'. Optional so persisted/legacy callers and
+  // git/github flows stay unaffected.
+  includeUnchanged?: boolean
 }
 
 export interface ExplorerEntry {

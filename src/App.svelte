@@ -224,6 +224,7 @@
   let activeCompareOptions: CompareOptions = {
     ignoreWhitespace: false,
     ignoreCase: false,
+    includeUnchanged: false,
   }
   let loading = false
   let detailLoading = false
@@ -360,6 +361,11 @@
   const getPendingCompareOptions = (): CompareOptions => ({
     ignoreWhitespace,
     ignoreCase,
+    // Unchanged entries are a local directory compare feature only; git and
+    // github sessions ignore the flag, so keep it false there to avoid
+    // flagging their compares as dirty when the tree setting toggles.
+    includeUnchanged:
+      setupMode === 'local' && mode === 'directory' && treeSettings.showUnmodified,
   })
 
   function resetCompareMetrics() {
@@ -390,7 +396,8 @@
   function compareOptionsMatch(leftOptions: CompareOptions, rightOptions: CompareOptions) {
     return (
       leftOptions.ignoreWhitespace === rightOptions.ignoreWhitespace &&
-      leftOptions.ignoreCase === rightOptions.ignoreCase
+      leftOptions.ignoreCase === rightOptions.ignoreCase &&
+      Boolean(leftOptions.includeUnchanged) === Boolean(rightOptions.includeUnchanged)
     )
   }
 
@@ -2856,6 +2863,9 @@
     }}
     onSetTreeSettings={(settings) => {
       treeSettings = settings
+      // showUnmodified changes what the backend scan returns, so flag the
+      // compare as dirty the same way the comparison-rule toggles do.
+      syncCompareDirtyState()
     }}
     onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
     onSetUpdateChannel={setUpdateChannel}
