@@ -472,6 +472,16 @@ export interface PollDirectoryCompareResponse {
   error: string | null
 }
 
+// Review-mode whole-file accept: copies sourcePath over targetPath. Both
+// endpoints must live inside the compare bases; the main process re-validates
+// every field.
+export interface ApplyFileChangePayload {
+  sourcePath: string
+  targetPath: string
+  leftBase: string
+  rightBase: string
+}
+
 export type CompareResponse =
   | {
       kind: 'directory'

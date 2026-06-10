@@ -36,8 +36,17 @@
   import {
     DIFF_HEADER_UNSAFE_CSS,
     renderDiffHeaderMetadata,
+    renderDiffHeaderMetadataWithActions,
     renderDiffHeaderPrefix,
+    renderReviewActionButtons,
   } from './diff-header-renderers'
+  import type { CompareSourceKind } from '../actions/compare-actions'
+  import {
+    reviewActionsForSource,
+    reviewEntryInfoFromText,
+    runReviewAction,
+    type ReviewActionItem,
+  } from './review-mode'
   import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
@@ -49,6 +58,12 @@
   export let viewMode: ViewMode
   export let collapsed = false
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
+  export let reviewModeEnabled = false
+  export let reviewSourceKind: CompareSourceKind = 'local'
+  /** Absolute on-disk side paths; empty for session-backed sources. */
+  export let reviewLeftPath = ''
+  export let reviewRightPath = ''
+  export let onReviewRefresh: () => Promise<void> | void = () => {}
 
   let host: HTMLDivElement | null = null
   let fileDiff: FileDiff<DifflyCommentAnnotation> | null = null
@@ -184,7 +199,33 @@
   function renderFileHeaderMetadata() {
     const label = rightLabel || leftLabel
     const directory = headerDirectory(label)
-    return directory ? renderDiffHeaderMetadata({ text: directory, title: label }) : null
+    const metadata = directory
+      ? renderDiffHeaderMetadata({ text: directory, title: label })
+      : null
+
+    if (!reviewModeEnabled) {
+      return metadata
+    }
+
+    const actions = reviewActionsForSource(reviewSourceKind, reviewEntryInfoFromText(text))
+    const buttons = renderReviewActionButtons(actions, (action) => {
+      void runFileReviewAction(action)
+    })
+    return renderDiffHeaderMetadataWithActions(metadata, buttons)
+  }
+
+  async function runFileReviewAction(action: ReviewActionItem) {
+    await runReviewAction(action, {
+      displayPath: fileName(rightLabel || leftLabel),
+      leftPath: text.leftExists && reviewLeftPath ? reviewLeftPath : null,
+      rightPath: text.rightExists && reviewRightPath ? reviewRightPath : null,
+      // Single-file compares: the compared files are the compare roots.
+      leftBase: reviewLeftPath,
+      rightBase: reviewRightPath,
+      text,
+      refresh: onReviewRefresh,
+      notify: setInteractionMessage,
+    })
   }
 
   function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
@@ -423,6 +464,22 @@
   $: tokenHoverLanguage = getFiletypeFromFileName(fileName(rightLabel || leftLabel))
 
   $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, commentAnnotations, void renderDiff()
+
+  // Header renderers are stable function references, so toggling review mode
+  // never changes the options identity. Drop the rendered-options cache to
+  // force a full re-render with the new header content.
+  let lastReviewRenderKey = ''
+  $: {
+    const reviewRenderKey = `${reviewModeEnabled ? '1' : '0'}:${reviewSourceKind}`
+    if (reviewRenderKey !== lastReviewRenderKey) {
+      const isInitial = lastReviewRenderKey === ''
+      lastReviewRenderKey = reviewRenderKey
+      if (!isInitial) {
+        renderedOptions = null
+        void renderDiff()
+      }
+    }
+  }
 
   onDestroy(() => {
     if (interactionMessageTimer !== null) {

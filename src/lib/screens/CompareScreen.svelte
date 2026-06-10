@@ -3,8 +3,10 @@
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
   import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
+  import { reviewModeEnabled } from '../compare/review-mode'
   import SourceHeader from '../compare/SourceHeader.svelte'
   import { sourceActions } from '../compare/source-actions'
+  import { compareSourceKind } from '../actions/compare-actions'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
@@ -98,6 +100,12 @@
     activeDiffSource.selection.kind === 'workingTree'
 
   $: srcActions = sourceActions(activeDiffSource)
+
+  $: reviewSourceKind = compareSourceKind(activeDiffSource)
+
+  function toggleReviewMode() {
+    reviewModeEnabled.update((enabled) => !enabled)
+  }
 
   // Planned file operations are preview state for one specific compare;
   // switching source or compared paths invalidates every recorded plan.
@@ -211,6 +219,19 @@
               <path d="M4.8 5.5h6.4M4.8 8h6.4M4.8 10.5h4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.3" />
             </svg>
           {/if}
+        </button>
+
+        <button
+          aria-label={$reviewModeEnabled ? 'Turn review mode off' : 'Turn review mode on'}
+          aria-pressed={$reviewModeEnabled}
+          class="secondary toolbar-button review-mode-button"
+          title={$reviewModeEnabled
+            ? 'Review mode on — per-file actions are shown in diff headers'
+            : 'Review mode off — click to show per-file actions in diff headers'}
+          type="button"
+          on:click={toggleReviewMode}
+        >
+          Review
         </button>
       </div>
 
@@ -373,6 +394,9 @@
         {onDiffStatsChange}
         {onSystemMonitorChange}
         resolveEntryBases={getDetailBasesForPath}
+        reviewModeEnabled={$reviewModeEnabled}
+        {reviewSourceKind}
+        onReviewRefresh={runCompare}
       />
     {:else}
       <section class="compare-viewer">

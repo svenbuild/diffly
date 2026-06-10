@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte'
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem, openDiffEntry } from '../api'
+  import type { CompareSourceKind } from '../actions/compare-actions'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
@@ -60,6 +61,9 @@
   })
   export let detailLoader: DirectoryDetailLoader = { kind: 'localPaths' }
   export let emptyMessage = 'No file changes.'
+  export let reviewModeEnabled = false
+  export let reviewSourceKind: CompareSourceKind = 'local'
+  export let onReviewRefresh: () => Promise<void> | void = () => {}
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
@@ -977,6 +981,10 @@
       {requestVisibleEntries}
       pauseDiffLoading={pauseDirectoryDiffLoads}
       onSystemMonitorChange={handleSystemMonitorChange}
+      {reviewModeEnabled}
+      {reviewSourceKind}
+      {onReviewRefresh}
+      {resolveEntryBases}
     />
   {/if}
 </section>

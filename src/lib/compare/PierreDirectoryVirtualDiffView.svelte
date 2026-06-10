@@ -39,7 +39,18 @@
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
   import { findOpenDraft, focusDraftEditor } from './comment-drafts'
-  import { DIFF_HEADER_UNSAFE_CSS } from './diff-header-renderers'
+  import {
+    DIFF_HEADER_UNSAFE_CSS,
+    renderDiffHeaderMetadataWithActions,
+    renderReviewActionButtons,
+  } from './diff-header-renderers'
+  import type { CompareSourceKind } from '../actions/compare-actions'
+  import {
+    reviewActionsForSource,
+    reviewEntryInfoFromEntry,
+    runReviewAction,
+    type ReviewActionItem,
+  } from './review-mode'
   import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
@@ -95,6 +106,14 @@
   export let requestVisibleEntries: (relativePaths: string[]) => void = () => {}
   export let pauseDiffLoading: () => void = () => {}
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
+  export let reviewModeEnabled = false
+  export let reviewSourceKind: CompareSourceKind = 'local'
+  export let onReviewRefresh: () => Promise<void> | void = () => {}
+  export let resolveEntryBases: (relativePath: string) => {
+    leftBase: string
+    rightBase: string
+    relativePath: string
+  } = (relativePath) => ({ leftBase: '', rightBase: '', relativePath })
 
   let host: HTMLDivElement | null = null
   let codeView: CodeView<DifflyCommentAnnotation> | null = null
@@ -444,7 +463,48 @@
   }
 
   function renderHeaderMetadata(...args: unknown[]) {
-    return renderDirectoryHeaderMetadata(args, entryByPath)
+    const metadata = renderDirectoryHeaderMetadata(args, entryByPath)
+    if (!reviewModeEnabled) {
+      return metadata
+    }
+
+    const context = getCodeViewItemContext(args)
+    const itemId = context?.item?.id
+    const loadedEntry = itemId ? entryByPath.get(itemId) : null
+    if (!loadedEntry) {
+      return metadata
+    }
+
+    const actions = reviewActionsForSource(
+      reviewSourceKind,
+      reviewEntryInfoFromEntry(loadedEntry.entry, Boolean(loadedEntry.diff?.text)),
+    )
+    const buttons = renderReviewActionButtons(actions, (action) => {
+      void runEntryReviewAction(action, loadedEntry.entry.relativePath)
+    })
+    return renderDiffHeaderMetadataWithActions(metadata, buttons)
+  }
+
+  // Looks the entry up again at click time: the diff may have loaded (or the
+  // compare refreshed) since the header was rendered.
+  async function runEntryReviewAction(action: ReviewActionItem, relativePath: string) {
+    const loadedEntry = entryByPath.get(relativePath)
+    if (!loadedEntry) {
+      setInteractionMessage('This file is no longer part of the compare.')
+      return
+    }
+
+    const bases = resolveEntryBases(relativePath)
+    await runReviewAction(action, {
+      displayPath: relativePath,
+      leftPath: loadedEntry.entry.leftPath,
+      rightPath: loadedEntry.entry.rightPath,
+      leftBase: bases.leftBase,
+      rightBase: bases.rightBase,
+      text: loadedEntry.diff?.text ?? null,
+      refresh: onReviewRefresh,
+      notify: setInteractionMessage,
+    })
   }
 
   function handlePostRender(...args: unknown[]) {
@@ -558,6 +618,8 @@
       viewerSettings.enableLineSelection ? '1' : '0',
       viewerSettings.controlledSelection ? '1' : '0',
       viewerSettings.tokenHover ? '1' : '0',
+      reviewModeEnabled ? '1' : '0',
+      reviewSourceKind,
     ].join('\u0000')
   }
 
@@ -1210,6 +1272,8 @@
     resolvedThemeMode,
     viewMode,
     commentAnnotations,
+    reviewModeEnabled,
+    reviewSourceKind,
     void syncCodeView()
 
   $: scrollTargetRevision, void scrollToSelectedEntry()

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  ApplyFileChangePayload,
   CompareOptions,
   DiffEntryFilter,
   DiffSource,
@@ -24,6 +25,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<void>('diffly:openPath', { path }),
   revealPath: (path: string) =>
     invoke<void>('diffly:revealPath', { path }),
+  applyFileChange: (payload: ApplyFileChangePayload) =>
+    invoke<void>('diffly:applyFileChange', payload),
   listRoots: () =>
     invoke('diffly:listRoots'),
   listDirectory: (path: string) =>

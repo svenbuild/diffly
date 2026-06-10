@@ -20,6 +20,7 @@ import {
   listRoots,
   pathInfo,
 } from './explorer-service'
+import { applyFileChange } from './file-apply'
 import { loadLaunchContext } from './launch-context'
 import { fetchPullRequestMetadata, GithubServiceError } from './github/github-service'
 import { parseGithubPullRequestUrl } from './github/github-url'
@@ -68,6 +69,7 @@ export { listGitRefs } from './git/git-refs'
 export { validateGitRepository } from './git/git-repository'
 export { loadSessionState, saveSessionState } from './session-store'
 export { clearFileDiffCache } from './file-diff'
+export { applyFileChange } from './file-apply'
 
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
@@ -81,6 +83,9 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:revealPath', (_event, payload: { path?: unknown }) =>
     revealLocalPath(payload?.path),
+  )
+  ipcMain.handle('diffly:applyFileChange', (_event, payload: unknown) =>
+    applyFileChange(payload),
   )
   ipcMain.handle('diffly:listRoots', () => listRoots())
   ipcMain.handle('diffly:listDirectory', (_event, payload: { path: string }) =>

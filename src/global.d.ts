@@ -1,4 +1,5 @@
 import type {
+  ApplyFileChangePayload,
   CompareOptions,
   CompareResponse,
   CreateDiffSessionResponse,
@@ -32,6 +33,8 @@ declare global {
       openPath?(path: string): Promise<void>
       /** Optional: absent on older preload builds; feature-detect before use. */
       revealPath?(path: string): Promise<void>
+      /** Optional: absent on older preload builds; feature-detect before use. */
+      applyFileChange?(payload: ApplyFileChangePayload): Promise<void>
       listRoots(): Promise<ExplorerEntry[]>
       listDirectory(path: string): Promise<DirectoryListing>
       pathInfo(path: string): Promise<PathInfo>

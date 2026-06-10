@@ -1,4 +1,5 @@
 import type {
+  ApplyFileChangePayload,
   CompareOptions,
   CompareResponse,
   CreateDiffSessionResponse,
@@ -174,6 +175,26 @@ export const getShellPathApi = (): ShellPathApi | null => {
   return {
     openPath: (path: string) => bridge.openPath!(path),
     revealPath: (path: string) => bridge.revealPath!(path),
+  }
+}
+
+export interface ReviewApplyApi {
+  applyFileChange(payload: ApplyFileChangePayload): Promise<void>
+}
+
+/**
+ * Review-mode whole-file accept. Returns null when the preload bridge does
+ * not expose it (older builds, tests) so callers can feature-detect,
+ * mirroring getShellPathApi.
+ */
+export const getReviewApplyApi = (): ReviewApplyApi | null => {
+  const bridge = typeof window === 'undefined' ? undefined : window.diffly
+  if (!bridge || typeof bridge.applyFileChange !== 'function') {
+    return null
+  }
+
+  return {
+    applyFileChange: (payload: ApplyFileChangePayload) => bridge.applyFileChange!(payload),
   }
 }
 

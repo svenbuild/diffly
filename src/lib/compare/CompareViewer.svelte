@@ -2,6 +2,7 @@
   import PierreDiffViewer from './PierreDiffViewer.svelte'
   import DirectoryDiffList from './DirectoryDiffList.svelte'
   import UnsupportedCompareView from './UnsupportedCompareView.svelte'
+  import type { CompareSourceKind } from '../actions/compare-actions'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
@@ -47,6 +48,9 @@
     rightBase: rightPath,
     relativePath,
   })
+  export let reviewModeEnabled = false
+  export let reviewSourceKind: CompareSourceKind = 'local'
+  export let onReviewRefresh: () => Promise<void> | void = () => {}
 </script>
 
 <section class:compare-viewer-transitioning={transitionActive} class="compare-viewer">
@@ -69,6 +73,9 @@
       {resolveEntryBases}
       {detailLoader}
       {emptyMessage}
+      {reviewModeEnabled}
+      {reviewSourceKind}
+      {onReviewRefresh}
     />
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">
@@ -89,6 +96,11 @@
       {resolvedThemeMode}
       {viewMode}
       {onSystemMonitorChange}
+      {reviewModeEnabled}
+      {reviewSourceKind}
+      reviewLeftPath={leftPath}
+      reviewRightPath={rightPath}
+      {onReviewRefresh}
     />
   {:else}
     <UnsupportedCompareView

@@ -1,5 +1,6 @@
 import { createAppIcon } from '../icons/app-icons'
 import { renderFileTypeIcon } from '../icons/file-icons'
+import type { ReviewActionItem } from './review-mode'
 
 // Pierre renders its own generic change-type icon between the header prefix
 // slot and the file name. We render a file-type icon in the prefix instead,
@@ -47,6 +48,59 @@ export function renderDiffHeaderPrefix(
   })
 
   return button
+}
+
+/**
+ * Renders the review-mode per-file action buttons for a diff header. Buttons
+ * are real <button> elements (keyboard accessible) with the tooltip mirrored
+ * into title/aria-label; disabled actions stay visible but inert.
+ */
+export function renderReviewActionButtons(
+  actions: ReviewActionItem[],
+  onRun: (action: ReviewActionItem) => void,
+): HTMLElement {
+  const container = document.createElement('span')
+  container.className = 'diffly-review-actions'
+
+  for (const action of actions) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'diffly-review-action-button'
+    if (action.danger) {
+      button.dataset.danger = 'true'
+    }
+    button.textContent = action.label
+    button.title = action.tooltip
+    button.setAttribute('aria-label', action.tooltip)
+    button.disabled = !action.enabled
+    button.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      onRun(action)
+    })
+    container.appendChild(button)
+  }
+
+  return container
+}
+
+/**
+ * Combines the status metadata element with review action buttons in a single
+ * header metadata slot.
+ */
+export function renderDiffHeaderMetadataWithActions(
+  metadata: HTMLElement | null,
+  actions: HTMLElement,
+): HTMLElement {
+  if (!metadata) {
+    return actions
+  }
+
+  const container = document.createElement('span')
+  container.className = 'diffly-codeview-metadata-group'
+  container.appendChild(metadata)
+  container.appendChild(actions)
+  return container
 }
 
 export function renderDiffHeaderMetadata(options: {
