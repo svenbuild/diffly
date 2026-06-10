@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileTypeIconKind } from './diff-header-renderers'
+import { FILE_ICON_PATHS, fileTypeIconKind, type FileTypeIconKind } from './file-icons'
 
 describe('fileTypeIconKind', () => {
   it('maps programming languages to the code icon', () => {
@@ -43,5 +43,14 @@ describe('fileTypeIconKind', () => {
   it('works with full relative paths including backslashes', () => {
     expect(fileTypeIconKind('src\\lib\\compare\\viewer.ts')).toBe('code')
     expect(fileTypeIconKind('docs/guide/intro.md')).toBe('doc')
+  })
+})
+
+describe('FILE_ICON_PATHS registry', () => {
+  it('has path data for every icon kind including the unknown fallback', () => {
+    const kinds: FileTypeIconKind[] = ['code', 'doc', 'image', 'config', 'styles', 'unknown']
+    for (const kind of kinds) {
+      expect(FILE_ICON_PATHS[kind].length).toBeGreaterThan(0)
+    }
   })
 })

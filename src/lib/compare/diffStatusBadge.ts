@@ -1,3 +1,4 @@
+import { DIFF_STATUS_INDICATORS, type DiffStatusIndicatorKey } from '../icons/status-icons'
 import type { DirectoryEntryResult } from '../types'
 
 // Single source of truth for the per-entry status badge shown in the compare
@@ -17,6 +18,11 @@ function normalizeRenameDisplay(displayPath: string): string {
   return displayPath.replace(/\s*->\s*/g, ' → ')
 }
 
+function indicatorBadge(key: DiffStatusIndicatorKey, title?: string): DiffStatusBadge {
+  const indicator = DIFF_STATUS_INDICATORS[key]
+  return { text: indicator.letter, title: title ?? indicator.label }
+}
+
 // Map a directory comparison entry to its badge. Git/GitHub entries carry the
 // detailed `diffEntryStatus`; local-only entries fall back to the coarse
 // `status`. Returns null when no badge should be shown (unsupported entries).
@@ -28,21 +34,15 @@ export function getEntryStatusBadge(entry: DirectoryEntryResult): DiffStatusBadg
   if (entry.diffEntryStatus) {
     switch (entry.diffEntryStatus) {
       case 'modified':
-        return { text: 'M', title: 'Modified' }
       case 'added':
-        return { text: 'A', title: 'Added' }
       case 'deleted':
-        return { text: 'D', title: 'Deleted' }
-      case 'renamed':
-        return { text: 'R', title: renameTitle ?? 'Renamed' }
-      case 'copied':
-        return { text: 'C', title: renameTitle ?? 'Copied' }
       case 'typeChanged':
-        return { text: 'T', title: 'Type changed' }
       case 'untracked':
-        return { text: '?', title: 'Untracked' }
       case 'conflicted':
-        return { text: 'U', title: 'Conflicted' }
+        return indicatorBadge(entry.diffEntryStatus)
+      case 'renamed':
+      case 'copied':
+        return indicatorBadge(entry.diffEntryStatus, renameTitle ?? undefined)
       case 'unsupported':
         return null
     }
@@ -50,11 +50,11 @@ export function getEntryStatusBadge(entry: DirectoryEntryResult): DiffStatusBadg
 
   switch (entry.status) {
     case 'modified':
-      return { text: 'M', title: 'Modified' }
+      return indicatorBadge('modified')
     case 'leftOnly':
-      return { text: 'D', title: 'Only in left' }
+      return indicatorBadge('deleted', 'Only in left')
     case 'rightOnly':
-      return { text: 'A', title: 'Only in right' }
+      return indicatorBadge('added', 'Only in right')
     case 'unsupported':
       return null
   }

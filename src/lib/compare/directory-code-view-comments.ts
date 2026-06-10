@@ -4,6 +4,7 @@ import type {
   LineAnnotation,
 } from '@pierre/diffs'
 import { pickAvatar } from '../assets/avatars'
+import { createAppIcon } from '../icons/app-icons'
 import { markDraftSaved, registerDraftEditor } from './comment-drafts'
 
 export interface DifflyCommentAnnotation {
@@ -24,28 +25,8 @@ interface StoredComment {
   text: string
 }
 
-const SVG_NS = 'http://www.w3.org/2000/svg'
-
-function createSvgIcon(paths: string[]): SVGSVGElement {
-  const svg = document.createElementNS(SVG_NS, 'svg')
-  svg.setAttribute('viewBox', '0 0 16 16')
-  svg.setAttribute('aria-hidden', 'true')
-  svg.setAttribute('fill', 'none')
-  for (const d of paths) {
-    const path = document.createElementNS(SVG_NS, 'path')
-    path.setAttribute('d', d)
-    path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'currentColor')
-    path.setAttribute('stroke-width', '1.6')
-    path.setAttribute('stroke-linecap', 'round')
-    path.setAttribute('stroke-linejoin', 'round')
-    svg.appendChild(path)
-  }
-  return svg
-}
-
-const sendIcon = () => createSvgIcon(['M8 13V4', 'M4.6 7.4 8 4l3.4 3.4'])
-const closeIcon = () => createSvgIcon(['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'])
+const sendIcon = () => createAppIcon('send')
+const closeIcon = () => createAppIcon('close')
 
 function createCommentAvatar(seed: string): HTMLImageElement {
   const img = document.createElement('img')
