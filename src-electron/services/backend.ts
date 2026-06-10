@@ -1,4 +1,6 @@
 import { app, ipcMain, shell } from 'electron'
+import { existsSync, statSync } from 'node:fs'
+import { isAbsolute, normalize } from 'node:path'
 import type {
   CompareOptions,
   CompareResponse,
@@ -73,6 +75,12 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:openExternal', (_event, payload: { url: string }) =>
     openExternalUrl(payload?.url ?? ''),
+  )
+  ipcMain.handle('diffly:openPath', (_event, payload: { path?: unknown }) =>
+    openLocalPath(payload?.path),
+  )
+  ipcMain.handle('diffly:revealPath', (_event, payload: { path?: unknown }) =>
+    revealLocalPath(payload?.path),
   )
   ipcMain.handle('diffly:listRoots', () => listRoots())
   ipcMain.handle('diffly:listDirectory', (_event, payload: { path: string }) =>
@@ -154,6 +162,61 @@ export async function openExternalUrl(url: string): Promise<void> {
   if (/^https?:\/\//i.test(url)) {
     await shell.openExternal(url)
   }
+}
+
+// Validates an untrusted renderer-supplied filesystem path before handing it
+// to the OS shell. Fail closed: anything that is not an existing absolute
+// local path (no protocol prefixes other than a drive letter, no NUL bytes,
+// no \\?\ / \\.\ device paths) is rejected silently.
+export function validateShellTargetPath(rawPath: unknown): string | null {
+  if (typeof rawPath !== 'string') {
+    return null
+  }
+
+  const trimmed = rawPath.trim()
+  if (!trimmed || trimmed.includes('\u0000')) {
+    return null
+  }
+
+  // Reject protocol-looking strings (file:, javascript:, …) while still
+  // allowing Windows drive letters such as "C:\" or "C:/".
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !/^[a-z]:[\\/]/i.test(trimmed)) {
+    return null
+  }
+
+  const normalized = normalize(trimmed)
+  if (!isAbsolute(normalized) || /^\\\\[.?]\\/.test(normalized)) {
+    return null
+  }
+
+  return existsSync(normalized) ? normalized : null
+}
+
+export async function openLocalPath(rawPath: unknown): Promise<void> {
+  const target = validateShellTargetPath(rawPath)
+  if (!target) {
+    return
+  }
+
+  try {
+    // Only regular files are opened; directories go through revealLocalPath.
+    if (!statSync(target).isFile()) {
+      return
+    }
+  } catch {
+    return
+  }
+
+  await shell.openPath(target)
+}
+
+export function revealLocalPath(rawPath: unknown): void {
+  const target = validateShellTargetPath(rawPath)
+  if (!target) {
+    return
+  }
+
+  shell.showItemInFolder(target)
 }
 
 export function comparePaths(

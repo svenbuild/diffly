@@ -1,15 +1,26 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { mount, onDestroy, onMount, tick, unmount } from 'svelte'
   import { FileTree } from '@pierre/trees'
   import type {
+    ContextMenuItem as FileTreeContextMenuItem,
+    ContextMenuOpenContext as FileTreeContextMenuOpenContext,
+    FileTreeDirectoryHandle,
     FileTreeOptions,
     FileTreeRowDecoration,
     FileTreeRowDecorationContext,
   } from '@pierre/trees'
   import type { AppearanceSettings } from '../theme'
+  import {
+    compareSourceKind,
+    listVisibleCompareActions,
+    resolveEntryAbsolutePath,
+    type CompareActionContext,
+  } from '../actions/compare-actions'
+  import { getShellPathApi } from '../api'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
+  import ContextMenu from '../components/ContextMenu.svelte'
   import { buildPierreTreeUnsafeCss } from '../theme/pierre'
-  import type { CompareTreeSettings, DirectoryEntryResult } from '../types'
+  import type { CompareTreeSettings, DiffSource, DirectoryEntryResult } from '../types'
   import { buildChangedDirectorySet, getEntryStatusBadge } from './diffStatusBadge'
 
   export let loading = false
@@ -21,6 +32,10 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
   export let embedded = false
+  /** Active diff source; null means the legacy local path compare flow. */
+  export let contextMenuSource: DiffSource | null = null
+  /** Off by default so preview/embedding hosts opt in explicitly. */
+  export let contextMenuEnabled = false
 
   let host: HTMLDivElement | null = null
   let fileTree: FileTree | null = null
@@ -144,6 +159,80 @@
     markNonDiffableRows()
   }
 
+  let contextMenuInstance: Record<string, unknown> | null = null
+
+  function destroyContextMenu() {
+    if (contextMenuInstance) {
+      const instance = contextMenuInstance
+      contextMenuInstance = null
+      void unmount(instance)
+    }
+  }
+
+  function buildActionContext(item: FileTreeContextMenuItem): CompareActionContext {
+    const entry = item.kind === 'file' ? entryByPath.get(item.path) ?? null : null
+    const shellApi = getShellPathApi()
+    const handle = fileTree?.getItem(item.path) ?? null
+    // isDirectory() returns literal true/false per handle type, but TS cannot
+    // narrow the union through a method call, hence the cast.
+    const directoryHandle =
+      handle && handle.isDirectory() ? (handle as FileTreeDirectoryHandle) : null
+    const clipboard = typeof navigator === 'undefined' ? null : navigator.clipboard ?? null
+
+    return {
+      sourceKind: compareSourceKind(contextMenuSource),
+      entryKind: item.kind,
+      relativePath: item.path,
+      entry,
+      absolutePath: resolveEntryAbsolutePath(contextMenuSource, entry),
+      directoryExpanded: directoryHandle ? directoryHandle.isExpanded() : null,
+      copyText: clipboard ? (text: string) => clipboard.writeText(text) : null,
+      openPath: shellApi ? shellApi.openPath : null,
+      revealPath: shellApi ? shellApi.revealPath : null,
+      toggleDirectoryExpanded: directoryHandle ? () => directoryHandle.toggle() : null,
+    }
+  }
+
+  // Composition hook for the tree's built-in context menu: the library anchors
+  // the returned element at the pointer and owns Escape/outside-click close
+  // plus focus restore to the tree row.
+  function renderTreeContextMenu(
+    item: FileTreeContextMenuItem,
+    menuContext: FileTreeContextMenuOpenContext,
+  ): HTMLElement | null {
+    destroyContextMenu()
+
+    const actionContext = buildActionContext(item)
+    const visibleActions = listVisibleCompareActions(actionContext)
+    if (visibleActions.length === 0) {
+      return null
+    }
+
+    const root = document.createElement('div')
+    contextMenuInstance = mount(ContextMenu, {
+      target: root,
+      props: {
+        items: visibleActions.map(({ action, enabled }) => ({
+          id: action.id,
+          label: action.label,
+          danger: action.danger === true,
+          enabled,
+        })),
+        onSelect: (id: string) => {
+          const selected = visibleActions.find(({ action }) => action.id === id)
+          menuContext.close()
+          if (selected?.enabled) {
+            void Promise.resolve(selected.action.run(actionContext)).catch((error) => {
+              console.error('[diffly] context menu action failed', id, error)
+            })
+          }
+        },
+        onRequestClose: () => menuContext.close(),
+      },
+    })
+    return root
+  }
+
   function buildOptions(paths: string[], selectedPath: string): FileTreeOptions {
     return {
       paths,
@@ -169,6 +258,15 @@
       icons: { set: treeSettings.iconSet, colored: treeSettings.coloredIcons },
       unsafeCSS: buildPierreTreeUnsafeCss(appearanceSettings, resolvedThemeMode),
       renderRowDecoration,
+      composition: contextMenuEnabled
+        ? {
+            contextMenu: {
+              triggerMode: 'right-click',
+              render: renderTreeContextMenu,
+              onClose: destroyContextMenu,
+            },
+          }
+        : undefined,
       onSelectionChange: (paths) => {
         const nextPath = paths[0]
         const entry = nextPath ? entryByPath.get(nextPath) : null
@@ -336,6 +434,7 @@
   })
 
   onDestroy(() => {
+    destroyContextMenu()
     hostResizeObserver?.disconnect()
     hostResizeObserver = null
     treeRowMutationObserver?.disconnect()

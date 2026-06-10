@@ -327,6 +327,7 @@
         {appearanceSettings}
         {resolvedThemeMode}
         {selectEntry}
+        contextMenuSource={activeDiffSource}
         {PierreDirectoryTreeComponent}
         {diffStats}
         {systemMonitor}

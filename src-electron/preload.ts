@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:choosePath', { kind }),
   openExternal: (url: string) =>
     invoke<void>('diffly:openExternal', { url }),
+  openPath: (path: string) =>
+    invoke<void>('diffly:openPath', { path }),
+  revealPath: (path: string) =>
+    invoke<void>('diffly:revealPath', { path }),
   listRoots: () =>
     invoke('diffly:listRoots'),
   listDirectory: (path: string) =>

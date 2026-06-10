@@ -155,6 +155,28 @@ export interface WindowControls {
 export const getWindowControls = (): WindowControls | null =>
   window.diffly?.windowControls ?? null
 
+export interface ShellPathApi {
+  openPath(path: string): Promise<void>
+  revealPath(path: string): Promise<void>
+}
+
+/**
+ * Shell path actions (open file / reveal in Explorer). Returns null when the
+ * preload bridge does not expose them (older builds, tests) so callers can
+ * feature-detect, mirroring getWindowControls.
+ */
+export const getShellPathApi = (): ShellPathApi | null => {
+  const bridge = typeof window === 'undefined' ? undefined : window.diffly
+  if (!bridge || typeof bridge.openPath !== 'function' || typeof bridge.revealPath !== 'function') {
+    return null
+  }
+
+  return {
+    openPath: (path: string) => bridge.openPath!(path),
+    revealPath: (path: string) => bridge.revealPath!(path),
+  }
+}
+
 function normalizeCompareResponse(response: CompareResponse): CompareResponse {
   if (response.kind === 'file') {
     return {

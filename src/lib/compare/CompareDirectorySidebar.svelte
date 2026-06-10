@@ -2,6 +2,7 @@
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareTreeSettings,
+    DiffSource,
     DiffStatsSnapshot,
     DirectoryEntryResult,
     SystemMonitorSnapshot,
@@ -15,6 +16,7 @@
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
   export let selectEntry: (entry: DirectoryEntryResult) => Promise<void>
+  export let contextMenuSource: DiffSource | null = null
   export let PierreDirectoryTreeComponent: typeof import('./PierreDirectoryTree.svelte').default | null = null
   export let diffStats: DiffStatsSnapshot
   export let systemMonitor: SystemMonitorSnapshot
@@ -41,6 +43,8 @@
         {appearanceSettings}
         {resolvedThemeMode}
         {selectEntry}
+        {contextMenuSource}
+        contextMenuEnabled={true}
         embedded={true}
       />
     {:else}

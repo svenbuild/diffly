@@ -28,6 +28,10 @@ declare global {
     diffly: {
       choosePath(kind: PathKind): Promise<string | null>
       openExternal(url: string): Promise<void>
+      /** Optional: absent on older preload builds; feature-detect before use. */
+      openPath?(path: string): Promise<void>
+      /** Optional: absent on older preload builds; feature-detect before use. */
+      revealPath?(path: string): Promise<void>
       listRoots(): Promise<ExplorerEntry[]>
       listDirectory(path: string): Promise<DirectoryListing>
       pathInfo(path: string): Promise<PathInfo>
