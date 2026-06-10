@@ -129,6 +129,7 @@ export interface RecentSources {
   defaultSetupMode: SetupMode
   gitRepositories: RecentGitRepository[]
   githubPullRequests: RecentGithubPullRequest[]
+  githubCompares: RecentGithubCompare[]
   localTargets: RecentLocalTarget[]
 }
 
@@ -148,6 +149,17 @@ export interface RecentGithubPullRequest {
   repo: string
   pullNumber: number
   title: string | null
+  lastUsedAt: string
+}
+
+export interface RecentGithubCompare {
+  id: string
+  url: string
+  owner: string
+  repo: string
+  baseRef: string
+  headRef: string
+  notation: 'twoDot' | 'threeDot'
   lastUsedAt: string
 }
 

@@ -18,6 +18,7 @@ import {
 import type {
   CompareMode,
   DiffSource,
+  RecentGithubCompare,
   RecentGitRepository,
   RecentGithubPullRequest,
   RecentLocalTarget,
@@ -61,6 +62,7 @@ export async function removeRecentSource(id: string): Promise<RecentSources> {
     defaultSetupMode: current.defaultSetupMode,
     gitRepositories: current.gitRepositories.filter((entry) => entry.id !== id),
     githubPullRequests: current.githubPullRequests.filter((entry) => entry.id !== id),
+    githubCompares: current.githubCompares.filter((entry) => entry.id !== id),
     localTargets: current.localTargets.filter((entry) => entry.id !== id),
   }
 
@@ -106,7 +108,10 @@ function addRecentSourceToStore(
         ),
       }
     case 'githubCompare':
-      return current
+      return {
+        ...current,
+        githubCompares: upsertGithubCompare(current.githubCompares, source),
+      }
     case 'local':
       return {
         ...current,
@@ -187,6 +192,40 @@ function upsertGithubPullRequest(
   ].slice(0, MAX_RECENT_ITEMS)
 }
 
+function upsertGithubCompare(
+  entries: RecentGithubCompare[],
+  source: Extract<DiffSource, { kind: 'githubCompare' }>,
+) {
+  const owner = source.owner.trim()
+  const repo = source.repo.trim()
+  const url = source.url.trim()
+  const baseRef = source.baseRef.trim()
+  const headRef = source.headRef.trim()
+
+  if (!owner || !repo || !url || !baseRef || !headRef) {
+    throw new Error('GitHub compare owner, repo, refs, and URL are required.')
+  }
+
+  const key = githubCompareKey(owner, repo, baseRef, headRef, source.notation)
+  const entry: RecentGithubCompare = {
+    id: githubCompareId(key),
+    url,
+    owner,
+    repo,
+    baseRef,
+    headRef,
+    notation: source.notation,
+    lastUsedAt: new Date().toISOString(),
+  }
+
+  return [
+    entry,
+    ...entries.filter((item) =>
+      githubCompareKey(item.owner, item.repo, item.baseRef, item.headRef, item.notation) !== key
+    ),
+  ].slice(0, MAX_RECENT_ITEMS)
+}
+
 function upsertLocalTarget(
   entries: RecentLocalTarget[],
   source: Extract<DiffSource, { kind: 'local' }>,
@@ -221,6 +260,7 @@ function normalizeRecentSources(value: unknown): RecentSources {
     defaultSetupMode: normalizeSetupMode(value.defaultSetupMode),
     gitRepositories: normalizeGitRepositories(value.gitRepositories),
     githubPullRequests: normalizeGithubPullRequests(value.githubPullRequests),
+    githubCompares: normalizeGithubCompares(value.githubCompares),
     localTargets: normalizeLocalTargets(value.localTargets),
   }
 }
@@ -319,6 +359,64 @@ function normalizeGithubPullRequests(value: unknown): RecentGithubPullRequest[] 
   return entries
 }
 
+function normalizeGithubCompares(value: unknown): RecentGithubCompare[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const entries: RecentGithubCompare[] = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      continue
+    }
+
+    const url = normalizeRequiredString(item.url)
+    const owner = normalizeRequiredString(item.owner)
+    const repo = normalizeRequiredString(item.repo)
+    const baseRef = normalizeRequiredString(item.baseRef)
+    const headRef = normalizeRequiredString(item.headRef)
+    const notation = normalizeCompareNotation(item.notation)
+    const lastUsedAt = normalizeRequiredString(item.lastUsedAt)
+
+    if (
+      !url ||
+      !owner ||
+      !repo ||
+      !baseRef ||
+      !headRef ||
+      notation === null ||
+      !lastUsedAt
+    ) {
+      continue
+    }
+
+    const key = githubCompareKey(owner, repo, baseRef, headRef, notation)
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    entries.push({
+      id: githubCompareId(key),
+      url,
+      owner,
+      repo,
+      baseRef,
+      headRef,
+      notation,
+      lastUsedAt,
+    })
+
+    if (entries.length === MAX_RECENT_ITEMS) {
+      break
+    }
+  }
+
+  return entries
+}
+
 function normalizeLocalTargets(value: unknown): RecentLocalTarget[] {
   if (!Array.isArray(value)) {
     return []
@@ -399,6 +497,21 @@ function githubPullRequestId(owner: string, repo: string, pullNumber: number) {
   return `github:${githubPullRequestKey(owner, repo, pullNumber)}`
 }
 
+function githubCompareKey(
+  owner: string,
+  repo: string,
+  baseRef: string,
+  headRef: string,
+  notation: 'twoDot' | 'threeDot',
+) {
+  // Refs stay case-sensitive: GitHub branch and tag names are.
+  return `${owner.trim().toLowerCase()}/${repo.trim().toLowerCase()}:${notation}:${baseRef}:${headRef}`
+}
+
+function githubCompareId(key: string) {
+  return `githubCompare:${hashKey(key)}`
+}
+
 function localTargetId(key: string) {
   return `local:${hashKey(key)}`
 }
@@ -472,6 +585,10 @@ function normalizeCompareMode(value: unknown): CompareMode | null {
   return value === 'file' || value === 'directory' ? value : null
 }
 
+function normalizeCompareNotation(value: unknown): 'twoDot' | 'threeDot' | null {
+  return value === 'twoDot' || value === 'threeDot' ? value : null
+}
+
 function normalizePositiveInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
     ? value
@@ -487,6 +604,7 @@ function createDefaultRecentSources(): RecentSources {
     defaultSetupMode: 'local',
     gitRepositories: [],
     githubPullRequests: [],
+    githubCompares: [],
     localTargets: [],
   }
 }

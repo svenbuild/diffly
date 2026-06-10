@@ -127,6 +127,39 @@ describe('parseGithubDiffUrl', () => {
     })
   })
 
+  it('accepts trailing slashes, query strings, and fragments on compare URLs', () => {
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/main...dev/')).toMatchObject({
+      kind: 'githubCompare',
+      baseRef: 'main',
+      headRef: 'dev',
+    })
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/main...dev?expand=1')).toMatchObject({
+      kind: 'githubCompare',
+      baseRef: 'main',
+      headRef: 'dev',
+    })
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/main...dev#files')).toMatchObject({
+      kind: 'githubCompare',
+      baseRef: 'main',
+      headRef: 'dev',
+    })
+  })
+
+  it('parses www and scheme-less compare URLs to the canonical form', () => {
+    const expected = {
+      kind: 'githubCompare',
+      owner: 'owner',
+      repo: 'repo',
+      baseRef: 'main',
+      headRef: 'dev',
+      notation: 'threeDot',
+      url: 'https://github.com/owner/repo/compare/main...dev',
+    }
+
+    expect(parseGithubDiffUrl('https://www.github.com/owner/repo/compare/main...dev')).toEqual(expected)
+    expect(parseGithubDiffUrl('github.com/owner/repo/compare/main...dev')).toEqual(expected)
+  })
+
   it('still rejects unsupported GitHub URLs', () => {
     expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/base')).toBeNull()
     expect(parseGithubDiffUrl('https://github.com/owner/repo/commits/main')).toBeNull()

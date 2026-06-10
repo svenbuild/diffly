@@ -1998,9 +1998,15 @@
       return
     }
 
-    // Only store PRs that actually loaded, and only attach a title when the
-    // setup metadata belongs to this PR (a refresh may have stale metadata).
-    if (source.kind !== 'githubPullRequest') {
+    // Only store sources that actually loaded. Compare ranges carry no extra
+    // metadata; PRs only attach a title when the setup metadata belongs to
+    // this PR (a refresh may have stale metadata).
+    if (source.kind === 'githubCompare') {
+      void addRecentSource(source)
+        .then(() => {
+          recentsReloadRequestId += 1
+        })
+        .catch(() => undefined)
       return
     }
 

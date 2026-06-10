@@ -1,47 +1,56 @@
 <script lang="ts">
-  import { notationDots } from '../compare/source-header-labels'
-  import type { GithubDiffSource, GithubPullRequestMetadata } from '../types'
+  import { openExternalUrl } from '../api'
+  import type { GithubPullRequestMetadata, GithubPullRequestSource } from '../types'
 
   export let url = ''
-  export let parsed: GithubDiffSource | null = null
+  export let parsed: GithubPullRequestSource | null = null
   export let metadataStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   export let metadata: GithubPullRequestMetadata | null = null
   export let metadataError = ''
   export let onInput: (value: string) => void
 
   $: showInvalid = url.trim() !== '' && parsed === null
+  // The backend swallows GitHub rate limits into a placeholder payload (state
+  // 'unknown', empty shas) so the diff itself can still load via the raw
+  // .diff endpoint. Surface that explicitly instead of an empty preview.
+  $: rateLimited =
+    metadata !== null && metadata.state === 'unknown' && metadata.baseSha === ''
+
+  function openOnGithub(href: string) {
+    void openExternalUrl(href)
+  }
 </script>
 
 <div class="github-pr-input">
-  <label class="github-pr-label" for="github-pr-url">GitHub diff URL</label>
+  <label class="github-pr-label" for="github-pr-url">Pull request URL</label>
   <input
     id="github-pr-url"
     type="text"
     autocomplete="off"
     spellcheck="false"
-    placeholder="https://github.com/owner/repo/compare/base...head"
+    placeholder="https://github.com/owner/repo/pull/123"
     value={url}
     on:input={(event) => onInput(event.currentTarget.value)}
   />
 
   <div class="github-pr-status" aria-live="polite">
     {#if url.trim() === ''}
-      <p class="github-pr-hint">Enter a GitHub pull request or compare URL.</p>
+      <p class="github-pr-hint">Enter a GitHub pull request URL.</p>
     {:else if showInvalid}
-      <p class="github-pr-error">This is not a supported GitHub diff URL.</p>
+      <p class="github-pr-error">This is not a GitHub pull request URL.</p>
     {:else if parsed}
       <p class="github-pr-parsed">
         Parsed: <code>{parsed.owner}/{parsed.repo}</code>
-        {#if parsed.kind === 'githubPullRequest'}
-          #{parsed.pullNumber}
-        {:else}
-          {parsed.baseRef}{notationDots(parsed.notation)}{parsed.headRef}
-        {/if}
+        #{parsed.pullNumber}
       </p>
-      {#if parsed.kind === 'githubCompare'}
-        <p class="github-pr-ready">Status: Ready</p>
-      {:else if metadataStatus === 'loading'}
+      {#if metadataStatus === 'loading'}
         <p class="github-pr-hint">Loading pull request details…</p>
+      {:else if metadataStatus === 'loaded' && metadata && rateLimited}
+        <p class="github-pr-warning">
+          GitHub rate limit reached. Pull request details are unavailable right
+          now, but the diff can still be loaded.
+        </p>
+        <p class="github-pr-ready">Status: Ready</p>
       {:else if metadataStatus === 'loaded' && metadata}
         <dl class="github-pr-details">
           <div>
@@ -73,6 +82,13 @@
       {:else}
         <p class="github-pr-ready">Status: Ready</p>
       {/if}
+      <a
+        class="github-pr-link"
+        href={parsed.url}
+        on:click|preventDefault={() => parsed && openOnGithub(parsed.url)}
+      >
+        Open on GitHub
+      </a>
     {/if}
   </div>
 </div>
@@ -136,6 +152,12 @@
   .github-pr-ready {
     margin: 0;
     color: var(--success);
+    font-size: 12px;
+  }
+
+  .github-pr-link {
+    align-self: flex-start;
+    color: var(--accent, var(--text));
     font-size: 12px;
   }
 

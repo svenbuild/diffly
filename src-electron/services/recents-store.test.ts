@@ -44,6 +44,7 @@ describe('recents-store', () => {
 
     expect(recents.gitRepositories).toEqual([])
     expect(recents.githubPullRequests).toEqual([])
+    expect(recents.githubCompares).toEqual([])
     expect(recents.localTargets).toEqual([])
   })
 
@@ -86,6 +87,31 @@ describe('recents-store', () => {
 
     expect(recents.githubPullRequests).toHaveLength(1)
     expect(recents.githubPullRequests[0]?.title).toBe('First title')
+  })
+
+  it('dedupes GitHub compares by owner, repo, refs, and notation', async () => {
+    await addRecentSource(githubCompareSource('main', 'dev'))
+    await addRecentSource(githubCompareSource('main', 'dev'))
+    await addRecentSource(githubCompareSource('main', 'feature/topic'))
+
+    const recents = await loadRecentSources()
+
+    expect(recents.githubCompares).toHaveLength(2)
+    expect(recents.githubCompares[0]?.headRef).toBe('feature/topic')
+    expect(recents.githubCompares[1]?.headRef).toBe('dev')
+  })
+
+  it('persists GitHub compares across loads and removes them by id', async () => {
+    const withCompare = await addRecentSource(githubCompareSource('v1.0', 'v2.0'))
+    const compareId = withCompare.githubCompares[0]?.id ?? ''
+
+    const loaded = await loadRecentSources()
+    expect(loaded.githubCompares).toHaveLength(1)
+    expect(loaded.githubCompares[0]?.baseRef).toBe('v1.0')
+    expect(loaded.githubCompares[0]?.notation).toBe('threeDot')
+
+    const recents = await removeRecentSource(compareId)
+    expect(recents.githubCompares).toEqual([])
   })
 
   it('caps git repositories and pull requests at 20 entries', async () => {
@@ -133,6 +159,18 @@ function gitSource(repositoryRoot: string, repoPath = repositoryRoot): DiffSourc
       kind: 'workingTree',
       initialScope: 'all',
     },
+  }
+}
+
+function githubCompareSource(baseRef: string, headRef: string): DiffSource {
+  return {
+    kind: 'githubCompare',
+    owner: 'owner',
+    repo: 'repo',
+    baseRef,
+    headRef,
+    notation: 'threeDot',
+    url: `https://github.com/owner/repo/compare/${baseRef}...${headRef}`,
   }
 }
 
