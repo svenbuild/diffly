@@ -66,6 +66,10 @@
   export let onReviewRefresh: () => Promise<void> | void = () => {}
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
+  // Diff-session loads resolve in the main process without per-file process
+  // spawns (git content comes from a persistent cat-file --batch worker), so
+  // a deeper in-flight window keeps the IPC pipeline full without contention.
+  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 16
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 0
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
@@ -567,7 +571,10 @@
   }
 
   function pumpLoadQueue() {
-    while (activeLoadCount < DIRECTORY_DIFF_LOAD_CONCURRENCY) {
+    const loadConcurrency = detailLoader.kind === 'diffSession'
+      ? DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY
+      : DIRECTORY_DIFF_LOAD_CONCURRENCY
+    while (activeLoadCount < loadConcurrency) {
       const entry = takeNextQueuedEntry()
       if (!entry) {
         return

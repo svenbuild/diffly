@@ -5,6 +5,11 @@ export interface GitNameStatusEntry {
   score?: number
   oldPath: string | null
   path: string
+  // Full blob object ids from `git diff --raw` headers. Only set by the raw
+  // parser; null when the oid is abbreviated, all-zero (not in the object
+  // store, e.g. working tree side), or otherwise unusable.
+  srcOid?: string | null
+  dstOid?: string | null
 }
 
 export interface GitRawNumstatResult {
@@ -79,7 +84,8 @@ export function parseGitRawNumstatOutput(output: string): GitRawNumstatResult {
   while (index < fields.length && fields[index].startsWith(':')) {
     const header = fields[index]
     index += 1
-    const statusToken = rawStatusToken(header)
+    const headerParts = rawHeaderParts(header)
+    const statusToken = headerParts.statusToken
     const parsedStatus = parseStatusToken(statusToken)
 
     if (parsedStatus.status === 'renamed' || parsedStatus.status === 'copied') {
@@ -90,6 +96,8 @@ export function parseGitRawNumstatOutput(output: string): GitRawNumstatResult {
         ...parsedStatus,
         oldPath,
         path,
+        srcOid: headerParts.srcOid,
+        dstOid: headerParts.dstOid,
       })
       continue
     }
@@ -100,6 +108,8 @@ export function parseGitRawNumstatOutput(output: string): GitRawNumstatResult {
       ...parsedStatus,
       oldPath: null,
       path,
+      srcOid: headerParts.srcOid,
+      dstOid: headerParts.dstOid,
     })
   }
 
@@ -132,13 +142,33 @@ function parseStatusToken(statusToken: string): Pick<GitNameStatusEntry, 'status
   }
 }
 
-function rawStatusToken(header: string) {
+const FULL_OID_PATTERN = /^[0-9a-f]{40}$/
+const ZERO_OID = '0'.repeat(40)
+
+function rawHeaderParts(header: string) {
   const parts = header.trim().split(/\s+/)
   const statusToken = parts[4]
   if (!statusToken) {
     throw new Error(`Git raw output is missing a status field: ${header}`)
   }
-  return statusToken
+  return {
+    statusToken,
+    srcOid: usableRawOid(parts[2]),
+    dstOid: usableRawOid(parts[3]),
+  }
+}
+
+// Only full non-zero oids are usable for object lookups. Abbreviated oids
+// (no --full-index), dotted padding from old git versions, and the all-zero
+// "not in object store" marker all map to null.
+function usableRawOid(value: string | undefined) {
+  if (!value) {
+    return null
+  }
+  if (!FULL_OID_PATTERN.test(value) || value === ZERO_OID) {
+    return null
+  }
+  return value
 }
 
 function mapStatusCode(code: string | undefined): DiffEntryStatus {

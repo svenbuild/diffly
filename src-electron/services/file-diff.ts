@@ -14,6 +14,10 @@ import type {
 import {
   runGitBytes,
 } from './git/git-service'
+import {
+  isUsableGitOid,
+  readGitObjectByOid,
+} from './git/git-object-store'
 
 export const MAX_TEXT_BYTES = 1024 * 1024
 
@@ -53,6 +57,8 @@ export type GitSnapshotSource =
       repositoryRoot: string
       path: string
       label: string
+      // Full blob oid when known; enables the cat-file --batch fast path.
+      oid?: string | null
     }
   | {
       kind: 'index'
@@ -60,6 +66,7 @@ export type GitSnapshotSource =
       repositoryRoot: string
       path: string
       label: string
+      oid?: string | null
     }
   | {
       kind: 'workingTree'
@@ -75,6 +82,7 @@ export type GitSnapshotSource =
       ref: string
       path: string
       label: string
+      oid?: string | null
     }
 
 export interface GithubSnapshotSource {
@@ -474,11 +482,64 @@ async function loadGitSnapshot(source: GitSnapshotSource): Promise<DiffSnapshot>
   }
 }
 
+// Fast path: resolve content by blob oid through the persistent
+// `git cat-file --batch` process. Returns null when the oid is unknown or the
+// batch lookup failed, in which case callers fall back to spawning `git show`.
+async function tryLoadGitSnapshotByOid(
+  repositoryRoot: string,
+  oid: string | null | undefined,
+  label: string,
+  logicalPath: string,
+  pathValue: string,
+  refLabel: string,
+): Promise<DiffSnapshot | null> {
+  if (!isUsableGitOid(oid)) {
+    return null
+  }
+
+  let result
+  try {
+    result = await readGitObjectByOid(repositoryRoot, oid)
+  } catch {
+    return null
+  }
+
+  if (result.kind === 'missing') {
+    return buildMissingSnapshot(
+      label,
+      logicalPath,
+      buildGitSnapshotCacheKey(refLabel, pathValue, 'missing'),
+    )
+  }
+
+  if (result.type !== 'blob') {
+    // Submodule commits and other non-blob objects keep the git show path.
+    return null
+  }
+
+  // The full oid already identifies the content, so the sha256 hash used by
+  // the git show path is unnecessary here.
+  const cacheKey = buildGitSnapshotCacheKey('OID', pathValue, oid)
+  return buildSnapshotFromBytes(label, logicalPath, cacheKey, result.bytes)
+}
+
 async function loadGitRefSnapshot(
   source: Extract<GitSnapshotSource, { kind: 'ref' }>,
 ): Promise<DiffSnapshot> {
   const logicalPath = gitLogicalPath(source.path)
   const refLabel = `REF:${source.ref}`
+  const fastSnapshot = await tryLoadGitSnapshotByOid(
+    source.repositoryRoot,
+    source.oid,
+    source.label,
+    logicalPath,
+    source.path,
+    refLabel,
+  )
+  if (fastSnapshot) {
+    return fastSnapshot
+  }
+
   const contentResult = await runGitBytes(source.repositoryRoot, [
     'show',
     '--no-textconv',
@@ -512,6 +573,18 @@ async function loadGitObjectSnapshot(
     ? `HEAD:${source.path}`
     : `:${source.path}`
   const logicalPath = gitLogicalPath(source.path)
+  const fastSnapshot = await tryLoadGitSnapshotByOid(
+    source.repositoryRoot,
+    source.oid,
+    source.label,
+    logicalPath,
+    source.path,
+    refLabel,
+  )
+  if (fastSnapshot) {
+    return fastSnapshot
+  }
+
   const contentResult = await runGitBytes(source.repoPath, [
     'show',
     '--no-textconv',

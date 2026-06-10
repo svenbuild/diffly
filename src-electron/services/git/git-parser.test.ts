@@ -172,14 +172,97 @@ describe('parseGitRawNumstatOutput', () => {
           status: 'modified',
           oldPath: null,
           path: 'package-lock.json',
+          srcOid: null,
+          dstOid: null,
         },
         {
           status: 'modified',
           oldPath: null,
           path: 'src/icon.png',
+          srcOid: null,
+          dstOid: null,
         },
       ],
       binaryPaths: new Set(['src/icon.png']),
+    })
+  })
+
+  it('captures full src and dst oids from --full-index raw headers', () => {
+    const srcOid = 'a'.repeat(40)
+    const dstOid = 'b'.repeat(40)
+    expect(parseGitRawNumstatOutput([
+      `:100644 100644 ${srcOid} ${dstOid} M`,
+      'src/file.ts',
+      '1\t1\tsrc/file.ts',
+      '',
+    ].join('\0'))).toEqual({
+      entries: [
+        {
+          status: 'modified',
+          oldPath: null,
+          path: 'src/file.ts',
+          srcOid,
+          dstOid,
+        },
+      ],
+      binaryPaths: new Set(),
+    })
+  })
+
+  it('maps all-zero and abbreviated oids to null', () => {
+    const srcOid = 'c'.repeat(40)
+    expect(parseGitRawNumstatOutput([
+      `:100644 100644 ${srcOid} ${'0'.repeat(40)} M`,
+      'src/dirty.ts',
+      ':100644 100644 69e982b 0123456 M',
+      'src/abbrev.ts',
+      '1\t1\tsrc/dirty.ts',
+      '1\t1\tsrc/abbrev.ts',
+      '',
+    ].join('\0'))).toEqual({
+      entries: [
+        {
+          status: 'modified',
+          oldPath: null,
+          path: 'src/dirty.ts',
+          srcOid,
+          dstOid: null,
+        },
+        {
+          status: 'modified',
+          oldPath: null,
+          path: 'src/abbrev.ts',
+          srcOid: null,
+          dstOid: null,
+        },
+      ],
+      binaryPaths: new Set(),
+    })
+  })
+
+  it('captures oids on renamed entries', () => {
+    const srcOid = 'd'.repeat(40)
+    const dstOid = 'e'.repeat(40)
+    expect(parseGitRawNumstatOutput([
+      `:100644 100644 ${srcOid} ${dstOid} R100`,
+      'old.ts',
+      'new.ts',
+      '0\t0\t',
+      'old.ts',
+      'new.ts',
+      '',
+    ].join('\0'))).toEqual({
+      entries: [
+        {
+          status: 'renamed',
+          score: 100,
+          oldPath: 'old.ts',
+          path: 'new.ts',
+          srcOid,
+          dstOid,
+        },
+      ],
+      binaryPaths: new Set(),
     })
   })
 
@@ -199,6 +282,8 @@ describe('parseGitRawNumstatOutput', () => {
           score: 100,
           oldPath: 'old name.bin',
           path: 'new name.bin',
+          srcOid: null,
+          dstOid: null,
         },
       ],
       binaryPaths: new Set(['old name.bin', 'new name.bin']),

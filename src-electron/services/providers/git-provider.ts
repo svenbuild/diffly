@@ -25,6 +25,7 @@ import {
   type GitNameStatusEntry,
   type GitRawNumstatResult,
 } from '../git/git-parser'
+import { disposeGitObjectStore } from '../git/git-object-store'
 import { runGit } from '../git/git-service'
 
 const GIT_ENTRY_OPTIONS = {
@@ -40,6 +41,9 @@ const GIT_OPTIONAL_HEAD_OPTIONS = {
 const GIT_DIFF_ENTRY_ARGS = [
   '--raw',
   '--numstat',
+  // Full blob oids in the raw headers enable content lookups through the
+  // persistent cat-file --batch process instead of per-file git show spawns.
+  '--full-index',
   '-z',
   '--find-renames',
   '--no-ext-diff',
@@ -76,6 +80,14 @@ export class GitProvider implements DiffSessionProvider {
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
+  }
+
+  dispose(session: DiffSessionRecordLike): void {
+    if (session.source.kind === 'git') {
+      // Kills the repository's cat-file --batch process. Other sessions on
+      // the same repository lazily respawn it on their next request.
+      disposeGitObjectStore(session.source.repositoryRoot)
+    }
   }
 
   private async buildGitProviderSessionData(source: DiffSource): Promise<ProviderSessionData> {
@@ -266,11 +278,11 @@ function stagedSnapshots(
     case 'untracked':
       return [
         emptySource(entry),
-        indexSource(entry, entry.path),
+        indexSource(entry, entry.path, entry.dstOid),
       ]
     case 'deleted':
       return [
-        headSource(entry, leftPath(entry)),
+        headSource(entry, leftPath(entry), entry.srcOid),
         emptySource(entry),
       ]
     case 'modified':
@@ -279,8 +291,8 @@ function stagedSnapshots(
     case 'typeChanged':
     case 'unsupported':
       return [
-        headSource(entry, leftPath(entry)),
-        indexSource(entry, entry.path),
+        headSource(entry, leftPath(entry), entry.srcOid),
+        indexSource(entry, entry.path, entry.dstOid),
       ]
     case 'conflicted':
       throw new Error('Git conflicted file details are not implemented yet.')
@@ -299,7 +311,7 @@ function unstagedSnapshots(
       ]
     case 'deleted':
       return [
-        indexSource(entry, leftPath(entry)),
+        indexSource(entry, leftPath(entry), entry.srcOid),
         emptySource(entry),
       ]
     case 'modified':
@@ -308,7 +320,7 @@ function unstagedSnapshots(
     case 'typeChanged':
     case 'unsupported':
       return [
-        indexSource(entry, leftPath(entry)),
+        indexSource(entry, leftPath(entry), entry.srcOid),
         workingTreeSource(entry),
       ]
     case 'conflicted':
@@ -328,7 +340,7 @@ function allSnapshots(
       ]
     case 'deleted':
       return [
-        headSource(entry, leftPath(entry)),
+        headSource(entry, leftPath(entry), entry.srcOid),
         emptySource(entry),
       ]
     case 'modified':
@@ -337,7 +349,7 @@ function allSnapshots(
     case 'typeChanged':
     case 'unsupported':
       return [
-        headSource(entry, leftPath(entry)),
+        headSource(entry, leftPath(entry), entry.srcOid),
         workingTreeSource(entry),
       ]
     case 'conflicted':
@@ -348,7 +360,7 @@ function allSnapshots(
 function gitRefSnapshots(
   entry: Extract<ProviderEntryData, { kind: 'gitRef' }>,
 ): [GitSnapshotSource, GitSnapshotSource] {
-  const rightSource = refSource(entry, entry.rightRef, entry.rightLabelRef, entry.path)
+  const rightSource = refSource(entry, entry.rightRef, entry.rightLabelRef, entry.path, entry.dstOid)
 
   switch (entry.status) {
     case 'added':
@@ -383,7 +395,7 @@ function leftRefSource(
     return emptyRefSource(entry)
   }
 
-  return refSource(entry, entry.leftRef, entry.leftLabelRef, entry.oldPath ?? entry.path)
+  return refSource(entry, entry.leftRef, entry.leftLabelRef, entry.oldPath ?? entry.path, entry.srcOid)
 }
 
 function emptyRefSource(
@@ -401,6 +413,7 @@ function refSource(
   ref: string,
   labelRef: string,
   path: string,
+  oid: string | null,
 ): GitSnapshotSource {
   return {
     kind: 'ref',
@@ -409,6 +422,7 @@ function refSource(
     ref,
     path,
     label: `${labelRef}:${path}`,
+    oid,
   }
 }
 
@@ -452,6 +466,8 @@ function buildGitRefSessionData(
       path: item.path,
       oldPath: item.oldPath,
       status: item.status,
+      srcOid: item.srcOid ?? null,
+      dstOid: item.dstOid ?? null,
     })
   }
 
@@ -535,6 +551,7 @@ function emptySource(
 function headSource(
   entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
   path: string,
+  oid: string | null,
 ): GitSnapshotSource {
   return {
     kind: 'head',
@@ -542,12 +559,14 @@ function headSource(
     repositoryRoot: entry.repositoryRoot,
     path,
     label: `HEAD:${path}`,
+    oid,
   }
 }
 
 function indexSource(
   entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
   path: string,
+  oid: string | null,
 ): GitSnapshotSource {
   return {
     kind: 'index',
@@ -555,6 +574,7 @@ function indexSource(
     repositoryRoot: entry.repositoryRoot,
     path,
     label: `:${path}`,
+    oid,
   }
 }
 
@@ -632,6 +652,8 @@ async function addNameStatusEntry(
     path: item.path,
     oldPath: item.oldPath,
     status: item.status,
+    srcOid: item.srcOid ?? null,
+    dstOid: item.dstOid ?? null,
   })
 }
 
@@ -652,6 +674,8 @@ async function addUntrackedEntry(
     path,
     oldPath: null,
     status: 'untracked',
+    srcOid: null,
+    dstOid: null,
   })
 }
 
