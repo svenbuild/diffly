@@ -14,6 +14,8 @@ Supported desktop builds:
 - macOS: DMG and ZIP.
 - Linux: AppImage and DEB.
 
+Note: Windows is the primary tested platform right now. macOS and Linux builds are available but have not been fully tested yet, so expect bugs. Issues and pull requests are very welcome.
+
 ## Features
 
 - Compare files or full directory trees.
