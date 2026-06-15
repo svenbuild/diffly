@@ -41,7 +41,7 @@
   import { createDiffCacheController } from './lib/app/diff-cache'
   import {
     countGitEntriesByScope,
-    mapSessionDiffEntry,
+    mapSessionDiffEntries,
   } from './lib/app/git-diff-session'
   import {
     buildDirectoryComparePairs,
@@ -242,6 +242,7 @@
   // every scope at once, so we keep the full list and filter client-side per tab.
   let gitScope: GitWorkingTreeScope = 'all'
   let gitScopeEntries: DiffEntry[] = []
+  let gitScopeDirectoryEntries: DirectoryEntryResult[] = []
   $: gitScopeCounts = countGitEntriesByScope(gitScopeEntries)
   let diffStats: DiffStatsSnapshot = {
     files: 0,
@@ -2056,11 +2057,12 @@
     try {
       const session = await createDiffSession(source, options)
       const entries = session.entries
+      const mappedSessionEntries = mapSessionDiffEntries(entries)
       const mappedEntries = (
         targetScope === null
-          ? entries
-          : entries.filter((entry) => entry.scope === targetScope)
-      ).map(mapSessionDiffEntry)
+          ? mappedSessionEntries
+          : mappedSessionEntries.filter((entry) => entry.diffEntryScope === targetScope)
+      )
       const previousSessionId = activeDiffSessionId
 
       compareRevision += 1
@@ -2074,6 +2076,7 @@
       rightPath = source.kind === 'git' ? source.repositoryRoot : ''
       screen = 'compare'
       gitScopeEntries = isWorkingTree ? entries : []
+      gitScopeDirectoryEntries = isWorkingTree ? mappedSessionEntries : []
       gitScope = targetScope ?? 'all'
       directoryEntries = mappedEntries
       directoryEntriesRevision += 1
@@ -2119,9 +2122,8 @@
 
     const previousPath = selectedRelativePath
     gitScope = scope
-    const mapped = gitScopeEntries
-      .filter((entry) => entry.scope === scope)
-      .map(mapSessionDiffEntry)
+    const mapped = gitScopeDirectoryEntries
+      .filter((entry) => entry.diffEntryScope === scope)
     directoryEntries = mapped
     directoryEntriesRevision += 1
     syncFilteredDirectoryState(mapped)

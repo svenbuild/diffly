@@ -376,6 +376,7 @@ export interface DirectoryEntryResult {
   leftSize: number | null
   rightSize: number | null
   diffEntryId?: string
+  diffEntryAliasIds?: string[]
   diffEntryStatus?: DiffEntryStatus
   diffEntryScope?: GitWorkingTreeScope
   binary?: boolean

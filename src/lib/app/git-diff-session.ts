@@ -28,7 +28,10 @@ export function countGitEntriesByScope(
 
 // Maps a diff-session entry (git working tree, ref range, commit, or GitHub PR)
 // onto the directory result shape the continuous compare viewer renders.
-export function mapSessionDiffEntry(entry: DiffEntry): DirectoryEntryResult {
+export function mapSessionDiffEntry(
+  entry: DiffEntry,
+  diffEntryAliasIds: string[] = [],
+): DirectoryEntryResult {
   return {
     relativePath: entry.path,
     displayPath: entry.displayPath !== entry.path ? entry.displayPath : undefined,
@@ -38,10 +41,51 @@ export function mapSessionDiffEntry(entry: DiffEntry): DirectoryEntryResult {
     leftSize: entry.leftSize,
     rightSize: entry.rightSize,
     diffEntryId: entry.id,
+    diffEntryAliasIds: diffEntryAliasIds.length > 0 ? diffEntryAliasIds : undefined,
     diffEntryStatus: entry.status,
     diffEntryScope: entry.scope,
     binary: entry.binary,
   }
+}
+
+export function mapSessionDiffEntries(entries: DiffEntry[]): DirectoryEntryResult[] {
+  const aliasesById = buildReusableGitEntryAliases(entries)
+  return entries.map((entry) => mapSessionDiffEntry(entry, aliasesById.get(entry.id) ?? []))
+}
+
+export function buildReusableGitEntryAliases(entries: DiffEntry[]): Map<string, string[]> {
+  const aliasesById = new Map<string, string[]>()
+  const groups = new Map<string, DiffEntry[]>()
+
+  for (const entry of entries) {
+    if (!entry.scope) {
+      continue
+    }
+
+    const key = [
+      entry.path,
+      entry.oldPath ?? '',
+    ].join('\u0000')
+    groups.set(key, [...(groups.get(key) ?? []), entry])
+  }
+
+  for (const group of groups.values()) {
+    const allEntry = group.find((entry) => entry.scope === 'all')
+    const scopedEntries = group.filter((entry) => entry.scope !== 'all')
+    if (!allEntry || scopedEntries.length !== 1) {
+      continue
+    }
+
+    const scopedEntry = scopedEntries[0]
+    if (allEntry.status !== scopedEntry.status) {
+      continue
+    }
+
+    addAlias(aliasesById, allEntry.id, scopedEntry.id)
+    addAlias(aliasesById, scopedEntry.id, allEntry.id)
+  }
+
+  return aliasesById
 }
 
 export function mapGitEntryStatus(status: DiffEntry['status']): EntryStatus {
@@ -77,4 +121,12 @@ function gitEntryRightPath(entry: DiffEntry) {
   }
 
   return entry.path
+}
+
+function addAlias(aliasesById: Map<string, string[]>, id: string, aliasId: string) {
+  const aliases = aliasesById.get(id) ?? []
+  if (!aliases.includes(aliasId)) {
+    aliases.push(aliasId)
+    aliasesById.set(id, aliases)
+  }
 }

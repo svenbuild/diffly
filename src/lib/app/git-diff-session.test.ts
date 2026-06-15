@@ -6,7 +6,9 @@ import {
 import type { DiffEntry } from '../types'
 import {
   countGitEntriesByScope,
+  buildReusableGitEntryAliases,
   mapSessionDiffEntry,
+  mapSessionDiffEntries,
   mapGitEntryStatus,
 } from './git-diff-session'
 
@@ -97,6 +99,48 @@ describe('countGitEntriesByScope', () => {
       unstaged: 1,
       untracked: 1,
     })
+  })
+})
+
+describe('buildReusableGitEntryAliases', () => {
+  it('aliases all and untracked entries for the same file', () => {
+    const entries = [
+      diffEntry({ id: 'git:all::new.txt', scope: 'all', path: 'new.txt', status: 'untracked' }),
+      diffEntry({ id: 'git:untracked::new.txt', scope: 'untracked', path: 'new.txt', status: 'untracked' }),
+    ]
+
+    expect(buildReusableGitEntryAliases(entries)).toEqual(new Map([
+      ['git:all::new.txt', ['git:untracked::new.txt']],
+      ['git:untracked::new.txt', ['git:all::new.txt']],
+    ]))
+  })
+
+  it('aliases all and a single staged scope for the same file', () => {
+    const entries = [
+      diffEntry({ id: 'git:all::tracked.txt', scope: 'all' }),
+      diffEntry({ id: 'git:staged::tracked.txt', scope: 'staged' }),
+    ]
+
+    expect(mapSessionDiffEntries(entries)).toEqual([
+      expect.objectContaining({
+        diffEntryId: 'git:all::tracked.txt',
+        diffEntryAliasIds: ['git:staged::tracked.txt'],
+      }),
+      expect.objectContaining({
+        diffEntryId: 'git:staged::tracked.txt',
+        diffEntryAliasIds: ['git:all::tracked.txt'],
+      }),
+    ])
+  })
+
+  it('does not alias all when a file has staged and unstaged scopes', () => {
+    const entries = [
+      diffEntry({ id: 'git:all::tracked.txt', scope: 'all' }),
+      diffEntry({ id: 'git:staged::tracked.txt', scope: 'staged' }),
+      diffEntry({ id: 'git:unstaged::tracked.txt', scope: 'unstaged' }),
+    ]
+
+    expect(buildReusableGitEntryAliases(entries)).toEqual(new Map())
   })
 })
 

@@ -92,9 +92,11 @@
   }
 
   let entriesSignature = ''
+  let resolvedEntryStateRevision = -1
   let loadGeneration = 0
   let collapsedPaths = new Set<string>()
   let entryStates = new Map<string, EntryDiffState>()
+  let resolvedEntryStatesByDetailKey = new Map<string, EntryDiffState>()
   let pendingEntryStateUpdates = new Map<string, EntryDiffState>()
   let entryByPath = new Map<string, DirectoryEntryResult>()
   let entryIndexByPath = new Map<string, number>()
@@ -178,6 +180,18 @@
     ].join('\u0000')
   }
 
+  function entryDetailKeys(entry: DirectoryEntryResult) {
+    const keys = [entryDetailKey(entry), ...(entry.diffEntryAliasIds ?? [])]
+    return Array.from(new Set(keys))
+  }
+
+  function directoryEntriesSignature() {
+    return [
+      revision,
+      ...directoryEntries.map((entry) => entryDetailKey(entry)),
+    ].join('\u0000')
+  }
+
   function entryStateIsCurrent(state: EntryDiffState, entry: DirectoryEntryResult) {
     return (
       state.revision === revision &&
@@ -243,6 +257,11 @@
       const state = entryStates.get(key)
       if (state && entryStateIsCurrent(state, entry)) {
         nextStates.set(key, state)
+      } else {
+        const cachedState = getResolvedEntryState(entry)
+        if (cachedState) {
+          nextStates.set(key, cachedState)
+        }
       }
 
       const pendingState = pendingEntryStateUpdates.get(key)
@@ -292,8 +311,30 @@
   }
 
   function setEntryState(path: string, state: EntryDiffState) {
+    const entry = entryByPath.get(path)
+    if (entry) {
+      cacheResolvedEntryState(entry, state)
+    }
     pendingEntryStateUpdates.set(path, state)
     scheduleEntryStateFlush()
+  }
+
+  function cacheResolvedEntryState(entry: DirectoryEntryResult, state: EntryDiffState) {
+    if (state.revision !== revision || state.loading || (!state.diff && !state.error)) {
+      return
+    }
+
+    for (const detailKey of entryDetailKeys(entry)) {
+      resolvedEntryStatesByDetailKey.set(detailKey, {
+        ...state,
+        detailKey,
+      })
+    }
+  }
+
+  function getResolvedEntryState(entry: DirectoryEntryResult) {
+    const state = resolvedEntryStatesByDetailKey.get(entryDetailKey(entry)) ?? null
+    return state && entryStateIsCurrent(state, entry) ? state : null
   }
 
   function publishDiffStats() {
@@ -428,7 +469,11 @@
   function getEntryState(entry: DirectoryEntryResult) {
     const path = entryKey(entry)
     const state = pendingEntryStateUpdates.get(path) ?? entryStates.get(path) ?? null
-    return state && entryStateIsCurrent(state, entry) ? state : null
+    if (state && entryStateIsCurrent(state, entry)) {
+      return state
+    }
+
+    return getResolvedEntryState(entry)
   }
 
   function entryNeedsLoad(
@@ -925,6 +970,9 @@
       }
 
       const loadedEntry = buildLoadedEntry(entry, state)
+      if (state?.diff?.text) {
+        queueDiffStats(entry, state.diff)
+      }
       nextLoadedEntryCache.set(entry.relativePath, loadedEntry)
       nextTextEntryIndexByPath.set(entry.relativePath, nextTextEntries.length)
       nextTextEntries.push(loadedEntry)
@@ -1024,7 +1072,7 @@
 
   $: {
     directoryEntries
-    const nextSignature = String(revision)
+    const nextSignature = directoryEntriesSignature()
     if (nextSignature !== entriesSignature) {
       entriesSignature = nextSignature
       loadGeneration += 1
@@ -1039,7 +1087,11 @@
       backgroundLoadCursor = 0
       cancelBackgroundLoadScheduling()
       cancelQueuedDiffStats()
-      resetDiffStats()
+      if (resolvedEntryStateRevision !== revision) {
+        resolvedEntryStateRevision = revision
+        resolvedEntryStatesByDetailKey = new Map()
+        resetDiffStats()
+      }
       publishDirectorySystemMonitorStats()
     }
     syncEntryCollections()
