@@ -194,13 +194,8 @@
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 4
-  const DIRECTORY_COLLAPSE_ANIMATION_MS = 170
-  const DIRECTORY_COLLAPSE_ANIMATION_EASING = 'cubic-bezier(0.2, 0, 0, 1)'
   const DIFF_RENDER_CACHE_SIZE = 100
   const placeholderBlankLineSuffixes = new Map<number, string>()
-  let pendingCollapseAnimationPaths = new Set<string>()
-  let collapseAnimationSnapshot = new Map<string, DOMRectReadOnly>()
-  const activeCollapseAnimations = new WeakMap<HTMLElement, Animation[]>()
 
   function workerPoolSize() {
     const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
@@ -368,123 +363,6 @@
     }, 2200)
   }
 
-  function shouldAnimateDirectoryCollapse() {
-    return !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
-
-  function renderedItemRects() {
-    const rects = new Map<string, DOMRectReadOnly>()
-
-    for (const item of codeView?.getRenderedItems() ?? []) {
-      rects.set(item.id, item.element.getBoundingClientRect())
-    }
-
-    return rects
-  }
-
-  function cancelCollapseAnimations(element: HTMLElement) {
-    const animations = activeCollapseAnimations.get(element)
-    if (!animations) {
-      return
-    }
-
-    for (const animation of animations) {
-      animation.cancel()
-    }
-
-    activeCollapseAnimations.delete(element)
-  }
-
-  function trackCollapseAnimation(element: HTMLElement, animation: Animation) {
-    const animations = activeCollapseAnimations.get(element) ?? []
-    animations.push(animation)
-    activeCollapseAnimations.set(element, animations)
-
-    animation.addEventListener('finish', () => {
-      const current = activeCollapseAnimations.get(element)?.filter((item) => item !== animation)
-      if (current && current.length > 0) {
-        activeCollapseAnimations.set(element, current)
-      } else {
-        activeCollapseAnimations.delete(element)
-      }
-    }, { once: true })
-  }
-
-  function animateDirectoryCollapseLayout() {
-    if (
-      !codeView ||
-      pendingCollapseAnimationPaths.size === 0 ||
-      collapseAnimationSnapshot.size === 0 ||
-      !shouldAnimateDirectoryCollapse()
-    ) {
-      pendingCollapseAnimationPaths = new Set()
-      collapseAnimationSnapshot = new Map()
-      return
-    }
-
-    const snapshot = collapseAnimationSnapshot
-    const toggledPaths = pendingCollapseAnimationPaths
-    pendingCollapseAnimationPaths = new Set()
-    collapseAnimationSnapshot = new Map()
-
-    window.requestAnimationFrame(() => {
-      if (!codeView) {
-        return
-      }
-
-      for (const item of codeView.getRenderedItems()) {
-        const previousRect = snapshot.get(item.id)
-        if (!previousRect) {
-          continue
-        }
-
-        const nextRect = item.element.getBoundingClientRect()
-        const deltaY = previousRect.top - nextRect.top
-        const heightDelta = previousRect.height - nextRect.height
-        const isToggledItem = toggledPaths.has(item.id)
-
-        if (!isToggledItem && Math.abs(deltaY) < 0.5) {
-          continue
-        }
-
-        cancelCollapseAnimations(item.element)
-
-        const computedStyle = window.getComputedStyle(item.element)
-        const baseTransform =
-          computedStyle.transform && computedStyle.transform !== 'none'
-            ? computedStyle.transform
-            : ''
-        const fromTransform = `translateY(${deltaY}px)${baseTransform ? ` ${baseTransform}` : ''}`
-        const toTransform = `translateY(0)${baseTransform ? ` ${baseTransform}` : ''}`
-        const keyframes: Keyframe[] = [
-          {
-            transform: fromTransform,
-            opacity: isToggledItem && heightDelta > 0.5 ? 0.86 : 1,
-          },
-          {
-            transform: toTransform,
-            opacity: 1,
-          },
-        ]
-        const animation = item.element.animate(keyframes, {
-          duration: DIRECTORY_COLLAPSE_ANIMATION_MS,
-          easing: DIRECTORY_COLLAPSE_ANIMATION_EASING,
-        })
-
-        trackCollapseAnimation(item.element, animation)
-      }
-    })
-  }
-
-  function toggleEntryWithCollapseAnimation(relativePath: string) {
-    if (shouldAnimateDirectoryCollapse()) {
-      collapseAnimationSnapshot = renderedItemRects()
-      pendingCollapseAnimationPaths = new Set(pendingCollapseAnimationPaths).add(relativePath)
-    }
-
-    toggleEntry(relativePath)
-  }
-
   function applyControlledSelection(selection: CodeViewLineSelection | null) {
     selectedLineSelection = selection
 
@@ -580,7 +458,7 @@
       collapsedPaths,
       entryByPath,
       schedulePlaceholderEntryRequest,
-      toggleEntry: toggleEntryWithCollapseAnimation,
+      toggleEntry,
     })
   }
 
@@ -1340,7 +1218,6 @@
       hasRenderedItems = true
       lastRequestedVisibleKey = ''
       codeView.setItems(items)
-      animateDirectoryCollapseLayout()
     }
 
     scheduleVisibleEntryRequest()
