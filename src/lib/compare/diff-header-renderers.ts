@@ -6,6 +6,10 @@ import type { ReviewActionItem } from './review-mode'
 // slot and the file name. We render a file-type icon in the prefix instead,
 // so hide the built-in one inside the shadow DOM via unsafeCSS.
 export const DIFF_HEADER_UNSAFE_CSS = `
+  [data-diffs-header=default] {
+    border-bottom: 1px solid color-mix(in srgb, var(--diffs-border-color, var(--border)) 85%, transparent);
+  }
+
   [data-diffs-header=default] [data-header-content] {
     gap: 9px;
   }
