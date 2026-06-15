@@ -44,6 +44,11 @@
     mapSessionDiffEntries,
   } from './lib/app/git-diff-session'
   import {
+    finishCompareTiming,
+    markCompareTiming,
+    startCompareTiming,
+  } from './lib/app/compare-timing'
+  import {
     buildDirectoryComparePairs,
     findDirectoryComparePairForPath as findDirectoryComparePairInList,
     prefixedRelativePathFor as prefixedRelativePathForPair,
@@ -2040,6 +2045,10 @@
 
     const options = getPendingCompareOptions()
 
+    startCompareTiming(compareTimingLabel(source), {
+      sourceKind: source.kind,
+      screen,
+    })
     loading = true
     errorMessage = ''
 
@@ -2055,7 +2064,12 @@
         : null
 
     try {
+      markCompareTiming('session-request-start')
       const session = await createDiffSession(source, options)
+      markCompareTiming('session-created', {
+        entries: session.entries.length,
+        sessionId: session.sessionId,
+      })
       const entries = session.entries
       const mappedSessionEntries = mapSessionDiffEntries(entries)
       const mappedEntries = (
@@ -2081,6 +2095,11 @@
       directoryEntries = mappedEntries
       directoryEntriesRevision += 1
       syncFilteredDirectoryState(mappedEntries)
+      markCompareTiming('entries-published', {
+        compareRevision,
+        entries: mappedEntries.length,
+        scope: targetScope ?? 'none',
+      })
       selectedRelativePath = ''
       activeDiff = null
       activeDetailRequestId += 1
@@ -2104,6 +2123,9 @@
       }
       return true
     } catch (error) {
+      finishCompareTiming('compare-failed', {
+        message: error instanceof Error ? error.message : 'Compare failed.',
+      })
       errorMessage = error instanceof Error
         ? error.message
         : 'Compare failed.'
@@ -2111,6 +2133,17 @@
     } finally {
       loading = false
     }
+  }
+
+  function compareTimingLabel(source: GitDiffSource | GithubDiffSource) {
+    if (source.kind === 'git') {
+      const selection = source.selection.kind === 'workingTree'
+        ? `workingTree:${source.selection.initialScope}`
+        : source.selection.kind
+      return `git ${selection}`
+    }
+
+    return source.kind
   }
 
   // Switch the active git working-tree scope tab. The backend session already

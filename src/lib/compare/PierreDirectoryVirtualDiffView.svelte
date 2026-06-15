@@ -23,6 +23,10 @@
   import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
+    finishCompareTimingOnNextFrame,
+    markCompareTimingOnce,
+  } from '../app/compare-timing'
+  import {
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
@@ -707,21 +711,32 @@
     const cached = parsedDiffs.get(entry.relativePath)
 
     try {
+      let usedCachedDiff = Boolean(cached && cached.signature === signature)
       const nextCached =
         cached && cached.signature === signature
           ? cached
-          : {
-              annotations,
-              collapsed,
-              fileDiff: parseDiffFromFile(
+          : (() => {
+              usedCachedDiff = false
+              markCompareTimingOnce('first-pierre-parse-start', {
+                path: entry.relativePath,
+              })
+              const fileDiff = parseDiffFromFile(
                 buildDirectoryCodeViewFile(entry, 'left', diff.text),
                 buildDirectoryCodeViewFile(entry, 'right', diff.text),
                 undefined,
                 true,
-              ),
-              signature,
-              version: (cached?.version ?? 0) + 1,
-            }
+              )
+              markCompareTimingOnce('first-pierre-parse-end', {
+                path: entry.relativePath,
+              })
+              return {
+                annotations,
+                collapsed,
+                fileDiff,
+                signature,
+                version: (cached?.version ?? 0) + 1,
+              }
+            })()
 
       nextCached.fileDiff.cacheKey = signature
 
@@ -739,6 +754,11 @@
       } else {
         parsedDiffs.set(entry.relativePath, nextCached)
       }
+
+      finishCompareTimingOnNextFrame('first-pierre-diff-rendered', {
+        cached: usedCachedDiff,
+        path: entry.relativePath,
+      })
 
       return {
         id: entry.relativePath,

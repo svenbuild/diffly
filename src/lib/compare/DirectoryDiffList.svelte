@@ -3,6 +3,7 @@
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem, openDiffEntry } from '../api'
   import type { CompareSourceKind } from '../actions/compare-actions'
+  import { markCompareTimingOnce } from '../app/compare-timing'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
@@ -531,6 +532,10 @@
       loading: true,
       revision: loadRevision,
     })
+    markCompareTimingOnce('first-entry-load-start', {
+      loader: detailLoader.kind,
+      path,
+    })
 
     try {
       let diff: FileDiffResult
@@ -560,6 +565,18 @@
       }
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
+      }
+      markCompareTimingOnce('first-entry-loaded', {
+        contentKind: diff.contentKind,
+        hasTextDiff: Boolean(diff.contentKind === 'text' && diff.text),
+        loader: detailLoader.kind,
+        path,
+      })
+      if (diff.contentKind === 'text' && diff.text) {
+        markCompareTimingOnce('first-text-entry-loaded', {
+          loader: detailLoader.kind,
+          path,
+        })
       }
 
       setEntryState(path, {
