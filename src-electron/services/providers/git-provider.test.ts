@@ -89,7 +89,7 @@ describe('GitProvider working tree entries', () => {
     expect(entries.filter((entry) => entry.scope === 'unstaged' && entry.path === 'both.txt')).toHaveLength(1)
   })
 
-  it('sets rightSize for working tree files and null for deleted files', async () => {
+  it('leaves fast snapshot sizes unset before entries are opened', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'deleted.txt', 'delete me\n')
     await commitFile(repoPath, 'modified.txt', 'before\n')
@@ -102,12 +102,13 @@ describe('GitProvider working tree entries', () => {
 
     expect(findEntry(entries, 'all', 'deleted.txt')?.status).toBe('deleted')
     expect(findEntry(entries, 'all', 'deleted.txt')?.rightSize).toBeNull()
-    expect(findEntry(entries, 'all', 'modified.txt')?.rightSize).toBe(6)
-    expect(findEntry(entries, 'all', 'untracked.txt')?.rightSize).toBe(10)
+    expect(findEntry(entries, 'all', 'modified.txt')?.rightSize).toBeNull()
+    expect(findEntry(entries, 'all', 'untracked.txt')?.rightSize).toBeNull()
   })
 
   it('preserves rename metadata', async () => {
     const repoPath = await createRepo()
+    await git(repoPath, ['config', 'status.renames', 'true'])
     await commitFile(repoPath, 'old-name.txt', 'content\n')
 
     await git(repoPath, ['mv', 'old-name.txt', 'new-name.txt'])
@@ -118,6 +119,24 @@ describe('GitProvider working tree entries', () => {
     expect(stagedEntry?.status).toBe('renamed')
     expect(stagedEntry?.oldPath).toBe('old-name.txt')
     expect(stagedEntry?.displayPath).toBe('old-name.txt -> new-name.txt')
+    expect(stagedEntry?.rightSize).toBeNull()
+  })
+
+  it('falls back to raw rename detection for ambiguous delete/add snapshots', async () => {
+    const repoPath = await createRepo()
+    await git(repoPath, ['config', 'status.renames', 'false'])
+    await commitFile(repoPath, 'old-name.txt', 'content\n')
+
+    await git(repoPath, ['rm', 'old-name.txt'])
+    await writeFile(join(repoPath, 'new-name.txt'), 'content\n')
+    await git(repoPath, ['add', 'new-name.txt'])
+
+    const entries = await createEntries(repoPath)
+    const stagedEntry = findEntry(entries, 'staged', 'new-name.txt')
+
+    expect(stagedEntry?.status).toBe('renamed')
+    expect(stagedEntry?.oldPath).toBe('old-name.txt')
+    expect(stagedEntry?.rightSize).toBe(8)
   })
 
   it('preserves paths with spaces and unicode characters', async () => {
@@ -146,9 +165,9 @@ describe('GitProvider working tree entries', () => {
 
     expect(result.contentKind).toBe('text')
     expect(result.summary).toBe('Only the right file exists.')
+    expect(result.rightLabel).toBe(':staged.txt')
     expect(result.text?.leftExists).toBe(false)
     expect(result.text?.rightText).toBe('staged\n')
-    expect(result.text?.rightCacheKey).toContain('git\u0000INDEX\u0000staged.txt\u0000')
   })
 
   it('opens unstaged modified files from index to working tree', async () => {
@@ -165,7 +184,6 @@ describe('GitProvider working tree entries', () => {
     expect(result.rightLabel).toBe('tracked.txt')
     expect(result.text?.leftText).toBe('index\n')
     expect(result.text?.rightText).toBe('worktree\n')
-    expect(result.text?.leftCacheKey).toContain('git\u0000INDEX\u0000tracked.txt\u0000')
     expect(result.text?.rightCacheKey).toContain('git\u0000WORKTREE\u0000tracked.txt\u0000')
   })
 
@@ -196,15 +214,20 @@ describe('GitProvider working tree entries', () => {
     expect(result.text?.rightText).toBe('untracked\n')
   })
 
-  it('marks untracked binary files', async () => {
+  it('defers untracked binary detection until open', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'baseline.txt', 'baseline\n')
     await writeFile(join(repoPath, 'untracked.bin'), Uint8Array.from([0, 1, 2, 3]))
 
     const entries = await createEntries(repoPath)
 
-    expect(findEntry(entries, 'all', 'untracked.bin')?.binary).toBe(true)
-    expect(findEntry(entries, 'untracked', 'untracked.bin')?.binary).toBe(true)
+    expect(findEntry(entries, 'all', 'untracked.bin')?.binary).toBeUndefined()
+    expect(findEntry(entries, 'untracked', 'untracked.bin')?.binary).toBeUndefined()
+
+    const result = await openEntry(repoPath, 'untracked', 'untracked.bin')
+
+    expect(result.contentKind).toBe('unsupported')
+    expect(result.unsupported?.reason).toBe('binary')
   })
 
   it('opens deleted files as HEAD left and empty right', async () => {
@@ -240,8 +263,8 @@ describe('GitProvider working tree entries', () => {
     await writeFile(join(repoPath, 'binary.bin'), Uint8Array.from([0, 1, 2, 3]))
 
     const entries = await createEntries(repoPath)
-    expect(findEntry(entries, 'all', 'binary.bin')?.binary).toBe(true)
-    expect(findEntry(entries, 'unstaged', 'binary.bin')?.binary).toBe(true)
+    expect(findEntry(entries, 'all', 'binary.bin')?.binary).toBeUndefined()
+    expect(findEntry(entries, 'unstaged', 'binary.bin')?.binary).toBeUndefined()
 
     const result = await openEntry(repoPath, 'all', 'binary.bin')
 

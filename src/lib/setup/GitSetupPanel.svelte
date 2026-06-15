@@ -142,7 +142,6 @@
         headSha = result.headSha ?? ''
         validationError = ''
         validationStatus = 'valid'
-        void loadRefs(repositoryRoot)
       } else {
         repositoryRoot = ''
         currentBranch = ''
@@ -269,6 +268,14 @@
 
   function handleCommitRefChange(value: string) {
     commitRef = value
+  }
+
+  $: refsNeeded =
+    validationStatus === 'valid' &&
+    Boolean(repositoryRoot) &&
+    (selectionKind === 'refRange' || selectionKind === 'commit')
+  $: if (refsNeeded && refsStatus === 'idle') {
+    void loadRefs(repositoryRoot)
   }
 
   // Build the Git source from the current setup state. Returns null whenever the

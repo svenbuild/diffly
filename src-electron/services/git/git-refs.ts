@@ -1,9 +1,11 @@
+import { isAbsolute, resolve } from 'node:path'
 import type {
   GitCommitSummary,
   GitRef,
   GitRefKind,
   GitRefsResponse,
 } from '../../../src/lib/types'
+import { readCurrentBranchFromGitDir } from './git-head'
 import { runGit } from './git-service'
 
 const HEAD_OPTIONS = {
@@ -23,42 +25,39 @@ const COMMIT_OPTIONS = {
   maxStderrBytes: 64 * 1024,
 }
 
+const FULL_OID_PATTERN = /^[0-9a-f]{40}$/i
+
 export async function listGitRefs(repoPath: string): Promise<GitRefsResponse> {
-  const [currentBranch, headSha, refs, recentCommits] = await Promise.all([
-    readCurrentBranch(repoPath),
-    readHeadSha(repoPath),
+  const [head, refs, recentCommits] = await Promise.all([
+    readHead(repoPath),
     readRefs(repoPath),
     readRecentCommits(repoPath),
   ])
 
   return {
-    currentBranch,
-    headSha,
+    currentBranch: head.currentBranch,
+    headSha: head.headSha,
     ...refs,
     recentCommits,
   }
 }
 
-async function readCurrentBranch(repoPath: string) {
-  const result = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD'], HEAD_OPTIONS)
-  const value = result.stdout.trim()
+async function readHead(repoPath: string): Promise<Pick<GitRefsResponse, 'currentBranch' | 'headSha'>> {
+  const result = await runGit(repoPath, [
+    'rev-parse',
+    '--git-dir',
+    'HEAD',
+  ], HEAD_OPTIONS)
+  const [gitDirValue, headValue] = result.stdout.trimEnd().split(/\r?\n/)
+  const headSha = headValue && FULL_OID_PATTERN.test(headValue) ? headValue : null
+  const currentBranch = headSha && gitDirValue
+    ? await readCurrentBranchFromGitDir(resolveGitPath(gitDirValue, repoPath))
+    : null
 
-  if (result.exitCode !== 0 || value === 'HEAD') {
-    return null
+  return {
+    currentBranch,
+    headSha,
   }
-
-  return value || null
-}
-
-async function readHeadSha(repoPath: string) {
-  const result = await runGit(repoPath, ['rev-parse', 'HEAD'], HEAD_OPTIONS)
-  const value = result.stdout.trim()
-
-  if (result.exitCode !== 0) {
-    return null
-  }
-
-  return value || null
 }
 
 async function readRefs(repoPath: string): Promise<Pick<
@@ -209,4 +208,12 @@ function parseDecorations(value: string) {
 
 function compareRefs(a: GitRef, b: GitRef) {
   return a.name.localeCompare(b.name)
+}
+
+function resolveGitPath(gitPath: string, repoPath: string) {
+  if (isAbsolute(gitPath)) {
+    return gitPath
+  }
+
+  return resolve(repoPath, gitPath)
 }

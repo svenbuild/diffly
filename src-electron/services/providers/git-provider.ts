@@ -25,6 +25,12 @@ import {
   type GitNameStatusEntry,
   type GitRawNumstatResult,
 } from '../git/git-parser'
+import {
+  mapGitStatusCode,
+  parseGitStatusPorcelainV2Output,
+  type GitStatusEntry,
+  type GitStatusSnapshot,
+} from '../git/git-status'
 import { disposeGitObjectStore } from '../git/git-object-store'
 import { runGit } from '../git/git-service'
 
@@ -194,6 +200,20 @@ export class GitProvider implements DiffSessionProvider {
   }
 
   private async buildWorkingTreeSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
+    try {
+      const snapshot = await readStatusSnapshot(source.repositoryRoot)
+      if (!needsPreciseWorkingTreeDiff(snapshot)) {
+        return buildWorkingTreeSessionDataFromStatus(source, snapshot)
+      }
+    } catch {
+      // Fall back to the raw diff path below. It is slower, but it has the
+      // older precise rename and binary/size enrichment behavior.
+    }
+
+    return this.buildWorkingTreeSessionDataFromRawDiffs(source)
+  }
+
+  private async buildWorkingTreeSessionDataFromRawDiffs(source: Extract<DiffSource, { kind: 'git' }>) {
     const repositoryRoot = source.repositoryRoot
     const [
       allTracked,
@@ -250,6 +270,182 @@ export class GitProvider implements DiffSessionProvider {
       entryData,
     }
   }
+}
+
+function buildWorkingTreeSessionDataFromStatus(
+  source: Extract<DiffSource, { kind: 'git' }>,
+  snapshot: GitStatusSnapshot,
+): ProviderSessionData {
+  const entries: DiffEntry[] = []
+  const entryData = new Map<string, ProviderEntryData>()
+
+  for (const item of snapshot.entries) {
+    addStatusEntries(entries, entryData, source, item)
+  }
+
+  return {
+    entries,
+    entryData,
+  }
+}
+
+function addStatusEntries(
+  entries: DiffEntry[],
+  entryData: Map<string, ProviderEntryData>,
+  source: Extract<DiffSource, { kind: 'git' }>,
+  item: GitStatusEntry,
+) {
+  if (item.kind === 'untracked') {
+    addStatusEntry(entries, entryData, source, {
+      scope: 'all',
+      path: item.path,
+      oldPath: null,
+      status: 'untracked',
+      srcOid: null,
+      dstOid: null,
+    })
+    addStatusEntry(entries, entryData, source, {
+      scope: 'untracked',
+      path: item.path,
+      oldPath: null,
+      status: 'untracked',
+      srcOid: null,
+      dstOid: null,
+    })
+    return
+  }
+
+  if (item.kind === 'conflicted') {
+    addStatusEntry(entries, entryData, source, {
+      scope: 'all',
+      path: item.path,
+      oldPath: null,
+      status: 'conflicted',
+      srcOid: null,
+      dstOid: null,
+    })
+    return
+  }
+
+  const stagedStatus = statusFromStatusChar(item.xy[0])
+  const unstagedStatus = statusFromStatusChar(item.xy[1])
+  const allStatus = statusForAll(item)
+
+  if (allStatus) {
+    addStatusEntry(entries, entryData, source, {
+      scope: 'all',
+      path: item.path,
+      oldPath: oldPathForStatus(item, allStatus),
+      status: allStatus,
+      srcOid: item.headOid,
+      dstOid: null,
+    })
+  }
+
+  if (stagedStatus) {
+    addStatusEntry(entries, entryData, source, {
+      scope: 'staged',
+      path: item.path,
+      oldPath: oldPathForStatus(item, stagedStatus),
+      status: stagedStatus,
+      srcOid: item.headOid,
+      dstOid: item.indexOid,
+    })
+  }
+
+  if (unstagedStatus) {
+    addStatusEntry(entries, entryData, source, {
+      scope: 'unstaged',
+      path: item.path,
+      oldPath: oldPathForStatus(item, unstagedStatus),
+      status: unstagedStatus,
+      srcOid: item.indexOid,
+      dstOid: null,
+    })
+  }
+}
+
+interface StatusEntryInput {
+  scope: GitWorkingTreeScope
+  path: string
+  oldPath: string | null
+  status: DiffEntryStatus
+  srcOid: string | null
+  dstOid: string | null
+}
+
+function addStatusEntry(
+  entries: DiffEntry[],
+  entryData: Map<string, ProviderEntryData>,
+  source: Extract<DiffSource, { kind: 'git' }>,
+  input: StatusEntryInput,
+) {
+  const entry: DiffEntry = {
+    id: gitEntryId(input.scope, input.path, input.oldPath),
+    path: input.path,
+    oldPath: input.oldPath,
+    displayPath: displayPath(input.path, input.oldPath, input.status),
+    status: input.status,
+    scope: input.scope,
+    leftSize: null,
+    rightSize: null,
+  }
+
+  entries.push(entry)
+  entryData.set(entry.id, {
+    kind: 'gitWorkingTree',
+    repoPath: source.repoPath,
+    repositoryRoot: source.repositoryRoot,
+    scope: input.scope,
+    path: input.path,
+    oldPath: input.oldPath,
+    status: input.status,
+    srcOid: input.srcOid,
+    dstOid: input.dstOid,
+  })
+}
+
+function statusFromStatusChar(code: string) {
+  if (code === '.' || code === ' ') {
+    return null
+  }
+
+  return mapGitStatusCode(code)
+}
+
+function statusForAll(item: Extract<GitStatusEntry, { kind: 'changed' }>) {
+  const staged = statusFromStatusChar(item.xy[0])
+  const unstaged = statusFromStatusChar(item.xy[1])
+
+  if (item.xy[0] === 'A') {
+    return staged
+  }
+  if (item.xy[0] === 'D') {
+    return staged
+  }
+  if (item.xy[0] === 'R' || item.xy[0] === 'C') {
+    return staged
+  }
+  if (item.xy[1] === 'D') {
+    return unstaged
+  }
+  if (item.xy[1] === 'A') {
+    return unstaged
+  }
+  if (item.xy[1] === 'R' || item.xy[1] === 'C') {
+    return unstaged
+  }
+
+  return staged ?? unstaged
+}
+
+function oldPathForStatus(
+  item: Extract<GitStatusEntry, { kind: 'changed' }>,
+  status: DiffEntryStatus,
+) {
+  return status === 'renamed' || status === 'copied'
+    ? item.oldPath
+    : null
 }
 
 function gitWorkingTreeSnapshots(
@@ -587,6 +783,50 @@ function workingTreeSource(
     path: entry.path,
     label: entry.path,
   }
+}
+
+async function readStatusSnapshot(repoPath: string) {
+  const result = await runGit(repoPath, [
+    '--no-optional-locks',
+    'status',
+    '--porcelain=v2',
+    '-z',
+    '--branch',
+    '--untracked-files=all',
+  ], GIT_ENTRY_OPTIONS)
+
+  return parseGitStatusPorcelainV2Output(result.stdout)
+}
+
+function needsPreciseWorkingTreeDiff(snapshot: GitStatusSnapshot) {
+  let hasAdded = false
+  let hasDeleted = false
+
+  for (const entry of snapshot.entries) {
+    if (entry.kind !== 'changed') {
+      continue
+    }
+
+    for (const code of entry.xy) {
+      const status = statusFromStatusChar(code)
+      if (status === null) {
+        continue
+      }
+      if (status === 'unsupported' || status === 'conflicted') {
+        return true
+      }
+      if ((status === 'renamed' || status === 'copied') && !entry.oldPath) {
+        return true
+      }
+      if (status === 'added') {
+        hasAdded = true
+      } else if (status === 'deleted') {
+        hasDeleted = true
+      }
+    }
+  }
+
+  return hasAdded && hasDeleted
 }
 
 function emptyRawNumstatResult(): GitRawNumstatResult {

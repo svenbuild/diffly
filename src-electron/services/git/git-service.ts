@@ -34,22 +34,18 @@ interface NormalizedGitRunOptions {
   allowNonZeroExit: boolean
 }
 
+export interface ValidatedGitRunner {
+  run(args: string[], options?: GitRunOptions): Promise<GitRunResult>
+  runBytes(args: string[], options?: GitRunOptions): Promise<GitRunBytesResult>
+}
+
 export async function runGit(
   repoPath: string,
   args: string[],
   options?: GitRunOptions,
 ): Promise<GitRunResult> {
-  const result = await runGitBytes(repoPath, args, options)
-  return {
-    stdout: Buffer.from(
-      result.stdout.buffer,
-      result.stdout.byteOffset,
-      result.stdout.byteLength,
-    ).toString('utf8'),
-    stderr: result.stderr,
-    exitCode: result.exitCode,
-    timedOut: result.timedOut,
-  }
+  const runner = await createGitRunner(repoPath)
+  return runner.run(args, options)
 }
 
 export async function runGitBytes(
@@ -57,102 +53,120 @@ export async function runGitBytes(
   args: string[],
   options?: GitRunOptions,
 ): Promise<GitRunBytesResult> {
-  const canonicalRepoPath = await validateGitRepoPath(repoPath)
-  const gitArgs = validateGitArgs(args)
-  const runOptions = normalizeGitRunOptions(options)
+  const runner = await createGitRunner(repoPath)
+  return runner.runBytes(args, options)
+}
 
-  return new Promise<GitRunBytesResult>((resolveRun, rejectRun) => {
-    const child = spawn('git', gitArgs, {
-      cwd: canonicalRepoPath,
-      shell: false,
-      windowsHide: true,
-    })
+export async function createGitRunner(repoPath: string): Promise<ValidatedGitRunner> {
+  return new GitRunner(await validateGitRepoPath(repoPath))
+}
 
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    let stdoutBytes = 0
-    let stderrBytes = 0
-    let timedOut = false
-    let failure: Error | null = null
-    let closeHandled = false
+class GitRunner implements ValidatedGitRunner {
+  private readonly canonicalRepoPath: string
 
-    const timeoutId = setTimeout(() => {
-      if (failure) {
-        return
-      }
+  constructor(canonicalRepoPath: string) {
+    this.canonicalRepoPath = canonicalRepoPath
+  }
 
-      timedOut = true
-      failure = new Error(`Git command timed out after ${runOptions.timeoutMs}ms.`)
-      child.kill()
-    }, runOptions.timeoutMs)
+  async run(args: string[], options?: GitRunOptions): Promise<GitRunResult> {
+    const result = await this.runBytes(args, options)
+    return {
+      stdout: Buffer.from(
+        result.stdout.buffer,
+        result.stdout.byteOffset,
+        result.stdout.byteLength,
+      ).toString('utf8'),
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+    }
+  }
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      if (failure) {
-        return
-      }
+  runBytes(args: string[], options?: GitRunOptions): Promise<GitRunBytesResult> {
+    const gitArgs = validateGitArgs(args)
+    const runOptions = normalizeGitRunOptions(options)
 
-      stdoutBytes += chunk.byteLength
-      if (stdoutBytes > runOptions.maxStdoutBytes) {
-        failure = new Error('Git command exceeded stdout buffer limit.')
+    return new Promise<GitRunBytesResult>((resolveRun, rejectRun) => {
+      const child = spawn('git', gitArgs, {
+        cwd: this.canonicalRepoPath,
+        shell: false,
+        windowsHide: true,
+      })
+
+      const stdoutChunks: Buffer[] = []
+      const stderrChunks: Buffer[] = []
+      let stdoutBytes = 0
+      let stderrBytes = 0
+      let timedOut = false
+      let failure: Error | null = null
+      let closeHandled = false
+
+      const timeoutId = setTimeout(() => {
+        if (failure) {
+          return
+        }
+
+        timedOut = true
+        failure = new Error(`Git command timed out after ${runOptions.timeoutMs}ms.`)
         child.kill()
-        return
-      }
+      }, runOptions.timeoutMs)
 
-      stdoutChunks.push(chunk)
-    })
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (failure) {
+          return
+        }
 
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (failure) {
-        return
-      }
+        stdoutBytes += chunk.byteLength
+        if (stdoutBytes > runOptions.maxStdoutBytes) {
+          failure = new Error('Git command exceeded stdout buffer limit.')
+          child.kill()
+          return
+        }
 
-      stderrBytes += chunk.byteLength
-      if (stderrBytes > runOptions.maxStderrBytes) {
-        failure = new Error('Git command exceeded stderr buffer limit.')
-        child.kill()
-        return
-      }
+        stdoutChunks.push(chunk)
+      })
 
-      stderrChunks.push(chunk)
-    })
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (failure) {
+          return
+        }
 
-    child.on('error', (error: NodeJS.ErrnoException) => {
-      if (failure) {
-        return
-      }
+        stderrBytes += chunk.byteLength
+        if (stderrBytes > runOptions.maxStderrBytes) {
+          failure = new Error('Git command exceeded stderr buffer limit.')
+          child.kill()
+          return
+        }
 
-      failure = error.code === 'ENOENT'
-        ? new Error('Git executable was not found. Ensure Git is installed and available on PATH.')
-        : new Error(`Failed to start Git command: ${error.message}`)
-    })
+        stderrChunks.push(chunk)
+      })
 
-    child.on('close', (code, signal) => {
-      if (closeHandled) {
-        return
-      }
-      closeHandled = true
-      clearTimeout(timeoutId)
+      child.on('error', (error: NodeJS.ErrnoException) => {
+        if (failure) {
+          return
+        }
 
-      const stdout = Buffer.concat(stdoutChunks)
-      const stderr = Buffer.concat(stderrChunks).toString('utf8')
+        failure = error.code === 'ENOENT'
+          ? new Error('Git executable was not found. Ensure Git is installed and available on PATH.')
+          : new Error(`Failed to start Git command: ${error.message}`)
+      })
 
-      if (failure) {
-        rejectRun(failure)
-        return
-      }
+      child.on('close', (code, signal) => {
+        if (closeHandled) {
+          return
+        }
+        closeHandled = true
+        clearTimeout(timeoutId)
 
-      if (code === 0) {
-        resolveRun({
-          stdout: Uint8Array.prototype.slice.call(stdout, 0),
-          stderr,
-          exitCode: code,
-          timedOut,
-        })
-        return
-      }
+        const stdout = Buffer.concat(stdoutChunks)
+        const stderr = Buffer.concat(stderrChunks).toString('utf8')
 
-      if (typeof code === 'number') {
-        if (runOptions.allowNonZeroExit) {
+        if (failure) {
+          rejectRun(failure)
+          return
+        }
+
+        if (code === 0) {
           resolveRun({
             stdout: Uint8Array.prototype.slice.call(stdout, 0),
             stderr,
@@ -162,18 +176,30 @@ export async function runGitBytes(
           return
         }
 
-        rejectRun(new Error(`Git command failed with exit code ${code}: ${gitErrorOutput(stdout.toString('utf8'), stderr)}`))
-        return
-      }
+        if (typeof code === 'number') {
+          if (runOptions.allowNonZeroExit) {
+            resolveRun({
+              stdout: Uint8Array.prototype.slice.call(stdout, 0),
+              stderr,
+              exitCode: code,
+              timedOut,
+            })
+            return
+          }
 
-      if (signal) {
-        rejectRun(new Error(`Git command was terminated by signal ${signal}.`))
-        return
-      }
+          rejectRun(new Error(`Git command failed with exit code ${code}: ${gitErrorOutput(stdout.toString('utf8'), stderr)}`))
+          return
+        }
 
-      rejectRun(new Error('Git command failed before producing an exit code.'))
+        if (signal) {
+          rejectRun(new Error(`Git command was terminated by signal ${signal}.`))
+          return
+        }
+
+        rejectRun(new Error('Git command failed before producing an exit code.'))
+      })
     })
-  })
+  }
 }
 
 async function validateGitRepoPath(repoPath: string) {

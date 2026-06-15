@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path'
 import type { GitRepositoryValidation } from '../../../src/lib/types'
-import { runGit } from './git-service'
+import { readCurrentBranchFromGitDir } from './git-head'
+import { createGitRunner } from './git-service'
 
 export type { GitRepositoryValidation } from '../../../src/lib/types'
 
@@ -10,17 +11,38 @@ const GIT_REPOSITORY_VALIDATION_OPTIONS = {
   maxStderrBytes: 64 * 1024,
 }
 
+const REV_PARSE_VALIDATION_ARGS = [
+  'rev-parse',
+  '--is-inside-work-tree',
+  '--is-bare-repository',
+  '--show-toplevel',
+  '--git-dir',
+  '--git-common-dir',
+  'HEAD',
+]
+
+const FULL_OID_PATTERN = /^[0-9a-f]{40}$/i
+
 export async function validateGitRepository(path: string): Promise<GitRepositoryValidation> {
   const inputPath = typeof path === 'string' ? path : ''
-  const insideWorkTree = await runRepositoryCommand(inputPath, '--is-inside-work-tree')
 
-  if (!insideWorkTree.started) {
-    return invalidRepository(inputPath, insideWorkTree.error)
+  let result
+  try {
+    const runner = await createGitRunner(inputPath)
+    result = await runner.run(REV_PARSE_VALIDATION_ARGS, GIT_REPOSITORY_VALIDATION_OPTIONS)
+  } catch (error) {
+    return invalidRepository(
+      inputPath,
+      error instanceof Error ? error.message : 'Git repository validation failed.',
+    )
   }
 
-  if (insideWorkTree.value !== 'true') {
-    const bareRepository = await runRepositoryCommand(inputPath, '--is-bare-repository')
-    if (bareRepository.started && bareRepository.value === 'true') {
+  const lines = result.stdout.trimEnd().split(/\r?\n/)
+  const insideWorkTree = lines[0] ?? ''
+  const bareRepository = lines[1] ?? ''
+
+  if (insideWorkTree !== 'true') {
+    if (bareRepository === 'true') {
       return invalidRepository(inputPath, 'Bare Git repositories are not supported.', {
         isBare: true,
       })
@@ -29,66 +51,40 @@ export async function validateGitRepository(path: string): Promise<GitRepository
     return invalidRepository(inputPath, 'Path is not inside a Git repository.')
   }
 
-  const repositoryRoot = await runRepositoryCommand(inputPath, '--show-toplevel')
-  if (!repositoryRoot.ok) {
-    return invalidRepository(inputPath, commandError(repositoryRoot, 'Could not resolve Git repository root.'))
-  }
-
-  const bareRepository = await runRepositoryCommand(inputPath, '--is-bare-repository')
-  if (bareRepository.value === 'true') {
+  if (bareRepository === 'true') {
     return invalidRepository(inputPath, 'Bare Git repositories are not supported.', {
       isBare: true,
     })
   }
 
-  const gitDir = await runRepositoryCommand(inputPath, '--git-dir')
-  if (!gitDir.ok) {
-    return invalidRepository(inputPath, commandError(gitDir, 'Could not resolve Git directory.'))
+  const repositoryRoot = lines[2] ?? ''
+  if (!repositoryRoot) {
+    return invalidRepository(inputPath, gitErrorOutput(result) || 'Could not resolve Git repository root.')
   }
 
-  const currentBranch = await runRepositoryCommand(inputPath, '--abbrev-ref', 'HEAD')
-  const headSha = await runRepositoryCommand(inputPath, 'HEAD')
-  const gitCommonDir = await runRepositoryCommand(inputPath, '--git-common-dir')
-  const resolvedGitDir = resolveGitPath(gitDir.value, repositoryRoot.value, inputPath)
-  const resolvedGitCommonDir = gitCommonDir.ok
-    ? resolveGitPath(gitCommonDir.value, repositoryRoot.value, inputPath)
+  const gitDir = lines[3] ?? ''
+  if (!gitDir) {
+    return invalidRepository(inputPath, gitErrorOutput(result) || 'Could not resolve Git directory.')
+  }
+
+  const gitCommonDir = lines[4] ?? ''
+  const headSha = normalizeHeadSha(lines[5] ?? '')
+  const resolvedGitDir = resolveGitPath(gitDir, repositoryRoot, inputPath)
+  const resolvedGitCommonDir = gitCommonDir
+    ? resolveGitPath(gitCommonDir, repositoryRoot, inputPath)
     : null
+  const currentBranch = headSha ? await readCurrentBranchFromGitDir(resolvedGitDir) : null
 
   return {
     valid: true,
     inputPath,
-    repositoryRoot: repositoryRoot.value,
+    repositoryRoot,
     gitDir: resolvedGitDir,
-    currentBranch: normalizeBranch(currentBranch),
-    headSha: headSha.ok ? headSha.value : null,
+    currentBranch,
+    headSha,
     isBare: false,
     isWorktree: resolvedGitCommonDir !== null && resolvedGitCommonDir !== resolvedGitDir,
     error: null,
-  }
-}
-
-async function runRepositoryCommand(inputPath: string, ...args: string[]) {
-  try {
-    const result = await runGit(
-      inputPath,
-      ['rev-parse', ...args],
-      GIT_REPOSITORY_VALIDATION_OPTIONS,
-    )
-    const value = result.stdout.trim()
-
-    return {
-      started: true,
-      ok: result.exitCode === 0,
-      value,
-      error: result.stderr.trim() || result.stdout.trim() || null,
-    }
-  } catch (error) {
-    return {
-      started: false,
-      ok: false,
-      value: '',
-      error: error instanceof Error ? error.message : 'Git repository validation failed.',
-    }
   }
 }
 
@@ -111,19 +107,12 @@ function invalidRepository(
   }
 }
 
-function commandError(
-  result: Awaited<ReturnType<typeof runRepositoryCommand>>,
-  fallback: string,
-) {
-  return result.error || fallback
-}
-
-function normalizeBranch(result: Awaited<ReturnType<typeof runRepositoryCommand>>) {
-  if (!result.ok || result.value === 'HEAD') {
+function normalizeHeadSha(value: string) {
+  if (!FULL_OID_PATTERN.test(value)) {
     return null
   }
 
-  return result.value || null
+  return value
 }
 
 function resolveGitPath(gitPath: string, repositoryRoot: string | null, inputPath: string) {
@@ -132,4 +121,8 @@ function resolveGitPath(gitPath: string, repositoryRoot: string | null, inputPat
   }
 
   return resolve(repositoryRoot || resolve(inputPath), gitPath)
+}
+
+function gitErrorOutput(result: { stdout: string; stderr: string }) {
+  return result.stderr.trim() || result.stdout.trim() || null
 }
