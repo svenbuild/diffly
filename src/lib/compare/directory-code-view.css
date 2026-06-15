@@ -37,10 +37,10 @@
   flex: 0 0 auto;
   place-items: center;
   align-items: center;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   margin: 0 -1px 0 -7px;
   padding: 0;
   border: 0;
@@ -55,7 +55,7 @@
 
 .diffly-codeview-collapse-button:hover,
 .diffly-codeview-collapse-button:focus-visible {
-  background: color-mix(in srgb, var(--accent-soft) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 14%, transparent);
   color: var(--text);
 }
 
@@ -99,8 +99,8 @@
 .diffly-codeview-header-prefix {
   display: inline-flex;
   align-items: center;
-  width: 28px;
-  min-width: 28px;
+  width: 30px;
+  min-width: 30px;
   margin-right: 1px;
   color: var(--muted);
 }
@@ -108,15 +108,15 @@
 .diffly-codeview-file-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
 }
 
 .diffly-codeview-file-icon svg {
   display: block;
-  width: 23px;
-  height: 23px;
+  width: 26px;
+  height: 26px;
   fill: currentColor;
 }
 
