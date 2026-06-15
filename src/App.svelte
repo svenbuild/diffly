@@ -2345,6 +2345,7 @@
     entry: DirectoryEntryResult,
     revision = compareRevision,
     restoreScroll: DiffScrollSnapshot | null = null,
+    scrollToEntry = restoreScroll === null,
   ) {
     // Session-backed directory sources (git working tree, later GitHub PRs) and
     // local directory compares share the continuous viewer: selecting an entry
@@ -2355,7 +2356,7 @@
           pulseCompareSurface()
         }
         selectedRelativePath = entry.relativePath
-        if (arguments.length <= 1) {
+        if (scrollToEntry) {
           directoryScrollTargetRevision += 1
         }
         errorMessage = ''
