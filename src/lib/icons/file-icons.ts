@@ -1,109 +1,145 @@
-import { getFiletypeFromFileName } from '@pierre/diffs'
-import { createSvgIcon } from './app-icons'
+import { createFileTreeIconResolver, getBuiltInSpriteSheet } from '@pierre/trees'
 
-// File-type icon registry keyed off the filetype string reported by
-// @pierre/diffs getFiletypeFromFileName, with an explicit unknown-file
-// fallback. Icons are stroke-based and use currentColor for theming.
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const DIFF_HEADER_TREE_ICON_SET = 'complete'
+const DIFF_HEADER_ICON_SPRITE_ID = 'diffly-file-tree-icon-sprite'
 
-export type FileTypeIconKind = 'code' | 'doc' | 'image' | 'config' | 'styles' | 'unknown'
+const fileTreeIconResolver = createFileTreeIconResolver({
+  colored: true,
+  set: DIFF_HEADER_TREE_ICON_SET,
+})
 
-export const FILE_ICON_PATHS: Record<FileTypeIconKind, string[]> = {
-  code: ['M6 4.5 2.5 8 6 11.5', 'M10 4.5 13.5 8 10 11.5'],
-  doc: [
-    'M9.5 2.5h-5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.5L9.5 2.5Z',
-    'M9.5 2.5v3h3',
-    'M5.8 8.4h4.4',
-    'M5.8 10.6h4.4',
-  ],
-  image: [
-    'M3.5 3.5h9a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z',
-    'm3.5 10.5 2.8-2.8 2.4 2.4 1.8-1.8 3 3',
-    'M10.3 6.4h.01',
-  ],
-  config: [
-    'M6.5 2.8c-1.6 0-1.1 2.2-1.1 3.1 0 .9-.6 1.5-1.4 1.7v.8c.8.2 1.4.8 1.4 1.7 0 .9-.5 3.1 1.1 3.1',
-    'M9.5 2.8c1.6 0 1.1 2.2 1.1 3.1 0 .9.6 1.5 1.4 1.7v.8c-.8.2-1.4.8-1.4 1.7 0 .9.5 3.1-1.1 3.1',
-  ],
-  styles: ['M8 2.8s3.8 4.1 3.8 6.6a3.8 3.8 0 0 1-7.6 0C4.2 6.9 8 2.8 8 2.8Z'],
-  unknown: [
-    'M9.5 2.5h-5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.5L9.5 2.5Z',
-    'M9.5 2.5v3h3',
-    'M6.7 7.6a1.3 1.3 0 1 1 1.8 1.2c-.4.2-.5.5-.5.9',
-    'M8 11.4h.01',
-  ],
+type FileTreeIconResolver = ReturnType<typeof createFileTreeIconResolver>
+export type DifflyFileTypeIcon = ReturnType<FileTreeIconResolver['resolveIcon']>
+
+const injectedSpriteDocuments = new WeakSet<Document>()
+
+const FILE_TREE_ICON_COLOR_FALLBACKS: Record<string, string> = {
+  astro: 'light-dark(#a631be, #d568ea)',
+  babel: 'light-dark(#d5a910, #ffd452)',
+  bash: 'light-dark(#199f43, #5ecc71)',
+  biome: 'light-dark(#1a85d4, #69b1ff)',
+  bootstrap: 'light-dark(#693acf, #9d6afb)',
+  browserslist: 'light-dark(#d5a910, #ffd452)',
+  bun: 'light-dark(#594c5b, #79697b)',
+  c: 'light-dark(#1a85d4, #69b1ff)',
+  claude: 'light-dark(#d47628, #ffa359)',
+  cpp: 'light-dark(#1a85d4, #69b1ff)',
+  css: 'light-dark(#693acf, #9d6afb)',
+  database: 'light-dark(#a631be, #d568ea)',
+  default: 'light-dark(#84848a, #adadb1)',
+  docker: 'light-dark(#1a85d4, #69b1ff)',
+  eslint: 'light-dark(#693acf, #9d6afb)',
+  git: 'light-dark(#ff8c5b, #d5512f)',
+  go: 'light-dark(#1ca1c7, #68cdf2)',
+  graphql: 'light-dark(#d32a61, #ff678d)',
+  html: 'light-dark(#d47628, #ffa359)',
+  image: 'light-dark(#d32a61, #ff678d)',
+  javascript: 'light-dark(#d5a910, #ffd452)',
+  json: 'light-dark(#d47628, #ffa359)',
+  markdown: 'light-dark(#199f43, #5ecc71)',
+  mcp: 'light-dark(#17a5af, #64d1db)',
+  npm: 'light-dark(#d52c36, #ff6762)',
+  oxc: 'light-dark(#1ca1c7, #68cdf2)',
+  postcss: 'light-dark(#d52c36, #ff6762)',
+  prettier: 'light-dark(#17a5af, #64d1db)',
+  python: 'light-dark(#1a85d4, #69b1ff)',
+  react: 'light-dark(#1ca1c7, #68cdf2)',
+  ruby: 'light-dark(#d52c36, #ff6762)',
+  rust: 'light-dark(#d47628, #ffa359)',
+  sass: 'light-dark(#d32a61, #ff678d)',
+  svg: 'light-dark(#d47628, #ffa359)',
+  svelte: 'light-dark(#d52c36, #ff6762)',
+  svgo: 'light-dark(#199f43, #5ecc71)',
+  swift: 'light-dark(#d47628, #ffa359)',
+  table: 'light-dark(#17a5af, #64d1db)',
+  tailwind: 'light-dark(#1ca1c7, #68cdf2)',
+  terraform: 'light-dark(#693acf, #9d6afb)',
+  text: 'light-dark(#84848a, #adadb1)',
+  typescript: 'light-dark(#1a85d4, #69b1ff)',
+  vite: 'light-dark(#a631be, #d568ea)',
+  vscode: 'light-dark(#1a85d4, #69b1ff)',
+  vue: 'light-dark(#199f43, #5ecc71)',
+  wasm: 'light-dark(#693acf, #9d6afb)',
+  webpack: 'light-dark(#1a85d4, #69b1ff)',
+  yml: 'light-dark(#d52c36, #ff6762)',
+  zig: 'light-dark(#d47628, #ffa359)',
+  zip: 'light-dark(#d47628, #ffa359)',
 }
 
-const FILETYPE_ICON_KIND: Record<string, FileTypeIconKind> = {
-  markdown: 'doc',
-  mdx: 'doc',
-  asciidoc: 'doc',
-  log: 'doc',
-  csv: 'doc',
-  json: 'config',
-  jsonc: 'config',
-  json5: 'config',
-  yaml: 'config',
-  toml: 'config',
-  ini: 'config',
-  xml: 'config',
-  dockerfile: 'config',
-  nginx: 'config',
-  apache: 'config',
-  css: 'styles',
-  scss: 'styles',
-  sass: 'styles',
-  less: 'styles',
-  stylus: 'styles',
-  postcss: 'styles',
+export function resolveFileTypeIcon(fileName: string): DifflyFileTypeIcon {
+  return fileTreeIconResolver.resolveIcon('file-tree-icon-file', fileName)
 }
 
-const IMAGE_EXTENSIONS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'avif',
-  'bmp',
-  'ico',
-  'svg',
-  'tif',
-  'tiff',
-])
+function ensureFileTreeIconSprite(ownerDocument: Document) {
+  if (injectedSpriteDocuments.has(ownerDocument)) {
+    return
+  }
 
-const PLAIN_TEXT_EXTENSIONS = new Set(['txt', 'text'])
+  const host = ownerDocument.body ?? ownerDocument.documentElement
+  if (!host) {
+    return
+  }
 
-function fileExtension(fileName: string) {
-  return fileName.match(/\.([^.\\/]+)$/)?.[1]?.toLowerCase() ?? ''
+  if (!ownerDocument.getElementById(DIFF_HEADER_ICON_SPRITE_ID)) {
+    const sprite = ownerDocument.createElement('div')
+    sprite.id = DIFF_HEADER_ICON_SPRITE_ID
+    sprite.setAttribute('aria-hidden', 'true')
+    sprite.style.position = 'absolute'
+    sprite.style.width = '0'
+    sprite.style.height = '0'
+    sprite.style.overflow = 'hidden'
+    sprite.innerHTML = getBuiltInSpriteSheet(DIFF_HEADER_TREE_ICON_SET)
+    host.prepend(sprite)
+  }
+
+  injectedSpriteDocuments.add(ownerDocument)
 }
 
-export function fileTypeIconKind(fileName: string): FileTypeIconKind {
-  const extension = fileExtension(fileName)
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return 'image'
+function iconColor(token: string | undefined) {
+  if (!token) {
+    return ''
   }
 
-  const filetype = getFiletypeFromFileName(fileName)
-  const mapped = FILETYPE_ICON_KIND[filetype]
-  if (mapped) {
-    return mapped
+  const fallback = FILE_TREE_ICON_COLOR_FALLBACKS[token]
+  return fallback ? `var(--trees-file-icon-color-${token}, ${fallback})` : ''
+}
+
+function createFileTreeSvgIcon(
+  icon: DifflyFileTypeIcon,
+  ownerDocument: Document,
+): SVGSVGElement {
+  const width = icon.width ?? 16
+  const height = icon.height ?? 16
+  const svg = ownerDocument.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('data-icon-name', icon.remappedFrom ?? icon.name)
+  svg.setAttribute('viewBox', icon.viewBox ?? `0 0 ${width} ${height}`)
+  svg.setAttribute('width', String(width))
+  svg.setAttribute('height', String(height))
+  if (icon.token) {
+    svg.setAttribute('data-icon-token', icon.token)
   }
 
-  if (filetype === 'text') {
-    // getFiletypeFromFileName falls back to 'text' for unrecognized files, so
-    // only treat genuinely plain-text extensions as documents.
-    return PLAIN_TEXT_EXTENSIONS.has(extension) ? 'doc' : 'unknown'
+  const color = iconColor(icon.token)
+  if (color) {
+    svg.style.color = color
   }
 
-  return 'code'
+  const use = ownerDocument.createElementNS(SVG_NS, 'use')
+  use.setAttribute('href', `#${icon.name.replace(/^#/, '')}`)
+  svg.appendChild(use)
+
+  return svg
 }
 
 export function renderFileTypeIcon(fileName: string): HTMLElement {
-  const kind = fileTypeIconKind(fileName)
-  const icon = document.createElement('span')
-  icon.className = 'diffly-codeview-file-icon'
-  icon.dataset.difflyFileIcon = kind
-  icon.setAttribute('aria-hidden', 'true')
-  icon.appendChild(createSvgIcon(FILE_ICON_PATHS[kind]))
-  return icon
+  const icon = resolveFileTypeIcon(fileName)
+  const wrapper = document.createElement('span')
+  wrapper.className = 'diffly-codeview-file-icon'
+  wrapper.dataset.difflyFileIcon = icon.token ?? 'default'
+  wrapper.setAttribute('aria-hidden', 'true')
+  ensureFileTreeIconSprite(wrapper.ownerDocument)
+  wrapper.appendChild(createFileTreeSvgIcon(icon, wrapper.ownerDocument))
+  return wrapper
 }

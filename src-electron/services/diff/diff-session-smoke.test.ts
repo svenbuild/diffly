@@ -13,6 +13,7 @@ import {
 import { parseGithubPullRequestUrl } from '../../../src/lib/github/github-url'
 import type { DiffSource } from '../../../src/lib/types'
 import { validateGitRepository } from '../git/git-repository'
+import { disposeAllGitObjectStores } from '../git/git-object-store'
 import { GithubProvider } from '../providers/github-provider'
 import { GitProvider } from '../providers/git-provider'
 import { LocalProvider } from '../providers/local-provider'
@@ -40,10 +41,12 @@ function createService() {
 
 afterEach(async () => {
   vi.unstubAllGlobals()
-  await Promise.all(tempDirs.splice(0).map((path) =>
-    rm(path, { recursive: true, force: true }),
-  ))
-})
+  disposeAllGitObjectStores()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  for (const path of tempDirs.splice(0)) {
+    await removeTempPath(path)
+  }
+}, 30000)
 
 describe('local compare flow', () => {
   it('creates a local directory session with entries and opens a file diff', async () => {
@@ -78,7 +81,7 @@ describe('git compare flow', () => {
     const valid = await validateGitRepository(repoPath)
     expect(valid.valid).toBe(true)
     expect(valid.repositoryRoot).toBeTruthy()
-  })
+  }, 15000)
 
   it('runs a working tree session with scope filtering and per-scope contents', async () => {
     const repoPath = await createRepo()
@@ -116,7 +119,7 @@ describe('git compare flow', () => {
     const allDiff = await service.openEntry(session.sessionId, allEntry!.id, options)
     expect(allDiff.text?.leftText).toBe('base\n')
     expect(allDiff.text?.rightText).toBe('worktree\n')
-  })
+  }, 15000)
 
   it('refreshes a session idempotently after the working tree changed', async () => {
     const repoPath = await createRepo()
@@ -134,7 +137,7 @@ describe('git compare flow', () => {
     expect(refreshedOnce.sessionId).toBe(session.sessionId)
     expect(refreshedTwice.entries.map((entry) => entry.path)).toContain('tracked.txt')
     expect(refreshedTwice.entries).toEqual(refreshedOnce.entries)
-  })
+  }, 15000)
 
   it('rejects opening entries from a disposed session', async () => {
     const repoPath = await createRepo()
@@ -150,7 +153,7 @@ describe('git compare flow', () => {
 
     expect(() => service.openEntry(session.sessionId, entry.id, options))
       .toThrow('Diff session was not found.')
-  })
+  }, 15000)
 })
 
 describe('github compare flow', () => {
@@ -311,7 +314,7 @@ async function makeTempDir(prefix: string) {
 
 async function createRepo() {
   const repoPath = await makeTempDir('diffly-smoke-repo-')
-  await git(repoPath, ['init', '-b', 'main'])
+  await initGitRepo(repoPath)
   await git(repoPath, ['config', 'user.email', 'test@example.com'])
   await git(repoPath, ['config', 'user.name', 'Test User'])
   return repoPath
@@ -328,4 +331,30 @@ async function git(repoPath: string, args: string[]) {
     cwd: repoPath,
     windowsHide: true,
   })
+}
+
+async function initGitRepo(repoPath: string) {
+  await git(repoPath, ['init'])
+  await git(repoPath, ['checkout', '-b', 'main'])
+}
+
+async function removeTempPath(path: string) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      await rm(path, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt === 8 || (code !== 'EBUSY' && code !== 'ENOTEMPTY' && code !== 'EPERM')) {
+        throw error
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, attempt * 250))
+    }
+  }
 }

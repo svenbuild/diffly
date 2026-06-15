@@ -1,56 +1,69 @@
 import { describe, expect, it } from 'vitest'
-import { FILE_ICON_PATHS, fileTypeIconKind, type FileTypeIconKind } from './file-icons'
+import { resolveFileTypeIcon } from './file-icons'
 
-describe('fileTypeIconKind', () => {
-  it('maps programming languages to the code icon', () => {
-    expect(fileTypeIconKind('src/main.ts')).toBe('code')
-    expect(fileTypeIconKind('lib.rs')).toBe('code')
-    expect(fileTypeIconKind('module.c')).toBe('code')
-    expect(fileTypeIconKind('App.svelte')).toBe('code')
+describe('resolveFileTypeIcon', () => {
+  it('uses Pierre tree complete icons for programming languages', () => {
+    expect(resolveFileTypeIcon('src/main.ts')).toMatchObject({
+      name: 'file-tree-builtin-typescript',
+      token: 'typescript',
+    })
+    expect(resolveFileTypeIcon('lib.rs')).toMatchObject({
+      name: 'file-tree-builtin-rust',
+      token: 'rust',
+    })
+    expect(resolveFileTypeIcon('module.c')).toMatchObject({
+      name: 'file-tree-builtin-c',
+      token: 'c',
+    })
+    expect(resolveFileTypeIcon('App.svelte')).toMatchObject({
+      name: 'file-tree-builtin-svelte',
+      token: 'svelte',
+    })
   })
 
-  it('maps documents to the doc icon', () => {
-    expect(fileTypeIconKind('README.md')).toBe('doc')
-    expect(fileTypeIconKind('notes.txt')).toBe('doc')
-    expect(fileTypeIconKind('data.csv')).toBe('doc')
+  it('uses document and config icons from the tree resolver', () => {
+    expect(resolveFileTypeIcon('package.json')).toMatchObject({
+      name: 'file-tree-builtin-json',
+      token: 'json',
+    })
+    expect(resolveFileTypeIcon('README.md')).toMatchObject({
+      name: 'file-tree-builtin-markdown',
+      token: 'markdown',
+    })
+    expect(resolveFileTypeIcon('notes.txt')).toMatchObject({
+      name: 'file-tree-builtin-text',
+      token: 'text',
+    })
   })
 
-  it('maps config formats to the config icon', () => {
-    expect(fileTypeIconKind('package.json')).toBe('config')
-    expect(fileTypeIconKind('config.yaml')).toBe('config')
-    expect(fileTypeIconKind('Cargo.toml')).toBe('config')
-    expect(fileTypeIconKind('settings.xml')).toBe('config')
+  it('uses dedicated icons for images and stylesheets', () => {
+    expect(resolveFileTypeIcon('logo.png')).toMatchObject({
+      name: 'file-tree-builtin-image',
+      token: 'image',
+    })
+    expect(resolveFileTypeIcon('icon.svg')).toMatchObject({
+      name: 'file-tree-builtin-svg',
+      token: 'svg',
+    })
+    expect(resolveFileTypeIcon('app.css')).toMatchObject({
+      name: 'file-tree-builtin-css',
+      token: 'css',
+    })
   })
 
-  it('maps stylesheets to the styles icon', () => {
-    expect(fileTypeIconKind('app.css')).toBe('styles')
-    expect(fileTypeIconKind('theme.scss')).toBe('styles')
-    expect(fileTypeIconKind('main.less')).toBe('styles')
-  })
-
-  it('maps images by extension regardless of filetype fallback', () => {
-    expect(fileTypeIconKind('logo.png')).toBe('image')
-    expect(fileTypeIconKind('photo.JPG')).toBe('image')
-    expect(fileTypeIconKind('icon.svg')).toBe('image')
-  })
-
-  it('falls back to unknown for unrecognized extensions', () => {
-    expect(fileTypeIconKind('archive.unknownext')).toBe('unknown')
-    expect(fileTypeIconKind('binary.bin')).toBe('unknown')
-    expect(fileTypeIconKind('noextension')).toBe('unknown')
+  it('falls back to Pierre tree default file icons for unknown files', () => {
+    expect(resolveFileTypeIcon('archive.unknownext')).toMatchObject({
+      name: 'file-tree-builtin-default',
+      token: 'default',
+    })
+    expect(resolveFileTypeIcon('noextension')).toMatchObject({
+      name: 'file-tree-builtin-default',
+      token: 'default',
+    })
   })
 
   it('works with full relative paths including backslashes', () => {
-    expect(fileTypeIconKind('src\\lib\\compare\\viewer.ts')).toBe('code')
-    expect(fileTypeIconKind('docs/guide/intro.md')).toBe('doc')
-  })
-})
-
-describe('FILE_ICON_PATHS registry', () => {
-  it('has path data for every icon kind including the unknown fallback', () => {
-    const kinds: FileTypeIconKind[] = ['code', 'doc', 'image', 'config', 'styles', 'unknown']
-    for (const kind of kinds) {
-      expect(FILE_ICON_PATHS[kind].length).toBeGreaterThan(0)
-    }
+    expect(resolveFileTypeIcon('src\\lib\\compare\\viewer.ts').token).toBe('typescript')
+    expect(resolveFileTypeIcon('docs/guide/intro.md').token).toBe('markdown')
   })
 })

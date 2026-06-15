@@ -36,7 +36,12 @@ describe('recents-store', () => {
   })
 
   afterEach(async () => {
-    await rm(userDataPath, { recursive: true, force: true })
+    await rm(userDataPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    })
   })
 
   it('returns defaults when no recents file exists', async () => {
@@ -126,7 +131,7 @@ describe('recents-store', () => {
     expect(recents.githubPullRequests).toHaveLength(20)
     expect(recents.gitRepositories[0]?.name).toBe('repo-24')
     expect(recents.githubPullRequests[0]?.pullNumber).toBe(25)
-  })
+  }, 15000)
 
   it('removes entries by id', async () => {
     await addRecentSource(gitSource('C:/repos/alpha'))

@@ -20,6 +20,7 @@ import type {
   GitWorkingTreeScope,
 } from '../../../src/lib/types'
 import { MAX_TEXT_BYTES } from '../file-diff'
+import { disposeAllGitObjectStores } from '../git/git-object-store'
 import { GitProvider } from './git-provider'
 
 const execFileAsync = promisify(execFile)
@@ -28,10 +29,12 @@ const tempRepos: string[] = []
 
 describe('GitProvider working tree entries', () => {
   afterEach(async () => {
-    await Promise.all(tempRepos.splice(0).map((path) =>
-      rm(path, { recursive: true, force: true }),
-    ))
-  })
+    disposeAllGitObjectStores()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    for (const path of tempRepos.splice(0)) {
+      await removeTempPath(path)
+    }
+  }, 30000)
 
   it('returns empty entries for a clean repository', async () => {
     const repoPath = await createRepo()
@@ -284,10 +287,12 @@ describe('GitProvider working tree entries', () => {
 
 describe('GitProvider ref range and commit entries', () => {
   afterEach(async () => {
-    await Promise.all(tempRepos.splice(0).map((path) =>
-      rm(path, { recursive: true, force: true }),
-    ))
-  })
+    disposeAllGitObjectStores()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    for (const path of tempRepos.splice(0)) {
+      await removeTempPath(path)
+    }
+  }, 30000)
 
   it('diffs base against head for two-dot ranges', async () => {
     const repoPath = await createRepo()
@@ -501,7 +506,7 @@ function commitSource(repoPath: string, commitRef: string): DiffSource {
 async function createRepo() {
   const repoPath = await mkdtemp(join(tmpdir(), 'diffly-git-provider-'))
   tempRepos.push(repoPath)
-  await git(repoPath, ['init', '-b', 'main'])
+  await initGitRepo(repoPath)
   await git(repoPath, ['config', 'user.email', 'test@example.com'])
   await git(repoPath, ['config', 'user.name', 'Test User'])
   return repoPath
@@ -564,6 +569,32 @@ async function git(repoPath: string, args: string[]) {
     cwd: repoPath,
     windowsHide: true,
   })
+}
+
+async function initGitRepo(repoPath: string) {
+  await git(repoPath, ['init'])
+  await git(repoPath, ['checkout', '-b', 'main'])
+}
+
+async function removeTempPath(path: string) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      await rm(path, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt === 8 || (code !== 'EBUSY' && code !== 'ENOTEMPTY' && code !== 'EPERM')) {
+        throw error
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, attempt * 250))
+    }
+  }
 }
 
 function findEntry(

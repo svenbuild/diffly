@@ -6,6 +6,56 @@ import type { ReviewActionItem } from './review-mode'
 // slot and the file name. We render a file-type icon in the prefix instead,
 // so hide the built-in one inside the shadow DOM via unsafeCSS.
 export const DIFF_HEADER_UNSAFE_CSS = `
+  [data-diffs-header=default] {
+    --diffly-diff-header-bg: light-dark(
+      color-mix(in lab, var(--diffs-bg) 96%, var(--diffs-fg)),
+      color-mix(in lab, var(--diffs-bg) 84%, var(--diffs-fg))
+    );
+    --diffly-diff-header-border: light-dark(
+      color-mix(in lab, var(--diffs-bg) 84%, var(--diffs-fg)),
+      color-mix(in lab, var(--diffs-bg) 62%, var(--diffs-fg))
+    );
+    background-color: var(--diffly-diff-header-bg);
+    border-block: 1px solid var(--diffly-diff-header-border);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--diffs-fg) 7%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--diffs-bg) 55%, transparent);
+  }
+
+  [data-diffs-header][data-sticky] {
+    background-color: var(--diffly-diff-header-bg, var(--diffs-bg));
+  }
+
+  [data-diffs-header=default] [data-header-content] {
+    gap: 9px;
+  }
+
+  [data-diffs-header=default] [data-title],
+  [data-diffs-header=default] [data-prev-name] {
+    line-height: 1.2;
+  }
+
+  [data-diffs-header=default] [data-additions-count],
+  [data-diffs-header=default] [data-deletions-count] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0 7px;
+    border-radius: 6px;
+    font-family: var(--diffs-header-font-family, var(--diffs-header-font-fallback));
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  [data-diffs-header=default] [data-additions-count] {
+    background: color-mix(in srgb, var(--diffs-addition-base) 14%, transparent);
+  }
+
+  [data-diffs-header=default] [data-deletions-count] {
+    background: color-mix(in srgb, var(--diffs-deletion-base) 14%, transparent);
+  }
+
   [data-diffs-header] [data-change-icon] {
     display: none;
   }
