@@ -2110,8 +2110,8 @@
     }
   }
 
-  // Switch the active git working-tree scope tab. Re-filters the already-loaded
-  // entries client-side and reloads the active file diff for the new scope.
+  // Switch the active git working-tree scope tab. The backend session already
+  // contains every scope, so this only filters the loaded entries client-side.
   function applyGitScope(scope: GitWorkingTreeScope) {
     if (scope === gitScope || !activeDiffSessionId) {
       return
@@ -2123,11 +2123,6 @@
       .filter((entry) => entry.scope === scope)
       .map(mapSessionDiffEntry)
     directoryEntries = mapped
-    // Bump the compare generation so DirectoryDiffList drops its per-path diff
-    // cache and reloads with the new scope's diffEntryId. Staged and unstaged
-    // share a relativePath but resolve to different content, so reusing the
-    // cache here would show the previous scope's diff.
-    compareRevision += 1
     directoryEntriesRevision += 1
     syncFilteredDirectoryState(mapped)
     // Git renders through the continuous list, not the single-file activeDiff;

@@ -18,6 +18,7 @@
   } from '../types'
 
   interface EntryDiffState {
+    detailKey: string
     diff: FileDiffResult | null
     error: string
     generation: number
@@ -67,9 +68,9 @@
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
   // Diff-session loads resolve in the main process without per-file process
-  // spawns (git content comes from a persistent cat-file --batch worker), so
-  // a deeper in-flight window keeps the IPC pipeline full without contention.
-  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 16
+  // spawns, but each response can still trigger file reads and diff parsing.
+  // Keep the in-flight window modest so the compare view stays interactive.
+  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 4
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
   const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 0
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
@@ -111,7 +112,7 @@
   let hasDiffableDirectoryItems = false
   let pendingEntryCount = 0
   let unresolvedEntryCount = 0
-  let diffStatsByPath = new Map<string, {
+  let diffStatsByEntryKey = new Map<string, {
     additions: number
     deletions: number
     lines: number
@@ -159,8 +160,21 @@
     return entry.relativePath
   }
 
-  function entryStateIsCurrent(state: EntryDiffState) {
-    return state.revision === revision && (!state.loading || state.generation === loadGeneration)
+  function entryDetailKey(entry: DirectoryEntryResult) {
+    return entry.diffEntryId ?? [
+      detailLoader.kind,
+      entry.relativePath,
+      entry.leftPath ?? '',
+      entry.rightPath ?? '',
+    ].join('\u0000')
+  }
+
+  function entryStateIsCurrent(state: EntryDiffState, entry: DirectoryEntryResult) {
+    return (
+      state.revision === revision &&
+      state.detailKey === entryDetailKey(entry) &&
+      (!state.loading || state.generation === loadGeneration)
+    )
   }
 
   function cancelEntryStateFlush() {
@@ -201,6 +215,7 @@
   function syncEntryCollections() {
     const nextPaths = new Set<string>()
     const nextDiffablePaths = new Set<string>()
+    const nextDiffableDetailKeys = new Set<string>()
     const nextEntryByPath = new Map<string, DirectoryEntryResult>()
     const nextEntryIndexByPath = new Map<string, number>()
     const nextCollapsedPaths = new Set<string>()
@@ -213,15 +228,16 @@
       nextEntryIndexByPath.set(key, index)
       if (isDiffableDirectoryEntry(entry)) {
         nextDiffablePaths.add(key)
+        nextDiffableDetailKeys.add(entryDetailKey(entry))
       }
 
       const state = entryStates.get(key)
-      if (state && entryStateIsCurrent(state)) {
+      if (state && entryStateIsCurrent(state, entry)) {
         nextStates.set(key, state)
       }
 
       const pendingState = pendingEntryStateUpdates.get(key)
-      if (pendingState && entryStateIsCurrent(pendingState)) {
+      if (pendingState && entryStateIsCurrent(pendingState, entry)) {
         nextStates.set(key, pendingState)
       }
     }
@@ -252,7 +268,7 @@
     entryIndexByPath = nextEntryIndexByPath
     changedEntryPaths = []
     entryStructureRevision += 1
-    pruneDiffStats(nextDiffablePaths)
+    pruneDiffStats(nextDiffableDetailKeys)
     publishDiffStats()
     rebuildVisibleEntries(nextStates)
   }
@@ -281,16 +297,16 @@
   }
 
   function resetDiffStats() {
-    diffStatsByPath = new Map()
+    diffStatsByEntryKey = new Map()
     diffStatsTotals = { ...EMPTY_DIFF_STATS }
     publishDiffStats()
   }
 
-  function pruneDiffStats(activePaths: Set<string>) {
+  function pruneDiffStats(activeKeys: Set<string>) {
     let changed = false
 
-    for (const [path, stats] of diffStatsByPath) {
-      if (activePaths.has(path)) {
+    for (const [key, stats] of diffStatsByEntryKey) {
+      if (activeKeys.has(key)) {
         continue
       }
 
@@ -300,7 +316,7 @@
         deletions: diffStatsTotals.deletions - stats.deletions,
         lines: diffStatsTotals.lines - stats.lines,
       }
-      diffStatsByPath.delete(path)
+      diffStatsByEntryKey.delete(key)
       changed = true
     }
 
@@ -314,14 +330,14 @@
       return
     }
 
-    const path = entry.relativePath
+    const key = entryDetailKey(entry)
     const stats = buildTextDiffStats(diff.text)
-    const previous = diffStatsByPath.get(path)
+    const previous = diffStatsByEntryKey.get(key)
     if (previous?.signature === stats.signature) {
       return
     }
 
-    diffStatsByPath.set(path, stats)
+    diffStatsByEntryKey.set(key, stats)
     diffStatsTotals = {
       files: 0,
       additions: diffStatsTotals.additions + stats.additions - (previous?.additions ?? 0),
@@ -331,8 +347,10 @@
     publishDiffStats()
   }
 
-  function getEntryState(path: string) {
-    return pendingEntryStateUpdates.get(path) ?? entryStates.get(path) ?? null
+  function getEntryState(entry: DirectoryEntryResult) {
+    const path = entryKey(entry)
+    const state = pendingEntryStateUpdates.get(path) ?? entryStates.get(path) ?? null
+    return state && entryStateIsCurrent(state, entry) ? state : null
   }
 
   function entryNeedsLoad(
@@ -342,7 +360,7 @@
       return false
     }
 
-    const state = getEntryState(entryKey(entry))
+    const state = getEntryState(entry)
     return !(state?.revision === revision && (state.diff || state.error || state.loading))
   }
 
@@ -366,7 +384,8 @@
     loadRevision = revision,
   ) {
     const path = entryKey(entry)
-    const state = getEntryState(path)
+    const detailKey = entryDetailKey(entry)
+    const state = getEntryState(entry)
 
     if (state?.diff && state.revision === loadRevision) {
       trackDiffStats(entry, state.diff)
@@ -382,6 +401,7 @@
     }
 
     setEntryState(path, {
+      detailKey,
       diff: state?.revision === loadRevision ? state.diff : null,
       error: '',
       generation,
@@ -396,6 +416,7 @@
           // Session-backed entries must carry a scope-specific diff entry id.
           // Surface the gap as a visible error instead of deriving local paths.
           setEntryState(path, {
+            detailKey,
             diff: null,
             error: 'No diff details are available for this file.',
             generation,
@@ -419,6 +440,7 @@
       }
 
       setEntryState(path, {
+        detailKey,
         diff,
         error: '',
         generation,
@@ -432,6 +454,7 @@
       }
 
       setEntryState(path, {
+        detailKey,
         diff: null,
         error: error instanceof Error ? error.message : 'Unable to open this file diff.',
         generation,
@@ -774,8 +797,11 @@
     return createEntry(null, '', state?.loading ?? false)
   }
 
-  function entryStateIsPending(state: EntryDiffState | null | undefined) {
-    return Boolean(state && entryStateIsCurrent(state) && state.loading)
+  function entryStateIsPending(
+    entry: DirectoryEntryResult,
+    state: EntryDiffState | null | undefined,
+  ) {
+    return Boolean(state && entryStateIsCurrent(state, entry) && state.loading)
   }
 
   function entryStateIsResolved(
@@ -788,7 +814,7 @@
 
     return Boolean(
       state &&
-        entryStateIsCurrent(state) &&
+        entryStateIsCurrent(state, entry) &&
         !state.loading &&
         (state.diff || state.error),
     )
@@ -807,7 +833,7 @@
       }
 
       const state = states.get(entry.relativePath) ?? null
-      if (entryStateIsPending(state)) {
+      if (entryStateIsPending(entry, state)) {
         nextPendingEntryCount += 1
       }
       if (!entryStateIsResolved(entry, state)) {
@@ -849,10 +875,10 @@
         continue
       }
 
-      const previousPending = entryStateIsPending(previousStates.get(path))
+      const previousPending = entryStateIsPending(entry, previousStates.get(path))
       const previousResolved = entryStateIsResolved(entry, previousStates.get(path))
       const nextState = nextStates.get(path) ?? null
-      const nextPending = entryStateIsPending(nextState)
+      const nextPending = entryStateIsPending(entry, nextState)
       const nextResolved = entryStateIsResolved(entry, nextState)
       if (previousPending !== nextPending) {
         nextPendingEntryCount += nextPending ? 1 : -1
@@ -886,6 +912,8 @@
     const text = diff?.text
     return [
       revision,
+      entry.diffEntryId ?? '',
+      entry.diffEntryScope ?? '',
       entry.relativePath,
       entry.status,
       entry.leftPath ?? '',
