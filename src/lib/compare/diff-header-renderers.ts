@@ -6,26 +6,6 @@ import type { ReviewActionItem } from './review-mode'
 // slot and the file name. We render a file-type icon in the prefix instead,
 // so hide the built-in one inside the shadow DOM via unsafeCSS.
 export const DIFF_HEADER_UNSAFE_CSS = `
-  [data-diffs-header=default] {
-    --diffly-diff-header-bg: light-dark(
-      color-mix(in lab, var(--diffs-bg) 96%, var(--diffs-fg)),
-      color-mix(in lab, var(--diffs-bg) 84%, var(--diffs-fg))
-    );
-    --diffly-diff-header-border: light-dark(
-      color-mix(in lab, var(--diffs-bg) 84%, var(--diffs-fg)),
-      color-mix(in lab, var(--diffs-bg) 62%, var(--diffs-fg))
-    );
-    background-color: var(--diffly-diff-header-bg);
-    border-block: 1px solid var(--diffly-diff-header-border);
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, var(--diffs-fg) 7%, transparent),
-      inset 0 -1px 0 color-mix(in srgb, var(--diffs-bg) 55%, transparent);
-  }
-
-  [data-diffs-header][data-sticky] {
-    background-color: var(--diffly-diff-header-bg, var(--diffs-bg));
-  }
-
   [data-diffs-header=default] [data-header-content] {
     gap: 9px;
   }
@@ -88,8 +68,9 @@ export function renderDiffHeaderPrefix(
 
   const chevron = createAppIcon('chevronRight', '1.8')
   chevron.classList.add('diffly-codeview-collapse-chevron')
+  const icon = renderFileTypeIcon(fileName)
   button.appendChild(chevron)
-  button.appendChild(renderFileTypeIcon(fileName))
+  button.appendChild(icon)
 
   button.addEventListener('click', (event) => {
     event.preventDefault()
