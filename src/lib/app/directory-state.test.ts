@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DirectoryEntryResult } from '../types'
-import { isDiffableDirectoryEntry } from './directory-state'
+import { defaultDirectoryEntry, isDiffableDirectoryEntry } from './directory-state'
 
 function entry(overrides: Partial<DirectoryEntryResult>): DirectoryEntryResult {
   return {
@@ -33,5 +33,43 @@ describe('isDiffableDirectoryEntry', () => {
   it('rejects null and undefined', () => {
     expect(isDiffableDirectoryEntry(null)).toBe(false)
     expect(isDiffableDirectoryEntry(undefined)).toBe(false)
+  })
+})
+
+describe('defaultDirectoryEntry', () => {
+  it('prefers a normal source file over root lockfiles for the initial diff', () => {
+    const entries = [
+      entry({ relativePath: 'package-lock.json' }),
+      entry({ relativePath: 'src/App.tsx' }),
+    ]
+
+    expect(defaultDirectoryEntry(entries)?.relativePath).toBe('src/App.tsx')
+  })
+
+  it('keeps normal root files ahead of nested files', () => {
+    const entries = [
+      entry({ relativePath: 'src/App.tsx' }),
+      entry({ relativePath: 'package.json' }),
+    ]
+
+    expect(defaultDirectoryEntry(entries)?.relativePath).toBe('package.json')
+  })
+
+  it('prefers source files over asset files when binary state is not known yet', () => {
+    const entries = [
+      entry({ relativePath: 'src-tauri/icons/icon.png', status: 'rightOnly' }),
+      entry({ relativePath: 'src/app/App.tsx' }),
+    ]
+
+    expect(defaultDirectoryEntry(entries)?.relativePath).toBe('src/app/App.tsx')
+  })
+
+  it('falls back to a low-priority file when it is the only diffable entry', () => {
+    const entries = [
+      entry({ relativePath: 'package-lock.json' }),
+      entry({ relativePath: 'README.md', status: 'unchanged' }),
+    ]
+
+    expect(defaultDirectoryEntry(entries)?.relativePath).toBe('package-lock.json')
   })
 })

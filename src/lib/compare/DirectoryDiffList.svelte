@@ -34,6 +34,12 @@
     renderKey: string
   }
 
+  interface PendingDiffStats {
+    detailKey: string
+    entry: DirectoryEntryResult
+    revision: number
+  }
+
   export let directoryEntries: DirectoryEntryResult[] = []
   export let selectedRelativePath = ''
   export let loading = false
@@ -118,9 +124,12 @@
     lines: number
     signature: string
   }>()
+  let pendingDiffStats = new Map<string, PendingDiffStats>()
   let diffStatsTotals: DiffStatsSnapshot = { ...EMPTY_DIFF_STATS }
   let childSystemMonitor: SystemMonitorSnapshot = { ...EMPTY_SYSTEM_MONITOR }
   let lastSystemMonitorSignature = ''
+  let diffStatsFrame: number | null = null
+  let diffStatsTimer: number | null = null
 
   function queuedLoadCount() {
     return (
@@ -347,6 +356,75 @@
     publishDiffStats()
   }
 
+  function cancelQueuedDiffStats() {
+    if (diffStatsFrame !== null) {
+      window.cancelAnimationFrame(diffStatsFrame)
+      diffStatsFrame = null
+    }
+
+    if (diffStatsTimer !== null) {
+      window.clearTimeout(diffStatsTimer)
+      diffStatsTimer = null
+    }
+
+    pendingDiffStats = new Map()
+  }
+
+  function scheduleDiffStatsFlush() {
+    if (diffStatsFrame !== null || diffStatsTimer !== null) {
+      return
+    }
+
+    diffStatsFrame = window.requestAnimationFrame(() => {
+      diffStatsFrame = null
+      diffStatsTimer = window.setTimeout(() => {
+        diffStatsTimer = null
+        flushQueuedDiffStats()
+      }, 0)
+    })
+  }
+
+  function queueDiffStats(entry: DirectoryEntryResult, diff: FileDiffResult | null) {
+    if (!diff?.text) {
+      return
+    }
+
+    const detailKey = entryDetailKey(entry)
+    pendingDiffStats.set(detailKey, {
+      detailKey,
+      entry,
+      revision,
+    })
+    scheduleDiffStatsFlush()
+  }
+
+  function flushQueuedDiffStats() {
+    if (pendingDiffStats.size === 0) {
+      return
+    }
+
+    const pending = Array.from(pendingDiffStats.values())
+    pendingDiffStats = new Map()
+
+    for (const item of pending) {
+      if (item.revision !== revision) {
+        continue
+      }
+
+      const currentEntry = entryByPath.get(item.entry.relativePath)
+      if (!currentEntry || entryDetailKey(currentEntry) !== item.detailKey) {
+        continue
+      }
+
+      const state = getEntryState(currentEntry)
+      if (!state?.diff?.text || state.revision !== item.revision) {
+        continue
+      }
+
+      trackDiffStats(currentEntry, state.diff)
+    }
+  }
+
   function getEntryState(entry: DirectoryEntryResult) {
     const path = entryKey(entry)
     const state = pendingEntryStateUpdates.get(path) ?? entryStates.get(path) ?? null
@@ -388,7 +466,7 @@
     const state = getEntryState(entry)
 
     if (state?.diff && state.revision === loadRevision) {
-      trackDiffStats(entry, state.diff)
+      queueDiffStats(entry, state.diff)
       return
     }
 
@@ -447,7 +525,7 @@
         loading: false,
         revision: loadRevision,
       })
-      trackDiffStats(entry, diff)
+      queueDiffStats(entry, diff)
     } catch (error) {
       if (revision !== loadRevision || generation !== loadGeneration) {
         return
@@ -708,7 +786,12 @@
       : directoryEntries.find(isDiffableDirectoryEntry)
 
     if (selectedEntry) {
-      scheduleEntryWindow(selectedEntry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
+      scheduleEntryLoad(selectedEntry, true)
+      scheduleEntryWindow(
+        selectedEntry.relativePath,
+        detailLoader.kind === 'diffSession' ? 1 : DIRECTORY_DIFF_SELECTION_LOAD_RADIUS,
+        true,
+      )
     }
     if (detailLoader.kind === 'localPaths') {
       scheduleInitialLoads()
@@ -744,7 +827,12 @@
     }
 
     if (!isCollapsed(entry.relativePath)) {
-      scheduleEntryWindow(entry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
+      scheduleEntryLoad(entry, true)
+      scheduleEntryWindow(
+        entry.relativePath,
+        detailLoader.kind === 'diffSession' ? 1 : DIRECTORY_DIFF_SELECTION_LOAD_RADIUS,
+        true,
+      )
     }
   }
 
@@ -934,6 +1022,7 @@
       loadResumeTimer = null
     }
     cancelBackgroundLoadScheduling()
+    cancelQueuedDiffStats()
     cancelEntryStateFlush()
   })
 
@@ -953,6 +1042,7 @@
       lastSystemMonitorSignature = ''
       backgroundLoadCursor = 0
       cancelBackgroundLoadScheduling()
+      cancelQueuedDiffStats()
       resetDiffStats()
       publishDirectorySystemMonitorStats()
     }
