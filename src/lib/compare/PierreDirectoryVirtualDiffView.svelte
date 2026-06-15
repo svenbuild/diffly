@@ -23,7 +23,7 @@
   import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
-    finishCompareTimingOnNextFrame,
+    finishCompareTiming,
     markCompareTimingOnce,
   } from '../app/compare-timing'
   import {
@@ -152,6 +152,7 @@
   let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
+  let firstRenderedDiffFinishFrame: number | null = null
 
   const tokenHoverController = createTokenHoverController()
   const tokenHoverLanguageByPath = new Map<string, string>()
@@ -198,6 +199,7 @@
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
+  const FIRST_RENDERED_DIFF_MAX_ATTEMPTS = 12
   const DIFF_RENDER_CACHE_SIZE = 100
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
@@ -519,6 +521,87 @@
       schedulePlaceholderEntryRequest,
       scheduleVisibleEntryRequest,
     })
+    scheduleFirstRenderedDiffFinish(args)
+  }
+
+  function scheduleFirstRenderedDiffFinish(args: unknown[]) {
+    const node = args[0]
+    const phase = args[2]
+    const context = getCodeViewItemContext(args)
+    const itemId = context?.item?.id
+    if (
+      !(node instanceof HTMLElement) ||
+      !itemId ||
+      phase === 'unmount' ||
+      context?.type !== 'diff' ||
+      placeholderPaths.has(itemId) ||
+      loadingPaths.has(itemId) ||
+      !entryByPath.get(itemId)?.diff?.text ||
+      firstRenderedDiffFinishFrame !== null
+    ) {
+      return
+    }
+
+    scheduleFirstRenderedDiffFinishAttempt(node, itemId, phase, 0)
+  }
+
+  function scheduleFirstRenderedDiffFinishAttempt(
+    node: HTMLElement,
+    itemId: string,
+    phase: unknown,
+    attempt: number,
+  ) {
+    firstRenderedDiffFinishFrame = window.requestAnimationFrame(() => {
+      firstRenderedDiffFinishFrame = null
+      if (!isRenderedDiffVisible(node, itemId) || !hasRenderedDiffContent(node)) {
+        if (attempt + 1 < FIRST_RENDERED_DIFF_MAX_ATTEMPTS) {
+          scheduleFirstRenderedDiffFinishAttempt(node, itemId, phase, attempt + 1)
+        }
+        return
+      }
+
+      finishCompareTiming('first-pierre-diff-rendered', {
+        path: itemId,
+        phase: typeof phase === 'string' ? phase : 'render',
+      })
+    })
+  }
+
+  function hasRenderedDiffContent(node: HTMLElement) {
+    const codeNodes = node.shadowRoot?.querySelectorAll<HTMLElement>('[data-code]')
+    if (!codeNodes || codeNodes.length === 0) {
+      return false
+    }
+
+    for (const codeNode of codeNodes) {
+      if (codeNode.textContent?.trim() || codeNode.childElementCount > 0) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  function isRenderedDiffVisible(node: HTMLElement, itemId: string) {
+    if (!node.isConnected) {
+      return false
+    }
+
+    const rect = node.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false
+    }
+
+    if (!host) {
+      return true
+    }
+
+    const hostRect = host.getBoundingClientRect()
+    return (
+      rect.bottom >= hostRect.top &&
+      rect.top <= hostRect.bottom &&
+      entryByPath.get(itemId)?.diff?.text !== undefined
+    )
   }
 
   function buildOptions(): CodeViewOptions<DifflyCommentAnnotation> {
@@ -711,12 +794,10 @@
     const cached = parsedDiffs.get(entry.relativePath)
 
     try {
-      let usedCachedDiff = Boolean(cached && cached.signature === signature)
       const nextCached =
         cached && cached.signature === signature
           ? cached
           : (() => {
-              usedCachedDiff = false
               markCompareTimingOnce('first-pierre-parse-start', {
                 path: entry.relativePath,
               })
@@ -754,11 +835,6 @@
       } else {
         parsedDiffs.set(entry.relativePath, nextCached)
       }
-
-      finishCompareTimingOnNextFrame('first-pierre-diff-rendered', {
-        cached: usedCachedDiff,
-        path: entry.relativePath,
-      })
 
       return {
         id: entry.relativePath,
@@ -1341,6 +1417,11 @@
     if (layoutRetryFrame !== null) {
       window.cancelAnimationFrame(layoutRetryFrame)
       layoutRetryFrame = null
+    }
+
+    if (firstRenderedDiffFinishFrame !== null) {
+      window.cancelAnimationFrame(firstRenderedDiffFinishFrame)
+      firstRenderedDiffFinishFrame = null
     }
 
     unsubscribeScroll?.()

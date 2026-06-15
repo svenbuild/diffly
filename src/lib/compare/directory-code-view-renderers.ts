@@ -3,6 +3,7 @@ import { statusLabel } from './directory-code-view-items'
 import { renderDiffHeaderMetadata, renderDiffHeaderPrefix } from './diff-header-renderers'
 
 export type CodeViewItemContext = {
+  type?: 'diff' | 'file'
   item?: {
     id?: string
   }
