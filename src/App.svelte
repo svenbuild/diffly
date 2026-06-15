@@ -47,6 +47,8 @@
     finishCompareTiming,
     markCompareTiming,
     startCompareTiming,
+    subscribeCompareLoading,
+    type CompareLoadingState,
   } from './lib/app/compare-timing'
   import {
     buildDirectoryComparePairs,
@@ -243,6 +245,14 @@
   let selectedRelativePath = ''
   let directoryScrollTargetRevision = 0
   let activeDiff: FileDiffResult | null = null
+  let compareLoadingState: CompareLoadingState = {
+    active: false,
+    detail: undefined,
+    elapsedMs: 0,
+    label: '',
+    stage: '',
+    startedAt: 0,
+  }
   // Git working-tree scope tabs (A11). The active session stores entries for
   // every scope at once, so we keep the full list and filter client-side per tab.
   let gitScope: GitWorkingTreeScope = 'all'
@@ -545,6 +555,9 @@
   }
 
   onMount(() => {
+    const unsubscribeCompareLoading = subscribeCompareLoading((state) => {
+      compareLoadingState = state
+    })
     const colorSchemeQuery =
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-color-scheme: dark)')
@@ -588,6 +601,7 @@
       compareComponentsPreloadCancel = null
 
       removeLaunchContextListener()
+      unsubscribeCompareLoading()
       diffCache.cancelBackgroundPreload()
       disposeDiffSessionQuietly(activeDiffSessionId)
 
@@ -2120,6 +2134,11 @@
       const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
       if (nextEntry) {
         void selectEntry(nextEntry, compareRevision)
+      } else {
+        finishCompareTiming('compare-ready-empty', {
+          entries: mappedEntries.length,
+          scope: targetScope ?? 'none',
+        })
       }
       return true
     } catch (error) {
@@ -2810,6 +2829,7 @@
     {mode}
     {compareSidebarWidth}
     {compareSurfaceTransitioning}
+    {compareLoadingState}
     {diffHeaderContext}
     {selectedRelativePath}
     {comparePairsTooltip}

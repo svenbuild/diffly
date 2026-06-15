@@ -1,5 +1,6 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
+  import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
   import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
@@ -27,6 +28,7 @@
     SettingsSection,
   } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
+  import type { CompareLoadingState } from '../app/compare-timing'
   import UpdateIndicator from './UpdateIndicator.svelte'
 
   export let updateIndicatorState: UpdateIndicatorState
@@ -36,6 +38,14 @@
   export let mode: CompareMode = 'directory'
   export let compareSidebarWidth = 212
   export let compareSurfaceTransitioning = false
+  export let compareLoadingState: CompareLoadingState = {
+    active: false,
+    detail: undefined,
+    elapsedMs: 0,
+    label: '',
+    stage: '',
+    startedAt: 0,
+  }
   export let diffHeaderContext: DiffHeaderContext
   export let selectedRelativePath = ''
   export let comparePairsTooltip = ''
@@ -407,4 +417,6 @@
       </section>
     {/if}
   </section>
+
+  <CompareLoadingOverlay state={compareLoadingState} />
 </main>

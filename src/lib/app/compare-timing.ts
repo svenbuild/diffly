@@ -1,5 +1,15 @@
 const STORAGE_KEY = 'diffly:compareTiming'
 const RUN_TIMEOUT_MS = 120000
+const LOADING_TICK_MS = 250
+
+export interface CompareLoadingState {
+  active: boolean
+  detail: Record<string, unknown> | undefined
+  elapsedMs: number
+  label: string
+  stage: string
+  startedAt: number
+}
 
 interface CompareTimingMark {
   detail: Record<string, unknown> | undefined
@@ -20,6 +30,21 @@ interface CompareTimingRun {
 
 let activeRun: CompareTimingRun | null = null
 let nextRunId = 1
+let loadingState: CompareLoadingState = createIdleLoadingState()
+let loadingTicker: number | null = null
+let loadingSeenStages = new Set<string>()
+const loadingListeners = new Set<(state: CompareLoadingState) => void>()
+
+export function subscribeCompareLoading(
+  listener: (state: CompareLoadingState) => void,
+) {
+  listener(loadingState)
+  loadingListeners.add(listener)
+
+  return () => {
+    loadingListeners.delete(listener)
+  }
+}
 
 export function compareTimingEnabled() {
   if (typeof window === 'undefined') {
@@ -35,6 +60,7 @@ export function compareTimingEnabled() {
 }
 
 export function startCompareTiming(label: string, detail?: Record<string, unknown>) {
+  startCompareLoading(label, detail)
   if (!compareTimingEnabled()) {
     clearActiveRunTimeout()
     activeRun = null
@@ -67,6 +93,8 @@ export function markCompareTiming(
   name: string,
   detail?: Record<string, unknown>,
 ) {
+  updateCompareLoading(name, detail)
+
   const run = activeRun
   if (!run || run.finished) {
     return
@@ -79,6 +107,8 @@ export function markCompareTimingOnce(
   name: string,
   detail?: Record<string, unknown>,
 ) {
+  markCompareLoadingOnce(name, detail)
+
   const run = activeRun
   if (!run || run.finished || run.seenMarks.has(name)) {
     return
@@ -92,14 +122,28 @@ export function finishCompareTimingOnNextFrame(
   name: string,
   detail?: Record<string, unknown>,
 ) {
+  const loadingStartedAt = markCompareLoadingFinishOnce(name)
   const run = activeRun
-  if (!run || run.finished || run.seenMarks.has(name)) {
+  const shouldFinishRun = run !== null && !run.finished && !run.seenMarks.has(name)
+
+  if (!loadingStartedAt && !shouldFinishRun) {
     return
   }
 
-  run.seenMarks.add(name)
+  if (shouldFinishRun) {
+    run.seenMarks.add(name)
+  }
+
   window.requestAnimationFrame(() => {
-    if (activeRun === run && !run.finished) {
+    if (
+      loadingStartedAt !== null &&
+      loadingState.active &&
+      loadingState.startedAt === loadingStartedAt
+    ) {
+      finishCompareLoading(name, detail)
+    }
+
+    if (run && activeRun === run && !run.finished) {
       finishCompareTiming(name, detail)
     }
   })
@@ -109,6 +153,8 @@ export function finishCompareTiming(
   name: string,
   detail?: Record<string, unknown>,
 ) {
+  finishCompareLoading(name, detail)
+
   const run = activeRun
   if (!run || run.finished) {
     return
@@ -123,6 +169,110 @@ export function finishCompareTiming(
   console.info(`[Diffly timing #${run.id}] ${run.label} first diff ready in ${formatMs(totalMs)}`)
   console.table(timingRows(run))
   activeRun = null
+}
+
+function createIdleLoadingState(): CompareLoadingState {
+  return {
+    active: false,
+    detail: undefined,
+    elapsedMs: 0,
+    label: '',
+    stage: '',
+    startedAt: 0,
+  }
+}
+
+function startCompareLoading(label: string, detail?: Record<string, unknown>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  clearCompareLoadingTicker()
+  loadingSeenStages = new Set(['compare-start'])
+  loadingState = {
+    active: true,
+    detail,
+    elapsedMs: 0,
+    label,
+    stage: 'compare-start',
+    startedAt: performance.now(),
+  }
+  notifyCompareLoading()
+  loadingTicker = window.setInterval(tickCompareLoading, LOADING_TICK_MS)
+}
+
+function updateCompareLoading(stage: string, detail?: Record<string, unknown>) {
+  if (!loadingState.active) {
+    return
+  }
+
+  loadingState = {
+    ...loadingState,
+    detail,
+    elapsedMs: performance.now() - loadingState.startedAt,
+    stage,
+  }
+  notifyCompareLoading()
+}
+
+function markCompareLoadingOnce(stage: string, detail?: Record<string, unknown>) {
+  if (!loadingState.active || loadingSeenStages.has(stage)) {
+    return
+  }
+
+  loadingSeenStages.add(stage)
+  updateCompareLoading(stage, detail)
+}
+
+function markCompareLoadingFinishOnce(stage: string) {
+  if (!loadingState.active || loadingSeenStages.has(stage)) {
+    return null
+  }
+
+  loadingSeenStages.add(stage)
+  return loadingState.startedAt
+}
+
+function finishCompareLoading(stage: string, detail?: Record<string, unknown>) {
+  if (!loadingState.active) {
+    return
+  }
+
+  clearCompareLoadingTicker()
+  loadingState = {
+    ...loadingState,
+    active: false,
+    detail,
+    elapsedMs: performance.now() - loadingState.startedAt,
+    stage,
+  }
+  notifyCompareLoading()
+}
+
+function tickCompareLoading() {
+  if (!loadingState.active) {
+    clearCompareLoadingTicker()
+    return
+  }
+
+  loadingState = {
+    ...loadingState,
+    elapsedMs: performance.now() - loadingState.startedAt,
+  }
+  notifyCompareLoading()
+}
+
+function notifyCompareLoading() {
+  for (const listener of loadingListeners) {
+    listener(loadingState)
+  }
+}
+
+function clearCompareLoadingTicker() {
+  if (loadingTicker !== null) {
+    window.clearInterval(loadingTicker)
+    loadingTicker = null
+  }
 }
 
 function addMark(
@@ -159,7 +309,9 @@ function timingRows(run: CompareTimingRun) {
 function clearActiveRunTimeout() {
   const run = activeRun
   if (run && run.timeout !== null) {
-    window.clearTimeout(run.timeout)
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(run.timeout)
+    }
     run.timeout = null
   }
 }
