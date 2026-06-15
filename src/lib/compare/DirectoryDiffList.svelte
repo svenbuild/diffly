@@ -787,11 +787,9 @@
 
     if (selectedEntry) {
       scheduleEntryLoad(selectedEntry, true)
-      scheduleEntryWindow(
-        selectedEntry.relativePath,
-        detailLoader.kind === 'diffSession' ? 1 : DIRECTORY_DIFF_SELECTION_LOAD_RADIUS,
-        true,
-      )
+      if (detailLoader.kind === 'localPaths') {
+        scheduleEntryWindow(selectedEntry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
+      }
     }
     if (detailLoader.kind === 'localPaths') {
       scheduleInitialLoads()
@@ -828,11 +826,9 @@
 
     if (!isCollapsed(entry.relativePath)) {
       scheduleEntryLoad(entry, true)
-      scheduleEntryWindow(
-        entry.relativePath,
-        detailLoader.kind === 'diffSession' ? 1 : DIRECTORY_DIFF_SELECTION_LOAD_RADIUS,
-        true,
-      )
+      if (detailLoader.kind === 'localPaths') {
+        scheduleEntryWindow(entry.relativePath, DIRECTORY_DIFF_SELECTION_LOAD_RADIUS, true)
+      }
     }
   }
 

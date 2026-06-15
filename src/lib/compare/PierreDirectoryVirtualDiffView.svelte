@@ -193,7 +193,7 @@
   const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 80
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
   const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
-  const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 4
+  const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
   const DIFF_RENDER_CACHE_SIZE = 100
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
@@ -797,6 +797,11 @@
 
     if (selectedRelativePath && nextDiffRenderPaths.size === 0) {
       addPath(selectedRelativePath)
+      if (changed) {
+        diffRenderPaths = nextDiffRenderPaths
+        diffRenderPathRevision += 1
+        return
+      }
     }
 
     for (
@@ -824,7 +829,11 @@
     let changed = false
     const nextDiffRenderPaths = new Set(diffRenderPaths)
     let promotedCount = 0
-    for (const path of paths) {
+    const orderedPaths = selectedRelativePath && paths.includes(selectedRelativePath)
+      ? [selectedRelativePath, ...paths.filter((path) => path !== selectedRelativePath)]
+      : paths
+
+    for (const path of orderedPaths) {
       if (promotedCount >= DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH) {
         break
       }
@@ -1054,8 +1063,21 @@
       paths.push(path)
     }
 
+    const hostRect = host?.getBoundingClientRect()
+    const visiblePaddingPx = 16
     for (const item of view.getRenderedItems()) {
-      addPath(item.id)
+      if (!hostRect) {
+        addPath(item.id)
+        continue
+      }
+
+      const itemRect = item.element.getBoundingClientRect()
+      if (
+        itemRect.bottom >= hostRect.top - visiblePaddingPx &&
+        itemRect.top <= hostRect.bottom + visiblePaddingPx
+      ) {
+        addPath(item.id)
+      }
     }
 
     if (paths.length > 0 || !host) {
@@ -1190,12 +1212,13 @@
 
     if (canPatchChangedItems && syncChangedItems(changedEntryPaths)) {
       lastChangedEntryRevision = changedEntryRevision
-      scheduleVisibleEntryRequest()
       if (viewerSettings.controlledSelection) {
         codeView.setSelectedLines(selectedLineSelection, { notify: false })
       }
       if (scrollTargetRevision > appliedScrollTargetRevision) {
         void scrollToSelectedEntry()
+      } else {
+        scheduleVisibleEntryRequest()
       }
       return
     }
@@ -1220,14 +1243,14 @@
       codeView.setItems(items)
     }
 
-    scheduleVisibleEntryRequest()
-
     if (viewerSettings.controlledSelection) {
       codeView.setSelectedLines(selectedLineSelection, { notify: false })
     }
 
     if (scrollTargetRevision > appliedScrollTargetRevision) {
       void scrollToSelectedEntry()
+    } else {
+      scheduleVisibleEntryRequest()
     }
   }
 
