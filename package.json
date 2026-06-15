@@ -29,7 +29,8 @@
   "dependencies": {
     "@pierre/diffs": "^1.2.5",
     "@pierre/trees": "^1.0.0-beta.4",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "material-file-icons": "^2.4.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
