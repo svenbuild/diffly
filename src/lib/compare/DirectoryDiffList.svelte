@@ -73,16 +73,11 @@
   export let reviewSourceKind: CompareSourceKind = 'local'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
 
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 8
-  // Diff-session loads resolve in the main process without per-file process
-  // spawns, but each response can still trigger file reads and diff parsing.
-  // Keep the in-flight window modest so the compare view stays interactive.
-  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 4
-  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH = 2048
-  const DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS = 0
-  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 8
-  const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 2
-  const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 1
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 1
+  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 1
+  const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 0
+  const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 0
+  const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 0
   const EMPTY_SYSTEM_MONITOR: SystemMonitorSnapshot = {
     busyWorkers: 0,
     totalWorkers: 0,
@@ -113,10 +108,10 @@
   let loadQueueKeys = new Set<string>()
   let activeLoadCount = 0
   let loadResumeTimer: number | null = null
-  let backgroundLoadTimer: number | null = null
-  let backgroundLoadCursor = 0
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
+  let activeTextEntries: LoadedDirectoryDiff[] = []
+  let activeChangedEntryPaths: string[] = []
   let hasRenderableDirectoryItems = false
   let hasDiffableDirectoryItems = false
   let pendingEntryCount = 0
@@ -625,51 +620,6 @@
     pumpLoadQueue()
   }
 
-  function cancelBackgroundLoadScheduling() {
-    if (backgroundLoadTimer !== null) {
-      window.clearTimeout(backgroundLoadTimer)
-      backgroundLoadTimer = null
-    }
-  }
-
-  function scheduleBackgroundLoadPump() {
-    if (detailLoader.kind === 'diffSession') {
-      return
-    }
-
-    if (backgroundLoadTimer !== null) {
-      return
-    }
-
-    backgroundLoadTimer = window.setTimeout(() => {
-      backgroundLoadTimer = null
-      enqueueBackgroundLoads()
-    }, DIRECTORY_DIFF_BACKGROUND_ENQUEUE_DELAY_MS)
-  }
-
-  function enqueueBackgroundLoads() {
-    let queuedCount = 0
-
-    while (
-      backgroundLoadCursor < directoryEntries.length &&
-      queuedCount < DIRECTORY_DIFF_BACKGROUND_ENQUEUE_BATCH
-    ) {
-      const entry = directoryEntries[backgroundLoadCursor]
-      backgroundLoadCursor += 1
-
-      if (!entryNeedsLoad(entry)) {
-        continue
-      }
-
-      scheduleEntryLoad(entry)
-      queuedCount += 1
-    }
-
-    if (backgroundLoadCursor < directoryEntries.length) {
-      scheduleBackgroundLoadPump()
-    }
-  }
-
   function scheduleLoadResume() {
     if (loadResumeTimer !== null) {
       window.clearTimeout(loadResumeTimer)
@@ -966,6 +916,17 @@
     )
   }
 
+  function getActiveTextEntry() {
+    if (selectedRelativePath) {
+      const selectedIndex = textEntryIndexByPath.get(selectedRelativePath)
+      if (selectedIndex !== undefined) {
+        return textEntries[selectedIndex] ?? null
+      }
+    }
+
+    return textEntries[0] ?? null
+  }
+
   function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     const nextTextEntryIndexByPath = new Map<string, number>()
@@ -1082,7 +1043,6 @@
       window.clearTimeout(loadResumeTimer)
       loadResumeTimer = null
     }
-    cancelBackgroundLoadScheduling()
     cancelQueuedDiffStats()
     cancelEntryStateFlush()
   })
@@ -1101,8 +1061,6 @@
       activeLoadCount = 0
       childSystemMonitor = { ...EMPTY_SYSTEM_MONITOR }
       lastSystemMonitorSignature = ''
-      backgroundLoadCursor = 0
-      cancelBackgroundLoadScheduling()
       cancelQueuedDiffStats()
       if (resolvedEntryStateRevision !== revision) {
         resolvedEntryStateRevision = revision
@@ -1122,15 +1080,16 @@
     loadGeneration,
     scheduleActiveLoads()
 
-  $: directoryEntries,
-    entryByPath,
-    revision,
-    loadGeneration,
-    detailLoader,
-    scheduleBackgroundLoadPump()
-
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
-  $: hasRenderableDirectoryItems = textEntries.length > 0
+  $: {
+    const activeTextEntry = getActiveTextEntry()
+    activeTextEntries = activeTextEntry ? [activeTextEntry] : []
+    activeChangedEntryPaths =
+      activeTextEntry && changedEntryPaths.includes(activeTextEntry.entry.relativePath)
+        ? [activeTextEntry.entry.relativePath]
+        : []
+    hasRenderableDirectoryItems = activeTextEntries.length > 0
+  }
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
 </script>
 
@@ -1155,7 +1114,7 @@
     </div>
   {:else}
     <PierreDirectoryVirtualDiffView
-      entries={textEntries}
+      entries={activeTextEntries}
       compareKey={`${leftPath}\u0000${rightPath}`}
       {collapsedPaths}
       {selectedRelativePath}
@@ -1164,7 +1123,7 @@
       {resolvedThemeMode}
       {viewMode}
       {scrollTargetRevision}
-      {changedEntryPaths}
+      changedEntryPaths={activeChangedEntryPaths}
       {changedEntryRevision}
       {entryStructureRevision}
       toggleEntry={toggleEntryByPath}

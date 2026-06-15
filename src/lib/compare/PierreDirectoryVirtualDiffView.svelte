@@ -2,7 +2,6 @@
   import { onDestroy, tick } from 'svelte'
   import {
     CodeView,
-    getFiletypeFromFileName,
     parseDiffFromFile,
     type CodeViewItem,
     type CodeViewLineSelection,
@@ -23,7 +22,7 @@
   import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
-    finishCompareTiming,
+    finishCompareTimingOnNextFrame,
     markCompareTimingOnce,
   } from '../app/compare-timing'
   import {
@@ -62,7 +61,6 @@
     renderDirectoryHeaderMetadata,
     type CodeViewItemContext,
   } from './directory-code-view-renderers'
-  import { createTokenHoverController } from './token-hover/controller'
   import type {
     CompareViewerSettings,
     DirectoryEntryResult,
@@ -152,37 +150,6 @@
   let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
-  let firstRenderedDiffFinishFrame: number | null = null
-
-  const tokenHoverController = createTokenHoverController()
-  const tokenHoverLanguageByPath = new Map<string, string>()
-
-  function tokenHoverLanguageFor(itemId: string | undefined): string {
-    if (!itemId) {
-      return ''
-    }
-
-    const cached = tokenHoverLanguageByPath.get(itemId)
-    if (cached !== undefined) {
-      return cached
-    }
-
-    const fileName = itemId.split(/[\\/]/).pop() || itemId
-    const language = getFiletypeFromFileName(fileName)
-    tokenHoverLanguageByPath.set(itemId, language)
-    return language
-  }
-
-  function handleTokenEnter(...args: unknown[]) {
-    const props = args[0] as { tokenText: string; tokenElement: HTMLElement }
-    const event = args[1] as PointerEvent
-    const context = getCodeViewItemContext(args)
-    tokenHoverController.handleEnter(props, event, tokenHoverLanguageFor(context?.item?.id))
-  }
-
-  function handleTokenLeave() {
-    tokenHoverController.handleLeave()
-  }
 
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
@@ -197,15 +164,13 @@
   const DIRECTORY_CODE_VIEW_OVERSCROLL_VIEWPORTS = 1.25
   const DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS = 80
   const DIRECTORY_CODE_VIEW_BATCH_UPDATE_THRESHOLD = 32
-  const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 4
+  const DIRECTORY_CODE_VIEW_INITIAL_PARSED_DIFF_COUNT = 1
   const DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH = 1
-  const FIRST_RENDERED_DIFF_MAX_ATTEMPTS = 12
   const DIFF_RENDER_CACHE_SIZE = 100
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
-    const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
-    return Math.max(2, Math.min(6, Math.floor(cores / 2)))
+    return 1
   }
 
   function directoryCodeViewOverscrollSize() {
@@ -279,10 +244,10 @@
   function workerRenderOptions(): WorkerInitializationRenderOptions {
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
-      useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
-      lineDiffType: viewerSettings.lineDiffType,
+      useTokenTransformer: false,
+      lineDiffType: 'none',
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
-      tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
+      tokenizeMaxLineLength: 0,
       preferredHighlighter: viewerSettings.preferredHighlighter,
     }
   }
@@ -521,10 +486,10 @@
       schedulePlaceholderEntryRequest,
       scheduleVisibleEntryRequest,
     })
-    scheduleFirstRenderedDiffFinish(args)
+    finishFirstRenderedDiff(args)
   }
 
-  function scheduleFirstRenderedDiffFinish(args: unknown[]) {
+  function finishFirstRenderedDiff(args: unknown[]) {
     const node = args[0]
     const phase = args[2]
     const context = getCodeViewItemContext(args)
@@ -537,71 +502,37 @@
       placeholderPaths.has(itemId) ||
       loadingPaths.has(itemId) ||
       !entryByPath.get(itemId)?.diff?.text ||
-      firstRenderedDiffFinishFrame !== null
+      !hasRenderedDiffContent(node)
     ) {
       return
     }
 
-    scheduleFirstRenderedDiffFinishAttempt(node, itemId, phase, 0)
-  }
-
-  function scheduleFirstRenderedDiffFinishAttempt(
-    node: HTMLElement,
-    itemId: string,
-    phase: unknown,
-    attempt: number,
-  ) {
-    firstRenderedDiffFinishFrame = window.requestAnimationFrame(() => {
-      firstRenderedDiffFinishFrame = null
-      if (!isRenderedDiffVisible(node, itemId) || !hasRenderedDiffContent(node)) {
-        if (attempt + 1 < FIRST_RENDERED_DIFF_MAX_ATTEMPTS) {
-          scheduleFirstRenderedDiffFinishAttempt(node, itemId, phase, attempt + 1)
-        }
-        return
-      }
-
-      finishCompareTiming('first-pierre-diff-rendered', {
-        path: itemId,
-        phase: typeof phase === 'string' ? phase : 'render',
-      })
+    finishCompareTimingOnNextFrame('first-pierre-diff-rendered', {
+      path: itemId,
+      phase: typeof phase === 'string' ? phase : 'render',
     })
   }
 
   function hasRenderedDiffContent(node: HTMLElement) {
-    const codeNodes = node.shadowRoot?.querySelectorAll<HTMLElement>('[data-code]')
-    if (!codeNodes || codeNodes.length === 0) {
+    const shadowRoot = node.shadowRoot
+    if (!shadowRoot) {
       return false
     }
 
+    if (shadowRoot.querySelector('[data-error-wrapper]')) {
+      return true
+    }
+
+    const codeNodes = shadowRoot.querySelectorAll<HTMLElement>(
+      'pre code[data-unified], pre code[data-deletions], pre code[data-additions]',
+    )
     for (const codeNode of codeNodes) {
-      if (codeNode.textContent?.trim() || codeNode.childElementCount > 0) {
+      if (codeNode.childElementCount > 0 || codeNode.textContent?.trim()) {
         return true
       }
     }
 
     return false
-  }
-
-  function isRenderedDiffVisible(node: HTMLElement, itemId: string) {
-    if (!node.isConnected) {
-      return false
-    }
-
-    const rect = node.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) {
-      return false
-    }
-
-    if (!host) {
-      return true
-    }
-
-    const hostRect = host.getBoundingClientRect()
-    return (
-      rect.bottom >= hostRect.top &&
-      rect.top <= hostRect.bottom &&
-      entryByPath.get(itemId)?.diff?.text !== undefined
-    )
   }
 
   function buildOptions(): CodeViewOptions<DifflyCommentAnnotation> {
@@ -618,7 +549,7 @@
       diffStyle: viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle,
       overflow: viewerSettings.codeOverflow,
       diffIndicators: viewerSettings.diffIndicators,
-      lineDiffType: viewerSettings.lineDiffType,
+      lineDiffType: 'none',
       hunkSeparators: viewerSettings.hunkSeparators,
       expandUnchanged: viewerSettings.expandUnchanged,
       collapsedContextThreshold: viewerSettings.collapsedContextThreshold,
@@ -630,12 +561,12 @@
       stickyHeaders: viewerSettings.stickyHeader,
       preferredHighlighter: viewerSettings.preferredHighlighter,
       useCSSClasses: viewerSettings.useCSSClasses,
-      useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
-      tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
-      tokenizeMaxLength: viewerSettings.tokenizeMaxLength,
+      useTokenTransformer: false,
+      tokenizeMaxLineLength: 0,
+      tokenizeMaxLength: 0,
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
-      enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
+      enableTokenInteractionsOnWhitespace: false,
       enableGutterUtility: viewerSettings.enableGutterUtility,
       controlledSelection: viewerSettings.controlledSelection,
       enableLineSelection:
@@ -650,15 +581,6 @@
       renderHeaderPrefix: renderCollapseButton as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderPrefix'],
       renderHeaderMetadata: renderHeaderMetadata as CodeViewOptions<DifflyCommentAnnotation>['renderHeaderMetadata'],
       onPostRender: handlePostRender as CodeViewOptions<DifflyCommentAnnotation>['onPostRender'],
-      // Providing token handlers auto-enables Pierre's token transformer, so we
-      // only attach them when the feature is on. tokenHover is part of
-      // optionsKey() below so toggling actually re-renders the CodeView.
-      ...(viewerSettings.tokenHover
-        ? {
-            onTokenEnter: handleTokenEnter as CodeViewOptions<DifflyCommentAnnotation>['onTokenEnter'],
-            onTokenLeave: handleTokenLeave as CodeViewOptions<DifflyCommentAnnotation>['onTokenLeave'],
-          }
-        : {}),
       layout: {
         paddingTop: 8,
         paddingBottom: 8,
@@ -684,7 +606,6 @@
       viewerSettings.diffStyle,
       viewerSettings.codeOverflow,
       viewerSettings.diffIndicators,
-      viewerSettings.lineDiffType,
       viewerSettings.hunkSeparators,
       viewerSettings.expandUnchanged ? '1' : '0',
       viewerSettings.collapsedContextThreshold,
@@ -693,18 +614,12 @@
       viewerSettings.disableBackground ? '1' : '0',
       viewerSettings.disableVirtualizationBuffers ? '1' : '0',
       viewerSettings.stickyHeader ? '1' : '0',
-      viewerSettings.syntaxMode,
-      viewerSettings.preferredHighlighter,
       viewerSettings.useCSSClasses ? '1' : '0',
-      viewerSettings.tokenizeMaxLineLength,
-      viewerSettings.tokenizeMaxLength,
       viewerSettings.maxLineDiffLength,
       viewerSettings.lineHoverHighlight,
-      viewerSettings.enableTokenInteractionsOnWhitespace ? '1' : '0',
       viewerSettings.enableGutterUtility ? '1' : '0',
       viewerSettings.enableLineSelection ? '1' : '0',
       viewerSettings.controlledSelection ? '1' : '0',
-      viewerSettings.tokenHover ? '1' : '0',
       reviewModeEnabled ? '1' : '0',
       reviewSourceKind,
     ].join('\u0000')
@@ -1419,11 +1334,6 @@
       layoutRetryFrame = null
     }
 
-    if (firstRenderedDiffFinishFrame !== null) {
-      window.cancelAnimationFrame(firstRenderedDiffFinishFrame)
-      firstRenderedDiffFinishFrame = null
-    }
-
     unsubscribeScroll?.()
     unsubscribeScroll = null
     unsubscribeNativeScroll?.()
@@ -1436,7 +1346,6 @@
     workerPool?.terminate()
     workerPool = null
     lastWorkerStats = null
-    tokenHoverController.destroy()
   })
 </script>
 
