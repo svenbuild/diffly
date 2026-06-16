@@ -13,7 +13,6 @@ import {
   describe,
   expect,
   it,
-  vi,
 } from 'vitest'
 import type {
   DiffEntry,
@@ -27,8 +26,6 @@ import { GitProvider } from './git-provider'
 const execFileAsync = promisify(execFile)
 
 const tempRepos: string[] = []
-
-vi.setConfig({ testTimeout: 15000 })
 
 describe('GitProvider working tree entries', () => {
   afterEach(async () => {

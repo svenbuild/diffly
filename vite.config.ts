@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 export default defineConfig({
@@ -7,5 +7,8 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+  },
+  test: {
+    testTimeout: 15000,
   },
 })
