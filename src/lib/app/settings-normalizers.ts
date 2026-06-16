@@ -17,6 +17,7 @@ export function createDefaultViewerSettings(): CompareViewerSettings {
     // word/char highlighting in Diff settings.
     lineDiffType: 'none',
     hunkSeparators: 'line-info',
+    smartDiffAlignment: true,
     expandUnchanged: false,
     collapsedContextThreshold: 3,
     expansionLineCount: 100,
@@ -82,6 +83,7 @@ export function normalizeViewerSettings(
     diffIndicators: settings?.diffIndicators ?? 'bars',
     lineDiffType: settings?.lineDiffType ?? legacyLineDiffType,
     hunkSeparators: settings?.hunkSeparators ?? 'line-info',
+    smartDiffAlignment: settings?.smartDiffAlignment ?? true,
     expandUnchanged: settings?.expandUnchanged ?? Boolean(legacy?.showFullFile),
     collapsedContextThreshold: clampNumber(
       settings?.collapsedContextThreshold ?? legacy?.contextLines,

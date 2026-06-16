@@ -55,6 +55,7 @@
     runReviewAction,
     type ReviewActionItem,
   } from './review-mode'
+  import { buildSmartDiffPatch } from './smart-diff'
   import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
@@ -640,6 +641,7 @@
       text.patchCacheKey ?? text.patchText?.length ?? '',
       text.leftText.length,
       text.rightText.length,
+      viewerSettings.smartDiffAlignment ? '1' : '0',
     ].join('\u0000')
   }
 
@@ -786,6 +788,10 @@
               const text = diff?.text ?? null
               const leftFile = text ? buildDirectoryCodeViewFile(entry, 'left', text) : null
               const rightFile = text ? buildDirectoryCodeViewFile(entry, 'right', text) : null
+              const smartPatch =
+                text && leftFile && rightFile && viewerSettings.smartDiffAlignment && !text.patchText
+                  ? buildSmartDiffPatch(text, leftFile.name, rightFile.name)
+                  : null
               const fileDiff = nativePatchText
                 ? processFile(nativePatchText, {
                     cacheKey: entry.diffPatchCacheKey ?? signature,
@@ -800,6 +806,14 @@
                       newFile: rightFile ?? undefined,
                       throwOnError: true,
                     })
+                  : smartPatch
+                    ? processFile(smartPatch.patchText, {
+                        cacheKey: smartPatch.cacheKey,
+                        isGitDiff: true,
+                        oldFile: leftFile ?? undefined,
+                        newFile: rightFile ?? undefined,
+                        throwOnError: true,
+                      })
                   : leftFile && rightFile
                     ? parseDiffFromFile(
                         leftFile,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { FileDiff, areOptionsEqual, getFiletypeFromFileName } from '@pierre/diffs'
+  import { FileDiff, areOptionsEqual, getFiletypeFromFileName, processFile } from '@pierre/diffs'
   import {
     WorkerPoolManager,
     type WorkerInitializationRenderOptions,
@@ -47,6 +47,7 @@
     runReviewAction,
     type ReviewActionItem,
   } from './review-mode'
+  import { buildSmartDiffPatch } from './smart-diff'
   import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
@@ -70,6 +71,8 @@
   let workerPool: WorkerPoolManager | null = null
   let unsubscribeWorkerStats: (() => void) | null = null
   let renderedOptions: FileDiffOptions<DifflyCommentAnnotation> | null = null
+  let parsedPatchCache: { key: string; fileDiff: FileDiffMetadata | null } | null = null
+  let renderedPreparedDiffKey = ''
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
   let commentId = 0
@@ -105,6 +108,20 @@
 
   function textKey() {
     return [
+      text.leftCacheKey ?? text.leftSha256 ?? text.leftText.length,
+      text.rightCacheKey ?? text.rightSha256 ?? text.rightText.length,
+      text.patchCacheKey ?? text.patchText?.length ?? '',
+      text.leftText.length,
+      text.rightText.length,
+    ].join(':')
+  }
+
+  function preparedDiffKey() {
+    return [
+      text.patchCacheKey ?? text.patchText?.length ?? '',
+      viewerSettings.smartDiffAlignment ? 'smart' : 'pierre',
+      leftLabel,
+      rightLabel,
       text.leftCacheKey ?? text.leftSha256 ?? text.leftText.length,
       text.rightCacheKey ?? text.rightSha256 ?? text.rightText.length,
       text.leftText.length,
@@ -325,6 +342,49 @@
     return file
   }
 
+  function buildPreparsedFileDiff(oldFile: FileContents, newFile: FileContents) {
+    const patch = text.patchText
+      ? {
+          cacheKey: text.patchCacheKey ?? textKey(),
+          patchText: text.patchText,
+        }
+      : viewerSettings.smartDiffAlignment
+        ? buildSmartDiffPatch(text, leftLabel, rightLabel)
+        : null
+
+    if (!patch) {
+      return undefined
+    }
+
+    const parsedCacheKey = [
+      patch.cacheKey,
+      oldFile.cacheKey,
+      newFile.cacheKey,
+      oldFile.lang ?? 'auto',
+      newFile.lang ?? 'auto',
+    ].join('\u0000')
+
+    if (parsedPatchCache?.key === parsedCacheKey) {
+      return parsedPatchCache.fileDiff ?? undefined
+    }
+
+    try {
+      const fileDiff = processFile(patch.patchText, {
+        cacheKey: patch.cacheKey,
+        isGitDiff: true,
+        oldFile,
+        newFile,
+        throwOnError: true,
+      }) ?? null
+      parsedPatchCache = { key: parsedCacheKey, fileDiff }
+      return fileDiff ?? undefined
+    } catch (error) {
+      console.error('Unable to parse prepared diff patch', error)
+      parsedPatchCache = { key: parsedCacheKey, fileDiff: null }
+      return undefined
+    }
+  }
+
   function workerPoolOptions(): WorkerPoolOptions {
     return {
       workerFactory: () => new DiffsWorker(),
@@ -416,7 +476,9 @@
     syncWorkerRenderOptions()
     const nextOptions = buildOptions()
     const nextTextKey = textKey()
+    const nextPreparedDiffKey = preparedDiffKey()
     const textChanged = nextTextKey !== renderedTextKey
+    const preparedDiffChanged = nextPreparedDiffKey !== renderedPreparedDiffKey
     if (textChanged) {
       renderedTextKey = nextTextKey
       renderedAnnotationsKey = ''
@@ -425,7 +487,8 @@
       interactionMessage = ''
     }
 
-    const forceRender = !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions)
+    const forceRender =
+      !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions) || preparedDiffChanged
     const nextAnnotationsKey = annotationKey(commentAnnotations)
     const annotationsChanged = nextAnnotationsKey !== renderedAnnotationsKey
 
@@ -435,6 +498,7 @@
       fileDiff.setOptions(nextOptions)
     }
     renderedOptions = nextOptions
+    renderedPreparedDiffKey = nextPreparedDiffKey
 
     if (!forceRender && !annotationsChanged && !textChanged) {
       if (viewerSettings.controlledSelection) {
@@ -446,9 +510,12 @@
 
     renderedAnnotationsKey = nextAnnotationsKey
 
+    const oldFile = buildFile('left', leftLabel, text.leftText, text.leftCacheKey, text.leftSha256)
+    const newFile = buildFile('right', rightLabel, text.rightText, text.rightCacheKey, text.rightSha256)
     fileDiff.render({
-      oldFile: buildFile('left', leftLabel, text.leftText, text.leftCacheKey, text.leftSha256),
-      newFile: buildFile('right', rightLabel, text.rightText, text.rightCacheKey, text.rightSha256),
+      oldFile,
+      newFile,
+      fileDiff: buildPreparsedFileDiff(oldFile, newFile),
       containerWrapper: host,
       forceRender,
       lineAnnotations: commentAnnotations,

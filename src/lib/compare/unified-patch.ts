@@ -57,21 +57,38 @@ function splitLines(text: string): SplitResult {
   return { lines, trailingNewline }
 }
 
-function commonPrefixLength(a: string[], b: string[]): number {
-  const max = Math.min(a.length, b.length)
+function commonRangePrefixLength(
+  a: string[],
+  aStart: number,
+  aEnd: number,
+  b: string[],
+  bStart: number,
+  bEnd: number,
+): number {
   let length = 0
-  while (length < max && a[length] === b[length]) {
+  while (
+    aStart + length < aEnd &&
+    bStart + length < bEnd &&
+    a[aStart + length] === b[bStart + length]
+  ) {
     length += 1
   }
   return length
 }
 
-function commonSuffixLength(a: string[], b: string[], prefix: number): number {
-  const max = Math.min(a.length, b.length) - prefix
+function commonRangeSuffixLength(
+  a: string[],
+  aStart: number,
+  aEnd: number,
+  b: string[],
+  bStart: number,
+  bEnd: number,
+): number {
   let length = 0
   while (
-    length < max &&
-    a[a.length - 1 - length] === b[b.length - 1 - length]
+    aEnd - 1 - length >= aStart &&
+    bEnd - 1 - length >= bStart &&
+    a[aEnd - 1 - length] === b[bEnd - 1 - length]
   ) {
     length += 1
   }
@@ -142,19 +159,151 @@ function diffMiddle(a: string[], b: string[]): DiffOp[] {
   return ops
 }
 
-function diffOps(a: string[], b: string[]): DiffOp[] {
-  const prefix = commonPrefixLength(a, b)
-  const suffix = commonSuffixLength(a, b, prefix)
-  const ops: DiffOp[] = []
+interface Anchor {
+  a: number
+  b: number
+}
 
+interface LinePositionCount {
+  index: number
+  count: number
+}
+
+function uniqueLineAnchors(
+  a: string[],
+  aStart: number,
+  aEnd: number,
+  b: string[],
+  bStart: number,
+  bEnd: number,
+): Anchor[] {
+  const leftCounts = new Map<string, LinePositionCount>()
+  const rightCounts = new Map<string, LinePositionCount>()
+
+  for (let index = aStart; index < aEnd; index += 1) {
+    const line = a[index]
+    const count = leftCounts.get(line)
+    leftCounts.set(line, {
+      index,
+      count: (count?.count ?? 0) + 1,
+    })
+  }
+
+  for (let index = bStart; index < bEnd; index += 1) {
+    const line = b[index]
+    const count = rightCounts.get(line)
+    rightCounts.set(line, {
+      index,
+      count: (count?.count ?? 0) + 1,
+    })
+  }
+
+  const candidates: Anchor[] = []
+  for (let index = aStart; index < aEnd; index += 1) {
+    const line = a[index]
+    const left = leftCounts.get(line)
+    const right = rightCounts.get(line)
+    if (left?.count === 1 && right?.count === 1) {
+      candidates.push({ a: index, b: right.index })
+    }
+  }
+
+  return longestIncreasingAnchors(candidates)
+}
+
+function longestIncreasingAnchors(candidates: Anchor[]): Anchor[] {
+  if (candidates.length <= 1) {
+    return candidates
+  }
+
+  const tails: number[] = []
+  const previous = new Array<number>(candidates.length).fill(-1)
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    let low = 0
+    let high = tails.length
+    while (low < high) {
+      const middle = (low + high) >> 1
+      if (candidates[tails[middle]].b < candidates[index].b) {
+        low = middle + 1
+      } else {
+        high = middle
+      }
+    }
+
+    if (low > 0) {
+      previous[index] = tails[low - 1]
+    }
+    tails[low] = index
+  }
+
+  const result: Anchor[] = []
+  let cursor = tails[tails.length - 1]
+  while (cursor !== -1) {
+    result.push(candidates[cursor])
+    cursor = previous[cursor]
+  }
+
+  return result.reverse()
+}
+
+function diffRangeWithPatience(
+  a: string[],
+  aStart: number,
+  aEnd: number,
+  b: string[],
+  bStart: number,
+  bEnd: number,
+): DiffOp[] {
+  const ops: DiffOp[] = []
+  const prefix = commonRangePrefixLength(a, aStart, aEnd, b, bStart, bEnd)
   pushOp(ops, 'equal', prefix)
-  for (const op of diffMiddle(
-    a.slice(prefix, a.length - suffix),
-    b.slice(prefix, b.length - suffix),
-  )) {
+  aStart += prefix
+  bStart += prefix
+
+  const suffix = commonRangeSuffixLength(a, aStart, aEnd, b, bStart, bEnd)
+  aEnd -= suffix
+  bEnd -= suffix
+
+  if (aStart >= aEnd || bStart >= bEnd) {
+    pushOp(ops, 'delete', aEnd - aStart)
+    pushOp(ops, 'insert', bEnd - bStart)
+    pushOp(ops, 'equal', suffix)
+    return ops
+  }
+
+  const anchors = uniqueLineAnchors(a, aStart, aEnd, b, bStart, bEnd)
+  if (anchors.length === 0) {
+    for (const op of diffMiddle(a.slice(aStart, aEnd), b.slice(bStart, bEnd))) {
+      pushOp(ops, op.type, op.count)
+    }
+    pushOp(ops, 'equal', suffix)
+    return ops
+  }
+
+  let currentA = aStart
+  let currentB = bStart
+  for (const anchor of anchors) {
+    for (const op of diffRangeWithPatience(a, currentA, anchor.a, b, currentB, anchor.b)) {
+      pushOp(ops, op.type, op.count)
+    }
+    pushOp(ops, 'equal', 1)
+    currentA = anchor.a + 1
+    currentB = anchor.b + 1
+  }
+
+  for (const op of diffRangeWithPatience(a, currentA, aEnd, b, currentB, bEnd)) {
     pushOp(ops, op.type, op.count)
   }
   pushOp(ops, 'equal', suffix)
+  return ops
+}
+
+function diffOps(a: string[], b: string[]): DiffOp[] {
+  const ops: DiffOp[] = []
+  for (const op of diffRangeWithPatience(a, 0, a.length, b, 0, b.length)) {
+    pushOp(ops, op.type, op.count)
+  }
   return ops
 }
 
