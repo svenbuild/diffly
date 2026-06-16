@@ -547,7 +547,7 @@
       // an extra scroll being appended after yours. Keep in sync with
       // --diffs-line-height in buildPierreDiffUnsafeCss.
       itemMetrics: { lineHeight: appearanceSettings.codeFontSize + 5 },
-      diffStyle: viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle,
+      diffStyle: effectiveDiffStyle(),
       overflow: viewerSettings.codeOverflow,
       diffIndicators: viewerSettings.diffIndicators,
       lineDiffType: viewerSettings.lineDiffType,
@@ -643,6 +643,10 @@
     ].join('\u0000')
   }
 
+  function effectiveDiffStyle() {
+    return viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle
+  }
+
   function annotationKey(annotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>>) {
     return annotations
       .map((annotation) => [
@@ -665,7 +669,8 @@
       entry.rightSize ?? '',
       loadedEntry.error,
       loadedEntry.diff?.text ? 'ready' : 'loading',
-      estimatePlaceholderLineCount(entry),
+      loadedEntry.diff?.text?.patchCacheKey ?? loadedEntry.diff?.text?.patchText?.length ?? '',
+      estimatePlaceholderLineCount(entry, loadedEntry.diff?.text ?? null, effectiveDiffStyle()),
       collapsedPaths.has(entry.relativePath) ? '1' : '0',
     ].join('\u0000')
   }
@@ -685,6 +690,8 @@
         entry: loadedEntry.entry,
         error: loadedEntry.error,
         hasTextDiff: Boolean(loadedEntry.diff?.text),
+        text: loadedEntry.diff?.text ?? null,
+        viewStyle: effectiveDiffStyle(),
       },
       key,
       placeholderBlankLineSuffixes,
