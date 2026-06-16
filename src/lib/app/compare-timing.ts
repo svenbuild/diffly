@@ -171,6 +171,23 @@ export function finishCompareTiming(
   activeRun = null
 }
 
+export function cancelCompareTiming(
+  name = 'compare-cancelled',
+  detail?: Record<string, unknown>,
+) {
+  finishCompareLoading(name, detail)
+
+  const run = activeRun
+  if (!run || run.finished) {
+    return
+  }
+
+  addMark(run, name, detail)
+  run.finished = true
+  clearActiveRunTimeout()
+  activeRun = null
+}
+
 function createIdleLoadingState(): CompareLoadingState {
   return {
     active: false,

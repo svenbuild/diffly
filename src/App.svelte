@@ -44,6 +44,7 @@
     mapSessionDiffEntries,
   } from './lib/app/git-diff-session'
   import {
+    cancelCompareTiming,
     finishCompareTiming,
     markCompareTiming,
     startCompareTiming,
@@ -418,6 +419,10 @@
   }
 
   function hasActiveCompareSession() {
+    return screen === 'compare' || (screen === 'settings' && settingsReturnScreen === 'compare')
+  }
+
+  function shouldKeepCompareMounted() {
     return screen === 'compare' || (screen === 'settings' && settingsReturnScreen === 'compare')
   }
 
@@ -830,6 +835,7 @@
       settingsReturnScreen = screen
     }
 
+    cancelCompareTiming('settings-opened')
     activeSettingsSection = section
     screen = 'settings'
     errorMessage = ''
@@ -1225,6 +1231,13 @@
         if (allDone) {
           stopDirectoryComparePolling(false, false)
           loading = false
+
+          const hasDiffableEntries = directoryEntries.some(isDiffableDirectoryEntry)
+          if (!hasDiffableEntries) {
+            finishCompareTiming('compare-ready-empty', {
+              entries: directoryEntries.length,
+            })
+          }
 
           if (directoryEntries.length === 0) {
             selectedRelativePath = ''
@@ -2132,9 +2145,10 @@
       disposeDiffSessionQuietly(previousSessionId)
 
       const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
-      if (nextEntry) {
+      if (nextEntry && isDiffableDirectoryEntry(nextEntry)) {
         void selectEntry(nextEntry, compareRevision)
       } else {
+        selectedRelativePath = ''
         finishCompareTiming('compare-ready-empty', {
           entries: mappedEntries.length,
           scope: targetScope ?? 'none',
@@ -2820,7 +2834,7 @@
     {activateListEntry}
     {isTargetSelected}
   />
-{:else if screen === 'compare'}
+{:else if shouldKeepCompareMounted()}
   <CompareScreen
     {updateIndicatorState}
     showUpdateIndicator={shouldShowUpdateIndicator()}
@@ -2877,7 +2891,9 @@
     onSystemMonitorChange={setSystemMonitor}
     {getDetailBasesForPath}
   />
-{:else}
+{/if}
+
+{#if screen === 'settings'}
   <SettingsRoute
     {activeSettingsSection}
     {appearanceSettings}

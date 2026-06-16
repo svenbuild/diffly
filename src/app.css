@@ -420,6 +420,7 @@ select:focus-visible {
 }
 
 .app-frame-content {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -642,6 +643,9 @@ h2 {
 }
 
 .settings-view {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
