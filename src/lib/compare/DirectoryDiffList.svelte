@@ -110,8 +110,6 @@
   let loadResumeTimer: number | null = null
   let entryStateFlushFrame: number | null = null
   let textEntries: LoadedDirectoryDiff[] = []
-  let activeTextEntries: LoadedDirectoryDiff[] = []
-  let activeChangedEntryPaths: string[] = []
   let hasRenderableDirectoryItems = false
   let hasDiffableDirectoryItems = false
   let pendingEntryCount = 0
@@ -916,17 +914,6 @@
     )
   }
 
-  function getActiveTextEntry() {
-    if (selectedRelativePath) {
-      const selectedIndex = textEntryIndexByPath.get(selectedRelativePath)
-      if (selectedIndex !== undefined) {
-        return textEntries[selectedIndex] ?? null
-      }
-    }
-
-    return textEntries[0] ?? null
-  }
-
   function rebuildVisibleEntries(states = entryStates) {
     const nextTextEntries: LoadedDirectoryDiff[] = []
     const nextTextEntryIndexByPath = new Map<string, number>()
@@ -1081,15 +1068,7 @@
     scheduleActiveLoads()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
-  $: {
-    const activeTextEntry = getActiveTextEntry()
-    activeTextEntries = activeTextEntry ? [activeTextEntry] : []
-    activeChangedEntryPaths =
-      activeTextEntry && changedEntryPaths.includes(activeTextEntry.entry.relativePath)
-        ? [activeTextEntry.entry.relativePath]
-        : []
-    hasRenderableDirectoryItems = activeTextEntries.length > 0
-  }
+  $: hasRenderableDirectoryItems = textEntries.length > 0
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
 </script>
 
@@ -1114,7 +1093,7 @@
     </div>
   {:else}
     <PierreDirectoryVirtualDiffView
-      entries={activeTextEntries}
+      entries={textEntries}
       compareKey={`${leftPath}\u0000${rightPath}`}
       {collapsedPaths}
       {selectedRelativePath}
@@ -1123,7 +1102,7 @@
       {resolvedThemeMode}
       {viewMode}
       {scrollTargetRevision}
-      changedEntryPaths={activeChangedEntryPaths}
+      {changedEntryPaths}
       {changedEntryRevision}
       {entryStructureRevision}
       toggleEntry={toggleEntryByPath}

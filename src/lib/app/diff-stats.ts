@@ -1,4 +1,4 @@
-import { parseDiffFromFile } from '@pierre/diffs'
+import { parseDiffFromFile, processFile } from '@pierre/diffs'
 import type { DiffStatsSnapshot, TextDiffPayload } from '../types'
 
 interface TextDiffStats {
@@ -27,6 +27,7 @@ function textStatsSignature(text: TextDiffPayload) {
   return [
     text.leftCacheKey ?? text.leftSha256 ?? text.leftText.length,
     text.rightCacheKey ?? text.rightSha256 ?? text.rightText.length,
+    text.patchCacheKey ?? text.patchText?.length ?? '',
     text.leftExists ? '1' : '0',
     text.rightExists ? '1' : '0',
     text.leftHasTrailingNewline ? '1' : '0',
@@ -40,20 +41,30 @@ export function buildTextDiffStats(text: TextDiffPayload): TextDiffStats & { sig
     : countTextLines(text.leftText, text.leftHasTrailingNewline)
 
   try {
-    const diff = parseDiffFromFile(
-      {
-        name: 'left',
-        contents: text.leftText,
-        cacheKey: text.leftCacheKey ?? text.leftSha256 ?? undefined,
-      },
-      {
-        name: 'right',
-        contents: text.rightText,
-        cacheKey: text.rightCacheKey ?? text.rightSha256 ?? undefined,
-      },
-      undefined,
-      true,
-    )
+    const diff = text.patchText
+      ? processFile(text.patchText, {
+          cacheKey: text.patchCacheKey ?? textStatsSignature(text),
+          isGitDiff: true,
+          throwOnError: true,
+        })
+      : parseDiffFromFile(
+          {
+            name: 'left',
+            contents: text.leftText,
+            cacheKey: text.leftCacheKey ?? text.leftSha256 ?? undefined,
+          },
+          {
+            name: 'right',
+            contents: text.rightText,
+            cacheKey: text.rightCacheKey ?? text.rightSha256 ?? undefined,
+          },
+          undefined,
+          true,
+        )
+
+    if (!diff) {
+      throw new Error('Unable to parse diff stats.')
+    }
 
     return {
       additions: diff.hunks.reduce((total, hunk) => total + hunk.additionLines, 0),

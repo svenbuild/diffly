@@ -3,6 +3,7 @@
   import {
     CodeView,
     parseDiffFromFile,
+    processFile,
     type CodeViewItem,
     type CodeViewLineSelection,
     type CodeViewOptions,
@@ -630,6 +631,7 @@
       entry.relativePath,
       text.leftCacheKey ?? text.leftSha256 ?? text.leftText.length,
       text.rightCacheKey ?? text.rightSha256 ?? text.rightText.length,
+      text.patchCacheKey ?? text.patchText?.length ?? '',
       text.leftText.length,
       text.rightText.length,
     ].join('\u0000')
@@ -716,12 +718,21 @@
               markCompareTimingOnce('first-pierre-parse-start', {
                 path: entry.relativePath,
               })
-              const fileDiff = parseDiffFromFile(
-                buildDirectoryCodeViewFile(entry, 'left', diff.text),
-                buildDirectoryCodeViewFile(entry, 'right', diff.text),
-                undefined,
-                true,
-              )
+              const fileDiff = diff.text.patchText
+                ? processFile(diff.text.patchText, {
+                    cacheKey: diff.text.patchCacheKey ?? signature,
+                    isGitDiff: true,
+                    throwOnError: true,
+                  })
+                : parseDiffFromFile(
+                    buildDirectoryCodeViewFile(entry, 'left', diff.text),
+                    buildDirectoryCodeViewFile(entry, 'right', diff.text),
+                    undefined,
+                    true,
+                  )
+              if (!fileDiff) {
+                throw new Error('Unable to parse directory diff item.')
+              }
               markCompareTimingOnce('first-pierre-parse-end', {
                 path: entry.relativePath,
               })

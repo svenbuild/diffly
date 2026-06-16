@@ -382,7 +382,8 @@ function estimatedFileDiffBytes(result: FileDiffResult) {
     Buffer.byteLength(result.rightLabel, 'utf8') +
     (text
       ? Buffer.byteLength(text.leftText, 'utf8') +
-        Buffer.byteLength(text.rightText, 'utf8')
+        Buffer.byteLength(text.rightText, 'utf8') +
+        Buffer.byteLength(text.patchText ?? '', 'utf8')
       : 0)
   )
 }
@@ -911,6 +912,8 @@ function buildTextPayload(left: DiffSnapshot, right: DiffSnapshot): TextDiffPayl
   return {
     leftText: left.kind === 'text' ? left.text ?? '' : '',
     rightText: right.kind === 'text' ? right.text ?? '' : '',
+    patchText: null,
+    patchCacheKey: null,
     leftExists: left.kind === 'text',
     rightExists: right.kind === 'text',
     leftCacheKey: left.kind === 'text' ? left.cacheKey : null,

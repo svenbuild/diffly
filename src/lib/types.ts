@@ -393,6 +393,8 @@ export type DirectoryDetailLoader =
 export interface TextDiffPayload {
   leftText: string
   rightText: string
+  patchText?: string | null
+  patchCacheKey?: string | null
   leftExists: boolean
   rightExists: boolean
   leftCacheKey: string | null

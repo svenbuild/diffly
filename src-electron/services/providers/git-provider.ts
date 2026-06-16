@@ -56,6 +56,12 @@ const GIT_DIFF_ENTRY_ARGS = [
   '--no-textconv',
 ]
 
+const GIT_DIFF_PATCH_ARGS = [
+  '--no-ext-diff',
+  '--no-textconv',
+  '--full-index',
+]
+
 export class GitProvider implements DiffSessionProvider {
   create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
     void options
@@ -81,7 +87,8 @@ export class GitProvider implements DiffSessionProvider {
     const [left, right] = entry.kind === 'gitWorkingTree'
       ? gitWorkingTreeSnapshots(entry)
       : gitRefSnapshots(entry)
-    return buildFileDiffFromGit(left, right, options)
+    const result = await buildFileDiffFromGit(left, right, options)
+    return attachGitPatch(result, entry)
   }
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
@@ -582,6 +589,108 @@ function gitRefSnapshots(
     case 'conflicted':
       throw new Error('Git conflicted file details are not implemented yet.')
   }
+}
+
+async function attachGitPatch(
+  result: FileDiffResult,
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' | 'gitRef' }>,
+) {
+  if (result.contentKind !== 'text' || !result.text) {
+    return result
+  }
+
+  const patch = await readGitPatch(entry)
+  if (!patch) {
+    return result
+  }
+
+  result.text.patchText = patch
+  result.text.patchCacheKey = [
+    'git-patch',
+    entry.kind,
+    entry.path,
+    entry.oldPath ?? '',
+    'scope' in entry ? entry.scope : '',
+    'leftRef' in entry ? entry.leftRef ?? 'empty' : '',
+    'rightRef' in entry ? entry.rightRef : '',
+    entry.srcOid ?? '',
+    entry.dstOid ?? '',
+    patch.length,
+  ].join('\u0000')
+  return result
+}
+
+async function readGitPatch(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' | 'gitRef' }>,
+) {
+  const args = gitPatchArgs(entry)
+  if (!args) {
+    return null
+  }
+
+  try {
+    const result = await runGit(entry.repositoryRoot, args, {
+      ...GIT_ENTRY_OPTIONS,
+      allowNonZeroExit: true,
+      maxStdoutBytes: 1024 * 1024 * 16,
+    })
+    return result.exitCode === 0 && result.stdout.trim()
+      ? result.stdout
+      : null
+  } catch {
+    return null
+  }
+}
+
+function gitPatchArgs(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' | 'gitRef' }>,
+) {
+  const paths = gitPatchPaths(entry)
+  if (paths.length === 0) {
+    return null
+  }
+
+  if (entry.kind === 'gitWorkingTree') {
+    switch (entry.scope) {
+      case 'all':
+        return ['diff', ...GIT_DIFF_PATCH_ARGS, 'HEAD', '--', ...paths]
+      case 'staged':
+        return ['diff', ...GIT_DIFF_PATCH_ARGS, '--cached', '--', ...paths]
+      case 'unstaged':
+        return ['diff', ...GIT_DIFF_PATCH_ARGS, '--', ...paths]
+      case 'untracked':
+        return null
+    }
+  }
+
+  if (entry.leftRef === null) {
+    return [
+      'diff-tree',
+      '--no-commit-id',
+      '--root',
+      '-r',
+      '-p',
+      ...GIT_DIFF_PATCH_ARGS,
+      entry.rightRef,
+      '--',
+      ...paths,
+    ]
+  }
+
+  return [
+    'diff',
+    ...GIT_DIFF_PATCH_ARGS,
+    entry.leftRef,
+    entry.rightRef,
+    '--',
+    ...paths,
+  ]
+}
+
+function gitPatchPaths(entry: { path: string; oldPath: string | null }) {
+  return entry.oldPath && entry.oldPath !== entry.path
+    ? [entry.oldPath, entry.path]
+    : [entry.path]
 }
 
 function leftRefSource(

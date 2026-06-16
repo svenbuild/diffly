@@ -201,6 +201,19 @@ describe('GitProvider working tree entries', () => {
     expect(result.text?.rightText).toBe('worktree\n')
   })
 
+  it('attaches git patch text for modified working tree files', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'worktree\n')
+
+    const result = await openEntry(repoPath, 'all', 'tracked.txt')
+
+    expect(result.text?.patchText).toContain('diff --git a/tracked.txt b/tracked.txt')
+    expect(result.text?.patchText).toContain('-base')
+    expect(result.text?.patchText).toContain('+worktree')
+    expect(result.text?.patchCacheKey).toContain('git-patch')
+  })
+
   it('opens untracked files as empty left and working tree right', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'baseline.txt', 'baseline\n')
