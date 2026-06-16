@@ -245,10 +245,10 @@
   function workerRenderOptions(): WorkerInitializationRenderOptions {
     return {
       theme: resolvePierreDiffTheme(appearanceSettings),
-      useTokenTransformer: false,
-      lineDiffType: 'none',
+      useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
+      lineDiffType: viewerSettings.lineDiffType,
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
-      tokenizeMaxLineLength: 0,
+      tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
       preferredHighlighter: viewerSettings.preferredHighlighter,
     }
   }
@@ -550,7 +550,7 @@
       diffStyle: viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle,
       overflow: viewerSettings.codeOverflow,
       diffIndicators: viewerSettings.diffIndicators,
-      lineDiffType: 'none',
+      lineDiffType: viewerSettings.lineDiffType,
       hunkSeparators: viewerSettings.hunkSeparators,
       expandUnchanged: viewerSettings.expandUnchanged,
       collapsedContextThreshold: viewerSettings.collapsedContextThreshold,
@@ -562,12 +562,12 @@
       stickyHeaders: viewerSettings.stickyHeader,
       preferredHighlighter: viewerSettings.preferredHighlighter,
       useCSSClasses: viewerSettings.useCSSClasses,
-      useTokenTransformer: false,
-      tokenizeMaxLineLength: 0,
-      tokenizeMaxLength: 0,
+      useTokenTransformer: viewerSettings.syntaxMode === 'shiki',
+      tokenizeMaxLineLength: viewerSettings.tokenizeMaxLineLength,
+      tokenizeMaxLength: viewerSettings.tokenizeMaxLength,
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
-      enableTokenInteractionsOnWhitespace: false,
+      enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
       enableGutterUtility: viewerSettings.enableGutterUtility,
       controlledSelection: viewerSettings.controlledSelection,
       enableLineSelection:
@@ -615,9 +615,15 @@
       viewerSettings.disableBackground ? '1' : '0',
       viewerSettings.disableVirtualizationBuffers ? '1' : '0',
       viewerSettings.stickyHeader ? '1' : '0',
+      viewerSettings.syntaxMode,
+      viewerSettings.preferredHighlighter,
       viewerSettings.useCSSClasses ? '1' : '0',
+      viewerSettings.tokenizeMaxLineLength,
+      viewerSettings.tokenizeMaxLength,
       viewerSettings.maxLineDiffLength,
+      viewerSettings.lineDiffType,
       viewerSettings.lineHoverHighlight,
+      viewerSettings.enableTokenInteractionsOnWhitespace ? '1' : '0',
       viewerSettings.enableGutterUtility ? '1' : '0',
       viewerSettings.enableLineSelection ? '1' : '0',
       viewerSettings.controlledSelection ? '1' : '0',
@@ -718,20 +724,27 @@
               markCompareTimingOnce('first-pierre-parse-start', {
                 path: entry.relativePath,
               })
+              const leftFile = buildDirectoryCodeViewFile(entry, 'left', diff.text)
+              const rightFile = buildDirectoryCodeViewFile(entry, 'right', diff.text)
               const fileDiff = diff.text.patchText
                 ? processFile(diff.text.patchText, {
                     cacheKey: diff.text.patchCacheKey ?? signature,
                     isGitDiff: true,
+                    oldFile: leftFile,
+                    newFile: rightFile,
                     throwOnError: true,
                   })
                 : parseDiffFromFile(
-                    buildDirectoryCodeViewFile(entry, 'left', diff.text),
-                    buildDirectoryCodeViewFile(entry, 'right', diff.text),
+                    leftFile,
+                    rightFile,
                     undefined,
                     true,
                   )
               if (!fileDiff) {
                 throw new Error('Unable to parse directory diff item.')
+              }
+              if (rightFile.lang) {
+                fileDiff.lang = rightFile.lang
               }
               markCompareTimingOnce('first-pierre-parse-end', {
                 path: entry.relativePath,
