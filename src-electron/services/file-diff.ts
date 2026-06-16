@@ -27,6 +27,7 @@ const FILE_DIFF_CACHE_LIMIT = 32
 const FILE_DIFF_CACHE_MAX_BYTES = 48 * 1024 * 1024
 const CRLF_BYTES = Buffer.from('\r\n')
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+const WINDOWS_1252_DECODER = new TextDecoder('windows-1252')
 
 export type FileKind = 'missing' | 'tooLarge' | 'text' | 'image' | 'binary' | 'readError'
 export type DetectedFileKind = Exclude<FileKind, 'missing' | 'readError'>
@@ -789,7 +790,7 @@ function buildTextSnapshot(
   bytes: Uint8Array,
 ): DiffSnapshot {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const text = UTF8_DECODER.decode(buffer)
+  const text = decodeTextBytes(buffer)
   return {
     kind: 'text',
     exists: true,
@@ -802,6 +803,14 @@ function buildTextSnapshot(
     lineEnding: buffer.includes(CRLF_BYTES) ? 'crlf' : 'lf',
     hasTrailingNewline: bytes[bytes.byteLength - 1] === 10,
     error: null,
+  }
+}
+
+function decodeTextBytes(buffer: Buffer) {
+  try {
+    return UTF8_DECODER.decode(buffer)
+  } catch {
+    return WINDOWS_1252_DECODER.decode(buffer)
   }
 }
 

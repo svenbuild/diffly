@@ -132,6 +132,48 @@ describe('file diff snapshots', () => {
     expect(result.text?.rightText).toBe('right\n')
   })
 
+  it('keeps UTF-8 text intact when decoding local files', async () => {
+    const dir = await createTempDir()
+    const leftPath = join(dir, 'left.txt')
+    const rightPath = join(dir, 'right.txt')
+    await writeFile(leftPath, 'Grün\n')
+    await writeFile(rightPath, 'Grüne\n')
+
+    const result = await buildFileDiffFromPaths(
+      leftPath,
+      rightPath,
+      'left.txt',
+      'right.txt',
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.unsupported).toBeNull()
+    expect(result.text?.leftText).toBe('Grün\n')
+    expect(result.text?.rightText).toBe('Grüne\n')
+  })
+
+  it('decodes Windows-1252 text files that are not valid UTF-8', async () => {
+    const dir = await createTempDir()
+    const leftPath = join(dir, 'left.txt')
+    const rightPath = join(dir, 'right.txt')
+    await writeFile(leftPath, Buffer.from([0x47, 0x72, 0xfc, 0x6e, 0x0a]))
+    await writeFile(rightPath, Buffer.from([0x47, 0x72, 0xfc, 0x6e, 0x65, 0x0a]))
+
+    const result = await buildFileDiffFromPaths(
+      leftPath,
+      rightPath,
+      'left.txt',
+      'right.txt',
+      defaultOptions(),
+    )
+
+    expect(result.contentKind).toBe('text')
+    expect(result.unsupported).toBeNull()
+    expect(result.text?.leftText).toBe('Grün\n')
+    expect(result.text?.rightText).toBe('Grüne\n')
+  })
+
   it('detects local CRLF line endings and trailing newlines', async () => {
     const dir = await createTempDir()
     const leftPath = join(dir, 'left.txt')
