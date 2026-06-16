@@ -476,9 +476,22 @@
     if (!isDiffableDirectoryEntry(entry)) {
       return false
     }
+    if (entryUsesNativeGitPatch(entry)) {
+      return false
+    }
 
     const state = getEntryState(entry)
     return !(state?.revision === revision && (state.diff || state.error || state.loading))
+  }
+
+  function entryUsesNativeGitPatch(entry: DirectoryEntryResult) {
+    return Boolean(
+      entry.diffEntryScope &&
+        entry.diffEntryStatus !== 'untracked' &&
+        entry.diffEntryStatus !== 'conflicted' &&
+        entry.diffEntryStatus !== 'unsupported' &&
+        !entry.binary,
+    )
   }
 
   function isCollapsed(path: string) {
@@ -905,6 +918,9 @@
     if (!isDiffableDirectoryEntry(entry)) {
       return true
     }
+    if (entryUsesNativeGitPatch(entry)) {
+      return true
+    }
 
     return Boolean(
       state &&
@@ -1017,6 +1033,7 @@
       entry.rightPath ?? '',
       entry.leftSize ?? '',
       entry.rightSize ?? '',
+      entry.diffPatchCacheKey ?? entry.diffPatchText?.length ?? '',
       state?.loading ? 'loading' : 'idle',
       state?.error ?? '',
       diff?.contentKind ?? '',

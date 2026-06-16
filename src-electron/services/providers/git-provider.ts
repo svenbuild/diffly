@@ -1,5 +1,3 @@
-import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
 import type {
   CompareOptions,
   DiffEntry,
@@ -16,13 +14,10 @@ import type {
 } from '../diff/provider'
 import {
   buildFileDiffFromGit,
-  detectFileKind,
-  sampleFile,
   type GitSnapshotSource,
 } from '../file-diff'
 import {
   parseGitRawNumstatOutput,
-  type GitNameStatusEntry,
   type GitRawNumstatResult,
 } from '../git/git-parser'
 import {
@@ -60,7 +55,14 @@ const GIT_DIFF_PATCH_ARGS = [
   '--no-ext-diff',
   '--no-textconv',
   '--full-index',
+  '--find-renames',
 ]
+
+const GIT_SCOPE_PATCH_OPTIONS = {
+  ...GIT_ENTRY_OPTIONS,
+  allowNonZeroExit: true,
+  maxStdoutBytes: 1024 * 1024 * 64,
+}
 
 export class GitProvider implements DiffSessionProvider {
   create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
@@ -207,75 +209,9 @@ export class GitProvider implements DiffSessionProvider {
   }
 
   private async buildWorkingTreeSessionData(source: Extract<DiffSource, { kind: 'git' }>) {
-    try {
-      const snapshot = await readStatusSnapshot(source.repositoryRoot)
-      if (!needsPreciseWorkingTreeDiff(snapshot)) {
-        return buildWorkingTreeSessionDataFromStatus(source, snapshot)
-      }
-    } catch {
-      // Fall back to the raw diff path below. It is slower, but it has the
-      // older precise rename and binary/size enrichment behavior.
-    }
-
-    return this.buildWorkingTreeSessionDataFromRawDiffs(source)
-  }
-
-  private async buildWorkingTreeSessionDataFromRawDiffs(source: Extract<DiffSource, { kind: 'git' }>) {
-    const repositoryRoot = source.repositoryRoot
-    const [
-      allTracked,
-      staged,
-      unstaged,
-      untracked,
-    ] = await Promise.all([
-      readOptionalRawNumstat(repositoryRoot, [
-        'diff',
-        'HEAD',
-        ...GIT_DIFF_ENTRY_ARGS,
-      ]),
-      readOptionalRawNumstat(repositoryRoot, [
-        'diff',
-        '--cached',
-        ...GIT_DIFF_ENTRY_ARGS,
-      ]),
-      readRawNumstat(repositoryRoot, [
-        'diff',
-        ...GIT_DIFF_ENTRY_ARGS,
-      ]),
-      readUntrackedPaths(repositoryRoot),
-    ])
-
-    const entries: DiffEntry[] = []
-    const entryData = new Map<string, ProviderEntryData>()
-    const allTrackedPaths = new Set<string>()
-
-    for (const item of allTracked.entries) {
-      allTrackedPaths.add(item.path)
-      await addNameStatusEntry(entries, entryData, source, 'all', item, allTracked.binaryPaths)
-    }
-
-    for (const path of untracked) {
-      if (!allTrackedPaths.has(path)) {
-        await addUntrackedEntry(entries, entryData, source, 'all', path)
-      }
-    }
-
-    for (const item of staged.entries) {
-      await addNameStatusEntry(entries, entryData, source, 'staged', item, staged.binaryPaths)
-    }
-
-    for (const item of unstaged.entries) {
-      await addNameStatusEntry(entries, entryData, source, 'unstaged', item, unstaged.binaryPaths)
-    }
-
-    for (const path of untracked) {
-      await addUntrackedEntry(entries, entryData, source, 'untracked', path)
-    }
-
-    return {
-      entries,
-      entryData,
-    }
+    const snapshot = await readStatusSnapshot(source.repositoryRoot)
+    const sessionData = buildWorkingTreeSessionDataFromStatus(source, snapshot)
+    return await attachWorkingTreePatches(source.repositoryRoot, sessionData, snapshot)
   }
 }
 
@@ -294,6 +230,217 @@ function buildWorkingTreeSessionDataFromStatus(
     entries,
     entryData,
   }
+}
+
+async function attachWorkingTreePatches(
+  repositoryRoot: string,
+  sessionData: ProviderSessionData,
+  snapshot: GitStatusSnapshot,
+) {
+  const patchesByScope = await readWorkingTreePatchMaps(repositoryRoot, snapshot)
+
+  for (const entry of sessionData.entries) {
+    if (
+      !entry.scope ||
+      entry.binary ||
+      entry.status === 'untracked' ||
+      entry.status === 'conflicted' ||
+      entry.status === 'unsupported'
+    ) {
+      continue
+    }
+
+    const scopePatches = patchesByScope.get(entry.scope)
+    if (!scopePatches) {
+      continue
+    }
+
+    const patch =
+      scopePatches.get(patchEntryKey(entry.path, entry.oldPath ?? null)) ??
+      scopePatches.get(patchEntryKey(entry.path, null))
+    if (!patch) {
+      continue
+    }
+    if (isBinaryGitPatch(patch)) {
+      entry.binary = true
+      continue
+    }
+
+    entry.diffPatchText = patch
+    entry.diffPatchCacheKey = [
+      'git-working-tree-patch',
+      entry.scope,
+      entry.path,
+      entry.oldPath ?? '',
+      patch.length,
+    ].join('\u0000')
+  }
+
+  return sessionData
+}
+
+async function readWorkingTreePatchMaps(repositoryRoot: string, snapshot: GitStatusSnapshot) {
+  const scopes: GitWorkingTreeScope[] = ['all', 'staged', 'unstaged']
+  const patchMaps = await Promise.all(
+    scopes.map(async (scope) => [
+      scope,
+      await readWorkingTreePatchMap(repositoryRoot, scope, snapshot),
+    ] as const),
+  )
+
+  return new Map<GitWorkingTreeScope, Map<string, string>>(patchMaps)
+}
+
+async function readWorkingTreePatchMap(
+  repositoryRoot: string,
+  scope: GitWorkingTreeScope,
+  snapshot: GitStatusSnapshot,
+) {
+  const args = workingTreePatchArgs(scope, snapshot)
+  if (!args) {
+    return new Map<string, string>()
+  }
+
+  const result = await runGit(repositoryRoot, args, GIT_SCOPE_PATCH_OPTIONS)
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    return new Map<string, string>()
+  }
+
+  return splitGitPatchByEntry(result.stdout)
+}
+
+function workingTreePatchArgs(scope: GitWorkingTreeScope, snapshot: GitStatusSnapshot) {
+  switch (scope) {
+    case 'all':
+      return snapshot.branch.headSha
+        ? ['diff', ...GIT_DIFF_PATCH_ARGS, 'HEAD']
+        : ['diff', ...GIT_DIFF_PATCH_ARGS, '--cached']
+    case 'staged':
+      return ['diff', ...GIT_DIFF_PATCH_ARGS, '--cached']
+    case 'unstaged':
+      return ['diff', ...GIT_DIFF_PATCH_ARGS]
+    case 'untracked':
+      return null
+  }
+}
+
+function splitGitPatchByEntry(output: string) {
+  const patches = new Map<string, string>()
+  const parts = splitAtGitDiffFile(output)
+
+  for (const patch of parts) {
+    const paths = parseGitPatchPaths(patch)
+    if (!paths) {
+      continue
+    }
+
+    patches.set(patchEntryKey(paths.path, paths.oldPath), patch)
+  }
+
+  return patches
+}
+
+function splitAtGitDiffFile(output: string) {
+  if (!output.trim()) {
+    return []
+  }
+
+  const parts: string[] = []
+  const marker = '\ndiff --git '
+  let start = output.startsWith('diff --git ') ? 0 : output.indexOf(marker)
+  if (start < 0) {
+    return []
+  }
+  if (output[start] === '\n') {
+    start += 1
+  }
+
+  while (start < output.length) {
+    const next = output.indexOf(marker, start + 1)
+    if (next < 0) {
+      parts.push(output.slice(start))
+      break
+    }
+
+    parts.push(output.slice(start, next))
+    start = next + 1
+  }
+
+  return parts
+}
+
+function parseGitPatchPaths(patch: string) {
+  const lines = patch.split(/\r?\n/)
+  const firstLinePaths = parseDiffGitLine(lines[0] ?? '')
+  if (!firstLinePaths) {
+    return null
+  }
+
+  let oldPath = firstLinePaths.oldPath
+  let path = firstLinePaths.path
+
+  for (const line of lines) {
+    if (line.startsWith('rename from ')) {
+      oldPath = line.slice('rename from '.length)
+    } else if (line.startsWith('rename to ')) {
+      path = line.slice('rename to '.length)
+    } else if (line.startsWith('--- ')) {
+      const parsed = parsePatchHeaderPath(line.slice(4), 'a/')
+      if (parsed) {
+        oldPath = parsed
+      }
+    } else if (line.startsWith('+++ ')) {
+      const parsed = parsePatchHeaderPath(line.slice(4), 'b/')
+      if (parsed) {
+        path = parsed
+      }
+    }
+  }
+
+  return {
+    path,
+    oldPath: oldPath === path ? null : oldPath,
+  }
+}
+
+function parseDiffGitLine(line: string) {
+  const prefix = 'diff --git '
+  if (!line.startsWith(prefix)) {
+    return null
+  }
+
+  const value = line.slice(prefix.length)
+  if (!value.startsWith('a/')) {
+    return null
+  }
+
+  const separator = value.indexOf(' b/')
+  if (separator < 0) {
+    return null
+  }
+
+  return {
+    oldPath: value.slice(2, separator),
+    path: value.slice(separator + 3),
+  }
+}
+
+function parsePatchHeaderPath(value: string, prefix: 'a/' | 'b/') {
+  const path = value.split('\t', 1)[0]
+  if (path === '/dev/null' || !path.startsWith(prefix)) {
+    return null
+  }
+
+  return path.slice(prefix.length)
+}
+
+function patchEntryKey(path: string, oldPath: string | null) {
+  return `${path}\u0000${oldPath ?? ''}`
+}
+
+function isBinaryGitPatch(patch: string) {
+  return patch.includes('\nGIT binary patch\n') ||
+    /^\s*Binary files .* differ\s*$/m.test(patch)
 }
 
 function addStatusEntries(
@@ -907,181 +1054,9 @@ async function readStatusSnapshot(repoPath: string) {
   return parseGitStatusPorcelainV2Output(result.stdout)
 }
 
-function needsPreciseWorkingTreeDiff(snapshot: GitStatusSnapshot) {
-  let hasAdded = false
-  let hasDeleted = false
-
-  for (const entry of snapshot.entries) {
-    if (entry.kind !== 'changed') {
-      continue
-    }
-
-    for (const code of entry.xy) {
-      const status = statusFromStatusChar(code)
-      if (status === null) {
-        continue
-      }
-      if (status === 'unsupported' || status === 'conflicted') {
-        return true
-      }
-      if ((status === 'renamed' || status === 'copied') && !entry.oldPath) {
-        return true
-      }
-      if (status === 'added') {
-        hasAdded = true
-      } else if (status === 'deleted') {
-        hasDeleted = true
-      }
-    }
-  }
-
-  return hasAdded && hasDeleted
-}
-
-function emptyRawNumstatResult(): GitRawNumstatResult {
-  return {
-    entries: [],
-    binaryPaths: new Set(),
-  }
-}
-
-async function readOptionalRawNumstat(repoPath: string, args: string[]) {
-  const result = await runGit(repoPath, args, GIT_OPTIONAL_HEAD_OPTIONS)
-  if (result.exitCode !== 0) {
-    return emptyRawNumstatResult()
-  }
-
-  return parseGitRawNumstatOutput(result.stdout)
-}
-
 async function readRawNumstat(repoPath: string, args: string[]) {
   const result = await runGit(repoPath, args, GIT_ENTRY_OPTIONS)
   return parseGitRawNumstatOutput(result.stdout)
-}
-
-async function readUntrackedPaths(repoPath: string) {
-  const result = await runGit(repoPath, [
-    'ls-files',
-    '--others',
-    '--exclude-standard',
-    '-z',
-  ], GIT_ENTRY_OPTIONS)
-
-  return parseNulPathList(result.stdout)
-}
-
-function parseNulPathList(output: string) {
-  if (output === '') {
-    return []
-  }
-
-  const paths = output.split('\0')
-  if (paths[paths.length - 1] === '') {
-    paths.pop()
-  }
-
-  return paths.filter((path) => path !== '')
-}
-
-async function addNameStatusEntry(
-  entries: DiffEntry[],
-  entryData: Map<string, ProviderEntryData>,
-  source: Extract<DiffSource, { kind: 'git' }>,
-  scope: GitWorkingTreeScope,
-  item: GitNameStatusEntry,
-  binaryPaths: Set<string>,
-) {
-  const entry = await mapNameStatusEntry(source.repositoryRoot, scope, item, binaryPaths)
-  entries.push(entry)
-  entryData.set(entry.id, {
-    kind: 'gitWorkingTree',
-    repoPath: source.repoPath,
-    repositoryRoot: source.repositoryRoot,
-    scope,
-    path: item.path,
-    oldPath: item.oldPath,
-    status: item.status,
-    srcOid: item.srcOid ?? null,
-    dstOid: item.dstOid ?? null,
-  })
-}
-
-async function addUntrackedEntry(
-  entries: DiffEntry[],
-  entryData: Map<string, ProviderEntryData>,
-  source: Extract<DiffSource, { kind: 'git' }>,
-  scope: GitWorkingTreeScope,
-  path: string,
-) {
-  const entry = await mapUntrackedEntry(source.repositoryRoot, scope, path)
-  entries.push(entry)
-  entryData.set(entry.id, {
-    kind: 'gitWorkingTree',
-    repoPath: source.repoPath,
-    repositoryRoot: source.repositoryRoot,
-    scope,
-    path,
-    oldPath: null,
-    status: 'untracked',
-    srcOid: null,
-    dstOid: null,
-  })
-}
-
-async function mapNameStatusEntry(
-  repositoryRoot: string,
-  scope: GitWorkingTreeScope,
-  item: GitNameStatusEntry,
-  binaryPaths: Set<string>,
-): Promise<DiffEntry> {
-  return {
-    id: gitEntryId(scope, item.path, item.oldPath),
-    path: item.path,
-    oldPath: item.oldPath,
-    displayPath: displayPath(item.path, item.oldPath, item.status),
-    status: item.status,
-    scope,
-    leftSize: null,
-    rightSize: await getRightSize(repositoryRoot, item.path, item.status),
-    binary: binaryPaths.has(item.path) || Boolean(item.oldPath && binaryPaths.has(item.oldPath)),
-  }
-}
-
-async function mapUntrackedEntry(
-  repositoryRoot: string,
-  scope: GitWorkingTreeScope,
-  path: string,
-): Promise<DiffEntry> {
-  const size = await getFileSize(repositoryRoot, path)
-  return {
-    id: gitEntryId(scope, path, null),
-    path,
-    oldPath: null,
-    displayPath: path,
-    status: 'untracked',
-    scope,
-    leftSize: null,
-    rightSize: size,
-    binary: await isNonTextWorkingTreeFile(repositoryRoot, path, size),
-  }
-}
-
-async function isNonTextWorkingTreeFile(
-  repositoryRoot: string,
-  path: string,
-  size: number | null,
-) {
-  if (size === null) {
-    return false
-  }
-
-  try {
-    const filePath = join(repositoryRoot, path)
-    const kind = detectFileKind(filePath, size, await sampleFile(filePath))
-    return kind !== 'text'
-  } catch {
-    return false
-  }
 }
 
 function gitEntryId(scope: GitWorkingTreeScope, path: string, oldPath: string | null) {
@@ -1094,20 +1069,4 @@ function displayPath(path: string, oldPath: string | null, status: DiffEntryStat
   }
 
   return path
-}
-
-function getRightSize(repositoryRoot: string, path: string, status: DiffEntryStatus) {
-  if (status === 'deleted') {
-    return Promise.resolve(null)
-  }
-
-  return getFileSize(repositoryRoot, path)
-}
-
-async function getFileSize(repositoryRoot: string, path: string) {
-  try {
-    return (await stat(join(repositoryRoot, path))).size
-  } catch {
-    return null
-  }
 }

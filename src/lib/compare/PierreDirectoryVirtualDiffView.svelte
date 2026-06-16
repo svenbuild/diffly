@@ -502,7 +502,7 @@
       context?.type !== 'diff' ||
       placeholderPaths.has(itemId) ||
       loadingPaths.has(itemId) ||
-      !entryByPath.get(itemId)?.diff?.text ||
+      !hasLoadedDiffPayload(entryByPath.get(itemId)) ||
       !hasRenderedDiffContent(node)
     ) {
       return
@@ -643,6 +643,34 @@
     ].join('\u0000')
   }
 
+  function nativePatchSignature(entry: DirectoryEntryResult) {
+    return [
+      entry.relativePath,
+      entry.status,
+      entry.leftPath ?? '',
+      entry.rightPath ?? '',
+      entry.diffPatchCacheKey ?? entry.diffPatchText?.length ?? '',
+    ].join('\u0000')
+  }
+
+  function hasNativePatch(entry: DirectoryEntryResult) {
+    return Boolean(entry.diffPatchText && !entry.binary)
+  }
+
+  function expectsNativeGitPatch(entry: DirectoryEntryResult) {
+    return Boolean(
+      entry.diffEntryScope &&
+        entry.diffEntryStatus !== 'untracked' &&
+        entry.diffEntryStatus !== 'conflicted' &&
+        entry.diffEntryStatus !== 'unsupported' &&
+        !entry.binary,
+    )
+  }
+
+  function hasLoadedDiffPayload(loadedEntry: LoadedDirectoryDiff | null | undefined) {
+    return Boolean(loadedEntry?.diff?.text || (loadedEntry && hasNativePatch(loadedEntry.entry)))
+  }
+
   function effectiveDiffStyle() {
     return viewMode === 'unified' ? 'unified' : viewerSettings.diffStyle
   }
@@ -706,8 +734,30 @@
   ): CodeViewItem<DifflyCommentAnnotation> | null {
     const { entry, diff } = loadedEntry
     const collapsed = collapsedPaths.has(entry.relativePath)
+    const nativePatchText = hasNativePatch(entry) ? entry.diffPatchText ?? null : null
 
-    if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
+    if (!nativePatchText && expectsNativeGitPatch(entry)) {
+      const key = `${entry.relativePath}\u0000missing-native-patch`
+      const file = buildPlaceholderFile(
+        {
+          entry,
+          error: 'Git patch was not included for this file.',
+          hasTextDiff: false,
+        },
+        key,
+        placeholderBlankLineSuffixes,
+      )
+
+      return {
+        id: entry.relativePath,
+        type: 'file',
+        file,
+        collapsed,
+        version: 1,
+      }
+    }
+
+    if (!nativePatchText && (!diff?.text || !diffRenderPaths.has(entry.relativePath))) {
       const placeholder = placeholderItem(loadedEntry)
       return {
         id: entry.relativePath,
@@ -718,7 +768,9 @@
       }
     }
 
-    const signature = diffSignature(entry, diff.text)
+    const signature = nativePatchText
+      ? nativePatchSignature(entry)
+      : diffSignature(entry, diff!.text!)
     const annotations = annotationsFor(entry.relativePath)
     const annotationsKey = annotationKey(annotations)
     const cached = parsedDiffs.get(entry.relativePath)
@@ -731,26 +783,35 @@
               markCompareTimingOnce('first-pierre-parse-start', {
                 path: entry.relativePath,
               })
-              const leftFile = buildDirectoryCodeViewFile(entry, 'left', diff.text)
-              const rightFile = buildDirectoryCodeViewFile(entry, 'right', diff.text)
-              const fileDiff = diff.text.patchText
-                ? processFile(diff.text.patchText, {
-                    cacheKey: diff.text.patchCacheKey ?? signature,
+              const text = diff?.text ?? null
+              const leftFile = text ? buildDirectoryCodeViewFile(entry, 'left', text) : null
+              const rightFile = text ? buildDirectoryCodeViewFile(entry, 'right', text) : null
+              const fileDiff = nativePatchText
+                ? processFile(nativePatchText, {
+                    cacheKey: entry.diffPatchCacheKey ?? signature,
                     isGitDiff: true,
-                    oldFile: leftFile,
-                    newFile: rightFile,
                     throwOnError: true,
                   })
-                : parseDiffFromFile(
-                    leftFile,
-                    rightFile,
-                    undefined,
-                    true,
-                  )
+                : text?.patchText
+                  ? processFile(text.patchText, {
+                      cacheKey: text.patchCacheKey ?? signature,
+                      isGitDiff: true,
+                      oldFile: leftFile ?? undefined,
+                      newFile: rightFile ?? undefined,
+                      throwOnError: true,
+                    })
+                  : leftFile && rightFile
+                    ? parseDiffFromFile(
+                        leftFile,
+                        rightFile,
+                        undefined,
+                        true,
+                      )
+                    : null
               if (!fileDiff) {
                 throw new Error('Unable to parse directory diff item.')
               }
-              if (rightFile.lang) {
+              if (rightFile?.lang) {
                 fileDiff.lang = rightFile.lang
               }
               markCompareTimingOnce('first-pierre-parse-end', {
@@ -913,7 +974,11 @@
       nextEntryByPath.set(entry.relativePath, loadedEntry)
       nextItemInputIndexByPath.set(entry.relativePath, entryInputIndex)
 
-      if (!diff?.text || !diffRenderPaths.has(entry.relativePath)) {
+      if (
+        !hasNativePatch(entry) &&
+        !expectsNativeGitPatch(entry) &&
+        (!diff?.text || !diffRenderPaths.has(entry.relativePath))
+      ) {
         nextPlaceholderPaths.add(entry.relativePath)
       }
 
@@ -985,7 +1050,11 @@
       ensureCollections()
       nextEntryByPath.set(path, loadedEntry)
 
-      if (loadedEntry.diff?.text && diffRenderPaths.has(path)) {
+      if (
+        hasNativePatch(loadedEntry.entry) ||
+        expectsNativeGitPatch(loadedEntry.entry) ||
+        (loadedEntry.diff?.text && diffRenderPaths.has(path))
+      ) {
         nextPlaceholderPaths.delete(path)
       } else {
         nextPlaceholderPaths.add(path)
@@ -1077,7 +1146,13 @@
     const key = paths.join('\u0000')
     const hasPendingVisiblePlaceholder = paths.some((path) => {
       const entry = entryByPath.get(path)
-      return entry && !entry.error && (!entry.diff?.text || !diffRenderPaths.has(path))
+      return (
+        entry &&
+        !entry.error &&
+        !hasNativePatch(entry.entry) &&
+        !expectsNativeGitPatch(entry.entry) &&
+        (!entry.diff?.text || !diffRenderPaths.has(path))
+      )
     })
 
     if (promoteRenderedDiffPaths(paths)) {

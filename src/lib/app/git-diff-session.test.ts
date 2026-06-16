@@ -46,6 +46,8 @@ describe('git diff session mapping', () => {
       id: 'git:unstaged::tracked.txt',
       scope: 'unstaged',
       status: 'modified',
+      diffPatchText: 'diff --git a/tracked.txt b/tracked.txt\n',
+      diffPatchCacheKey: 'patch-key',
     })
 
     const mapped = mapSessionDiffEntry(entry)
@@ -53,6 +55,8 @@ describe('git diff session mapping', () => {
     expect(mapped.diffEntryId).toBe('git:unstaged::tracked.txt')
     expect(mapped.diffEntryStatus).toBe('modified')
     expect(mapped.diffEntryScope).toBe('unstaged')
+    expect(mapped.diffPatchText).toBe('diff --git a/tracked.txt b/tracked.txt\n')
+    expect(mapped.diffPatchCacheKey).toBe('patch-key')
   })
 
   it('maps added, deleted, and untracked file sides', () => {

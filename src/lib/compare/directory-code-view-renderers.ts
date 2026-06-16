@@ -44,7 +44,13 @@ export function renderDirectoryCollapseButton(
   })
   button.dataset.difflyEntryPath = itemId
 
-  if (loadedEntry && !loadedEntry.diff?.text && !loadedEntry.loading && !loadedEntry.error) {
+  if (
+    loadedEntry &&
+    !entryHasNativePatch(loadedEntry.entry) &&
+    !loadedEntry.diff?.text &&
+    !loadedEntry.loading &&
+    !loadedEntry.error
+  ) {
     options.schedulePlaceholderEntryRequest(itemId)
   }
 
@@ -71,7 +77,7 @@ export function renderDirectoryHeaderMetadata(
   }
 
   return renderDiffHeaderMetadata({
-    text: loadedEntry.loading || !loadedEntry.diff?.text
+    text: loadedEntry.loading && !entryHasNativePatch(loadedEntry.entry)
       ? 'Loading...'
       : statusLabel(loadedEntry.entry.status),
   })
@@ -104,4 +110,8 @@ export function applyDirectoryItemPostRender(
   }
 
   options.scheduleVisibleEntryRequest()
+}
+
+function entryHasNativePatch(entry: DirectoryEntryResult) {
+  return Boolean(entry.diffPatchText && !entry.binary)
 }

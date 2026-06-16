@@ -193,6 +193,8 @@ export interface DiffEntry {
   leftSize: number | null
   rightSize: number | null
   binary?: boolean
+  diffPatchText?: string | null
+  diffPatchCacheKey?: string | null
 }
 
 export interface DiffEntryFilter {
@@ -380,6 +382,8 @@ export interface DirectoryEntryResult {
   diffEntryStatus?: DiffEntryStatus
   diffEntryScope?: GitWorkingTreeScope
   binary?: boolean
+  diffPatchText?: string | null
+  diffPatchCacheKey?: string | null
 }
 
 // Selects how the directory diff list loads each entry's details. Local paths

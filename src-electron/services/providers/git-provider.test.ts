@@ -74,6 +74,22 @@ describe('GitProvider working tree entries', () => {
     expect(findEntry(entries, 'all', 'untracked.txt')?.status).toBe('untracked')
   })
 
+  it('attaches scope patch text to tracked working tree entries', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'worktree\n')
+
+    const entries = await createEntries(repoPath)
+    const allEntry = findEntry(entries, 'all', 'tracked.txt')
+    const unstagedEntry = findEntry(entries, 'unstaged', 'tracked.txt')
+
+    expect(allEntry?.diffPatchText).toContain('diff --git a/tracked.txt b/tracked.txt')
+    expect(allEntry?.diffPatchText).toContain('-base')
+    expect(allEntry?.diffPatchText).toContain('+worktree')
+    expect(allEntry?.diffPatchCacheKey).toContain('git-working-tree-patch')
+    expect(unstagedEntry?.diffPatchText).toContain('diff --git a/tracked.txt b/tracked.txt')
+  })
+
   it('shows a staged and unstaged file once in all and separately in each scope', async () => {
     const repoPath = await createRepo()
     await commitFile(repoPath, 'both.txt', 'baseline\n')
@@ -122,7 +138,7 @@ describe('GitProvider working tree entries', () => {
     expect(stagedEntry?.rightSize).toBeNull()
   })
 
-  it('falls back to raw rename detection for ambiguous delete/add snapshots', async () => {
+  it('keeps delete/add status snapshots without raw rename fallback', async () => {
     const repoPath = await createRepo()
     await git(repoPath, ['config', 'status.renames', 'false'])
     await commitFile(repoPath, 'old-name.txt', 'content\n')
@@ -132,11 +148,13 @@ describe('GitProvider working tree entries', () => {
     await git(repoPath, ['add', 'new-name.txt'])
 
     const entries = await createEntries(repoPath)
+    const deletedEntry = findEntry(entries, 'staged', 'old-name.txt')
     const stagedEntry = findEntry(entries, 'staged', 'new-name.txt')
 
-    expect(stagedEntry?.status).toBe('renamed')
-    expect(stagedEntry?.oldPath).toBe('old-name.txt')
-    expect(stagedEntry?.rightSize).toBe(8)
+    expect(deletedEntry?.status).toBe('deleted')
+    expect(stagedEntry?.status).toBe('added')
+    expect(stagedEntry?.oldPath).toBeNull()
+    expect(stagedEntry?.rightSize).toBeNull()
   })
 
   it('preserves paths with spaces and unicode characters', async () => {
@@ -276,8 +294,8 @@ describe('GitProvider working tree entries', () => {
     await writeFile(join(repoPath, 'binary.bin'), Uint8Array.from([0, 1, 2, 3]))
 
     const entries = await createEntries(repoPath)
-    expect(findEntry(entries, 'all', 'binary.bin')?.binary).toBeUndefined()
-    expect(findEntry(entries, 'unstaged', 'binary.bin')?.binary).toBeUndefined()
+    expect(findEntry(entries, 'all', 'binary.bin')?.binary).toBe(true)
+    expect(findEntry(entries, 'unstaged', 'binary.bin')?.binary).toBe(true)
 
     const result = await openEntry(repoPath, 'all', 'binary.bin')
 

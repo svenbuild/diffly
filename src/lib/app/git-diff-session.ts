@@ -45,6 +45,8 @@ export function mapSessionDiffEntry(
     diffEntryStatus: entry.status,
     diffEntryScope: entry.scope,
     binary: entry.binary,
+    diffPatchText: entry.diffPatchText ?? null,
+    diffPatchCacheKey: entry.diffPatchCacheKey ?? null,
   }
 }
 
