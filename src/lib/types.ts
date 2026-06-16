@@ -216,7 +216,6 @@ export interface CompareViewerSettings {
   diffIndicators: 'bars' | 'classic' | 'none'
   lineDiffType: 'word-alt' | 'word' | 'char' | 'none'
   hunkSeparators: 'line-info' | 'line-info-basic' | 'metadata' | 'simple'
-  smartDiffAlignment: boolean
   expandUnchanged: boolean
   collapsedContextThreshold: number
   expansionLineCount: number

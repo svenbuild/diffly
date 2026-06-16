@@ -48,10 +48,6 @@ export const PIERRE_SETTING_LABELS = {
     label: 'Section separators',
     description: 'Choose how changed sections are separated.',
   },
-  smartDiffAlignment: {
-    label: 'Smart alignment',
-    description: 'Use Diffly alignment before Pierre renders the diff.',
-  },
   disableLineNumbers: {
     label: 'Line numbers',
     description: 'Show line numbers in the diff gutter.',

@@ -225,24 +225,6 @@
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
-          <strong>{labels.smartDiffAlignment.label}</strong>
-          <p>{labels.smartDiffAlignment.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.smartDiffAlignment}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ smartDiffAlignment: !viewerSettings.smartDiffAlignment })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
           <strong>{labels.disableLineNumbers.label}</strong>
           <p>{labels.disableLineNumbers.description}</p>
         </div>

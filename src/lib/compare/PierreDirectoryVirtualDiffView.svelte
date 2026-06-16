@@ -55,7 +55,12 @@
     runReviewAction,
     type ReviewActionItem,
   } from './review-mode'
-  import { buildSmartDiffPatch } from './smart-diff'
+  import {
+    MOVED_LINE_UNSAFE_CSS,
+    applyMovedLineDecorations,
+    detectMovedLines,
+    type MovedLineDecorations,
+  } from './moved-lines'
   import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
@@ -84,6 +89,7 @@
     annotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>>
     collapsed: boolean
     fileDiff: FileDiffMetadata
+    movedLines: MovedLineDecorations
     signature: string
     version: number
   }
@@ -488,7 +494,27 @@
       schedulePlaceholderEntryRequest,
       scheduleVisibleEntryRequest,
     })
+    applyMovedLinePostRender(args)
     finishFirstRenderedDiff(args)
+  }
+
+  function applyMovedLinePostRender(args: unknown[]) {
+    const node = args[0]
+    const phase = args[2]
+    const context = getCodeViewItemContext(args)
+    const itemId = context?.item?.id
+    const movedLines = itemId ? parsedDiffs.get(itemId)?.movedLines : null
+
+    if (
+      !(node instanceof HTMLElement) ||
+      phase === 'unmount' ||
+      context?.type !== 'diff' ||
+      !movedLines
+    ) {
+      return
+    }
+
+    applyMovedLineDecorations(node, movedLines)
   }
 
   function finishFirstRenderedDiff(args: unknown[]) {
@@ -588,7 +614,7 @@
         paddingBottom: 8,
         gap: 8,
       },
-      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + `
+      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + MOVED_LINE_UNSAFE_CSS + `
         :host([data-diffly-placeholder]) [data-metadata] > [data-deletions-count],
         :host([data-diffly-placeholder]) [data-metadata] > [data-additions-count] {
           display: none;
@@ -641,7 +667,6 @@
       text.patchCacheKey ?? text.patchText?.length ?? '',
       text.leftText.length,
       text.rightText.length,
-      viewerSettings.smartDiffAlignment ? '1' : '0',
     ].join('\u0000')
   }
 
@@ -788,46 +813,38 @@
               const text = diff?.text ?? null
               const leftFile = text ? buildDirectoryCodeViewFile(entry, 'left', text) : null
               const rightFile = text ? buildDirectoryCodeViewFile(entry, 'right', text) : null
-              const smartPatch =
-                text && leftFile && rightFile && viewerSettings.smartDiffAlignment
-                  ? buildSmartDiffPatch(text, leftFile.name, rightFile.name)
-                  : null
-              const fileDiff = nativePatchText
-                ? processFile(nativePatchText, {
-                    cacheKey: entry.diffPatchCacheKey ?? signature,
-                    isGitDiff: true,
-                    throwOnError: true,
-                  })
-                : smartPatch
-                  ? processFile(smartPatch.patchText, {
-                      cacheKey: smartPatch.cacheKey,
-                      isGitDiff: true,
-                      oldFile: leftFile ?? undefined,
-                      newFile: rightFile ?? undefined,
-                      throwOnError: true,
-                    })
-                  : text?.patchText
-                    ? processFile(text.patchText, {
-                        cacheKey: text.patchCacheKey ?? signature,
-                        isGitDiff: true,
-                        oldFile: leftFile ?? undefined,
-                        newFile: rightFile ?? undefined,
-                        throwOnError: true,
-                      })
-                    : leftFile && rightFile
-                      ? parseDiffFromFile(
-                          leftFile,
-                          rightFile,
-                          undefined,
-                          true,
-                        )
-                      : null
+              let fileDiff: FileDiffMetadata | null = null
+
+              if (nativePatchText) {
+                fileDiff = processFile(nativePatchText, {
+                  cacheKey: entry.diffPatchCacheKey ?? signature,
+                  isGitDiff: true,
+                  throwOnError: true,
+                }) ?? null
+              } else if (text?.patchText) {
+                fileDiff = processFile(text.patchText, {
+                  cacheKey: text.patchCacheKey ?? signature,
+                  isGitDiff: true,
+                  oldFile: leftFile ?? undefined,
+                  newFile: rightFile ?? undefined,
+                  throwOnError: true,
+                }) ?? null
+              } else if (leftFile && rightFile) {
+                fileDiff = parseDiffFromFile(
+                  leftFile,
+                  rightFile,
+                  undefined,
+                  true,
+                ) ?? null
+              }
+
               if (!fileDiff) {
                 throw new Error('Unable to parse directory diff item.')
               }
               if (rightFile?.lang) {
                 fileDiff.lang = rightFile.lang
               }
+              const movedLines = detectMovedLines(fileDiff)
               markCompareTimingOnce('first-pierre-parse-end', {
                 path: entry.relativePath,
               })
@@ -835,6 +852,7 @@
                 annotations,
                 collapsed,
                 fileDiff,
+                movedLines,
                 signature,
                 version: (cached?.version ?? 0) + 1,
               }

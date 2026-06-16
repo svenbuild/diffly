@@ -10,8 +10,6 @@ export const MAX_PATCH_SOURCE_LENGTH = 4 * 1024 * 1024
 // replace hunk, keeping memory and time bounded for huge, heavily-changed
 // files while still producing a valid unified diff.
 const MAX_LCS_CELLS = 1 << 20
-const MAX_HISTOGRAM_ANCHOR_OCCURRENCES = 8
-const MAX_HISTOGRAM_ANCHOR_CANDIDATES = 200000
 
 const NO_NEWLINE_MARKER = '\\ No newline at end of file'
 
@@ -161,170 +159,21 @@ function diffMiddle(a: string[], b: string[]): DiffOp[] {
   return ops
 }
 
-interface Anchor {
-  a: number
-  b: number
-}
-
-function histogramLineAnchors(
-  a: string[],
-  aStart: number,
-  aEnd: number,
-  b: string[],
-  bStart: number,
-  bEnd: number,
-): Anchor[] {
-  const leftPositions = new Map<string, number[]>()
-  const rightPositions = new Map<string, number[]>()
-
-  for (let index = aStart; index < aEnd; index += 1) {
-    const line = a[index]
-    const positions = leftPositions.get(line)
-    if (positions) {
-      positions.push(index)
-    } else {
-      leftPositions.set(line, [index])
-    }
-  }
-
-  for (let index = bStart; index < bEnd; index += 1) {
-    const line = b[index]
-    const positions = rightPositions.get(line)
-    if (positions) {
-      positions.push(index)
-    } else {
-      rightPositions.set(line, [index])
-    }
-  }
-
-  const candidates: Anchor[] = []
-  for (const [line, aPositions] of leftPositions) {
-    const bPositions = rightPositions.get(line)
-    if (!bPositions) {
-      continue
-    }
-
-    if (
-      aPositions.length > MAX_HISTOGRAM_ANCHOR_OCCURRENCES ||
-      bPositions.length > MAX_HISTOGRAM_ANCHOR_OCCURRENCES
-    ) {
-      continue
-    }
-
-    if (aPositions.length === bPositions.length) {
-      for (let index = 0; index < aPositions.length; index += 1) {
-        candidates.push({ a: aPositions[index], b: bPositions[index] })
-      }
-    } else {
-      for (const aPosition of aPositions) {
-        for (const bPosition of bPositions) {
-          candidates.push({ a: aPosition, b: bPosition })
-        }
-      }
-    }
-
-    if (candidates.length > MAX_HISTOGRAM_ANCHOR_CANDIDATES) {
-      break
-    }
-  }
-
-  candidates.sort((left, right) => left.a - right.a || right.b - left.b)
-  return longestIncreasingAnchors(candidates)
-}
-
-function longestIncreasingAnchors(candidates: Anchor[]): Anchor[] {
-  if (candidates.length <= 1) {
-    return candidates
-  }
-
-  const tails: number[] = []
-  const previous = new Array<number>(candidates.length).fill(-1)
-
-  for (let index = 0; index < candidates.length; index += 1) {
-    let low = 0
-    let high = tails.length
-    while (low < high) {
-      const middle = (low + high) >> 1
-      if (candidates[tails[middle]].b < candidates[index].b) {
-        low = middle + 1
-      } else {
-        high = middle
-      }
-    }
-
-    if (low > 0) {
-      previous[index] = tails[low - 1]
-    }
-    tails[low] = index
-  }
-
-  const result: Anchor[] = []
-  let cursor = tails[tails.length - 1]
-  while (cursor !== -1) {
-    result.push(candidates[cursor])
-    cursor = previous[cursor]
-  }
-
-  return result.reverse()
-}
-
-function diffRangeWithPatience(
-  a: string[],
-  aStart: number,
-  aEnd: number,
-  b: string[],
-  bStart: number,
-  bEnd: number,
-): DiffOp[] {
-  const ops: DiffOp[] = []
-  const prefix = commonRangePrefixLength(a, aStart, aEnd, b, bStart, bEnd)
-  pushOp(ops, 'equal', prefix)
-  aStart += prefix
-  bStart += prefix
-
-  const suffix = commonRangeSuffixLength(a, aStart, aEnd, b, bStart, bEnd)
-  aEnd -= suffix
-  bEnd -= suffix
-
-  if (aStart >= aEnd || bStart >= bEnd) {
-    pushOp(ops, 'delete', aEnd - aStart)
-    pushOp(ops, 'insert', bEnd - bStart)
-    pushOp(ops, 'equal', suffix)
-    return ops
-  }
-
-  const anchors = histogramLineAnchors(a, aStart, aEnd, b, bStart, bEnd)
-  if (anchors.length === 0) {
-    for (const op of diffMiddle(a.slice(aStart, aEnd), b.slice(bStart, bEnd))) {
-      pushOp(ops, op.type, op.count)
-    }
-    pushOp(ops, 'equal', suffix)
-    return ops
-  }
-
-  let currentA = aStart
-  let currentB = bStart
-  for (const anchor of anchors) {
-    for (const op of diffRangeWithPatience(a, currentA, anchor.a, b, currentB, anchor.b)) {
-      pushOp(ops, op.type, op.count)
-    }
-    pushOp(ops, 'equal', 1)
-    currentA = anchor.a + 1
-    currentB = anchor.b + 1
-  }
-
-  for (const op of diffRangeWithPatience(a, currentA, aEnd, b, currentB, bEnd)) {
-    pushOp(ops, op.type, op.count)
-  }
-  pushOp(ops, 'equal', suffix)
-  return ops
-}
-
 function diffOps(a: string[], b: string[]): DiffOp[] {
   const ops: DiffOp[] = []
-  for (const op of diffRangeWithPatience(a, 0, a.length, b, 0, b.length)) {
+
+  const prefix = commonRangePrefixLength(a, 0, a.length, b, 0, b.length)
+  pushOp(ops, 'equal', prefix)
+
+  const suffix = commonRangeSuffixLength(a, prefix, a.length, b, prefix, b.length)
+  const aEnd = a.length - suffix
+  const bEnd = b.length - suffix
+
+  for (const op of diffMiddle(a.slice(prefix, aEnd), b.slice(prefix, bEnd))) {
     pushOp(ops, op.type, op.count)
   }
+
+  pushOp(ops, 'equal', suffix)
   return ops
 }
 

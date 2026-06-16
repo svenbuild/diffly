@@ -31,6 +31,5 @@ describe('PIERRE_SETTING_LABELS', () => {
     expect(PIERRE_SETTING_LABELS.flattenEmptyDirectories.label).toBe('Flat folders')
     expect(PIERRE_SETTING_LABELS.useTokenTransformer.label).toBe('Syntax highlighting')
     expect(PIERRE_SETTING_LABELS.disableLineNumbers.label).toBe('Line numbers')
-    expect(PIERRE_SETTING_LABELS.smartDiffAlignment.label).toBe('Smart alignment')
   })
 })
