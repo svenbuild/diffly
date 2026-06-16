@@ -10,6 +10,8 @@ export const MAX_PATCH_SOURCE_LENGTH = 4 * 1024 * 1024
 // replace hunk, keeping memory and time bounded for huge, heavily-changed
 // files while still producing a valid unified diff.
 const MAX_LCS_CELLS = 1 << 20
+const MAX_HISTOGRAM_ANCHOR_OCCURRENCES = 8
+const MAX_HISTOGRAM_ANCHOR_CANDIDATES = 200000
 
 const NO_NEWLINE_MARKER = '\\ No newline at end of file'
 
@@ -164,12 +166,7 @@ interface Anchor {
   b: number
 }
 
-interface LinePositionCount {
-  index: number
-  count: number
-}
-
-function uniqueLineAnchors(
+function histogramLineAnchors(
   a: string[],
   aStart: number,
   aEnd: number,
@@ -177,37 +174,61 @@ function uniqueLineAnchors(
   bStart: number,
   bEnd: number,
 ): Anchor[] {
-  const leftCounts = new Map<string, LinePositionCount>()
-  const rightCounts = new Map<string, LinePositionCount>()
+  const leftPositions = new Map<string, number[]>()
+  const rightPositions = new Map<string, number[]>()
 
   for (let index = aStart; index < aEnd; index += 1) {
     const line = a[index]
-    const count = leftCounts.get(line)
-    leftCounts.set(line, {
-      index,
-      count: (count?.count ?? 0) + 1,
-    })
+    const positions = leftPositions.get(line)
+    if (positions) {
+      positions.push(index)
+    } else {
+      leftPositions.set(line, [index])
+    }
   }
 
   for (let index = bStart; index < bEnd; index += 1) {
     const line = b[index]
-    const count = rightCounts.get(line)
-    rightCounts.set(line, {
-      index,
-      count: (count?.count ?? 0) + 1,
-    })
-  }
-
-  const candidates: Anchor[] = []
-  for (let index = aStart; index < aEnd; index += 1) {
-    const line = a[index]
-    const left = leftCounts.get(line)
-    const right = rightCounts.get(line)
-    if (left?.count === 1 && right?.count === 1) {
-      candidates.push({ a: index, b: right.index })
+    const positions = rightPositions.get(line)
+    if (positions) {
+      positions.push(index)
+    } else {
+      rightPositions.set(line, [index])
     }
   }
 
+  const candidates: Anchor[] = []
+  for (const [line, aPositions] of leftPositions) {
+    const bPositions = rightPositions.get(line)
+    if (!bPositions) {
+      continue
+    }
+
+    if (
+      aPositions.length > MAX_HISTOGRAM_ANCHOR_OCCURRENCES ||
+      bPositions.length > MAX_HISTOGRAM_ANCHOR_OCCURRENCES
+    ) {
+      continue
+    }
+
+    if (aPositions.length === bPositions.length) {
+      for (let index = 0; index < aPositions.length; index += 1) {
+        candidates.push({ a: aPositions[index], b: bPositions[index] })
+      }
+    } else {
+      for (const aPosition of aPositions) {
+        for (const bPosition of bPositions) {
+          candidates.push({ a: aPosition, b: bPosition })
+        }
+      }
+    }
+
+    if (candidates.length > MAX_HISTOGRAM_ANCHOR_CANDIDATES) {
+      break
+    }
+  }
+
+  candidates.sort((left, right) => left.a - right.a || right.b - left.b)
   return longestIncreasingAnchors(candidates)
 }
 
@@ -272,7 +293,7 @@ function diffRangeWithPatience(
     return ops
   }
 
-  const anchors = uniqueLineAnchors(a, aStart, aEnd, b, bStart, bEnd)
+  const anchors = histogramLineAnchors(a, aStart, aEnd, b, bStart, bEnd)
   if (anchors.length === 0) {
     for (const op of diffMiddle(a.slice(aStart, aEnd), b.slice(bStart, bEnd))) {
       pushOp(ops, op.type, op.count)

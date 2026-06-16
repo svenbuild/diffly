@@ -3,7 +3,12 @@ import type { TextDiffPayload } from '../types'
 import { buildUnifiedPatch } from './unified-patch'
 
 const SMART_DIFF_CONTEXT_LINES = 3
-const SMART_DIFF_VERSION = 'patience-v1'
+const SMART_DIFF_VERSION = 'histogram-v2'
+
+function gitPatchLabel(side: 'a' | 'b', label: string) {
+  const normalized = label.replace(/\\/g, '/').replace(/^\/+/, '')
+  return `${side}/${normalized || 'file'}`
+}
 
 export function smartDiffCacheKey(
   text: TextDiffPayload,
@@ -32,8 +37,8 @@ export function buildSmartDiffPatch(
   return {
     cacheKey: smartDiffCacheKey(text, leftLabel, rightLabel),
     patchText: buildUnifiedPatch({
-      leftLabel,
-      rightLabel,
+      leftLabel: gitPatchLabel('a', leftLabel),
+      rightLabel: gitPatchLabel('b', rightLabel),
       leftText: text.leftText,
       rightText: text.rightText,
       context: SMART_DIFF_CONTEXT_LINES,

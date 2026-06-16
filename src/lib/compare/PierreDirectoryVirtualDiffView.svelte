@@ -789,7 +789,7 @@
               const leftFile = text ? buildDirectoryCodeViewFile(entry, 'left', text) : null
               const rightFile = text ? buildDirectoryCodeViewFile(entry, 'right', text) : null
               const smartPatch =
-                text && leftFile && rightFile && viewerSettings.smartDiffAlignment && !text.patchText
+                text && leftFile && rightFile && viewerSettings.smartDiffAlignment
                   ? buildSmartDiffPatch(text, leftFile.name, rightFile.name)
                   : null
               const fileDiff = nativePatchText
@@ -798,30 +798,30 @@
                     isGitDiff: true,
                     throwOnError: true,
                   })
-                : text?.patchText
-                  ? processFile(text.patchText, {
-                      cacheKey: text.patchCacheKey ?? signature,
+                : smartPatch
+                  ? processFile(smartPatch.patchText, {
+                      cacheKey: smartPatch.cacheKey,
                       isGitDiff: true,
                       oldFile: leftFile ?? undefined,
                       newFile: rightFile ?? undefined,
                       throwOnError: true,
                     })
-                  : smartPatch
-                    ? processFile(smartPatch.patchText, {
-                        cacheKey: smartPatch.cacheKey,
+                  : text?.patchText
+                    ? processFile(text.patchText, {
+                        cacheKey: text.patchCacheKey ?? signature,
                         isGitDiff: true,
                         oldFile: leftFile ?? undefined,
                         newFile: rightFile ?? undefined,
                         throwOnError: true,
                       })
-                  : leftFile && rightFile
-                    ? parseDiffFromFile(
-                        leftFile,
-                        rightFile,
-                        undefined,
-                        true,
-                      )
-                    : null
+                    : leftFile && rightFile
+                      ? parseDiffFromFile(
+                          leftFile,
+                          rightFile,
+                          undefined,
+                          true,
+                        )
+                      : null
               if (!fileDiff) {
                 throw new Error('Unable to parse directory diff item.')
               }

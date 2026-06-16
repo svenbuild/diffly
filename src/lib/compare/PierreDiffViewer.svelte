@@ -343,13 +343,13 @@
   }
 
   function buildPreparsedFileDiff(oldFile: FileContents, newFile: FileContents) {
-    const patch = text.patchText
-      ? {
-          cacheKey: text.patchCacheKey ?? textKey(),
-          patchText: text.patchText,
-        }
-      : viewerSettings.smartDiffAlignment
-        ? buildSmartDiffPatch(text, leftLabel, rightLabel)
+    const patch = viewerSettings.smartDiffAlignment
+      ? buildSmartDiffPatch(text, oldFile.name, newFile.name)
+      : text.patchText
+        ? {
+            cacheKey: text.patchCacheKey ?? textKey(),
+            patchText: text.patchText,
+          }
         : null
 
     if (!patch) {

@@ -152,6 +152,30 @@ describe('buildUnifiedPatch', () => {
     expect(result).not.toContain('+case 0x50A:')
   })
 
+  it('keeps repeated identical one-liners as context', () => {
+    const leftText = [
+      'beforeLeft();',
+      'sameCall();',
+      'oldMiddle();',
+      'sameCall();',
+      'afterLeft();',
+      '',
+    ].join('\n')
+    const rightText = [
+      'beforeRight();',
+      'sameCall();',
+      'newMiddle();',
+      'sameCall();',
+      'afterRight();',
+      '',
+    ].join('\n')
+    const result = patch(leftText, rightText, 1)
+
+    expect(result.match(/^ sameCall\(\);$/gm)).toHaveLength(2)
+    expect(result).not.toContain('-sameCall();')
+    expect(result).not.toContain('+sameCall();')
+  })
+
   it('marks missing trailing newline on the old side', () => {
     const result = patch('a\nb', 'a\nB\n', 0)
     expect(result).toBe(
