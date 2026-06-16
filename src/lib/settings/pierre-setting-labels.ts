@@ -1,7 +1,7 @@
 // Central label metadata for settings backed by Pierre `@pierre/diffs` and
-// `@pierre/trees` options. The visible label is the literal Pierre option
-// name; the description explains what the option does. Internal persistence
-// keys are unchanged and unrelated to these labels.
+// `@pierre/trees` options. Labels are short, readable UI names; descriptions
+// explain the behavior. Internal persistence keys are unchanged and unrelated
+// to these labels.
 
 export interface PierreSettingLabel {
   label: string
@@ -11,191 +11,191 @@ export interface PierreSettingLabel {
 export const PIERRE_SETTING_LABELS = {
   // @pierre/diffs — layout & context
   diffStyle: {
-    label: 'diffStyle',
-    description: 'Render the diff side by side (split) or as one unified column.',
+    label: 'View layout',
+    description: 'Show changes in split columns or one unified column.',
   },
   overflow: {
-    label: 'overflow',
-    description: 'Wrap long code lines instead of using horizontal scrolling.',
+    label: 'Line wrapping',
+    description: 'Wrap long code lines instead of scrolling sideways.',
   },
   expandUnchanged: {
-    label: 'expandUnchanged',
-    description: 'Open diffs with unchanged regions expanded.',
+    label: 'Show unchanged lines',
+    description: 'Open diffs with unchanged sections already expanded.',
   },
   collapsedContextThreshold: {
-    label: 'collapsedContextThreshold',
-    description: 'Minimum unchanged lines before a region can collapse.',
+    label: 'Fold threshold',
+    description: 'Minimum unchanged lines before a section can collapse.',
   },
   expansionLineCount: {
-    label: 'expansionLineCount',
-    description: 'How many lines Pierre expands when opening collapsed regions.',
+    label: 'Expand amount',
+    description: 'Number of lines to reveal when opening a collapsed section.',
   },
   stickyHeader: {
-    label: 'stickyHeader',
-    description: 'Keep the file header pinned while scrolling inside the diff.',
+    label: 'Sticky file header',
+    description: 'Keep the file header visible while scrolling a diff.',
   },
 
   // @pierre/diffs — code rendering
   lineDiffType: {
-    label: 'lineDiffType',
-    description: 'Inline highlight granularity: word, character, or none.',
+    label: 'Inline changes',
+    description: 'Choose how detailed inline highlights should be.',
   },
   diffIndicators: {
-    label: 'diffIndicators',
-    description: 'Change bars, classic +/- prefixes, or no indicators.',
+    label: 'Change markers',
+    description: 'Choose bars, +/- markers, or no change markers.',
   },
   hunkSeparators: {
-    label: 'hunkSeparators',
-    description: 'Separator style between changed regions.',
+    label: 'Section separators',
+    description: 'Choose how changed sections are separated.',
   },
   disableLineNumbers: {
-    label: 'disableLineNumbers',
-    description: 'Hide the gutter line number text. Switch on shows numbers.',
+    label: 'Line numbers',
+    description: 'Show line numbers in the diff gutter.',
   },
   disableFileHeader: {
-    label: 'disableFileHeader',
-    description: "Hide Pierre's default file header. Switch on shows the header.",
+    label: 'File header',
+    description: "Show Pierre's default file header.",
   },
   disableBackground: {
-    label: 'disableBackground',
-    description: 'Hide added and deleted line backgrounds. Switch on shows them.',
+    label: 'Change background',
+    description: 'Highlight added and deleted lines with background colors.',
   },
 
   // @pierre/diffs — syntax & limits
   useTokenTransformer: {
-    label: 'useTokenTransformer',
-    description: 'Use Shiki syntax highlighting for supported languages.',
+    label: 'Syntax highlighting',
+    description: 'Use Shiki highlighting for supported languages.',
   },
   preferredHighlighter: {
-    label: 'preferredHighlighter',
-    description: 'Select the Shiki JavaScript or WASM engine.',
+    label: 'Highlighter engine',
+    description: 'Choose the Shiki JavaScript or WASM engine.',
   },
   useCSSClasses: {
-    label: 'useCSSClasses',
-    description: "Use Pierre's class-based token style output.",
+    label: 'Token CSS classes',
+    description: 'Use class-based token styling from Pierre.',
   },
   tokenizeMaxLineLength: {
-    label: 'tokenizeMaxLineLength',
-    description: 'Skip syntax tokens for lines beyond this length.',
+    label: 'Line highlight limit',
+    description: 'Skip syntax highlighting for lines longer than this.',
   },
   tokenizeMaxLength: {
-    label: 'tokenizeMaxLength',
-    description: 'Skip syntax tokens after this total content length.',
+    label: 'File highlight limit',
+    description: 'Skip syntax highlighting after this total content length.',
   },
   maxLineDiffLength: {
-    label: 'maxLineDiffLength',
-    description: 'Skip inline diffing when paired lines exceed this length.',
+    label: 'Inline diff limit',
+    description: 'Skip inline comparison when paired lines exceed this length.',
   },
 
   // @pierre/diffs — mouse & selection
   lineHoverHighlight: {
-    label: 'lineHoverHighlight',
-    description: 'Which part of a row highlights on pointer hover.',
+    label: 'Hover highlight',
+    description: 'Choose what highlights when pointing at a diff row.',
   },
   enableTokenInteractionsOnWhitespace: {
-    label: 'enableTokenInteractionsOnWhitespace',
-    description: 'Include whitespace tokens in Pierre token callbacks.',
+    label: 'Whitespace tokens',
+    description: 'Include whitespace when handling token interactions.',
   },
   tokenHover: {
-    label: 'tokenHover',
+    label: 'Token hover',
     description: 'Show an info tooltip when hovering known syntax tokens.',
   },
   enableGutterUtility: {
-    label: 'enableGutterUtility',
-    description: "Show Pierre's gutter utility button and report clicked ranges.",
+    label: 'Gutter actions',
+    description: 'Show the gutter action button for line ranges.',
   },
   enableLineSelection: {
-    label: 'enableLineSelection',
-    description: 'Allow selecting ranges inside the rendered diff.',
+    label: 'Line selection',
+    description: 'Allow selecting line ranges inside the diff.',
   },
   controlledSelection: {
-    label: 'controlledSelection',
-    description: 'Keep selected ranges in Diffly state and write them back to Pierre.',
+    label: 'Saved selection',
+    description: 'Keep selected ranges in Diffly state.',
   },
   disableVirtualizationBuffers: {
-    label: 'disableVirtualizationBuffers',
-    description: 'Force Pierre to render without buffer rows.',
+    label: 'Render buffers',
+    description: "Use Pierre's extra buffer rows around the visible area.",
   },
 
   // @pierre/trees — structure
   iconSet: {
-    label: 'iconSet',
-    description: 'Built-in icon set. "Complete" is the full colored file-type suite.',
+    label: 'Icon style',
+    description: 'Choose the file icon set used in the tree.',
   },
   coloredIcons: {
-    label: 'coloredIcons',
-    description: 'Use per-file-type colors for the "Complete" icon set.',
+    label: 'Colored icons',
+    description: 'Use file-type colors with the complete icon set.',
   },
   initialExpansion: {
-    label: 'initialExpansion',
-    description: 'Whether the tree starts closed, open, or expanded by depth.',
+    label: 'Start expanded',
+    description: 'Choose how much of the tree opens initially.',
   },
   flattenEmptyDirectories: {
-    label: 'flattenEmptyDirectories',
-    description: 'Compress folder chains with no branching.',
+    label: 'Flat folders',
+    description: 'Collapse folder chains that contain no branching.',
   },
   stickyFolders: {
-    label: 'stickyFolders',
+    label: 'Sticky folders',
     description: 'Keep parent folders visible while scrolling.',
   },
   // Diffly extension (not a Pierre option): local directory compare only.
   showUnmodified: {
-    label: 'showUnmodified',
-    description: 'Also show unchanged files in the tree, dimmed and without a status badge.',
+    label: 'Unchanged files',
+    description: 'Show unchanged files in the tree.',
   },
   initialExpandedPaths: {
-    label: 'initialExpandedPaths',
-    description: 'Optional newline-separated paths that Pierre should expand on mount.',
+    label: 'Expanded paths',
+    description: 'Paths to open automatically when the tree loads.',
   },
 
   // @pierre/trees — density
   density: {
-    label: 'density',
-    description: "Pierre's preset row density or a custom scale factor.",
+    label: 'Row density',
+    description: 'Choose a preset row density or a custom scale.',
   },
   itemHeight: {
-    label: 'itemHeight',
-    description: 'Explicit row height in pixels.',
+    label: 'Row height',
+    description: 'Set the tree row height in pixels.',
   },
   initialVisibleRowCount: {
-    label: 'initialVisibleRowCount',
-    description: 'Rows used for initial tree viewport estimation.',
+    label: 'Initial rows',
+    description: 'Rows used to estimate the first tree viewport.',
   },
   overscan: {
-    label: 'overscan',
-    description: 'Extra rows rendered outside the visible tree window.',
+    label: 'Extra rows',
+    description: 'Rows rendered outside the visible tree window.',
   },
 
   // @pierre/trees — search
   search: {
-    label: 'search',
-    description: "Enable Pierre's built-in search input in the tree.",
+    label: 'Tree search',
+    description: "Show Pierre's built-in tree search.",
   },
   fileTreeSearchMode: {
-    label: 'fileTreeSearchMode',
-    description: 'How non-matching tree rows behave during search.',
+    label: 'Search behavior',
+    description: 'Choose how non-matching rows behave during search.',
   },
   searchBlurBehavior: {
-    label: 'searchBlurBehavior',
-    description: 'Close or retain the search session when it loses focus.',
+    label: 'Search on blur',
+    description: 'Choose whether search closes or stays active when focus leaves.',
   },
   searchFakeFocus: {
-    label: 'searchFakeFocus',
-    description: "Use Pierre's visual fake-focus state for search.",
+    label: 'Search focus style',
+    description: "Use Pierre's visual focus state for search.",
   },
   initialSearchQuery: {
-    label: 'initialSearchQuery',
-    description: 'Optional query applied when the tree mounts.',
+    label: 'Start search',
+    description: 'Search text applied when the tree loads.',
   },
 
   // @pierre/trees — mutations
   dragAndDrop: {
-    label: 'dragAndDrop',
-    description: "Allow Pierre's local drag and drop behavior in the tree.",
+    label: 'Drag and drop',
+    description: 'Allow local drag-and-drop inside the tree.',
   },
   renaming: {
-    label: 'renaming',
-    description: "Allow Pierre's local inline rename behavior in the tree.",
+    label: 'Inline rename',
+    description: 'Allow local inline renaming inside the tree.',
   },
 } as const satisfies Record<string, PierreSettingLabel>
 
