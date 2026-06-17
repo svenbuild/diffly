@@ -3,7 +3,6 @@
   import CompareScreen from './lib/screens/CompareScreen.svelte'
   import SettingsRoute from './lib/screens/SettingsRoute.svelte'
   import SetupScreen from './lib/screens/SetupScreen.svelte'
-  import WindowTitleBar from './lib/window/WindowTitleBar.svelte'
 
   import {
     addRecentSource,
@@ -2790,7 +2789,6 @@
 <svelte:window on:keydown={handleGlobalKeydown} />
 
 <div class="app-frame">
-  <WindowTitleBar />
   <div class="app-frame-content">
 {#if screen === 'setup'}
   <SetupScreen

@@ -229,6 +229,15 @@
     padding-block: 8px;
   }
 
+  .app-bar.has-window-controls {
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content) auto;
+    align-items: center;
+    height: var(--topbar-height);
+    min-height: var(--topbar-height);
+    overflow: hidden;
+    padding-block: 0;
+  }
+
   .app-bar-main,
   .app-bar-actions,
   .setup-bar-actions,
@@ -241,6 +250,38 @@
   .compare-actions,
   .setup-bar-actions {
     justify-content: flex-start;
+  }
+
+  .app-bar.has-window-controls .app-bar-main,
+  .app-bar.has-window-controls .app-bar-context,
+  .app-bar.has-window-controls .app-bar-actions,
+  .app-bar.has-window-controls .setup-bar-actions,
+  .app-bar.has-window-controls .compare-actions,
+  .app-bar.has-window-controls .compare-action-group {
+    width: auto;
+    min-width: 0;
+  }
+
+  .app-bar.has-window-controls .app-bar-main,
+  .app-bar.has-window-controls .app-bar-leading,
+  .app-bar.has-window-controls .app-bar-context,
+  .app-bar.has-window-controls .app-bar-actions {
+    overflow: hidden;
+  }
+
+  .app-bar.has-window-controls .app-bar-actions,
+  .app-bar.has-window-controls .compare-actions,
+  .app-bar.has-window-controls .setup-bar-actions {
+    justify-content: flex-end;
+  }
+
+  .app-bar.has-window-controls .compare-action-group {
+    flex: 0 1 auto;
+  }
+
+  .app-bar.has-window-controls .window-title-bar-controls {
+    grid-column: 4;
+    grid-row: 1;
   }
 
   .compare-action-group {

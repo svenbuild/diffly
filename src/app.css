@@ -35,7 +35,7 @@
   --t-panel-distance: 10px;
   --t-panel-duration: 180ms;
   --t-panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --topbar-height: 52px;
+  --topbar-height: 42px;
   --left-rail-width: 280px;
   --page-padding-x: 32px;
   --page-padding-y: 28px;
@@ -410,7 +410,6 @@ select:focus-visible {
   overflow: hidden;
 }
 
-/* App shell: custom window title bar (Windows frameless) above the screens. */
 .app-frame {
   display: flex;
   flex-direction: column;
@@ -455,10 +454,10 @@ h2 {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) auto;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   height: var(--topbar-height);
   min-height: var(--topbar-height);
-  padding: 0 16px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--app-bar-bg);
   box-shadow: none;
@@ -475,6 +474,30 @@ h2 {
 .settings-view .app-bar {
   grid-template-columns: max-content minmax(0, 1fr) auto;
   justify-content: stretch;
+}
+
+.app-bar.has-window-controls,
+.compare-screen .app-bar.has-window-controls,
+.settings-view .app-bar.has-window-controls {
+  grid-template-columns: max-content minmax(0, 1fr) auto auto;
+  padding-right: 0;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.app-bar.has-window-controls .app-bar-main,
+.app-bar.has-window-controls .app-bar-context,
+.app-bar.has-window-controls .app-bar-actions,
+.app-bar.has-window-controls .window-title-bar-controls,
+.app-bar.has-window-controls button,
+.app-bar.has-window-controls input,
+.app-bar.has-window-controls select,
+.app-bar.has-window-controls textarea,
+.app-bar.has-window-controls a,
+.app-bar.has-window-controls [role='button'],
+.app-bar.has-window-controls [tabindex],
+.app-bar.has-window-controls .segmented-control {
+  -webkit-app-region: no-drag;
 }
 
 .app-bar-main,
@@ -502,6 +525,7 @@ h2 {
   min-width: 0;
   display: flex;
   justify-content: flex-start;
+  overflow: hidden;
 }
 
 .app-top-bar > .app-bar-actions {
@@ -550,7 +574,8 @@ h2 {
   display: grid;
   gap: 2px;
   min-width: 0;
-  max-width: 56ch;
+  max-width: min(56ch, 100%);
+  overflow: hidden;
 }
 
 .compare-editor-context strong,
@@ -604,7 +629,7 @@ h2 {
 }
 
 .app-bar-main {
-  gap: 14px;
+  gap: 12px;
 }
 
 .app-bar-leading {
@@ -612,6 +637,62 @@ h2 {
   align-items: center;
   flex: 0 0 auto;
   min-width: 0;
+}
+
+.window-title-bar-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+}
+
+button.window-control {
+  width: 46px;
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+button.window-control:hover:not(:disabled) {
+  border: none;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+  box-shadow: none;
+}
+
+button.window-control:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  transform: none;
+}
+
+button.window-control:focus-visible {
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+button.window-control-close:hover:not(:disabled) {
+  background: #e81123;
+  color: #ffffff;
+}
+
+button.window-control-close:active:not(:disabled) {
+  background: #c50f1f;
+  color: #ffffff;
+}
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
 }
 
 .update-indicator {
@@ -927,9 +1008,9 @@ h2 {
 
 .setup-topbar-warning {
   min-width: 0;
-  max-width: min(760px, 100%);
+  max-width: min(520px, 100%);
   margin: 0;
-  padding: 7px 11px;
+  padding: 5px 9px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--warning) 72%, var(--border-strong));
   border-radius: 7px;
