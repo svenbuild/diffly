@@ -7,8 +7,7 @@
     animation: t-settings-panel-reveal var(--t-panel-duration) var(--t-panel-ease) both;
   }
 
-  .compare-viewer.compare-viewer-transitioning > *,
-  .compare-editor-context.compare-context-updating {
+  .compare-viewer.compare-viewer-transitioning > * {
     animation: t-compare-content-fade 160ms ease-out both;
   }
 

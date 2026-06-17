@@ -5,7 +5,6 @@
   import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import { reviewModeEnabled } from '../compare/review-mode'
-  import SourceHeader from '../compare/SourceHeader.svelte'
   import { sourceActions } from '../compare/source-actions'
   import { compareSourceKind } from '../actions/compare-actions'
   import type { AppearanceSettings } from '../theme'
@@ -23,10 +22,7 @@
     SystemMonitorSnapshot,
     ViewMode,
   } from '../types'
-  import type {
-    DiffHeaderContext,
-    SettingsSection,
-  } from '../ui-types'
+  import type { SettingsSection } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
   import UpdateIndicator from './UpdateIndicator.svelte'
@@ -46,10 +42,7 @@
     stage: '',
     startedAt: 0,
   }
-  export let diffHeaderContext: DiffHeaderContext
   export let selectedRelativePath = ''
-  export let comparePairsTooltip = ''
-  export let comparePairsLabel = ''
   export let activeDiffSource: DiffSource | null = null
   export let viewMode: ViewMode = 'sideBySide'
   export let textDiffActive = false
@@ -189,23 +182,6 @@
       {/if}
     {/snippet}
 
-    {#snippet middle()}
-    <div
-      class:compare-context-updating={compareSurfaceTransitioning}
-      class="compare-editor-context"
-      aria-label="Compare context"
-    >
-      <strong title={diffHeaderContext.currentFileLabel || selectedRelativePath}>
-        {diffHeaderContext.currentFileLabel || selectedRelativePath || 'Compare results'}
-      </strong>
-      <SourceHeader
-        source={activeDiffSource}
-        localLabel={comparePairsLabel}
-        localTooltip={comparePairsTooltip}
-      />
-    </div>
-    {/snippet}
-
     {#snippet actions()}
     <div class="compare-actions">
       <div class="compare-action-group display-actions">
@@ -336,8 +312,16 @@
         <button class="secondary toolbar-button" type="button" on:click={() => openSettings('compare')}>
           Settings
         </button>
-        <button class="secondary toolbar-button toolbar-setup-button" type="button" on:click={goToSetup}>
-          Setup
+        <button
+          class="secondary toolbar-button icon-button toolbar-back-button"
+          aria-label="Back"
+          title="Back"
+          type="button"
+          on:click={goToSetup}
+        >
+          <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
+            <path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+          </svg>
         </button>
       </div>
     </div>

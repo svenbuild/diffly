@@ -27,13 +27,6 @@
     startDirectoryCompare,
   } from './lib/api'
   import {
-    buildCompareRootDisplay,
-    directoryCompareEntryLabel,
-    fileCompareLabel,
-    filePaneLabel,
-    type CompareRootDisplay,
-  } from './lib/app/compare-display'
-  import {
     DEFAULT_COMPARE_SIDEBAR_WIDTH,
     createCompareSidebarResizeController,
   } from './lib/app/compare-sidebar-resize'
@@ -88,10 +81,7 @@
     setThemeSemanticColorOverride as applyThemeSemanticColorOverride,
   } from './lib/app/theme-controller'
   import { entryTypeLabel, formatModified, formatSize } from './lib/format'
-  import {
-    normalizeSelectionPath,
-    splitCommonPathPrefix,
-  } from './lib/path-utils'
+  import { normalizeSelectionPath } from './lib/path-utils'
   import {
     defaultDirectoryEntry,
     isDiffableDirectoryEntry,
@@ -103,7 +93,6 @@
     canGoForward,
     createExplorerPane,
     currentDrive,
-    formatPickerTargetLabel,
     isCurrentFolderSelected,
     isTargetSelected,
     retitlePane,
@@ -158,7 +147,6 @@
     MIN_UI_FONT_SIZE,
   } from './lib/theme/runtime'
   import type {
-    DiffHeaderContext,
     ExplorerPaneState,
     SettingsSection,
     Side,
@@ -318,27 +306,6 @@
   let canGoToPreviousDiff = false
   let canGoToNextDiff = false
   let textDiffActive = false
-  let leftCompareRoot: CompareRootDisplay = {
-    prefix: '',
-    suffix: '',
-    fullPath: '',
-  }
-  let rightCompareRoot: CompareRootDisplay = {
-    prefix: '',
-    suffix: '',
-    fullPath: '',
-  }
-  let diffHeaderContext: DiffHeaderContext = {
-    currentFileLabel: '',
-    leftPaneLabel: '',
-    rightPaneLabel: '',
-    leftAbsolutePath: '',
-    rightAbsolutePath: '',
-    leftRootLabel: '',
-    rightRootLabel: '',
-    leftRootFullPath: '',
-    rightRootFullPath: '',
-  }
   const diffCache = createDiffCacheController({
     openCompareItem,
   })
@@ -2595,52 +2562,6 @@
     }, SESSION_SAVE_DELAY_MS)
   }
 
-  function getCurrentFileLabel() {
-    if (mode === 'directory') {
-      return directoryCompareEntryLabel(
-        selectedRelativePath,
-        visibleDirectoryEntries(),
-        'No file selected',
-      )
-    }
-
-    return fileCompareLabel(activeDiff, 'No file selected')
-  }
-
-  function getPaneLabel(side: Side) {
-    if (mode === 'directory') {
-      return directoryCompareEntryLabel(selectedRelativePath, visibleDirectoryEntries(), '')
-    }
-
-    return filePaneLabel(activeDiff, side)
-  }
-
-  $: {
-    const { leftSegments, rightSegments } = splitCommonPathPrefix(leftPath, rightPath)
-    leftCompareRoot = buildCompareRootDisplay(leftPath, leftSegments)
-    rightCompareRoot = buildCompareRootDisplay(rightPath, rightSegments)
-  }
-
-  $: {
-    mode
-    selectedRelativePath
-    activeDiff
-    directoryEntries
-    filteredDirectoryEntries
-
-    diffHeaderContext = {
-      currentFileLabel: getCurrentFileLabel(),
-      leftPaneLabel: getPaneLabel('left'),
-      rightPaneLabel: getPaneLabel('right'),
-      leftAbsolutePath: activeDiff?.leftLabel ?? '',
-      rightAbsolutePath: activeDiff?.rightLabel ?? '',
-      leftRootLabel: `${leftCompareRoot.prefix}${leftCompareRoot.suffix}`,
-      rightRootLabel: `${rightCompareRoot.prefix}${rightCompareRoot.suffix}`,
-      leftRootFullPath: leftCompareRoot.fullPath,
-      rightRootFullPath: rightCompareRoot.fullPath,
-    }
-  }
-
   // Git working-tree compares now render through the continuous directory list
   // (no single-file activeDiff), so the directory branch drives the view-mode
   // toggle for every directory source, session-backed or not.
@@ -2761,25 +2682,6 @@
     (setupMode === 'local' && pickerCanCompare) ||
     (setupMode === 'git' && gitSetupSource !== null) ||
     (setupMode === 'github' && githubSetupSource !== null)
-  $: leftSetupTargetLabel = formatPickerTargetLabel(leftExplorer.selectedTargetPath, 'Not selected')
-  $: rightSetupTargetLabel = formatPickerTargetLabel(rightExplorer.selectedTargetPath, 'Not selected')
-  $: comparePairsLabel = (() => {
-    const count = directoryComparePairs.length
-    if (count > 1) {
-      return `${count} folder pairs`
-    }
-    return `${leftSetupTargetLabel} ↔ ${rightSetupTargetLabel}`
-  })()
-  $: comparePairsTooltip = (() => {
-    if (directoryComparePairs.length > 1) {
-      return directoryComparePairs
-        .map((pair) => `${pair.leftBase}\n  ↔ ${pair.rightBase}`)
-        .join('\n')
-    }
-    const left = leftExplorer.selectedTargetPath || 'Left target not selected'
-    const right = rightExplorer.selectedTargetPath || 'Right target not selected'
-    return `${left}\n  ↔ ${right}`
-  })()
 </script>
 
 <svelte:head>
@@ -2842,10 +2744,7 @@
     {compareSidebarWidth}
     {compareSurfaceTransitioning}
     {compareLoadingState}
-    {diffHeaderContext}
     {selectedRelativePath}
-    {comparePairsTooltip}
-    {comparePairsLabel}
     {activeDiffSource}
     {viewMode}
     {textDiffActive}
