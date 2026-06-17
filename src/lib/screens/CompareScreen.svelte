@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import AppTopBar from '../AppTopBar.svelte'
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
@@ -126,6 +127,16 @@
     } else {
       collapseAllRevision += 1
     }
+  }
+
+  async function runCompareFromToolbar() {
+    if (mode === 'directory' && directoryEntries.length > 0) {
+      expandAllRevision += 1
+      directoryDiffsAllCollapsed = false
+      await tick()
+    }
+
+    await runCompare()
   }
 
   // Planned file operations are preview state for one specific compare;
@@ -297,7 +308,7 @@
           title={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
           type="button"
           disabled={loading}
-          on:click={runCompare}
+          on:click={runCompareFromToolbar}
         >
           <span class="refresh-icon-slot" aria-hidden="true">
             {#if loading}
