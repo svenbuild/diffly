@@ -1,9 +1,11 @@
 <script lang="ts">
   import AppTopBar from '../AppTopBar.svelte'
+  import ToolbarSvgIcon from '../components/ToolbarSvgIcon.svelte'
   import SetupModeSlider from '../setup/SetupModeSlider.svelte'
   import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
   import GitSetupPanel from '../setup/GitSetupPanel.svelte'
   import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
+  import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
   import type {
     ExplorerEntry,
     GitDiffSource,
@@ -96,8 +98,14 @@
           Compare
         {/if}
       </button>
-      <button class="secondary" type="button" on:click={() => openSettings('appearance')}>
-        Settings
+      <button
+        class="secondary icon-button settings-button"
+        aria-label="Settings"
+        title="Settings"
+        type="button"
+        on:click={() => openSettings('appearance')}
+      >
+        <ToolbarSvgIcon src={settingsIconUrl} className="settings-icon" />
       </button>
     </div>
     {/snippet}

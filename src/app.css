@@ -739,6 +739,27 @@ button.window-control-close:active:not(:disabled) {
   color: var(--active-text);
 }
 
+.toolbar-svg-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask: var(--toolbar-icon-url) center / contain no-repeat;
+  mask: var(--toolbar-icon-url) center / contain no-repeat;
+}
+
+.settings-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.review-mode-button,
+.settings-button {
+  min-width: var(--control-height-md);
+  padding: 0;
+}
+
 .toolbar-button,
 .toolbar-button-icon,
 .toolbar-back-button {

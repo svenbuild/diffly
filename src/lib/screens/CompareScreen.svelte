@@ -2,11 +2,16 @@
   import AppTopBar from '../AppTopBar.svelte'
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
+  import ToolbarSvgIcon from '../components/ToolbarSvgIcon.svelte'
   import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import { reviewModeEnabled } from '../compare/review-mode'
   import { sourceActions } from '../compare/source-actions'
   import { compareSourceKind } from '../actions/compare-actions'
+  import backIconUrl from '../assets/icons/toolbar-back.svg'
+  import reloadIconUrl from '../assets/icons/toolbar-reload.svg'
+  import reviewIconUrl from '../assets/icons/toolbar-review.svg'
+  import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareMode,
@@ -210,14 +215,14 @@
         <button
           aria-label={$reviewModeEnabled ? 'Turn review mode off' : 'Turn review mode on'}
           aria-pressed={$reviewModeEnabled}
-          class="secondary toolbar-button review-mode-button"
+          class="secondary toolbar-button icon-button review-mode-button"
           title={$reviewModeEnabled
             ? 'Review mode on — per-file actions are shown in diff headers'
             : 'Review mode off — click to show per-file actions in diff headers'}
           type="button"
           on:click={toggleReviewMode}
         >
-          Review
+          <ToolbarSvgIcon src={reviewIconUrl} className="review-mode-icon" />
         </button>
       </div>
 
@@ -255,12 +260,12 @@
         {/if}
 
         <button
-          aria-label={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+          aria-label={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
           aria-busy={loading}
           class:compare-action-busy={loading}
           class:pending-refresh={compareNeedsRefresh}
           class="secondary toolbar-button icon-button refresh-button"
-          title={compareNeedsRefresh ? 'Refresh to apply comparison rule changes' : 'Refresh compare'}
+          title={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
           type="button"
           disabled={loading}
           on:click={runCompare}
@@ -269,48 +274,21 @@
             {#if loading}
               <span class="refresh-spinner visible"></span>
             {:else}
-              <svg class="refresh-icon" viewBox="0 0 16 16">
-                <path
-                  d="M12.8 7.8a4.8 4.8 0 0 1-8.2 3.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-                <path
-                  d="M10.1 10.9h2.7v2.6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-                <path
-                  d="M3.2 8.2a4.8 4.8 0 0 1 8.2-3.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-                <path
-                  d="M5.9 5.1H3.2V2.5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                />
-              </svg>
+              <ToolbarSvgIcon src={reloadIconUrl} className="refresh-icon" />
             {/if}
           </span>
         </button>
       </div>
 
       <div class="compare-action-group global-actions">
-        <button class="secondary toolbar-button" type="button" on:click={() => openSettings('compare')}>
-          Settings
+        <button
+          class="secondary toolbar-button icon-button settings-button"
+          aria-label="Settings"
+          title="Settings"
+          type="button"
+          on:click={() => openSettings('compare')}
+        >
+          <ToolbarSvgIcon src={settingsIconUrl} className="settings-icon" />
         </button>
         <button
           class="secondary toolbar-button icon-button toolbar-back-button"
@@ -319,9 +297,7 @@
           type="button"
           on:click={goToSetup}
         >
-          <svg aria-hidden="true" class="nav-icon" viewBox="0 0 16 16">
-            <path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
-          </svg>
+          <ToolbarSvgIcon src={backIconUrl} className="back-icon" />
         </button>
       </div>
     </div>
