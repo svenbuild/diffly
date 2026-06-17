@@ -485,9 +485,6 @@ h2 {
   -webkit-app-region: drag;
 }
 
-.app-bar.has-window-controls .app-bar-main,
-.app-bar.has-window-controls .app-bar-context,
-.app-bar.has-window-controls .app-bar-actions,
 .app-bar.has-window-controls .window-title-bar-controls,
 .app-bar.has-window-controls button,
 .app-bar.has-window-controls input,

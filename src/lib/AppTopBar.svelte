@@ -18,6 +18,18 @@
   } = $props()
 
   const windowControls = getWindowControls()
+  const noDragSelector = [
+    'button',
+    'input',
+    'select',
+    'textarea',
+    'a',
+    '[contenteditable]',
+    "[role='button']",
+    '[tabindex]',
+    '.segmented-control',
+    '.window-title-bar-controls',
+  ].join(',')
   let maximized = $state(false)
 
   onMount(() => {
@@ -52,8 +64,21 @@
     void windowControls?.toggleMaximize()
   }
 
+  function isDragAreaTarget(target: EventTarget | null, boundary: EventTarget | null) {
+    if (!(target instanceof Element) || !(boundary instanceof Element)) {
+      return false
+    }
+
+    const noDragAncestor = target.closest(noDragSelector)
+    return !noDragAncestor || !boundary.contains(noDragAncestor)
+  }
+
   function toggleMaximizeFromDragArea(event: MouseEvent) {
-    if (!windowControls || event.button !== 0 || event.target !== event.currentTarget) {
+    if (
+      !windowControls ||
+      event.button !== 0 ||
+      !isDragAreaTarget(event.target, event.currentTarget)
+    ) {
       return
     }
 
