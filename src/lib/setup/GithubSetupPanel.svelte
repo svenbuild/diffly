@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
-  import GithubCompareInput from './GithubCompareInput.svelte'
-  import GithubPrInput from './GithubPrInput.svelte'
   import RecentSourceList from './RecentSourceList.svelte'
-  import { fetchGithubPullRequestMetadata, loadRecentSources } from '../api'
+  import {
+    fetchGithubPullRequestMetadata,
+    loadRecentSources,
+    openExternalUrl,
+  } from '../api'
   import { notationDots } from '../compare/source-header-labels'
   import { parseGithubDiffUrl } from '../github/github-url'
   import type {
@@ -15,8 +17,6 @@
   } from '../types'
 
   const METADATA_DEBOUNCE_MS = 400
-
-  type GithubTab = 'pull' | 'compare'
 
   // Emits the parsed GitHub diff source (or null while the URL is not parseable)
   // so the parent can drive the Compare button.
@@ -30,23 +30,8 @@
   // Prefill for the URL input (e.g. the restored session's GitHub source).
   export let initialUrl = ''
 
-  // Each tab keeps its own URL so switching tabs never loses typed input.
-  let activeTab: GithubTab = 'pull'
-  let prUrl = ''
-  let compareUrl = ''
-
-  {
-    const initialParsed = parseGithubDiffUrl(initialUrl)
-    if (initialParsed?.kind === 'githubCompare') {
-      activeTab = 'compare'
-      compareUrl = initialUrl
-    } else {
-      prUrl = initialUrl
-    }
-  }
-
-  let pullTabButton: HTMLButtonElement | null = null
-  let compareTabButton: HTMLButtonElement | null = null
+  let githubUrl = initialUrl
+  let urlInput: HTMLInputElement | null = null
 
   let metadataStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   let metadata: GithubPullRequestMetadata | null = null
@@ -86,89 +71,44 @@
     void loadRecents()
   }
 
-  function selectTab(tab: GithubTab) {
-    activeTab = tab
-  }
-
-  async function selectTabAndFocusInput(tab: GithubTab) {
-    activeTab = tab
+  async function focusUrlInput() {
     await tick()
-    const inputId = tab === 'pull' ? 'github-pr-url' : 'github-compare-url'
-    const input = document.getElementById(inputId)
-    if (input instanceof HTMLInputElement) {
-      input.focus()
-      input.setSelectionRange(input.value.length, input.value.length)
+    if (urlInput) {
+      urlInput.focus()
+      urlInput.setSelectionRange(urlInput.value.length, urlInput.value.length)
     }
   }
 
-  // Arrow-key navigation between the two tabs; selection follows focus.
-  async function handleTabKeydown(event: KeyboardEvent) {
-    let next: GithubTab | null = null
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      next = activeTab === 'pull' ? 'compare' : 'pull'
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      next = activeTab === 'pull' ? 'compare' : 'pull'
-    } else if (event.key === 'Home') {
-      next = 'pull'
-    } else if (event.key === 'End') {
-      next = 'compare'
-    }
-
-    if (next === null || next === activeTab) {
-      return
-    }
-
-    event.preventDefault()
-    activeTab = next
-    await tick()
-    const button = next === 'pull' ? pullTabButton : compareTabButton
-    button?.focus()
-  }
-
-  // Pasting a URL of the other kind routes to the matching tab instead of
-  // showing an "invalid URL" error in the wrong one.
-  function handlePrInput(value: string) {
-    const source = parseGithubDiffUrl(value)
-    if (source?.kind === 'githubCompare') {
-      compareUrl = value
-      void selectTabAndFocusInput('compare')
-      return
-    }
-    prUrl = value
-  }
-
-  function handleCompareInput(value: string) {
-    const source = parseGithubDiffUrl(value)
-    if (source?.kind === 'githubPullRequest') {
-      prUrl = value
-      void selectTabAndFocusInput('pull')
-      return
-    }
-    compareUrl = value
+  function handleInput(value: string) {
+    githubUrl = value
   }
 
   function handleSelectRecent(id: string) {
     const recentPr = recentPullRequests.find((entry) => entry.id === id)
     if (recentPr) {
-      prUrl = recentPr.url
-      void selectTabAndFocusInput('pull')
+      githubUrl = recentPr.url
+      void focusUrlInput()
       return
     }
 
     const recentCompare = recentCompares.find((entry) => entry.id === id)
     if (recentCompare) {
-      compareUrl = recentCompare.url
-      void selectTabAndFocusInput('compare')
+      githubUrl = recentCompare.url
+      void focusUrlInput()
     }
   }
 
-  // Live parse drives both the Compare button and the metadata preview. Each
-  // tab only accepts its own URL kind; cross-kind pastes are routed above.
-  $: prParsedRaw = parseGithubDiffUrl(prUrl)
-  $: prParsed = prParsedRaw?.kind === 'githubPullRequest' ? prParsedRaw : null
-  $: compareParsedRaw = parseGithubDiffUrl(compareUrl)
-  $: compareParsed = compareParsedRaw?.kind === 'githubCompare' ? compareParsedRaw : null
-  $: parsed = activeTab === 'pull' ? prParsed : compareParsed
+  function openOnGithub(href: string) {
+    void openExternalUrl(href)
+  }
+
+  // Live parse drives both the Compare button and the metadata preview.
+  $: parsed = parseGithubDiffUrl(githubUrl)
+  $: parsedPullRequest = parsed?.kind === 'githubPullRequest' ? parsed : null
+  $: parsedCompare = parsed?.kind === 'githubCompare' ? parsed : null
+  $: showInvalid = githubUrl.trim() !== '' && parsed === null
+  $: rateLimited =
+    metadata !== null && metadata.state === 'unknown' && metadata.baseSha === ''
   $: onChange(parsed)
   $: scheduleMetadataLoad(parsed)
   $: onMetadataChange(metadataStatus === 'loaded' ? metadata : null)
@@ -281,69 +221,91 @@
   <section class="github-setup-panel" aria-label="GitHub diff">
     <h2 class="github-setup-title">GitHub diff</h2>
 
-    <div class="github-setup-tabs" role="tablist" aria-label="GitHub diff source type">
-      <button
-        type="button"
-        role="tab"
-        id="github-tab-pull"
-        class="github-setup-tab"
-        class:active={activeTab === 'pull'}
-        aria-selected={activeTab === 'pull'}
-        aria-controls="github-tabpanel-pull"
-        tabindex={activeTab === 'pull' ? 0 : -1}
-        bind:this={pullTabButton}
-        on:click={() => selectTab('pull')}
-        on:keydown={handleTabKeydown}
-      >
-        Pull Request
-      </button>
-      <button
-        type="button"
-        role="tab"
-        id="github-tab-compare"
-        class="github-setup-tab"
-        class:active={activeTab === 'compare'}
-        aria-selected={activeTab === 'compare'}
-        aria-controls="github-tabpanel-compare"
-        tabindex={activeTab === 'compare' ? 0 : -1}
-        bind:this={compareTabButton}
-        on:click={() => selectTab('compare')}
-        on:keydown={handleTabKeydown}
-      >
-        Compare URL
-      </button>
-    </div>
+    <div class="github-url-input">
+      <label class="github-url-label" for="github-url">GitHub URL</label>
+      <input
+        id="github-url"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="https://github.com/owner/repo/pull/123 or /compare/base...head"
+        value={githubUrl}
+        bind:this={urlInput}
+        on:input={(event) => handleInput(event.currentTarget.value)}
+      />
 
-    {#if activeTab === 'pull'}
-      <div
-        class="github-setup-tabpanel"
-        role="tabpanel"
-        id="github-tabpanel-pull"
-        aria-labelledby="github-tab-pull"
-      >
-        <GithubPrInput
-          url={prUrl}
-          parsed={prParsed}
-          {metadataStatus}
-          {metadata}
-          {metadataError}
-          onInput={handlePrInput}
-        />
+      <div class="github-url-status" aria-live="polite">
+        {#if githubUrl.trim() === ''}
+          <p class="github-url-hint">Enter a GitHub pull request or compare URL.</p>
+        {:else if showInvalid}
+          <p class="github-url-error">This is not a GitHub pull request or compare URL.</p>
+        {:else if parsedPullRequest}
+          <p class="github-url-parsed">
+            Pull request:
+            <code>{parsedPullRequest.owner}/{parsedPullRequest.repo}</code>
+            #{parsedPullRequest.pullNumber}
+          </p>
+          {#if metadataStatus === 'loading'}
+            <p class="github-url-hint">Loading pull request details...</p>
+          {:else if metadataStatus === 'loaded' && metadata && rateLimited}
+            <p class="github-url-warning">
+              GitHub rate limit reached. Pull request details are unavailable right
+              now, but the diff can still be loaded.
+            </p>
+            <p class="github-url-ready">Status: Ready</p>
+          {:else if metadataStatus === 'loaded' && metadata}
+            <dl class="github-url-details">
+              <div>
+                <dt>Title</dt>
+                <dd title={metadata.title}>{metadata.title || '-'}</dd>
+              </div>
+              <div>
+                <dt>State</dt>
+                <dd>{metadata.state}</dd>
+              </div>
+              <div>
+                <dt>Branches</dt>
+                <dd title={`${metadata.baseRef} <- ${metadata.headRef}`}>
+                  {metadata.baseRef} &lt;- {metadata.headRef}
+                </dd>
+              </div>
+              {#if metadata.changedFiles !== null}
+                <div>
+                  <dt>Files</dt>
+                  <dd>{metadata.changedFiles} changed</dd>
+                </div>
+              {/if}
+            </dl>
+            <p class="github-url-ready">Status: Ready</p>
+          {:else if metadataStatus === 'error'}
+            <p class="github-url-warning">
+              {metadataError || 'GitHub could not load this pull request. It may be private or rate-limited.'}
+            </p>
+          {:else}
+            <p class="github-url-ready">Status: Ready</p>
+          {/if}
+          <a
+            class="github-url-link"
+            href={parsedPullRequest.url}
+            on:click|preventDefault={() => openOnGithub(parsedPullRequest.url)}
+          >
+            Open on GitHub
+          </a>
+        {:else if parsedCompare}
+          <p class="github-url-parsed">
+            Compare:
+            <code>{parsedCompare.owner}/{parsedCompare.repo}</code>
+            {parsedCompare.baseRef}{notationDots(parsedCompare.notation)}{parsedCompare.headRef}
+          </p>
+          <p class="github-url-hint">
+            {parsedCompare.notation === 'threeDot'
+              ? 'PR-style merge-base diff'
+              : 'Direct two-dot diff'}
+          </p>
+          <p class="github-url-ready">Status: Ready</p>
+        {/if}
       </div>
-    {:else}
-      <div
-        class="github-setup-tabpanel"
-        role="tabpanel"
-        id="github-tabpanel-compare"
-        aria-labelledby="github-tab-compare"
-      >
-        <GithubCompareInput
-          url={compareUrl}
-          parsed={compareParsed}
-          onInput={handleCompareInput}
-        />
-      </div>
-    {/if}
+    </div>
   </section>
 </section>
 
@@ -377,36 +339,99 @@
     color: var(--panel-title);
   }
 
-  .github-setup-tabs {
+  .github-url-input {
     display: flex;
-    gap: 4px;
-    align-self: flex-start;
-    padding: 3px;
-    border: 1px solid var(--border-subtle);
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .github-url-label {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .github-url-input input {
+    font-family: var(--code, var(--font-code));
+    font-size: 12px;
+  }
+
+  .github-url-status {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--card-bg);
   }
 
-  .github-setup-tab {
-    padding: 4px 12px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
+  .github-url-hint {
+    margin: 0;
     color: var(--muted);
     font-size: 12px;
-    line-height: 1.4;
   }
 
-  .github-setup-tab.active {
-    border-color: var(--active-border);
-    background: var(--active-surface);
+  .github-url-error {
+    margin: 0;
+    color: var(--danger);
+    font-size: 12px;
+  }
+
+  .github-url-warning {
+    margin: 0;
+    color: var(--warning, var(--danger));
+    font-size: 12px;
+  }
+
+  .github-url-parsed {
+    margin: 0;
     color: var(--text);
+    font-size: 13px;
   }
 
-  .github-setup-tabpanel {
+  .github-url-parsed code {
+    font-family: var(--code, var(--font-code));
+    font-size: 12px;
+  }
+
+  .github-url-ready {
+    margin: 0;
+    color: var(--success);
+    font-size: 12px;
+  }
+
+  .github-url-link {
+    align-self: flex-start;
+    color: var(--accent, var(--text));
+    font-size: 12px;
+  }
+
+  .github-url-details {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    min-height: 0;
+    gap: 4px;
+    margin: 0;
+  }
+
+  .github-url-details > div {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .github-url-details dt {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .github-url-details dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--text);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
