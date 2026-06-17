@@ -16,6 +16,7 @@ export type DiffSource =
   | GitDiffSource
   | GithubPullRequestSource
   | GithubCompareSource
+  | GithubCommitSource
 
 export interface LocalDiffSource {
   kind: 'local'
@@ -109,7 +110,15 @@ export interface GithubCompareSource {
   url: string
 }
 
-export type GithubDiffSource = GithubPullRequestSource | GithubCompareSource
+export interface GithubCommitSource {
+  kind: 'githubCommit'
+  owner: string
+  repo: string
+  commitRef: string
+  url: string
+}
+
+export type GithubDiffSource = GithubPullRequestSource | GithubCompareSource | GithubCommitSource
 
 export interface GithubPullRequestMetadata {
   owner: string

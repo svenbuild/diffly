@@ -95,6 +95,15 @@ describe('compareSourceKind', () => {
         url: 'https://github.com/octo/diffly/compare/main...dev',
       }),
     ).toBe('github')
+    expect(
+      compareSourceKind({
+        kind: 'githubCommit',
+        owner: 'octo',
+        repo: 'diffly',
+        commitRef: '5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+        url: 'https://github.com/octo/diffly/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+      }),
+    ).toBe('github')
   })
 })
 

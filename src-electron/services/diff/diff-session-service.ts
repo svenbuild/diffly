@@ -126,6 +126,7 @@ export class DiffSessionService {
         return this.gitProvider
       case 'githubPullRequest':
       case 'githubCompare':
+      case 'githubCommit':
         return this.githubProvider
     }
   }
@@ -189,5 +190,11 @@ function isDiffSourceLike(source: unknown): source is DiffSource {
   }
 
   const kind = (source as { kind?: unknown }).kind
-  return kind === 'local' || kind === 'git' || kind === 'githubPullRequest' || kind === 'githubCompare'
+  return (
+    kind === 'local' ||
+    kind === 'git' ||
+    kind === 'githubPullRequest' ||
+    kind === 'githubCompare' ||
+    kind === 'githubCommit'
+  )
 }

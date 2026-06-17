@@ -2049,7 +2049,11 @@
   }
 
   function isGithubDiffSource(source: DiffSource | null): source is GithubDiffSource {
-    return source?.kind === 'githubPullRequest' || source?.kind === 'githubCompare'
+    return (
+      source?.kind === 'githubPullRequest' ||
+      source?.kind === 'githubCompare' ||
+      source?.kind === 'githubCommit'
+    )
   }
 
   function handleGitSetupChange(nextSetup: PersistedGitSetup) {
@@ -2095,7 +2099,7 @@
       ? activeDiffSource
       : githubSetupSource
     if (!source) {
-      errorMessage = 'Enter a GitHub pull request or compare URL.'
+      errorMessage = 'Enter a GitHub pull request, compare, or commit URL.'
       return
     }
 
@@ -2113,6 +2117,9 @@
           recentsReloadRequestId += 1
         })
         .catch(() => undefined)
+      return
+    }
+    if (source.kind === 'githubCommit') {
       return
     }
 
@@ -2750,7 +2757,9 @@
         ? 'No changed files in this pull request.'
         : activeDiffSource?.kind === 'githubCompare'
           ? 'No changed files in this compare.'
-        : 'No file changes.'
+          : activeDiffSource?.kind === 'githubCommit'
+            ? 'No changed files in this commit.'
+            : 'No file changes.'
   $: canNavigateDiffs = false
   $: canGoToPreviousDiff = false
   $: canGoToNextDiff = false
@@ -2846,7 +2855,7 @@
           : 'Select a valid Git repository and compare type'
         : githubSetupSource
           ? 'Load GitHub diff'
-          : 'Enter a GitHub pull request or compare URL'
+          : 'Enter a GitHub pull request, compare, or commit URL'
   $: setupCanCompare =
     (setupMode === 'local' && pickerCanCompare) ||
     (setupMode === 'git' && gitSetupSource !== null) ||

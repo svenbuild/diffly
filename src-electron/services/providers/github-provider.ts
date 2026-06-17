@@ -26,7 +26,7 @@ import {
 export class GithubProvider implements DiffSessionProvider {
   async create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
     void options
-    if (source.kind !== 'githubPullRequest' && source.kind !== 'githubCompare') {
+    if (!isGithubSource(source)) {
       throw new Error('Expected a GitHub diff source.')
     }
 
@@ -88,7 +88,7 @@ async function loadGithubRawDiff(source: DiffSource): Promise<{
   headLabel: string
   files: GithubPullRequestFile[]
 }> {
-  if (source.kind === 'githubPullRequest' || source.kind === 'githubCompare') {
+  if (isGithubSource(source)) {
     return fetchGithubRawDiff(source)
   }
 
@@ -186,7 +186,7 @@ function missingSnapshot(
 }
 
 function mapGithubFile(
-  source: Extract<DiffSource, { kind: 'githubPullRequest' | 'githubCompare' }>,
+  source: GithubProviderSource,
   file: GithubPullRequestFile,
 ): DiffEntry {
   return {
@@ -204,9 +204,25 @@ function githubEntryId(sourceId: string, path: string, oldPath: string | null) {
   return `github:${encodeURIComponent(sourceId)}:${encodeURIComponent(oldPath ?? '')}:${encodeURIComponent(path)}`
 }
 
-function githubSourceId(source: Extract<DiffSource, { kind: 'githubPullRequest' | 'githubCompare' }>) {
+type GithubProviderSource = Extract<
+  DiffSource,
+  { kind: 'githubPullRequest' | 'githubCompare' | 'githubCommit' }
+>
+
+function isGithubSource(source: DiffSource): source is GithubProviderSource {
+  return (
+    source.kind === 'githubPullRequest' ||
+    source.kind === 'githubCompare' ||
+    source.kind === 'githubCommit'
+  )
+}
+
+function githubSourceId(source: GithubProviderSource) {
   if (source.kind === 'githubPullRequest') {
     return `pr:${source.pullNumber}`
+  }
+  if (source.kind === 'githubCommit') {
+    return `commit:${source.commitRef}`
   }
 
   const dots = source.notation === 'threeDot' ? '...' : '..'

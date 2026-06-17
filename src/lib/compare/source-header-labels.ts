@@ -112,6 +112,9 @@ export function githubLabel(source: GithubDiffSource): string {
   if (source.kind === 'githubPullRequest') {
     return `${source.owner}/${source.repo} #${source.pullNumber}`
   }
+  if (source.kind === 'githubCommit') {
+    return `${source.owner}/${source.repo} commit ${shortSha(source.commitRef)}`
+  }
 
   return `${source.owner}/${source.repo} ${source.baseRef}${notationDots(source.notation)}${source.headRef}`
 }

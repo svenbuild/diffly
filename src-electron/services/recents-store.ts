@@ -112,6 +112,8 @@ function addRecentSourceToStore(
         ...current,
         githubCompares: upsertGithubCompare(current.githubCompares, source),
       }
+    case 'githubCommit':
+      return current
     case 'local':
       return {
         ...current,

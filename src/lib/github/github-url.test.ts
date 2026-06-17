@@ -61,6 +61,7 @@ describe('parseGithubPullRequestUrl', () => {
     expect(parseGithubPullRequestUrl('https://github.com/owner/repo/issues/12')).toBeNull()
     expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/abc')).toBeNull()
     expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/0')).toBeNull()
+    expect(parseGithubPullRequestUrl('https://github.com/owner/repo/pull/9/commits/abcdef1')).toBeNull()
     expect(parseGithubPullRequestUrl('ftp://github.com/owner/repo/pull/12')).toBeNull()
     expect(parseGithubPullRequestUrl('https://github.com/owner/.git/pull/12')).toBeNull()
   })
@@ -145,6 +146,58 @@ describe('parseGithubDiffUrl', () => {
     })
   })
 
+  it('parses commit URLs and raw commit diff URLs', () => {
+    const expected = {
+      kind: 'githubCommit',
+      owner: 'svenbuild',
+      repo: 'diffly',
+      commitRef: '5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+      url: 'https://github.com/svenbuild/diffly/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+    }
+
+    expect(
+      parseGithubDiffUrl(
+        'https://github.com/svenbuild/diffly/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+      ),
+    ).toEqual(expected)
+    expect(
+      parseGithubDiffUrl(
+        'github.com/svenbuild/diffly/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c.diff',
+      ),
+    ).toEqual(expected)
+    expect(
+      parseGithubDiffUrl(
+        'https://github.com/svenbuild/diffly/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c?diff=split#diff',
+      ),
+    ).toEqual(expected)
+  })
+
+  it('parses pull request commit URLs as single commit diffs', () => {
+    const expected = {
+      kind: 'githubCommit',
+      owner: 'svenbuild',
+      repo: 'diffly',
+      commitRef: '879d81f332276cf665a042931b6d9d55ec2192f2',
+      url: 'https://github.com/svenbuild/diffly/commit/879d81f332276cf665a042931b6d9d55ec2192f2',
+    }
+
+    expect(
+      parseGithubDiffUrl(
+        'https://github.com/svenbuild/diffly/pull/27/commits/879d81f332276cf665a042931b6d9d55ec2192f2',
+      ),
+    ).toEqual(expected)
+    expect(
+      parseGithubDiffUrl(
+        'https://github.com/svenbuild/diffly/pull/27/commits/879d81f332276cf665a042931b6d9d55ec2192f2.diff',
+      ),
+    ).toEqual(expected)
+    expect(
+      parseGithubDiffUrl(
+        'github.com/svenbuild/diffly/pull/27/commits/879d81f332276cf665a042931b6d9d55ec2192f2.patch?diff=split',
+      ),
+    ).toEqual(expected)
+  })
+
   it('parses www and scheme-less compare URLs to the canonical form', () => {
     const expected = {
       kind: 'githubCompare',
@@ -163,5 +216,7 @@ describe('parseGithubDiffUrl', () => {
   it('still rejects unsupported GitHub URLs', () => {
     expect(parseGithubDiffUrl('https://github.com/owner/repo/compare/base')).toBeNull()
     expect(parseGithubDiffUrl('https://github.com/owner/repo/commits/main')).toBeNull()
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/tree/main')).toBeNull()
+    expect(parseGithubDiffUrl('https://github.com/owner/repo/blob/main/README.md')).toBeNull()
   })
 })

@@ -120,6 +120,7 @@
   $: parsed = parseGithubDiffUrl(githubUrl)
   $: parsedPullRequest = parsed?.kind === 'githubPullRequest' ? parsed : null
   $: parsedCompare = parsed?.kind === 'githubCompare' ? parsed : null
+  $: parsedCommit = parsed?.kind === 'githubCommit' ? parsed : null
   $: showInvalid = githubUrl.trim() !== '' && parsed === null
   $: rateLimited =
     metadata !== null && metadata.state === 'unknown' && metadata.baseSha === ''
@@ -212,13 +213,15 @@
         recent.repo.toLowerCase() === parsed.repo.toLowerCase() &&
         recent.pullNumber === parsed.pullNumber,
       )?.id ?? ''
-      : recentCompares.find((recent) =>
-        recent.owner.toLowerCase() === parsed.owner.toLowerCase() &&
-        recent.repo.toLowerCase() === parsed.repo.toLowerCase() &&
-        recent.baseRef === parsed.baseRef &&
-        recent.headRef === parsed.headRef &&
-        recent.notation === parsed.notation,
-      )?.id ?? ''
+      : parsed.kind === 'githubCompare'
+        ? recentCompares.find((recent) =>
+          recent.owner.toLowerCase() === parsed.owner.toLowerCase() &&
+          recent.repo.toLowerCase() === parsed.repo.toLowerCase() &&
+          recent.baseRef === parsed.baseRef &&
+          recent.headRef === parsed.headRef &&
+          recent.notation === parsed.notation,
+        )?.id ?? ''
+        : ''
 </script>
 
 <section class="github-setup-workspace" aria-label="GitHub compare setup">
@@ -242,7 +245,7 @@
         type="text"
         autocomplete="off"
         spellcheck="false"
-        placeholder="https://github.com/owner/repo/pull/123 or /compare/base...head"
+        placeholder="https://github.com/owner/repo/pull/123, /compare/base...head, or /commit/sha"
         value={githubUrl}
         bind:this={urlInput}
         on:input={(event) => handleInput(event.currentTarget.value)}
@@ -250,9 +253,9 @@
 
       <div class="github-url-status" aria-live="polite">
         {#if githubUrl.trim() === ''}
-          <p class="github-url-hint">Enter a GitHub pull request or compare URL.</p>
+          <p class="github-url-hint">Enter a GitHub pull request, compare, or commit URL.</p>
         {:else if showInvalid}
-          <p class="github-url-error">This is not a GitHub pull request or compare URL.</p>
+          <p class="github-url-error">This is not a GitHub pull request, compare, or commit URL.</p>
         {:else if parsedPullRequest}
           <p class="github-url-parsed">
             Pull request:
@@ -316,6 +319,14 @@
               ? 'PR-style merge-base diff'
               : 'Direct two-dot diff'}
           </p>
+          <p class="github-url-ready">Status: Ready</p>
+        {:else if parsedCommit}
+          <p class="github-url-parsed">
+            Commit:
+            <code>{parsedCommit.owner}/{parsedCommit.repo}</code>
+            {parsedCommit.commitRef.slice(0, 7)}
+          </p>
+          <p class="github-url-hint">Single commit diff</p>
           <p class="github-url-ready">Status: Ready</p>
         {/if}
       </div>

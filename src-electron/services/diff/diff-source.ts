@@ -42,6 +42,14 @@ export function isDiffSourcePayload(value: unknown): value is DiffSource {
         value.headRef.trim() !== '' &&
         (value.notation === 'twoDot' || value.notation === 'threeDot')
       )
+    case 'githubCommit':
+      return (
+        typeof value.owner === 'string' &&
+        typeof value.repo === 'string' &&
+        typeof value.url === 'string' &&
+        typeof value.commitRef === 'string' &&
+        /^[0-9a-f]{7,40}$/i.test(value.commitRef)
+      )
     default:
       return false
   }

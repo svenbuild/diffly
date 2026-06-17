@@ -27,13 +27,30 @@ export function sourceActions(source: DiffSource | null): SourceActions {
   }
 
   // Only a valid http(s) GitHub URL yields a button; file:/empty/broken -> none.
-  if ((source.kind === 'githubPullRequest' || source.kind === 'githubCompare') && isHttpUrl(source.url)) {
+  if (
+    (
+      source.kind === 'githubPullRequest' ||
+      source.kind === 'githubCompare' ||
+      source.kind === 'githubCommit'
+    ) &&
+    isHttpUrl(source.url)
+  ) {
     if (source.kind === 'githubCompare') {
       return {
         showSwap: false,
         openExternal: {
           label: 'Open Compare',
           ariaLabel: `Open compare ${source.baseRef}${source.notation === 'threeDot' ? '...' : '..'}${source.headRef} in browser`,
+          url: source.url,
+        },
+      }
+    }
+    if (source.kind === 'githubCommit') {
+      return {
+        showSwap: false,
+        openExternal: {
+          label: 'Open Commit',
+          ariaLabel: `Open commit ${source.commitRef.slice(0, 7)} in browser`,
           url: source.url,
         },
       }

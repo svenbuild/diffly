@@ -1,6 +1,7 @@
 import type {
   DiffEntryStatus,
   GithubCompareSource,
+  GithubCommitSource,
   GithubPullRequestMetadata,
   GithubPullRequestSource,
 } from '../../../src/lib/types'
@@ -76,20 +77,48 @@ export interface GithubFileContent {
 }
 
 export async function fetchGithubRawDiff(
-  source: GithubPullRequestSource | GithubCompareSource,
+  source: GithubPullRequestSource | GithubCompareSource | GithubCommitSource,
 ): Promise<GithubRawDiff> {
-  const diffUrl = source.kind === 'githubPullRequest'
-    ? `https://github.com/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/pull/${source.pullNumber}.diff`
-    : `${source.url}.diff`
+  const diffUrl = githubRawDiffUrl(source)
   const text = await fetchGithubText(diffUrl, 'text/plain')
   const files = parseUnifiedDiffFiles(text)
 
   return {
-    baseLabel: source.kind === 'githubCompare' ? source.baseRef : 'base',
-    headLabel: source.kind === 'githubCompare' ? source.headRef : `PR #${source.pullNumber}`,
+    baseLabel: githubBaseLabel(source),
+    headLabel: githubHeadLabel(source),
     htmlUrl: source.url,
     files,
   }
+}
+
+function githubRawDiffUrl(
+  source: GithubPullRequestSource | GithubCompareSource | GithubCommitSource,
+) {
+  if (source.kind === 'githubPullRequest') {
+    return `https://github.com/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/pull/${source.pullNumber}.diff`
+  }
+
+  return `${source.url}.diff`
+}
+
+function githubBaseLabel(source: GithubPullRequestSource | GithubCompareSource | GithubCommitSource) {
+  if (source.kind === 'githubCompare') {
+    return source.baseRef
+  }
+  if (source.kind === 'githubCommit') {
+    return 'parent'
+  }
+  return 'base'
+}
+
+function githubHeadLabel(source: GithubPullRequestSource | GithubCompareSource | GithubCommitSource) {
+  if (source.kind === 'githubCompare') {
+    return source.headRef
+  }
+  if (source.kind === 'githubCommit') {
+    return source.commitRef.slice(0, 7)
+  }
+  return `PR #${source.pullNumber}`
 }
 
 export async function fetchPullRequestMetadata(

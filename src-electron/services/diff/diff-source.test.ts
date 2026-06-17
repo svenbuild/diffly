@@ -50,6 +50,13 @@ describe('isDiffSourcePayload', () => {
         notation: 'threeDot',
         url: 'https://github.com/owner/repo/compare/v1.0.0...v1.1.0',
       },
+      {
+        kind: 'githubCommit',
+        owner: 'owner',
+        repo: 'repo',
+        commitRef: '5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+        url: 'https://github.com/owner/repo/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+      },
     ]
 
     for (const source of sources) {
@@ -106,6 +113,13 @@ describe('isDiffSourcePayload', () => {
       headRef: 'head',
       notation: 'fourDot',
       url: 'https://github.com/owner/repo/compare/base...head',
+    })).toBe(false)
+    expect(isDiffSourcePayload({
+      kind: 'githubCommit',
+      owner: 'owner',
+      repo: 'repo',
+      commitRef: 'not-a-sha',
+      url: 'https://github.com/owner/repo/commit/not-a-sha',
     })).toBe(false)
   })
 })

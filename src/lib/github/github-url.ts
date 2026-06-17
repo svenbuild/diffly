@@ -1,5 +1,6 @@
 import type {
   GithubCompareSource,
+  GithubCommitSource,
   GithubDiffSource,
   GithubPullRequestSource,
 } from '../types'
@@ -12,8 +13,12 @@ import type {
 // hyphen enforcement is left to GitHub; repo: alphanumeric plus ._-
 const PULL_REQUEST_PATH_PATTERN =
   /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/([0-9]+)(?:\.(?:diff|patch))?(?:\/[A-Za-z0-9._-]*)*\/?$/
+const PULL_REQUEST_COMMIT_PATH_PATTERN =
+  /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/[0-9]+\/commits\/([0-9a-fA-F]{7,40})(?:\.(?:diff|patch))?\/?$/
 const COMPARE_PATH_PATTERN =
   /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/compare\/(.+?)\/?$/
+const COMMIT_PATH_PATTERN =
+  /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/commit\/([0-9a-fA-F]{7,40})(?:\.(?:diff|patch))?\/?$/
 const COMPARE_NOTATION_PATTERN = /^(.+?)(\.\.\.?)(.+)$/
 const RAW_DIFF_EXTENSION_PATTERN = /\.(?:diff|patch)$/i
 
@@ -50,12 +55,22 @@ export function parseGithubDiffUrl(input: string): GithubDiffSource | null {
     return null
   }
 
-  const pullRequestSource = parsePullRequestPath(url.pathname)
-  if (pullRequestSource) {
-    return pullRequestSource
+  const pullRequestCommitSource = parsePullRequestCommitPath(url.pathname)
+  if (pullRequestCommitSource) {
+    return pullRequestCommitSource
   }
 
-  return parseComparePath(url.pathname)
+  const compareSource = parseComparePath(url.pathname)
+  if (compareSource) {
+    return compareSource
+  }
+
+  const commitSource = parseCommitPath(url.pathname)
+  if (commitSource) {
+    return commitSource
+  }
+
+  return parsePullRequestPath(url.pathname)
 }
 
 function parsePullRequestPath(pathname: string): GithubPullRequestSource | null {
@@ -113,6 +128,50 @@ function parseComparePath(pathname: string): GithubCompareSource | null {
     headRef,
     notation,
     url: `https://github.com/${owner}/${repo}/compare/${baseRef}${dots}${headRef}`,
+  }
+}
+
+function parsePullRequestCommitPath(pathname: string): GithubCommitSource | null {
+  const match = PULL_REQUEST_COMMIT_PATH_PATTERN.exec(pathname)
+  if (!match) {
+    return null
+  }
+
+  const owner = match[1]
+  const repo = normalizeRepoName(match[2])
+  const commitRef = match[3]
+  if (!repo) {
+    return null
+  }
+
+  return {
+    kind: 'githubCommit',
+    owner,
+    repo,
+    commitRef,
+    url: `https://github.com/${owner}/${repo}/commit/${commitRef}`,
+  }
+}
+
+function parseCommitPath(pathname: string): GithubCommitSource | null {
+  const match = COMMIT_PATH_PATTERN.exec(pathname)
+  if (!match) {
+    return null
+  }
+
+  const owner = match[1]
+  const repo = normalizeRepoName(match[2])
+  const commitRef = match[3]
+  if (!repo) {
+    return null
+  }
+
+  return {
+    kind: 'githubCommit',
+    owner,
+    repo,
+    commitRef,
+    url: `https://github.com/${owner}/${repo}/commit/${commitRef}`,
   }
 }
 

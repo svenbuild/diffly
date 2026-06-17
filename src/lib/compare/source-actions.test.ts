@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   GitDiffSource,
   GithubCompareSource,
+  GithubCommitSource,
   GithubPullRequestSource,
   LocalDiffSource,
 } from '../types'
@@ -36,6 +37,14 @@ const compare: GithubCompareSource = {
   headRef: 'feature/topic',
   notation: 'threeDot',
   url: 'https://github.com/octocat/hello/compare/v1...feature/topic',
+}
+
+const commit: GithubCommitSource = {
+  kind: 'githubCommit',
+  owner: 'octocat',
+  repo: 'hello',
+  commitRef: '5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+  url: 'https://github.com/octocat/hello/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
 }
 
 describe('sourceActions', () => {
@@ -88,6 +97,17 @@ describe('sourceActions', () => {
         label: 'Open Compare',
         ariaLabel: 'Open compare v1...feature/topic in browser',
         url: 'https://github.com/octocat/hello/compare/v1...feature/topic',
+      },
+    })
+  })
+
+  it('offers Open Commit for a GitHub commit URL', () => {
+    expect(sourceActions(commit)).toEqual({
+      showSwap: false,
+      openExternal: {
+        label: 'Open Commit',
+        ariaLabel: 'Open commit 5550b7b in browser',
+        url: 'https://github.com/octocat/hello/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
       },
     })
   })

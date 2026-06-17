@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { GitDiffSource, GithubCompareSource, GithubPullRequestSource } from '../types'
+import type {
+  GitDiffSource,
+  GithubCommitSource,
+  GithubCompareSource,
+  GithubPullRequestSource,
+} from '../types'
 import {
   gitCommandHint,
   gitLabel,
@@ -170,6 +175,13 @@ describe('github label and tooltip', () => {
     notation: 'threeDot',
     url: 'https://github.com/octocat/hello/compare/v1.0.0...feature/topic',
   }
+  const commit: GithubCommitSource = {
+    kind: 'githubCommit',
+    owner: 'octocat',
+    repo: 'hello',
+    commitRef: '5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+    url: 'https://github.com/octocat/hello/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+  }
 
   it('renders owner/repo #number', () => {
     expect(githubLabel(pr)).toBe('octocat/hello #123')
@@ -190,5 +202,12 @@ describe('github label and tooltip', () => {
 
   it('uses the compare url in the tooltip when present', () => {
     expect(githubTooltip(compare)).toBe('https://github.com/octocat/hello/compare/v1.0.0...feature/topic')
+  })
+
+  it('renders GitHub commits with a shortened sha', () => {
+    expect(githubLabel(commit)).toBe('octocat/hello commit 5550b7b')
+    expect(githubTooltip(commit)).toBe(
+      'https://github.com/octocat/hello/commit/5550b7b5faed07f7e6ae357d60c51ac055c8b46c',
+    )
   })
 })
