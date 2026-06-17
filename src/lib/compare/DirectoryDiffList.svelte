@@ -4,7 +4,10 @@
   import { openCompareItem, openDiffEntry } from '../api'
   import { resolveDirectoryDiffLoadConcurrency } from './diff-concurrency'
   import type { CompareSourceKind } from '../actions/compare-actions'
-  import { markCompareTimingOnce } from '../app/compare-timing'
+  import {
+    finishCompareTimingOnNextFrame,
+    markCompareTimingOnce,
+  } from '../app/compare-timing'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
@@ -1084,6 +1087,7 @@
     directoryEntries
     const nextSignature = directoryEntriesSignature()
     if (nextSignature !== entriesSignature) {
+      const revisionChanged = resolvedEntryStateRevision !== revision
       entriesSignature = nextSignature
       loadGeneration += 1
       priorityLoadQueue = []
@@ -1095,9 +1099,10 @@
       childSystemMonitor = { ...EMPTY_SYSTEM_MONITOR }
       lastSystemMonitorSignature = ''
       cancelQueuedDiffStats()
-      if (resolvedEntryStateRevision !== revision) {
+      if (revisionChanged) {
         resolvedEntryStateRevision = revision
         resolvedEntryStatesByDetailKey = new Map()
+        collapsedPaths = new Set()
         resetDiffStats()
       }
       publishDirectorySystemMonitorStats()
@@ -1116,6 +1121,11 @@
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
   $: hasRenderableDirectoryItems = textEntries.length > 0
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
+  $: if (!loading && hasRenderableDirectoryItems) {
+    finishCompareTimingOnNextFrame('directory-list-ready', {
+      entries: textEntries.length,
+    })
+  }
   $: if (collapseAllRevision !== handledCollapseAllRevision) {
     handledCollapseAllRevision = collapseAllRevision
     setAllCollapsed(true)

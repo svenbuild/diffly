@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte'
   import AppTopBar from '../AppTopBar.svelte'
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
@@ -137,12 +136,6 @@
 
     toolbarReloadPending = true
     try {
-      if (mode === 'directory' && directoryEntries.length > 0) {
-        expandAllRevision += 1
-        directoryDiffsAllCollapsed = false
-        await tick()
-      }
-
       await runCompare()
     } finally {
       toolbarReloadPending = false
