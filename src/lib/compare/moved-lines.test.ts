@@ -121,6 +121,21 @@ describe('detectMovedLines', () => {
     expect(movedLines.additions.size).toBe(0)
   })
 
+  it('matches identical code text when only line endings differ', () => {
+    const fileDiff = diffFromPatch([
+      '--- a/example.c',
+      '+++ b/example.c',
+      '@@ -61,1 +61,1 @@',
+      '-static void openVkaserBackend(void);\r',
+      '+static void openVkaserBackend(void);',
+    ])
+
+    const movedLines = detectMovedLines(fileDiff)
+
+    expect(lineSetValues(movedLines.deletions)).toEqual([61])
+    expect(lineSetValues(movedLines.additions)).toEqual([61])
+  })
+
   it('works with processFile patch metadata', () => {
     const fileDiff = diffFromPatch([
       '--- a/example.c',

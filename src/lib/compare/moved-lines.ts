@@ -7,7 +7,6 @@ export interface MovedLineDecorations {
 
 interface CandidateLine {
   lineNumber: number
-  text: string
 }
 
 const MIN_MEANINGFUL_TRIMMED_LENGTH = 8
@@ -49,24 +48,33 @@ function isMeaningfulMovedLineCandidate(text: string) {
   return trimmed.length >= MIN_MEANINGFUL_TRIMMED_LENGTH && !IGNORED_TRIMMED_LINES.has(trimmed)
 }
 
+function movedLineKey(text: string) {
+  return text.replace(/(?:\r\n|\n|\r)$/, '')
+}
+
 function addCandidate(
   candidatesByText: Map<string, CandidateLine[]>,
   text: string | undefined,
   lineNumber: number,
 ) {
-  if (text === undefined || !isMeaningfulMovedLineCandidate(text)) {
+  if (text === undefined) {
     return
   }
 
-  const candidates = candidatesByText.get(text)
+  const key = movedLineKey(text)
+  if (!isMeaningfulMovedLineCandidate(key)) {
+    return
+  }
+
+  const candidates = candidatesByText.get(key)
   if (candidates) {
     if (candidates.length < MAX_OCCURRENCES_PER_SIDE) {
-      candidates.push({ lineNumber, text })
+      candidates.push({ lineNumber })
     }
     return
   }
 
-  candidatesByText.set(text, [{ lineNumber, text }])
+  candidatesByText.set(key, [{ lineNumber }])
 }
 
 export function detectMovedLines(fileDiff: FileDiffMetadata): MovedLineDecorations {
