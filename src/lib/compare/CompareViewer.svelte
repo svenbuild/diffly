@@ -51,6 +51,9 @@
   export let reviewModeEnabled = false
   export let reviewSourceKind: CompareSourceKind = 'local'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
+  export let collapseAllRevision = 0
+  export let expandAllRevision = 0
+  export let onDirectoryCollapseStateChange: (allCollapsed: boolean) => void = () => {}
 </script>
 
 <section class:compare-viewer-transitioning={transitionActive} class="compare-viewer">
@@ -76,6 +79,9 @@
       {reviewModeEnabled}
       {reviewSourceKind}
       {onReviewRefresh}
+      {collapseAllRevision}
+      {expandAllRevision}
+      onCollapseStateChange={onDirectoryCollapseStateChange}
     />
   {:else if loading || detailLoading}
     <div class="compare-viewer-state">

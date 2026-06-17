@@ -73,6 +73,9 @@
   export let reviewModeEnabled = false
   export let reviewSourceKind: CompareSourceKind = 'local'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
+  export let collapseAllRevision = 0
+  export let expandAllRevision = 0
+  export let onCollapseStateChange: (allCollapsed: boolean) => void = () => {}
 
   const DIRECTORY_DIFF_LOAD_CONCURRENCY = resolveDirectoryDiffLoadConcurrency()
   const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = resolveDirectoryDiffLoadConcurrency()
@@ -127,6 +130,9 @@
   let lastSystemMonitorSignature = ''
   let diffStatsFrame: number | null = null
   let diffStatsTimer: number | null = null
+  let handledCollapseAllRevision = collapseAllRevision
+  let handledExpandAllRevision = expandAllRevision
+  let lastPublishedAllCollapsed: boolean | null = null
 
   function queuedLoadCount() {
     return (
@@ -507,6 +513,28 @@
       nextCollapsedPaths.delete(path)
     }
     collapsedPaths = nextCollapsedPaths
+  }
+
+  function diffableEntryPaths() {
+    return directoryEntries
+      .filter(isDiffableDirectoryEntry)
+      .map((entry) => entry.relativePath)
+  }
+
+  function setAllCollapsed(collapsed: boolean) {
+    const paths = diffableEntryPaths()
+    collapsedPaths = collapsed ? new Set(paths) : new Set()
+  }
+
+  function publishCollapseState() {
+    const paths = diffableEntryPaths()
+    const allCollapsed = paths.length > 0 && paths.every((path) => collapsedPaths.has(path))
+    if (allCollapsed === lastPublishedAllCollapsed) {
+      return
+    }
+
+    lastPublishedAllCollapsed = allCollapsed
+    onCollapseStateChange(allCollapsed)
   }
 
   async function ensureLoaded(
@@ -1088,6 +1116,15 @@
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
   $: hasRenderableDirectoryItems = textEntries.length > 0
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
+  $: if (collapseAllRevision !== handledCollapseAllRevision) {
+    handledCollapseAllRevision = collapseAllRevision
+    setAllCollapsed(true)
+  }
+  $: if (expandAllRevision !== handledExpandAllRevision) {
+    handledExpandAllRevision = expandAllRevision
+    setAllCollapsed(false)
+  }
+  $: directoryEntries, collapsedPaths, publishCollapseState()
 </script>
 
 <section class="directory-diff-list">

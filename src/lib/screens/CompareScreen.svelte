@@ -9,6 +9,8 @@
   import { sourceActions } from '../compare/source-actions'
   import { compareSourceKind } from '../actions/compare-actions'
   import backIconUrl from '../assets/icons/toolbar-back.svg'
+  import collapseAllIconUrl from '../assets/icons/toolbar-collapse-all.svg'
+  import expandAllIconUrl from '../assets/icons/toolbar-expand-all.svg'
   import reloadIconUrl from '../assets/icons/toolbar-reload.svg'
   import reviewIconUrl from '../assets/icons/toolbar-review.svg'
   import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
@@ -101,6 +103,9 @@
   }
 
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
+  let directoryDiffsAllCollapsed = false
+  let collapseAllRevision = 0
+  let expandAllRevision = 0
 
   $: showGitScopeTabs =
     mode === 'directory' &&
@@ -113,6 +118,14 @@
 
   function toggleReviewMode() {
     reviewModeEnabled.update((enabled) => !enabled)
+  }
+
+  function toggleAllFileDiffs() {
+    if (directoryDiffsAllCollapsed) {
+      expandAllRevision += 1
+    } else {
+      collapseAllRevision += 1
+    }
   }
 
   // Planned file operations are preview state for one specific compare;
@@ -224,6 +237,22 @@
         >
           <ToolbarSvgIcon src={reviewIconUrl} className="review-mode-icon" />
         </button>
+
+        {#if mode === 'directory'}
+          <button
+            aria-label={directoryDiffsAllCollapsed ? 'Expand all file diffs' : 'Collapse all file diffs'}
+            class="secondary toolbar-button icon-button collapse-all-button"
+            disabled={directoryEntries.length === 0}
+            title={directoryDiffsAllCollapsed ? 'Expand all file diffs' : 'Collapse all file diffs'}
+            type="button"
+            on:click={toggleAllFileDiffs}
+          >
+            <ToolbarSvgIcon
+              src={directoryDiffsAllCollapsed ? expandAllIconUrl : collapseAllIconUrl}
+              className="collapse-all-icon"
+            />
+          </button>
+        {/if}
       </div>
 
       {#if srcActions.openExternal}
@@ -367,6 +396,11 @@
         reviewModeEnabled={$reviewModeEnabled}
         {reviewSourceKind}
         onReviewRefresh={runCompare}
+        {collapseAllRevision}
+        {expandAllRevision}
+        onDirectoryCollapseStateChange={(allCollapsed) => {
+          directoryDiffsAllCollapsed = allCollapsed
+        }}
       />
     {:else}
       <section class="compare-viewer">
