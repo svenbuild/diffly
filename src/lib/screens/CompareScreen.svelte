@@ -107,6 +107,7 @@
   let directoryDiffsAllCollapsed = false
   let collapseAllRevision = 0
   let expandAllRevision = 0
+  let toolbarReloadPending = false
 
   $: showGitScopeTabs =
     mode === 'directory' &&
@@ -130,13 +131,22 @@
   }
 
   async function runCompareFromToolbar() {
-    if (mode === 'directory' && directoryEntries.length > 0) {
-      expandAllRevision += 1
-      directoryDiffsAllCollapsed = false
-      await tick()
+    if (toolbarReloadPending || loading) {
+      return
     }
 
-    await runCompare()
+    toolbarReloadPending = true
+    try {
+      if (mode === 'directory' && directoryEntries.length > 0) {
+        expandAllRevision += 1
+        directoryDiffsAllCollapsed = false
+        await tick()
+      }
+
+      await runCompare()
+    } finally {
+      toolbarReloadPending = false
+    }
   }
 
   // Planned file operations are preview state for one specific compare;
@@ -301,17 +311,17 @@
 
         <button
           aria-label={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
-          aria-busy={loading}
-          class:compare-action-busy={loading}
+          aria-busy={loading || toolbarReloadPending}
+          class:compare-action-busy={loading || toolbarReloadPending}
           class:pending-refresh={compareNeedsRefresh}
           class="secondary toolbar-button icon-button refresh-button"
           title={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
           type="button"
-          disabled={loading}
+          disabled={loading || toolbarReloadPending}
           on:click={runCompareFromToolbar}
         >
           <span class="refresh-icon-slot" aria-hidden="true">
-            {#if loading}
+            {#if loading || toolbarReloadPending}
               <span class="refresh-spinner visible"></span>
             {:else}
               <ToolbarSvgIcon src={reloadIconUrl} className="refresh-icon" />
