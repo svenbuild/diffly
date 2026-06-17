@@ -1,5 +1,29 @@
 # Changelog
 
+## Diffly v0.2.4-rc.1
+
+Released: 2026-06-17
+
+This is a prerelease for testing startup, Git diff, compare loading, and early review-mode improvements before the next stable release.
+
+### Highlights
+
+- Added startup profiling for the Electron main process and renderer setup path, including a repeatable `scripts/measure-startup.mjs` measurement harness.
+- Reduced startup work by lazy-loading backend services, settings, local setup, GitHub setup, and setup-only CSS outside the default Git setup path.
+- Sped up Git compare startup with faster working-tree initialization, selected-diff-first rendering, reused loaded Git diffs across scope changes, and responsive scope switching.
+- Rendered Git diffs from native patches and added a persistent `git cat-file --batch` object store with OID caching.
+- Added compare load timing instrumentation and kept the compare loading overlay visible until the first useful diff render is ready.
+- Added preview-only planned file operations and a review-mode skeleton with whole-file accept support for local compares.
+- Improved diff headers, toolbar controls, Windows custom title-bar drag regions, material file icons, line-ending reuse, Windows text decoding, and placeholder layout stability.
+- Added focused tests for Git services, patch parsing, review mode, file-operation previews, diff concurrency, recents, local providers, and compare actions.
+
+### Validation
+
+- `npm run build`
+- `npm run check`
+
+**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.3...v0.2.4-rc.1
+
 ## Diffly v0.2.3
 
 ### What's Changed

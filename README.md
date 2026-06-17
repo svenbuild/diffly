@@ -8,6 +8,8 @@ Install the latest Windows, macOS, or Linux build from [GitHub Releases](https:/
 
 Current release: `v0.2.3`
 
+Current prerelease: `v0.2.4-rc.1`
+
 Supported desktop builds:
 
 - Windows: NSIS installer and portable executable.
