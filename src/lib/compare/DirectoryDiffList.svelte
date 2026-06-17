@@ -1121,7 +1121,7 @@
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
   $: hasRenderableDirectoryItems = textEntries.length > 0
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
-  $: if (!loading && hasRenderableDirectoryItems) {
+  $: if (!loading && detailLoader.kind === 'localPaths' && hasRenderableDirectoryItems) {
     finishCompareTimingOnNextFrame('directory-list-ready', {
       entries: textEntries.length,
     })
