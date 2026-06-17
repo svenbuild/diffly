@@ -24,6 +24,10 @@
   import './directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import {
+    finishCompareTimingOnNextFrame,
+    markCompareTimingOnce,
+  } from '../app/compare-timing'
+  import {
     buildPierreDiffUnsafeCss,
     resolvePierreDiffTheme,
   } from '../theme/pierre'
@@ -205,6 +209,45 @@
 
   }
 
+  function handlePostRender() {
+    applyCollapsedState()
+    finishFirstRenderedDiff()
+  }
+
+  function finishFirstRenderedDiff() {
+    if (!host || !hasRenderedDiffContent(host)) {
+      return
+    }
+
+    finishCompareTimingOnNextFrame('first-pierre-diff-rendered', {
+      path: rightLabel || leftLabel,
+    })
+  }
+
+  function hasRenderedDiffContent(root: HTMLElement) {
+    const containers = root.querySelectorAll<HTMLElement>('diffs-container')
+    for (const container of containers) {
+      const shadowRoot = container.shadowRoot
+      if (!shadowRoot) {
+        continue
+      }
+
+      if (shadowRoot.querySelector('[data-error-wrapper]')) {
+        return true
+      }
+
+      if (
+        shadowRoot.querySelector(
+          'pre code[data-unified], pre code[data-deletions], pre code[data-additions]',
+        )
+      ) {
+        return true
+      }
+    }
+
+    return false
+  }
+
   function headerDirectory(label: string) {
     const normalized = label.replace(/[\\/]+$/, '')
     const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
@@ -297,7 +340,7 @@
       controlledSelection: viewerSettings.controlledSelection,
       onLineSelected: handleLineSelected,
       onLineSelectionEnd: handleLineSelected,
-      onPostRender: applyCollapsedState,
+      onPostRender: handlePostRender,
       renderHeaderPrefix: renderFileHeaderPrefix,
       renderHeaderMetadata: renderFileHeaderMetadata,
       // Providing token handlers auto-enables Pierre's token transformer, so we
@@ -512,7 +555,13 @@
 
     const oldFile = buildFile('left', leftLabel, text.leftText, text.leftCacheKey, text.leftSha256)
     const newFile = buildFile('right', rightLabel, text.rightText, text.rightCacheKey, text.rightSha256)
+    markCompareTimingOnce('first-pierre-parse-start', {
+      path: rightLabel || leftLabel,
+    })
     const patchFileDiff = buildPatchFileDiff(oldFile, newFile)
+    markCompareTimingOnce('first-pierre-parse-end', {
+      path: rightLabel || leftLabel,
+    })
     fileDiff.render({
       oldFile,
       newFile,
@@ -527,6 +576,7 @@
     }
 
     applyCollapsedState()
+    finishFirstRenderedDiff()
   }
 
   $: tokenHoverLanguage = getFiletypeFromFileName(fileName(rightLabel || leftLabel))

@@ -38,6 +38,7 @@
   import {
     cancelCompareTiming,
     finishCompareTiming,
+    finishCompareTimingOnNextFrame,
     markCompareTiming,
     startCompareTiming,
     subscribeCompareLoading,
@@ -1223,8 +1224,12 @@
 
       stopDirectoryComparePolling()
       loading = false
-      errorMessage =
+      const message =
         error instanceof Error ? error.message : 'Compare progress could not be loaded.'
+      errorMessage = message
+      finishCompareTiming('compare-failed', {
+        message,
+      })
     }
   }
 
@@ -2037,6 +2042,8 @@
     }
 
     const options = getPendingCompareOptions()
+    const wasCompareScreen = screen === 'compare'
+    const previousSessionId = activeDiffSessionId
 
     startCompareTiming(compareTimingLabel(source), {
       sourceKind: source.kind,
@@ -2047,7 +2054,7 @@
 
     // Scope tabs only exist for git working-tree sources. Preserve the active
     // tab across Refresh; seed from the picker on a fresh compare from setup.
-    const isRefresh = screen === 'compare' && activeDiffSource?.kind === source.kind
+    const isRefresh = wasCompareScreen && activeDiffSource?.kind === source.kind
     const isWorkingTree = source.kind === 'git' && source.selection.kind === 'workingTree'
     const targetScope: GitWorkingTreeScope | null =
       source.kind === 'git' && source.selection.kind === 'workingTree'
@@ -2055,6 +2062,26 @@
           ? gitScope
           : source.selection.initialScope
         : null
+
+    if (!wasCompareScreen) {
+      mode = 'directory'
+      activeDiffSource = source
+      activeDiffSessionId = null
+      gitScopeEntries = []
+      gitScopeDirectoryEntries = []
+      gitScope = targetScope ?? 'all'
+      directoryEntries = []
+      directoryEntriesRevision += 1
+      syncFilteredDirectoryState([])
+      selectedRelativePath = ''
+      activeDiff = null
+      activeDetailRequestId += 1
+      resetCompareMetrics()
+      cancelBackgroundDiffPreload()
+      stopDirectoryComparePolling(true)
+      screen = 'compare'
+      pulseCompareSurface()
+    }
 
     try {
       markCompareTiming('session-request-start')
@@ -2070,8 +2097,6 @@
           ? mappedSessionEntries
           : mappedSessionEntries.filter((entry) => entry.diffEntryScope === targetScope)
       )
-      const previousSessionId = activeDiffSessionId
-
       compareRevision += 1
       diffCache.clearDetailDiffs()
       activeCompareOptions = { ...options }
@@ -2246,6 +2271,10 @@
     let directoryPollingStarted = false
     let requestRevision = compareRevision
 
+    startCompareTiming(`local ${mode}`, {
+      mode,
+      screen,
+    })
     loading = true
     detailLoading = false
     errorMessage = ''
@@ -2258,19 +2287,20 @@
     rightPath = nextRightPath
 
     try {
+      compareRevision += 1
+      requestRevision = compareRevision
+      const revision = requestRevision
+      diffCache.clearDetailDiffs()
+      activeCompareOptions = { ...nextCompareOptions }
+      compareDirtyReason = null
+      screen = 'compare'
+      activeDiff = null
+
       if (mode === 'directory') {
-        compareRevision += 1
-        requestRevision = compareRevision
-        const revision = requestRevision
-        diffCache.clearDetailDiffs()
-        activeCompareOptions = { ...nextCompareOptions }
-        compareDirtyReason = null
-        screen = 'compare'
         directoryEntries = []
         directoryEntriesRevision += 1
         syncFilteredDirectoryState([])
         selectedRelativePath = ''
-        activeDiff = null
 
         const pairs = buildDirectoryComparePairs(leftSelected, rightSelected)
         directoryComparePairs = pairs
@@ -2321,9 +2351,6 @@
         return
       }
 
-      compareRevision += 1
-      requestRevision = compareRevision
-      const revision = requestRevision
       const response = await comparePaths(
         nextLeftPath,
         nextRightPath,
@@ -2334,11 +2361,6 @@
       if (revision !== compareRevision) {
         return
       }
-
-      diffCache.clearDetailDiffs()
-      activeCompareOptions = { ...nextCompareOptions }
-      compareDirtyReason = null
-      screen = 'compare'
 
       if (response.kind === 'directory') {
         directoryEntries = response.entries
@@ -2358,15 +2380,37 @@
           selectedRelativePath = ''
           activeDiff = null
           cancelBackgroundDiffPreload()
+          finishCompareTiming('compare-ready-empty', {
+            entries: response.entries.length,
+          })
         }
       } else {
         selectedRelativePath = ''
         activeDiff = response.result
         cancelBackgroundDiffPreload()
+        markCompareTiming('first-entry-loaded', {
+          contentKind: response.result.contentKind,
+          hasTextDiff: Boolean(response.result.contentKind === 'text' && response.result.text),
+          mode,
+        })
+        if (response.result.contentKind === 'text' && response.result.text) {
+          markCompareTiming('first-text-entry-loaded', {
+            mode,
+          })
+        } else {
+          finishCompareTimingOnNextFrame('compare-ready-non-text', {
+            contentKind: response.result.contentKind,
+            mode,
+          })
+        }
       }
     } catch (error) {
       if (requestRevision === compareRevision) {
-        errorMessage = error instanceof Error ? error.message : 'Compare failed.'
+        const message = error instanceof Error ? error.message : 'Compare failed.'
+        errorMessage = message
+        finishCompareTiming('compare-failed', {
+          message,
+        })
       }
     } finally {
       if (!directoryPollingStarted && requestRevision === compareRevision) {
