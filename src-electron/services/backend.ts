@@ -12,68 +12,26 @@ import type {
   PersistedSession,
   UpdateChannel,
 } from '../../src/lib/types'
-import { isDiffSourcePayload } from './diff/diff-source'
-import { DiffSessionService } from './diff/diff-session-service'
-import {
-  choosePath,
-  listDirectory,
-  listRoots,
-  pathInfo,
-} from './explorer-service'
-import { applyFileChange } from './file-apply'
-import { loadLaunchContext } from './launch-context'
-import { fetchPullRequestMetadata, GithubServiceError } from './github/github-service'
-import { parseGithubPullRequestUrl } from './github/github-url'
-import { GithubProvider } from './providers/github-provider'
-import { GitProvider } from './providers/git-provider'
-import { LocalProvider } from './providers/local-provider'
-import {
-  addRecentSource,
-  loadRecentSources,
-  removeRecentSource,
-} from './recents-store'
-import { detectGitRepositories } from './git/git-detection'
-import { listGitRefs } from './git/git-refs'
-import { validateGitRepository } from './git/git-repository'
-import {
-  loadSessionState,
-  saveSessionState,
-} from './session-store'
-import {
-  checkForUpdates,
-  downloadUpdate,
-  installUpdate,
-} from './update-service'
 
-const localProvider = new LocalProvider()
-const gitProvider = new GitProvider()
-const githubProvider = new GithubProvider()
-const diffSessionService = new DiffSessionService({ localProvider, gitProvider, githubProvider })
+interface CompareServices {
+  diffSessionService: import('./diff/diff-session-service').DiffSessionService
+  localProvider: import('./providers/local-provider').LocalProvider
+}
 
-export {
-  clearDirectoryListingCache,
-  listDirectory,
-  listRoots,
-} from './explorer-service'
-export {
-  getLaunchContextFromArgs,
-  registerWindowLaunchContext,
-} from './launch-context'
-export {
-  addRecentSource,
-  loadRecentSources,
-  removeRecentSource,
-} from './recents-store'
-export { detectGitRepositories } from './git/git-detection'
-export { listGitRefs } from './git/git-refs'
-export { validateGitRepository } from './git/git-repository'
-export { loadSessionState, saveSessionState } from './session-store'
-export { clearFileDiffCache } from './file-diff'
-export { applyFileChange } from './file-apply'
+let compareServicesPromise: Promise<CompareServices> | null = null
+let explorerServicePromise: Promise<typeof import('./explorer-service')> | null = null
+
+function loadExplorerService() {
+  if (!explorerServicePromise) {
+    explorerServicePromise = import('./explorer-service')
+  }
+
+  return explorerServicePromise
+}
 
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
-    choosePath(payload.kind),
+    loadExplorerService().then(({ choosePath }) => choosePath(payload.kind)),
   )
   ipcMain.handle('diffly:openExternal', (_event, payload: { url: string }) =>
     openExternalUrl(payload?.url ?? ''),
@@ -87,47 +45,69 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:applyFileChange', (_event, payload: unknown) =>
     applyFileChange(payload),
   )
-  ipcMain.handle('diffly:listRoots', () => listRoots())
+  ipcMain.handle('diffly:listRoots', () =>
+    loadExplorerService().then(({ listRoots }) => listRoots()),
+  )
   ipcMain.handle('diffly:listDirectory', (_event, payload: { path: string }) =>
-    listDirectory(payload.path),
+    loadExplorerService().then(({ listDirectory }) => listDirectory(payload.path)),
   )
   ipcMain.handle('diffly:pathInfo', (_event, payload: { path: string }) =>
-    pathInfo(payload.path),
+    loadExplorerService().then(({ pathInfo }) => pathInfo(payload.path)),
   )
-  ipcMain.handle('diffly:loadSessionState', () => loadSessionState())
-  ipcMain.handle('diffly:loadLaunchContext', (event) => loadLaunchContext(event.sender.id))
+  ipcMain.handle('diffly:loadSessionState', () =>
+    import('./session-store').then(({ loadSessionState }) => loadSessionState()),
+  )
+  ipcMain.handle('diffly:loadLaunchContext', (event) =>
+    import('./launch-context').then(({ loadLaunchContext }) =>
+      loadLaunchContext(event.sender.id),
+    ),
+  )
   ipcMain.handle('diffly:saveSessionState', (_event, payload: { session: PersistedSession }) =>
-    saveSessionState(payload.session),
+    import('./session-store').then(({ saveSessionState }) => saveSessionState(payload.session)),
   )
-  ipcMain.handle('diffly:loadRecentSources', () => loadRecentSources())
-  ipcMain.handle('diffly:addRecentSource', (_event, payload: unknown) => {
-    const recentPayload = readAddRecentSourcePayload(payload)
+  ipcMain.handle('diffly:loadRecentSources', () =>
+    import('./recents-store').then(({ loadRecentSources }) => loadRecentSources()),
+  )
+  ipcMain.handle('diffly:addRecentSource', async (_event, payload: unknown) => {
+    const [
+      recentPayload,
+      { addRecentSource },
+    ] = await Promise.all([
+      readAddRecentSourcePayload(payload),
+      import('./recents-store'),
+    ])
     return addRecentSource(recentPayload.source, recentPayload.metadata)
   })
   ipcMain.handle('diffly:removeRecentSource', (_event, payload: unknown) =>
-    removeRecentSource(readRemoveRecentSourceId(payload)),
+    import('./recents-store').then(({ removeRecentSource }) =>
+      removeRecentSource(readRemoveRecentSourceId(payload)),
+    ),
   )
   ipcMain.handle('diffly:validateGitRepository', (_event, payload) =>
-    validateGitRepository(payload?.path),
+    import('./git/git-repository').then(({ validateGitRepository }) =>
+      validateGitRepository(payload?.path),
+    ),
   )
   ipcMain.handle('diffly:listGitRefs', (_event, payload) =>
-    listGitRefs(payload?.repoPath),
+    import('./git/git-refs').then(({ listGitRefs }) => listGitRefs(payload?.repoPath)),
   )
   ipcMain.handle('diffly:detectGitRepositories', (_event, payload) =>
-    detectGitRepositories(payload?.paths),
+    import('./git/git-detection').then(({ detectGitRepositories }) =>
+      detectGitRepositories(payload?.paths),
+    ),
   )
   ipcMain.handle('diffly:fetchGithubPullRequestMetadata', (_event, payload) =>
     fetchGithubPullRequestMetadata(payload?.url),
   )
   ipcMain.handle('diffly:getAppVersion', () => app.getVersion())
   ipcMain.handle('diffly:checkForUpdates', (_event, payload: { channel: UpdateChannel }) =>
-    checkForUpdates(payload.channel),
+    import('./update-service').then(({ checkForUpdates }) => checkForUpdates(payload.channel)),
   )
   ipcMain.handle('diffly:downloadUpdate', (_event, payload: { channel: UpdateChannel }) =>
-    downloadUpdate(payload.channel),
+    import('./update-service').then(({ downloadUpdate }) => downloadUpdate(payload.channel)),
   )
   ipcMain.handle('diffly:installUpdate', (_event, payload: { channel: UpdateChannel }) =>
-    installUpdate(payload.channel),
+    import('./update-service').then(({ installUpdate }) => installUpdate(payload.channel)),
   )
   ipcMain.handle('diffly:comparePaths', (_event, payload) =>
     comparePaths(payload.leftPath, payload.rightPath, payload.mode, payload.options),
@@ -230,7 +210,9 @@ export function comparePaths(
   mode: 'file' | 'directory',
   options: CompareOptions,
 ): Promise<CompareResponse> {
-  return localProvider.comparePaths(leftPath, rightPath, mode, options)
+  return loadCompareServices().then(({ localProvider }) =>
+    localProvider.comparePaths(leftPath, rightPath, mode, options),
+  )
 }
 
 export function startDirectoryCompare(
@@ -238,15 +220,21 @@ export function startDirectoryCompare(
   rightPath: string,
   options: CompareOptions,
 ) {
-  return localProvider.startDirectoryCompare(leftPath, rightPath, options)
+  return loadCompareServices().then(({ localProvider }) =>
+    localProvider.startDirectoryCompare(leftPath, rightPath, options),
+  )
 }
 
 export function pollDirectoryCompare(jobId: string) {
-  return localProvider.pollDirectoryCompare(jobId)
+  return loadCompareServices().then(({ localProvider }) =>
+    localProvider.pollDirectoryCompare(jobId),
+  )
 }
 
 export function cancelDirectoryCompare(jobId: string) {
-  return localProvider.cancelDirectoryCompare(jobId)
+  return loadCompareServices().then(({ localProvider }) =>
+    localProvider.cancelDirectoryCompare(jobId),
+  )
 }
 
 export function openCompareItem(
@@ -255,10 +243,13 @@ export function openCompareItem(
   relativePath: string,
   options: CompareOptions,
 ): Promise<FileDiffResult> {
-  return localProvider.openCompareItem(leftBase, rightBase, relativePath, options)
+  return loadCompareServices().then(({ localProvider }) =>
+    localProvider.openCompareItem(leftBase, rightBase, relativePath, options),
+  )
 }
 
-export function clearDirectoryCompareCache() {
+export async function clearDirectoryCompareCache() {
+  const { localProvider } = await loadCompareServices()
   localProvider.clearDirectoryCompareCache()
 }
 
@@ -266,14 +257,18 @@ export function createDiffSession(
   source: DiffSource,
   options: CompareOptions,
 ): Promise<CreateDiffSessionResponse> {
-  return diffSessionService.create(source, options)
+  return loadCompareServices().then(({ diffSessionService }) =>
+    diffSessionService.create(source, options),
+  )
 }
 
 export function listDiffEntries(
   sessionId: string,
   filter?: DiffEntryFilter,
-): DiffEntry[] {
-  return diffSessionService.listEntries(sessionId, filter)
+): Promise<DiffEntry[]> {
+  return loadCompareServices().then(({ diffSessionService }) =>
+    diffSessionService.listEntries(sessionId, filter),
+  )
 }
 
 export function openDiffEntry(
@@ -281,20 +276,39 @@ export function openDiffEntry(
   entryId: string,
   options: CompareOptions,
 ): Promise<FileDiffResult> {
-  return diffSessionService.openEntry(sessionId, entryId, options)
+  return loadCompareServices().then(({ diffSessionService }) =>
+    diffSessionService.openEntry(sessionId, entryId, options),
+  )
 }
 
 export function refreshDiffSession(sessionId: string): Promise<CreateDiffSessionResponse> {
-  return diffSessionService.refresh(sessionId)
+  return loadCompareServices().then(({ diffSessionService }) =>
+    diffSessionService.refresh(sessionId),
+  )
 }
 
-export function disposeDiffSession(sessionId: string): void {
+export async function disposeDiffSession(sessionId: string): Promise<void> {
+  const { diffSessionService } = await loadCompareServices()
   diffSessionService.dispose(sessionId)
+}
+
+export async function applyFileChange(payload: unknown): Promise<void> {
+  const module = await import('./file-apply')
+  return module.applyFileChange(payload)
 }
 
 // Parses and re-validates the PR URL in the main process before any network
 // request; renderer-supplied owner/repo values are never trusted directly.
 export async function fetchGithubPullRequestMetadata(url: unknown) {
+  const [
+    githubServiceModule,
+    githubUrlModule,
+  ] = await Promise.all([
+    import('./github/github-service'),
+    import('./github/github-url'),
+  ])
+  const { fetchPullRequestMetadata, GithubServiceError } = githubServiceModule
+  const { parseGithubPullRequestUrl } = githubUrlModule
   const source = typeof url === 'string' ? parseGithubPullRequestUrl(url) : null
   if (!source) {
     throw new Error('Enter a GitHub pull request URL.')
@@ -322,10 +336,44 @@ export async function fetchGithubPullRequestMetadata(url: unknown) {
   }
 }
 
-function readAddRecentSourcePayload(payload: unknown): {
+async function loadCompareServices() {
+  if (!compareServicesPromise) {
+    compareServicesPromise = Promise.all([
+      import('./diff/diff-session-service'),
+      import('./providers/github-provider'),
+      import('./providers/git-provider'),
+      import('./providers/local-provider'),
+    ]).then(([
+      { DiffSessionService },
+      { GithubProvider },
+      { GitProvider },
+      { LocalProvider },
+    ]) => {
+      const localProvider = new LocalProvider()
+      const gitProvider = new GitProvider()
+      const githubProvider = new GithubProvider()
+      const diffSessionService = new DiffSessionService({
+        localProvider,
+        gitProvider,
+        githubProvider,
+      })
+
+      return {
+        diffSessionService,
+        localProvider,
+      }
+    })
+  }
+
+  return compareServicesPromise
+}
+
+async function readAddRecentSourcePayload(payload: unknown): Promise<{
   source: DiffSource
   metadata?: unknown
-} {
+}> {
+  const { isDiffSourcePayload } = await import('./diff/diff-source')
+
   if (!isRecord(payload) || !isDiffSourcePayload(payload.source)) {
     throw new Error('Invalid add recent source payload.')
   }

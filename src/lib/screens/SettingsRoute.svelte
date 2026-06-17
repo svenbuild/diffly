@@ -1,4 +1,5 @@
 <script lang="ts">
+  import '../../styles/settings.css'
   import AppTopBar from '../AppTopBar.svelte'
   import SettingsScreen from '../SettingsScreen.svelte'
   import {

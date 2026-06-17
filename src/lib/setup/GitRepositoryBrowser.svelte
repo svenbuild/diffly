@@ -3,6 +3,10 @@
   import Dropdown from '../components/Dropdown.svelte'
   import EntryIcon from '../EntryIcon.svelte'
   import { detectGitRepositories, listDirectory, listRoots, pathInfo } from '../api'
+  import {
+    finishStartupProfileAfterPaint,
+    markStartupProfile,
+  } from '../app/startup-profile'
   import { entryTypeLabel, formatModified, formatSize } from '../format'
   import { filterRows, reduceTypeAheadKey } from './explorer-typeahead'
   import type { DirectoryListing, ExplorerEntry, PersistedGitSetupBrowser } from '../types'
@@ -19,6 +23,7 @@
   export let onSelectRepo: (path: string) => void
   export let initialBrowserState: PersistedGitSetupBrowser | undefined = undefined
   export let onBrowserStateChange: (state: PersistedGitSetupBrowser) => void = () => {}
+  export let initialRoots: ExplorerEntry[] = []
 
   const ROW_HEIGHT = 30
   const ROW_OVERSCAN = 8
@@ -55,6 +60,9 @@
   let navToken = 0
   let detectionToken = 0
   let lastRevealRequestId = revealRequestId
+  let browserInitialized = false
+  let browserMounted = false
+  let browserRootFallbackTimer: number | null = null
 
   let rowsHost: HTMLDivElement | null = null
   let rowsScrollTop = 0
@@ -177,6 +185,10 @@
     }
   }
 
+  $: if (!browserInitialized && initialRoots.length > 0) {
+    void initializeBrowser(initialRoots, 'parent')
+  }
+
   function buildExplorerRows(
     directories: ExplorerEntry[],
     files: ExplorerEntry[],
@@ -206,6 +218,7 @@
 
   async function loadDirectory(path: string, options: { push: boolean }) {
     const token = (navToken += 1)
+    markStartupProfile('git-browser-directory-load-start', { path })
     loading = true
     error = ''
     // Drop the previous folder's badge/selection state immediately so an
@@ -229,6 +242,10 @@
         historyIndex = history.length - 1
       }
       loading = false
+      markStartupProfile('git-browser-directory-loaded', {
+        directories: listing.directories.length,
+        files: listing.files.length,
+      })
       emitBrowserState()
       void runDetection(listing)
     } catch {
@@ -257,10 +274,19 @@
     const cached = detectionCache.get(listing.path)
     if (cached) {
       applyDetection(listing.path, cached)
+      markStartupProfile('git-browser-detection-loaded', {
+        cached: true,
+        repositories: cached.length,
+      })
+      finishStartupProfileAfterPaint('git-setup-ready', {
+        cachedDetection: true,
+        repositories: cached.length,
+      })
       return
     }
 
     const probe = [listing.path, ...listing.directories.map((entry) => entry.path)]
+    markStartupProfile('git-browser-detection-start', { paths: probe.length })
 
     try {
       const repos = await detectGitRepositories(probe)
@@ -269,12 +295,27 @@
       }
       detectionCache.set(listing.path, repos)
       applyDetection(listing.path, repos)
+      markStartupProfile('git-browser-detection-loaded', {
+        cached: false,
+        repositories: repos.length,
+      })
+      finishStartupProfileAfterPaint('git-setup-ready', {
+        cachedDetection: false,
+        repositories: repos.length,
+      })
     } catch {
       if (token !== detectionToken) {
         return
       }
       // Detection failures degrade to "no badge" — never break the listing.
       applyDetection(listing.path, [])
+      markStartupProfile('git-browser-detection-loaded', {
+        error: true,
+        repositories: 0,
+      })
+      finishStartupProfileAfterPaint('git-setup-ready', {
+        detectionError: true,
+      })
     }
   }
 
@@ -381,8 +422,13 @@
   $: if (rowsHost) {
     syncRowsViewportHeight()
   }
+  $: if (browserMounted && !browserInitialized && initialRoots.length > 0) {
+    void initializeBrowser(initialRoots, 'parent')
+  }
 
-  onMount(async () => {
+  onMount(() => {
+    markStartupProfile('git-browser-mounted')
+    browserMounted = true
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(syncRowsViewportHeight)
       if (rowsHost) {
@@ -391,13 +437,44 @@
     }
     syncRowsViewportHeight()
 
+    if (initialRoots.length > 0) {
+      void initializeBrowser(initialRoots, 'parent')
+    } else {
+      browserRootFallbackTimer = window.setTimeout(() => {
+        browserRootFallbackTimer = null
+        void initializeBrowserFromOwnRoots()
+      }, 150)
+    }
+  })
+
+  async function initializeBrowserFromOwnRoots() {
+    let discoveredRoots: ExplorerEntry[] = []
+
     try {
-      roots = await listRoots()
+      discoveredRoots = await listRoots()
     } catch {
-      roots = []
+      discoveredRoots = []
     }
 
+    await initializeBrowser(discoveredRoots, 'fallback')
+  }
+
+  async function initializeBrowser(nextRoots: ExplorerEntry[], source: 'parent' | 'fallback') {
+    if (browserInitialized) {
+      return
+    }
+
+    browserInitialized = true
+    if (browserRootFallbackTimer !== null) {
+      window.clearTimeout(browserRootFallbackTimer)
+      browserRootFallbackTimer = null
+    }
+
+    roots = nextRoots
+    markStartupProfile('git-browser-roots-loaded', { roots: roots.length, source })
+
     const startPath = await resolveStartPath()
+    markStartupProfile('git-browser-start-path-resolved', { hasStartPath: Boolean(startPath) })
     if (startPath) {
       applyInitialHistory(startPath)
       await loadDirectory(startPath, { push: false })
@@ -405,7 +482,7 @@
 
     // Focus the list so the keyboard works immediately without a click.
     rowsHost?.focus({ preventScroll: true })
-  })
+  }
 
   async function resolveStartPath(): Promise<string> {
     if (initialBrowserState?.currentPath) {
@@ -452,6 +529,10 @@
   }
 
   onDestroy(() => {
+    if (browserRootFallbackTimer !== null) {
+      window.clearTimeout(browserRootFallbackTimer)
+      browserRootFallbackTimer = null
+    }
     resizeObserver?.disconnect()
     resizeObserver = null
   })

@@ -1,7 +1,12 @@
 <script lang="ts">
   import Dropdown from '../components/Dropdown.svelte'
   import GitRepositoryBrowser from './GitRepositoryBrowser.svelte'
-  import type { GitRefsResponse, GitWorkingTreeScope, PersistedGitSetupBrowser } from '../types'
+  import type {
+    ExplorerEntry,
+    GitRefsResponse,
+    GitWorkingTreeScope,
+    PersistedGitSetupBrowser,
+  } from '../types'
 
   type SelectionKind = 'workingTree' | 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
@@ -30,6 +35,7 @@
   export let notation: Notation = 'twoDot'
   export let commitRef = ''
   export let initialBrowserState: PersistedGitSetupBrowser | undefined = undefined
+  export let browserRoots: ExplorerEntry[] = []
 
   export let onSelectRepo: (path: string) => void
   export let onBrowserStateChange: (state: PersistedGitSetupBrowser) => void = () => {}
@@ -252,6 +258,7 @@
       {onSelectRepo}
       {initialBrowserState}
       {onBrowserStateChange}
+      initialRoots={browserRoots}
     />
   </div>
 

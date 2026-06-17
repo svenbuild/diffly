@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import CompareScreen from './lib/screens/CompareScreen.svelte'
-  import SettingsRoute from './lib/screens/SettingsRoute.svelte'
   import SetupScreen from './lib/screens/SetupScreen.svelte'
 
   import {
@@ -70,6 +69,10 @@
     type E2EHarness,
     type StartupTarget,
   } from './lib/app/startup'
+  import {
+    finishStartupProfileAfterPaint,
+    markStartupProfile,
+  } from './lib/app/startup-profile'
   import {
     applyAppearanceToRoot,
     resolveAppearanceState,
@@ -322,6 +325,12 @@
   let PierreDirectoryTreeComponent: typeof import('./lib/compare/PierreDirectoryTree.svelte').default | null = null
   let CompareViewerComponent: typeof import('./lib/compare/CompareViewer.svelte').default | null = null
   let compareComponentsPromise: Promise<void> | null = null
+  let SettingsRouteComponent: typeof import('./lib/screens/SettingsRoute.svelte').default | null = null
+  let settingsRoutePromise: Promise<void> | null = null
+  let settingsRouteRequestId = 0
+  let localPickerHydrationSession: PersistedSession | null = null
+  let localPickersHydrated = false
+  let localPickerHydrationPromise: Promise<void> | null = null
   const updateController = createUpdateController({
     getAppVersion,
     checkForUpdates,
@@ -459,6 +468,27 @@
     return compareComponentsPromise
   }
 
+  function loadSettingsRoute() {
+    if (SettingsRouteComponent) {
+      return Promise.resolve()
+    }
+
+    if (!settingsRoutePromise) {
+      markStartupProfile('settings-route-load-start')
+      settingsRoutePromise = import('./lib/screens/SettingsRoute.svelte')
+        .then((settingsRouteModule) => {
+          SettingsRouteComponent = settingsRouteModule.default
+          markStartupProfile('settings-route-loaded')
+        })
+        .catch((error) => {
+          settingsRoutePromise = null
+          throw error
+        })
+    }
+
+    return settingsRoutePromise
+  }
+
   function scheduleCompareComponentsPreload() {
     if (typeof window === 'undefined' || compareComponentsPreloadCancel) {
       return
@@ -527,6 +557,7 @@
   }
 
   onMount(() => {
+    markStartupProfile('app-onmount')
     const unsubscribeCompareLoading = subscribeCompareLoading((state) => {
       compareLoadingState = state
     })
@@ -732,10 +763,20 @@
   }
 
   async function initializeAppStartup() {
-    await waitForInitialPaint()
-    await initializePickers()
+    markStartupProfile('app-startup-start')
+    const initialPaintPromise = waitForInitialPaint()
+      .then(() => markStartupProfile('initial-paint-waited'))
+    const pickersPromise = initializePickers()
+      .then(() => markStartupProfile('initial-pickers-ready', { setupMode }))
+
+    await Promise.all([initialPaintPromise, pickersPromise])
     await initializeUpdateVersion()
+    markStartupProfile('update-version-ready')
     startStartupUpdateCheck()
+
+    if (setupMode === 'local') {
+      finishStartupProfileAfterPaint('local-setup-ready')
+    }
   }
 
   function startStartupUpdateCheck() {
@@ -798,17 +839,29 @@
   }
 
   function openSettings(section: SettingsSection = 'appearance') {
+    const requestId = (settingsRouteRequestId += 1)
     if (screen !== 'settings') {
       settingsReturnScreen = screen
     }
 
     cancelCompareTiming('settings-opened')
     activeSettingsSection = section
-    screen = 'settings'
     errorMessage = ''
+    void loadSettingsRoute()
+      .then(() => {
+        if (requestId === settingsRouteRequestId) {
+          screen = 'settings'
+        }
+      })
+      .catch((error) => {
+        if (requestId === settingsRouteRequestId) {
+          errorMessage = error instanceof Error ? error.message : 'Unable to open settings.'
+        }
+      })
   }
 
   function goBackFromSettings() {
+    settingsRouteRequestId += 1
     screen = settingsReturnScreen
     errorMessage = ''
   }
@@ -1258,7 +1311,64 @@
     return paneNavigationRequestIds[side] === requestId
   }
 
+  async function hydrateLocalPickers(
+    savedSession: PersistedSession | null = localPickerHydrationSession,
+  ) {
+    if (localPickersHydrated) {
+      return
+    }
+
+    if (localPickerHydrationPromise) {
+      return localPickerHydrationPromise
+    }
+
+    localPickerHydrationPromise = (async () => {
+      const roots = leftExplorer.roots.length > 0 ? leftExplorer.roots : rightExplorer.roots
+
+      if (roots.length === 0) {
+        localPickersHydrated = true
+        return
+      }
+
+      pickerLoading = true
+
+      try {
+        const [leftRoot, rightRoot] = await Promise.all([
+          resolveInitialPanePath(
+            savedSession?.leftPane ?? null,
+            roots[0].path,
+            pathInfo,
+          ),
+          resolveInitialPanePath(
+            savedSession?.rightPane ?? null,
+            roots[1]?.path ?? roots[0].path,
+            pathInfo,
+          ),
+        ])
+
+        await Promise.all([
+          openDirectory('left', leftRoot),
+          openDirectory('right', rightRoot),
+        ])
+        markStartupProfile('local-picker-directories-opened')
+
+        await Promise.all([
+          restorePaneSelection('left', savedSession?.leftPane ?? null),
+          restorePaneSelection('right', savedSession?.rightPane ?? null),
+        ])
+        markStartupProfile('local-picker-selection-restored')
+        localPickersHydrated = true
+      } finally {
+        pickerLoading = false
+        localPickerHydrationPromise = null
+      }
+    })()
+
+    return localPickerHydrationPromise
+  }
+
   async function initializePickers() {
+    markStartupProfile('picker-init-start')
     pickerLoading = true
 
     try {
@@ -1270,8 +1380,11 @@
         listRoots(),
         savedSessionPromise,
       ])
+      markStartupProfile('roots-and-session-loaded', { roots: roots.length })
 
       applyPersistedSession(savedSession)
+      localPickerHydrationSession = savedSession
+      markStartupProfile('session-applied', { setupMode })
 
       leftExplorer = {
         ...createExplorerPane('Left'),
@@ -1283,10 +1396,12 @@
         roots,
       }
       pickerLoading = false
+      markStartupProfile('picker-shell-ready')
 
       const e2eCompareTarget = readE2ECompareTarget()
       if (e2eCompareTarget) {
         await applyE2ECompareTarget(e2eCompareTarget)
+        localPickersHydrated = true
         lastSavedSessionFingerprint = JSON.stringify(buildCurrentPersistedSession())
         return
       }
@@ -1298,29 +1413,9 @@
 
         if (startupTarget) {
           await applyStartupTarget(startupTarget)
-        } else {
-          const [leftRoot, rightRoot] = await Promise.all([
-            resolveInitialPanePath(
-              savedSession?.leftPane ?? null,
-              roots[0].path,
-              pathInfo,
-            ),
-            resolveInitialPanePath(
-              savedSession?.rightPane ?? null,
-              roots[1]?.path ?? roots[0].path,
-              pathInfo,
-            ),
-          ])
-
-          await Promise.all([
-            openDirectory('left', leftRoot),
-            openDirectory('right', rightRoot),
-          ])
-
-          await Promise.all([
-            restorePaneSelection('left', savedSession?.leftPane ?? null),
-            restorePaneSelection('right', savedSession?.rightPane ?? null),
-          ])
+          localPickersHydrated = true
+        } else if (setupMode === 'local') {
+          await hydrateLocalPickers(savedSession)
         }
       }
 
@@ -1549,6 +1644,8 @@
   }
 
   function clearRememberedSelections() {
+    localPickerHydrationSession = null
+    localPickersHydrated = true
     leftExplorer = {
       ...leftExplorer,
       selectedTargetPath: '',
@@ -1928,6 +2025,11 @@
       return
     }
     setupMode = next
+    if (next === 'local') {
+      void hydrateLocalPickers().catch((error) => {
+        errorMessage = error instanceof Error ? error.message : 'Unable to initialize the picker.'
+      })
+    }
     // Clear any stale error banner from the previous mode. The setupMode change
     // itself triggers the persistence reactive block, so no explicit save here.
     // Compare data (entries, active diff, selections) is intentionally preserved.
@@ -2559,6 +2661,28 @@
     }
   }
 
+  function paneForSessionPersistence(side: Side) {
+    const pane = paneFor(side)
+    const persistedPane = side === 'left'
+      ? localPickerHydrationSession?.leftPane
+      : localPickerHydrationSession?.rightPane
+
+    if (localPickersHydrated || !persistedPane) {
+      return pane
+    }
+
+    return {
+      ...pane,
+      currentPath: persistedPane.currentPath,
+      pathInput: persistedPane.currentPath,
+      history: persistedPane.history,
+      historyIndex: persistedPane.historyIndex,
+      selectedTargetPath: persistedPane.selectedTargetPath,
+      selectedTargetKind: persistedPane.selectedTargetKind,
+      selectedTargetPaths: persistedPane.selectedTargetPath ? [persistedPane.selectedTargetPath] : [],
+    }
+  }
+
   function buildCurrentPersistedSession() {
     return buildPersistedSession({
       mode,
@@ -2572,8 +2696,8 @@
       lastUpdateCheckAt,
       lastUpdateStatus: updateIndicatorState.status,
       lastUpdateMetadata: updateIndicatorState.metadata,
-      leftPane: leftExplorer,
-      rightPane: rightExplorer,
+      leftPane: paneForSessionPersistence('left'),
+      rightPane: paneForSessionPersistence('right'),
       setupMode,
       gitSetup,
       activeSource: activeDiffSource,
@@ -2692,6 +2816,7 @@
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
   ]
+  $: gitBrowserRoots = leftExplorer.roots.length > 0 ? leftExplorer.roots : rightExplorer.roots
   $: sameSelectionWarning =
     pickerCanCompare &&
     leftExplorer.selectedTargetKind === rightExplorer.selectedTargetKind &&
@@ -2758,6 +2883,7 @@
     onGithubMetadataChange={handleGithubMetadataChange}
     {initialGithubUrl}
     reloadRecentsRequestId={recentsReloadRequestId}
+    {gitBrowserRoots}
     {pickerSides}
     {pickerLoading}
     {canGoBack}
@@ -2835,61 +2961,64 @@
 {/if}
 
 {#if screen === 'settings'}
-  <SettingsRoute
-    {activeSettingsSection}
-    {appearanceSettings}
-    {resolvedThemeMode}
-    {lightAppearanceTheme}
-    {darkAppearanceTheme}
-    {visibleAppearanceVariants}
-    {availableLightThemes}
-    {availableDarkThemes}
-    {viewMode}
-    {viewerSettings}
-    {treeSettings}
-    minUiFontSize={MIN_UI_FONT_SIZE}
-    maxUiFontSize={MAX_UI_FONT_SIZE}
-    minCodeFontSize={MIN_CODE_FONT_SIZE}
-    maxCodeFontSize={MAX_CODE_FONT_SIZE}
-    {checkForUpdatesOnLaunch}
-    {updateChannel}
-    {updateIndicatorState}
-    {lastUpdateCheckAt}
-    {errorMessage}
-    showUpdateIndicator={shouldShowUpdateIndicator()}
-    updateIndicatorTitle={updateIndicatorTitle()}
-    {openUpdateSettings}
-    onClose={goBackFromSettings}
-    onSelectSection={(section) => (activeSettingsSection = section)}
-    onSetThemeMode={setThemeMode}
-    onSetThemePreset={setThemePreset}
-    onSetThemeColor={setThemeColorOverride}
-    onSetThemeSemanticColor={setThemeSemanticColorOverride}
-    onSetThemeFont={setThemeFontOverride}
-    onSetThemeContrast={setThemeContrast}
-    onSetUsePointerCursor={setUsePointerCursor}
-    onStepUiFontSize={stepUiFontSize}
-    onStepCodeFontSize={stepCodeFontSize}
-    onSetViewMode={setViewMode}
-    onSetViewerSettings={(settings) => {
-      viewerSettings = settings
-      viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
-    }}
-    onSetTreeSettings={(settings) => {
-      treeSettings = settings
-      // showUnmodified changes what the backend scan returns, so flag the
-      // compare as dirty the same way the comparison-rule toggles do.
-      syncCompareDirtyState()
-    }}
-    onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
-    onSetUpdateChannel={setUpdateChannel}
-    onCheckForUpdates={runUpdateCheck}
-    onDownloadUpdate={beginUpdateDownload}
-    onInstallUpdate={applyDownloadedUpdate}
-    onResetPreferences={confirmResetPreferences}
-    onClearRememberedSelections={confirmClearRememberedSelections}
-    onResetEverything={resetEverything}
-  />
+  {#if SettingsRouteComponent}
+    <svelte:component
+      this={SettingsRouteComponent}
+      {activeSettingsSection}
+      {appearanceSettings}
+      {resolvedThemeMode}
+      {lightAppearanceTheme}
+      {darkAppearanceTheme}
+      {visibleAppearanceVariants}
+      {availableLightThemes}
+      {availableDarkThemes}
+      {viewMode}
+      {viewerSettings}
+      {treeSettings}
+      minUiFontSize={MIN_UI_FONT_SIZE}
+      maxUiFontSize={MAX_UI_FONT_SIZE}
+      minCodeFontSize={MIN_CODE_FONT_SIZE}
+      maxCodeFontSize={MAX_CODE_FONT_SIZE}
+      {checkForUpdatesOnLaunch}
+      {updateChannel}
+      {updateIndicatorState}
+      {lastUpdateCheckAt}
+      {errorMessage}
+      showUpdateIndicator={shouldShowUpdateIndicator()}
+      updateIndicatorTitle={updateIndicatorTitle()}
+      {openUpdateSettings}
+      onClose={goBackFromSettings}
+      onSelectSection={(section) => (activeSettingsSection = section)}
+      onSetThemeMode={setThemeMode}
+      onSetThemePreset={setThemePreset}
+      onSetThemeColor={setThemeColorOverride}
+      onSetThemeSemanticColor={setThemeSemanticColorOverride}
+      onSetThemeFont={setThemeFontOverride}
+      onSetThemeContrast={setThemeContrast}
+      onSetUsePointerCursor={setUsePointerCursor}
+      onStepUiFontSize={stepUiFontSize}
+      onStepCodeFontSize={stepCodeFontSize}
+      onSetViewMode={setViewMode}
+      onSetViewerSettings={(settings) => {
+        viewerSettings = settings
+        viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
+      }}
+      onSetTreeSettings={(settings) => {
+        treeSettings = settings
+        // showUnmodified changes what the backend scan returns, so flag the
+        // compare as dirty the same way the comparison-rule toggles do.
+        syncCompareDirtyState()
+      }}
+      onSetCheckForUpdatesOnLaunch={setCheckForUpdatesOnLaunch}
+      onSetUpdateChannel={setUpdateChannel}
+      onCheckForUpdates={runUpdateCheck}
+      onDownloadUpdate={beginUpdateDownload}
+      onInstallUpdate={applyDownloadedUpdate}
+      onResetPreferences={confirmResetPreferences}
+      onClearRememberedSelections={confirmClearRememberedSelections}
+      onResetEverything={resetEverything}
+    />
+  {/if}
 {/if}
   </div>
 </div>

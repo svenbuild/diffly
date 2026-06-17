@@ -1,10 +1,9 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import AppTopBar from '../AppTopBar.svelte'
   import ToolbarSvgIcon from '../components/ToolbarSvgIcon.svelte'
   import SetupModeSlider from '../setup/SetupModeSlider.svelte'
-  import LocalSetupPanel from '../setup/LocalSetupPanel.svelte'
   import GitSetupPanel from '../setup/GitSetupPanel.svelte'
-  import GithubSetupPanel from '../setup/GithubSetupPanel.svelte'
   import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
   import type {
     ExplorerEntry,
@@ -20,6 +19,7 @@
     Side,
   } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
+  import { markStartupProfile } from '../app/startup-profile'
   import UpdateIndicator from './UpdateIndicator.svelte'
 
   export let updateIndicatorState: UpdateIndicatorState
@@ -42,6 +42,7 @@
   export let onGithubMetadataChange: (metadata: GithubPullRequestMetadata | null) => void = () => {}
   export let initialGithubUrl = ''
   export let reloadRecentsRequestId = 0
+  export let gitBrowserRoots: ExplorerEntry[] = []
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
   export let canGoBack: (pane: ExplorerPaneState) => boolean
@@ -61,6 +62,65 @@
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
+
+  let LocalSetupPanelComponent: typeof import('../setup/LocalSetupPanel.svelte').default | null = null
+  let GithubSetupPanelComponent: typeof import('../setup/GithubSetupPanel.svelte').default | null = null
+  let localSetupPanelPromise: Promise<void> | null = null
+  let githubSetupPanelPromise: Promise<void> | null = null
+
+  function loadLocalSetupPanel() {
+    if (LocalSetupPanelComponent) {
+      return Promise.resolve()
+    }
+
+    if (!localSetupPanelPromise) {
+      markStartupProfile('local-setup-panel-load-start')
+      localSetupPanelPromise = import('../setup/LocalSetupPanel.svelte')
+        .then((module) => {
+          LocalSetupPanelComponent = module.default
+          markStartupProfile('local-setup-panel-loaded')
+        })
+        .catch((error) => {
+          localSetupPanelPromise = null
+          throw error
+        })
+    }
+
+    return localSetupPanelPromise
+  }
+
+  function loadGithubSetupPanel() {
+    if (GithubSetupPanelComponent) {
+      return Promise.resolve()
+    }
+
+    if (!githubSetupPanelPromise) {
+      markStartupProfile('github-setup-panel-load-start')
+      githubSetupPanelPromise = import('../setup/GithubSetupPanel.svelte')
+        .then((module) => {
+          GithubSetupPanelComponent = module.default
+          markStartupProfile('github-setup-panel-loaded')
+        })
+        .catch((error) => {
+          githubSetupPanelPromise = null
+          throw error
+        })
+    }
+
+    return githubSetupPanelPromise
+  }
+
+  onMount(() => {
+    markStartupProfile('setup-screen-mounted', { setupMode })
+    void tick().then(() => markStartupProfile('setup-screen-flushed', { setupMode }))
+  })
+
+  $: if (setupMode === 'local') {
+    void loadLocalSetupPanel()
+  }
+  $: if (setupMode === 'github') {
+    void loadGithubSetupPanel()
+  }
 </script>
 
 <main class="screen setup-screen">
@@ -117,41 +177,48 @@
 
   <section class="setup-body">
     {#if setupMode === 'local'}
-      <LocalSetupPanel
-        {pickerSides}
-        {pickerLoading}
-        {canGoBack}
-        {canGoForward}
-        {currentDrive}
-        {formatModified}
-        {formatSize}
-        {entryTypeLabel}
-        {changeDrive}
-        {navigateHistory}
-        {navigateTo}
-        {updatePathInput}
-        {submitPathInput}
-        {browseSystem}
-        {useCurrentFolder}
-        {isCurrentFolderSelected}
-        {selectListEntry}
-        {activateListEntry}
-        {isTargetSelected}
-      />
+      {#if LocalSetupPanelComponent}
+        <svelte:component
+          this={LocalSetupPanelComponent}
+          {pickerSides}
+          {pickerLoading}
+          {canGoBack}
+          {canGoForward}
+          {currentDrive}
+          {formatModified}
+          {formatSize}
+          {entryTypeLabel}
+          {changeDrive}
+          {navigateHistory}
+          {navigateTo}
+          {updatePathInput}
+          {submitPathInput}
+          {browseSystem}
+          {useCurrentFolder}
+          {isCurrentFolderSelected}
+          {selectListEntry}
+          {activateListEntry}
+          {isTargetSelected}
+        />
+      {/if}
     {:else if setupMode === 'git'}
       <GitSetupPanel
         onChange={onGitSourceChange}
         {gitSetup}
         onSetupChange={onGitSetupChange}
         {reloadRecentsRequestId}
+        browserRoots={gitBrowserRoots}
       />
     {:else}
-      <GithubSetupPanel
-        onChange={onGithubSourceChange}
-        onMetadataChange={onGithubMetadataChange}
-        initialUrl={initialGithubUrl}
-        {reloadRecentsRequestId}
-      />
+      {#if GithubSetupPanelComponent}
+        <svelte:component
+          this={GithubSetupPanelComponent}
+          onChange={onGithubSourceChange}
+          onMetadataChange={onGithubMetadataChange}
+          initialUrl={initialGithubUrl}
+          {reloadRecentsRequestId}
+        />
+      {/if}
     {/if}
   </section>
 </main>

@@ -3,8 +3,10 @@
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
   import { listGitRefs, loadRecentSources, validateGitRepository } from '../api'
+  import { markStartupProfile } from '../app/startup-profile'
   import { compactMiddlePath } from '../path-utils'
   import type {
+    ExplorerEntry,
     GitDiffSource,
     GitRefsResponse,
     GitSelection,
@@ -25,6 +27,7 @@
   // Bumped by the parent after a recent repository is added (e.g. on Compare)
   // so this panel reloads the list without waiting for a remount.
   export let reloadRecentsRequestId = 0
+  export let browserRoots: ExplorerEntry[] = []
 
   // GitSetupState — this panel is the single source of truth for Git setup.
   let inputPath = ''
@@ -63,16 +66,24 @@
   let lastReloadRecentsRequestId = reloadRecentsRequestId
 
   async function loadRecents() {
+    markStartupProfile('git-recents-load-start')
     try {
       const recents = await loadRecentSources()
       recentRepositories = recents.gitRepositories ?? []
       recentLoadError = false
     } catch {
       recentLoadError = true
+    } finally {
+      markStartupProfile('git-recents-load-finished', {
+        items: recentRepositories.length,
+      })
     }
   }
 
-  onMount(loadRecents)
+  onMount(() => {
+    markStartupProfile('git-setup-mounted')
+    void loadRecents()
+  })
 
   // Reload when the parent signals a new recent was added (bumped on Compare).
   $: if (reloadRecentsRequestId !== lastReloadRecentsRequestId) {
@@ -356,6 +367,7 @@
     onSelectRepo={handleSelectRepo}
     initialBrowserState={gitSetup.browser}
     onBrowserStateChange={handleBrowserStateChange}
+    {browserRoots}
     onSelectionKindChange={handleSelectionKindChange}
     onScopeChange={handleScopeChange}
     onBaseRefChange={handleBaseRefChange}

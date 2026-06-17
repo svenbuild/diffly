@@ -1,11 +1,13 @@
 import { mount } from 'svelte'
+import { markStartupProfile } from './lib/app/startup-profile'
 import './app.css'
-import './styles/settings.css'
 import './styles/workspace.css'
 import './styles/responsive.css'
 import App from './App.svelte'
 import { resolveVariant } from './lib/theme'
 import { normalizeAppearanceSettings, resolveThemeCssVariables } from './lib/theme/runtime'
+
+markStartupProfile('renderer-entry')
 
 const systemPrefersDark =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -35,5 +37,7 @@ const app = mount(App, {
     startupFolderPath: null,
   },
 })
+
+markStartupProfile('app-mounted')
 
 export default app

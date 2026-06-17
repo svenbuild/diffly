@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import type { LaunchContext } from '../src/lib/types'
 import {
   getLaunchContextFromArgs,
-  registerIpcHandlers,
   registerWindowLaunchContext,
+} from './services/launch-context'
+import {
+  registerIpcHandlers,
 } from './services/backend'
 
 // Use Electron's default GPU configuration — no forced GPU switches. The
@@ -30,9 +32,31 @@ const DEFAULT_WINDOW_STATE: WindowState = {
   y: Number.NaN,
 }
 
+const startupUserDataDir = process.env.DIFFLY_USER_DATA_DIR?.trim()
+
+if (startupUserDataDir) {
+  app.setPath('userData', startupUserDataDir)
+}
+
 let mainWindow: Electron.BrowserWindow | null = null
 const windows = new Set<Electron.BrowserWindow>()
 const pendingLaunchContexts: LaunchContext[] = []
+const mainStartupStartedAt = Date.now()
+
+function markMainStartup(name: string, detail?: Record<string, unknown>) {
+  if (process.env.DIFFLY_STARTUP_PROFILE !== '1') {
+    return
+  }
+
+  console.log(`[diffly-startup-main] ${JSON.stringify({
+    detail,
+    elapsedMs: Date.now() - mainStartupStartedAt,
+    name,
+    wallMs: Date.now(),
+  })}`)
+}
+
+markMainStartup('main-module-loaded')
 
 function showWindow(window: Electron.BrowserWindow) {
   if (window.isDestroyed() || window.isVisible()) {
@@ -43,8 +67,11 @@ function showWindow(window: Electron.BrowserWindow) {
 }
 
 function createWindow(launchContext: LaunchContext | null = null) {
+  markMainStartup('create-window-start')
   const savedState = nextWindowState(loadWindowState())
+  markMainStartup('window-state-loaded')
   const icon = getWindowIconPath()
+  markMainStartup('window-icon-resolved', { hasIcon: Boolean(icon) })
   Menu.setApplicationMenu(null)
 
   const window = new BrowserWindow({
@@ -69,6 +96,7 @@ function createWindow(launchContext: LaunchContext | null = null) {
       sandbox: false,
     },
   })
+  markMainStartup('browser-window-created')
   windows.add(window)
   mainWindow = window
   registerWindowLaunchContext(window, launchContext)
@@ -78,8 +106,14 @@ function createWindow(launchContext: LaunchContext | null = null) {
     window.maximize()
   }
 
-  window.webContents.once('dom-ready', () => showWindow(window))
-  window.once('ready-to-show', () => showWindow(window))
+  window.webContents.once('dom-ready', () => {
+    markMainStartup('window-dom-ready')
+    showWindow(window)
+  })
+  window.once('ready-to-show', () => {
+    markMainStartup('window-ready-to-show')
+    showWindow(window)
+  })
 
   const sendMaximizedChange = () => {
     if (!window.isDestroyed()) {
@@ -105,12 +139,46 @@ function createWindow(launchContext: LaunchContext | null = null) {
     void shell.openExternal(details.url)
     return { action: 'deny' }
   })
+  installStartupProfileExit(window)
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    void window.loadURL(process.env.ELECTRON_RENDERER_URL)
+    const rendererUrl = new URL(process.env.ELECTRON_RENDERER_URL)
+    appendStartupProfileQuery(rendererUrl.searchParams)
+    markMainStartup('window-load-url-start')
+    void window.loadURL(rendererUrl.toString())
   } else {
     const rendererPath = join(__dirname, '../renderer/index.html')
-    void window.loadFile(rendererPath)
+    markMainStartup('window-load-file-start')
+    void window.loadFile(rendererPath, { query: startupProfileQuery() })
+  }
+}
+
+function installStartupProfileExit(window: Electron.BrowserWindow) {
+  if (process.env.DIFFLY_STARTUP_PROFILE_EXIT !== '1') {
+    return
+  }
+
+  window.webContents.on('console-message', (_event, _level, message) => {
+    if (!message.includes('[diffly-startup-renderer]')) {
+      return
+    }
+
+    setTimeout(() => {
+      markMainStartup('startup-profile-exit')
+      app.quit()
+    }, 0)
+  })
+}
+
+function startupProfileQuery() {
+  return process.env.DIFFLY_STARTUP_PROFILE === '1'
+    ? { difflyStartupProfile: '1' }
+    : undefined
+}
+
+function appendStartupProfileQuery(params: URLSearchParams) {
+  if (process.env.DIFFLY_STARTUP_PROFILE === '1') {
+    params.set('difflyStartupProfile', '1')
   }
 }
 
@@ -303,6 +371,11 @@ function rectanglesOverlap(
 }
 
 const initialLaunchContext = getLaunchContextFromArgs(process.argv.slice(1))
+const remoteDebuggingPort = process.env.DIFFLY_REMOTE_DEBUGGING_PORT
+
+if (app && remoteDebuggingPort && /^\d+$/.test(remoteDebuggingPort)) {
+  app.commandLine.appendSwitch('remote-debugging-port', remoteDebuggingPort)
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -327,6 +400,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+    markMainStartup('app-when-ready')
     // Diagnostic: record whether compositing/rasterization is hardware
     // accelerated. Logged to the console (visible via `npm run preview`) AND
     // written to <userData>/gpu-status.json so the GPU status can be inspected
@@ -342,9 +416,12 @@ if (!app.requestSingleInstanceLock()) {
     } catch {
       // Best-effort diagnostics only.
     }
+    markMainStartup('gpu-diagnostic-finished')
 
     registerIpcHandlers()
+    markMainStartup('ipc-handlers-registered')
     registerWindowControlIpcHandlers()
+    markMainStartup('window-control-ipc-registered')
     createWindow(initialLaunchContext)
     for (const launchContext of pendingLaunchContexts.splice(0)) {
       routeLaunchContext(launchContext)

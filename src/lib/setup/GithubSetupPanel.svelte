@@ -6,6 +6,10 @@
     loadRecentSources,
     openExternalUrl,
   } from '../api'
+  import {
+    finishStartupProfileAfterPaint,
+    markStartupProfile,
+  } from '../app/startup-profile'
   import { notationDots } from '../compare/source-header-labels'
   import { parseGithubDiffUrl } from '../github/github-url'
   import type {
@@ -48,6 +52,7 @@
   let lastReloadRecentsRequestId = reloadRecentsRequestId
 
   async function loadRecents() {
+    markStartupProfile('github-recents-load-start')
     try {
       const recents = await loadRecentSources()
       recentPullRequests = recents.githubPullRequests ?? []
@@ -55,10 +60,19 @@
       recentLoadError = false
     } catch {
       recentLoadError = true
+    } finally {
+      markStartupProfile('github-recents-load-finished', {
+        compares: recentCompares.length,
+        pullRequests: recentPullRequests.length,
+      })
+      finishStartupProfileAfterPaint('github-setup-ready')
     }
   }
 
-  onMount(loadRecents)
+  onMount(() => {
+    markStartupProfile('github-setup-mounted')
+    void loadRecents()
+  })
 
   onDestroy(() => {
     if (metadataDebounceTimer !== null) {

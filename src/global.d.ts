@@ -26,6 +26,7 @@ import type {
 
 declare global {
   interface Window {
+    __difflyStartupProfile?: import('./lib/app/startup-profile').StartupProfileSnapshot
     diffly: {
       choosePath(kind: PathKind): Promise<string | null>
       openExternal(url: string): Promise<void>
