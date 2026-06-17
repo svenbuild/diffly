@@ -689,6 +689,7 @@
 
   function placeholderKey(loadedEntry: LoadedDirectoryDiff) {
     const { entry } = loadedEntry
+    const collapsed = collapsedPaths.has(entry.relativePath)
     return [
       entry.relativePath,
       entry.status,
@@ -699,8 +700,10 @@
       loadedEntry.error,
       loadedEntry.diff?.text ? 'ready' : 'loading',
       loadedEntry.diff?.text?.patchCacheKey ?? loadedEntry.diff?.text?.patchText?.length ?? '',
-      estimatePlaceholderLineCount(entry, loadedEntry.diff?.text ?? null, effectiveDiffStyle()),
-      collapsedPaths.has(entry.relativePath) ? '1' : '0',
+      collapsed
+        ? 0
+        : estimatePlaceholderLineCount(entry, loadedEntry.diff?.text ?? null, effectiveDiffStyle()),
+      collapsed ? '1' : '0',
     ].join('\u0000')
   }
 
@@ -714,17 +717,24 @@
     }
 
     const version = (cached?.version ?? 0) + 1
-    const file = buildPlaceholderFile(
-      {
-        entry: loadedEntry.entry,
-        error: loadedEntry.error,
-        hasTextDiff: Boolean(loadedEntry.diff?.text),
-        text: loadedEntry.diff?.text ?? null,
-        viewStyle: effectiveDiffStyle(),
-      },
-      key,
-      placeholderBlankLineSuffixes,
-    )
+    const file = collapsedPaths.has(path)
+      ? {
+          name: loadedEntry.entry.displayPath ?? loadedEntry.entry.relativePath,
+          contents: '',
+          cacheKey: ['placeholder-collapsed', key].join('\u0000'),
+          lang: 'text',
+        }
+      : buildPlaceholderFile(
+          {
+            entry: loadedEntry.entry,
+            error: loadedEntry.error,
+            hasTextDiff: Boolean(loadedEntry.diff?.text),
+            text: loadedEntry.diff?.text ?? null,
+            viewStyle: effectiveDiffStyle(),
+          },
+          key,
+          placeholderBlankLineSuffixes,
+        )
     const item = { file, key, version }
     placeholderItems.set(path, item)
     return item
@@ -736,6 +746,17 @@
     const { entry, diff } = loadedEntry
     const collapsed = collapsedPaths.has(entry.relativePath)
     const nativePatchText = hasNativePatch(entry) ? entry.diffPatchText ?? null : null
+
+    if (collapsed) {
+      const placeholder = placeholderItem(loadedEntry)
+      return {
+        id: entry.relativePath,
+        type: 'file',
+        file: placeholder.file,
+        collapsed,
+        version: placeholder.version,
+      }
+    }
 
     if (!nativePatchText && expectsNativeGitPatch(entry)) {
       const key = `${entry.relativePath}\u0000missing-native-patch`
@@ -893,6 +914,10 @@
     let changed = false
     const nextDiffRenderPaths = new Set(diffRenderPaths)
     const addPath = (path: string) => {
+      if (collapsedPaths.has(path)) {
+        return
+      }
+
       const loadedEntry = entries.find((candidate) => candidate.entry.relativePath === path)
       if (!loadedEntry?.diff?.text || nextDiffRenderPaths.has(path)) {
         return
@@ -944,6 +969,9 @@
       if (promotedCount >= DIRECTORY_CODE_VIEW_VISIBLE_PARSE_BATCH) {
         break
       }
+      if (collapsedPaths.has(path)) {
+        continue
+      }
 
       const loadedEntry = entryByPath.get(path)
       if (loadedEntry?.diff?.text && !nextDiffRenderPaths.has(path)) {
@@ -979,6 +1007,7 @@
       nextItemInputIndexByPath.set(entry.relativePath, entryInputIndex)
 
       if (
+        !collapsedPaths.has(entry.relativePath) &&
         !hasNativePatch(entry) &&
         !expectsNativeGitPatch(entry) &&
         (!diff?.text || !diffRenderPaths.has(entry.relativePath))
@@ -1055,6 +1084,7 @@
       nextEntryByPath.set(path, loadedEntry)
 
       if (
+        collapsedPaths.has(path) ||
         hasNativePatch(loadedEntry.entry) ||
         expectsNativeGitPatch(loadedEntry.entry) ||
         (loadedEntry.diff?.text && diffRenderPaths.has(path))
@@ -1153,6 +1183,7 @@
       return (
         entry &&
         !entry.error &&
+        !collapsedPaths.has(path) &&
         !hasNativePatch(entry.entry) &&
         !expectsNativeGitPatch(entry.entry) &&
         (!entry.diff?.text || !diffRenderPaths.has(path))
