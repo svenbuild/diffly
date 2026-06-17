@@ -49,6 +49,7 @@
     renderReviewActionButtons,
   } from './diff-header-renderers'
   import type { CompareSourceKind } from '../actions/compare-actions'
+  import { resolveDiffWorkerPoolSize } from './diff-concurrency'
   import {
     reviewActionsForSource,
     reviewEntryInfoFromEntry,
@@ -171,7 +172,7 @@
   const placeholderBlankLineSuffixes = new Map<number, string>()
 
   function workerPoolSize() {
-    return 1
+    return resolveDiffWorkerPoolSize()
   }
 
   function directoryCodeViewOverscrollSize() {

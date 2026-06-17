@@ -46,6 +46,7 @@
     renderReviewActionButtons,
   } from './diff-header-renderers'
   import type { CompareSourceKind } from '../actions/compare-actions'
+  import { resolveDiffWorkerPoolSize } from './diff-concurrency'
   import {
     reviewActionsForSource,
     reviewEntryInfoFromText,
@@ -102,8 +103,7 @@
   }
 
   function workerPoolSize() {
-    const cores = Math.max(1, window.navigator.hardwareConcurrency || 4)
-    return Math.max(2, Math.min(6, Math.floor(cores / 2)))
+    return resolveDiffWorkerPoolSize()
   }
 
   function fileName(label: string) {

@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte'
   import PierreDirectoryVirtualDiffView from './PierreDirectoryVirtualDiffView.svelte'
   import { openCompareItem, openDiffEntry } from '../api'
+  import { resolveDirectoryDiffLoadConcurrency } from './diff-concurrency'
   import type { CompareSourceKind } from '../actions/compare-actions'
   import { markCompareTimingOnce } from '../app/compare-timing'
   import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
@@ -73,8 +74,8 @@
   export let reviewSourceKind: CompareSourceKind = 'local'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
 
-  const DIRECTORY_DIFF_LOAD_CONCURRENCY = 1
-  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = 1
+  const DIRECTORY_DIFF_LOAD_CONCURRENCY = resolveDirectoryDiffLoadConcurrency()
+  const DIRECTORY_DIFF_SESSION_LOAD_CONCURRENCY = resolveDirectoryDiffLoadConcurrency()
   const DIRECTORY_DIFF_INITIAL_LOAD_COUNT = 0
   const DIRECTORY_DIFF_SELECTION_LOAD_RADIUS = 0
   const DIRECTORY_DIFF_VISIBLE_LOAD_PADDING = 0
