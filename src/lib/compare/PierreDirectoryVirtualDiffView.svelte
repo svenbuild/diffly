@@ -56,12 +56,6 @@
     type ReviewActionItem,
   } from './review-mode'
   import {
-    MOVED_LINE_UNSAFE_CSS,
-    applyMovedLineDecorations,
-    detectMovedLines,
-    type MovedLineDecorations,
-  } from './moved-lines'
-  import {
     applyDirectoryItemPostRender,
     getCodeViewItemContext,
     renderDirectoryCollapseButton,
@@ -89,7 +83,6 @@
     annotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>>
     collapsed: boolean
     fileDiff: FileDiffMetadata
-    movedLines: MovedLineDecorations
     signature: string
     version: number
   }
@@ -494,27 +487,7 @@
       schedulePlaceholderEntryRequest,
       scheduleVisibleEntryRequest,
     })
-    applyMovedLinePostRender(args)
     finishFirstRenderedDiff(args)
-  }
-
-  function applyMovedLinePostRender(args: unknown[]) {
-    const node = args[0]
-    const phase = args[2]
-    const context = getCodeViewItemContext(args)
-    const itemId = context?.item?.id
-    const movedLines = itemId ? parsedDiffs.get(itemId)?.movedLines : null
-
-    if (
-      !(node instanceof HTMLElement) ||
-      phase === 'unmount' ||
-      context?.type !== 'diff' ||
-      !movedLines
-    ) {
-      return
-    }
-
-    applyMovedLineDecorations(node, movedLines)
   }
 
   function finishFirstRenderedDiff(args: unknown[]) {
@@ -614,7 +587,7 @@
         paddingBottom: 8,
         gap: 8,
       },
-      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + MOVED_LINE_UNSAFE_CSS + `
+      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + `
         :host([data-diffly-placeholder]) [data-metadata] > [data-deletions-count],
         :host([data-diffly-placeholder]) [data-metadata] > [data-additions-count] {
           display: none;
@@ -844,7 +817,6 @@
               if (rightFile?.lang) {
                 fileDiff.lang = rightFile.lang
               }
-              const movedLines = detectMovedLines(fileDiff)
               markCompareTimingOnce('first-pierre-parse-end', {
                 path: entry.relativePath,
               })
@@ -852,7 +824,6 @@
                 annotations,
                 collapsed,
                 fileDiff,
-                movedLines,
                 signature,
                 version: (cached?.version ?? 0) + 1,
               }

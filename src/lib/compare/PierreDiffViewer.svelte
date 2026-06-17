@@ -4,7 +4,6 @@
     FileDiff,
     areOptionsEqual,
     getFiletypeFromFileName,
-    parseDiffFromFile,
     processFile,
   } from '@pierre/diffs'
   import {
@@ -53,12 +52,6 @@
     runReviewAction,
     type ReviewActionItem,
   } from './review-mode'
-  import {
-    MOVED_LINE_UNSAFE_CSS,
-    applyMovedLineDecorations,
-    detectMovedLines,
-    type MovedLineDecorations,
-  } from './moved-lines'
   import { createTokenHoverController } from './token-hover/controller'
 
   export let text: TextDiffPayload
@@ -83,9 +76,7 @@
   let unsubscribeWorkerStats: (() => void) | null = null
   let renderedOptions: FileDiffOptions<DifflyCommentAnnotation> | null = null
   let parsedPatchCache: { key: string; fileDiff: FileDiffMetadata | null } | null = null
-  let renderedPreparedDiffKey = ''
-  let renderedFileDiff: FileDiffMetadata | null = null
-  let renderedMovedLines: MovedLineDecorations | null = null
+  let renderedDiffInputKey = ''
   let renderVersion = 0
   let selectedLineRange: SelectedLineRange | null = null
   let commentId = 0
@@ -129,7 +120,7 @@
     ].join(':')
   }
 
-  function preparedDiffKey() {
+  function diffInputKey() {
     return [
       text.patchCacheKey ?? text.patchText?.length ?? '',
       leftLabel,
@@ -212,9 +203,6 @@
       container.style.colorScheme = resolvedThemeMode
     }
 
-    if (renderedMovedLines) {
-      applyMovedLineDecorations(host, renderedMovedLines)
-    }
   }
 
   function headerDirectory(label: string) {
@@ -318,7 +306,7 @@
       ...(viewerSettings.tokenHover
         ? { onTokenEnter: handleTokenEnter, onTokenLeave: handleTokenLeave }
         : {}),
-      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS + MOVED_LINE_UNSAFE_CSS,
+      unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings) + DIFF_HEADER_UNSAFE_CSS,
     }
   }
 
@@ -358,10 +346,14 @@
     return file
   }
 
-  function buildPreparedFileDiff(oldFile: FileContents, newFile: FileContents) {
+  function buildPatchFileDiff(oldFile: FileContents, newFile: FileContents) {
+    if (!text.patchText) {
+      return undefined
+    }
+
     const patchCacheKey = text.patchCacheKey ?? textKey()
     const parsedCacheKey = [
-      text.patchText ? patchCacheKey : 'full-file',
+      patchCacheKey,
       oldFile.cacheKey,
       newFile.cacheKey,
       oldFile.lang ?? 'auto',
@@ -373,15 +365,13 @@
     }
 
     try {
-      const fileDiff = text.patchText
-        ? processFile(text.patchText, {
-            cacheKey: patchCacheKey,
-            isGitDiff: true,
-            oldFile,
-            newFile,
-            throwOnError: true,
-          }) ?? null
-        : parseDiffFromFile(oldFile, newFile, undefined, true) ?? null
+      const fileDiff = processFile(text.patchText, {
+        cacheKey: patchCacheKey,
+        isGitDiff: true,
+        oldFile,
+        newFile,
+        throwOnError: true,
+      }) ?? null
 
       if (fileDiff && newFile.lang) {
         fileDiff.lang = newFile.lang
@@ -486,9 +476,9 @@
     syncWorkerRenderOptions()
     const nextOptions = buildOptions()
     const nextTextKey = textKey()
-    const nextPreparedDiffKey = preparedDiffKey()
+    const nextDiffInputKey = diffInputKey()
     const textChanged = nextTextKey !== renderedTextKey
-    const preparedDiffChanged = nextPreparedDiffKey !== renderedPreparedDiffKey
+    const diffInputChanged = nextDiffInputKey !== renderedDiffInputKey
     if (textChanged) {
       renderedTextKey = nextTextKey
       renderedAnnotationsKey = ''
@@ -498,7 +488,7 @@
     }
 
     const forceRender =
-      !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions) || preparedDiffChanged
+      !renderedOptions || !areOptionsEqual(renderedOptions, nextOptions) || diffInputChanged
     const nextAnnotationsKey = annotationKey(commentAnnotations)
     const annotationsChanged = nextAnnotationsKey !== renderedAnnotationsKey
 
@@ -508,7 +498,7 @@
       fileDiff.setOptions(nextOptions)
     }
     renderedOptions = nextOptions
-    renderedPreparedDiffKey = nextPreparedDiffKey
+    renderedDiffInputKey = nextDiffInputKey
 
     if (!forceRender && !annotationsChanged && !textChanged) {
       if (viewerSettings.controlledSelection) {
@@ -522,13 +512,11 @@
 
     const oldFile = buildFile('left', leftLabel, text.leftText, text.leftCacheKey, text.leftSha256)
     const newFile = buildFile('right', rightLabel, text.rightText, text.rightCacheKey, text.rightSha256)
-    const preparedFileDiff = buildPreparedFileDiff(oldFile, newFile)
-    renderedFileDiff = preparedFileDiff ?? null
-    renderedMovedLines = renderedFileDiff ? detectMovedLines(renderedFileDiff) : null
+    const patchFileDiff = buildPatchFileDiff(oldFile, newFile)
     fileDiff.render({
       oldFile,
       newFile,
-      fileDiff: preparedFileDiff,
+      fileDiff: patchFileDiff,
       containerWrapper: host,
       forceRender,
       lineAnnotations: commentAnnotations,
@@ -572,8 +560,6 @@
     workerPool?.terminate()
     workerPool = null
     renderedOptions = null
-    renderedFileDiff = null
-    renderedMovedLines = null
     tokenHoverController.destroy()
   })
 </script>
