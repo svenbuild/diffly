@@ -1,5 +1,6 @@
 import type {
   ApplyFileChangePayload,
+  ApplyGitWorkingTreeActionPayload,
   CompareOptions,
   CompareResponse,
   CreateDiffSessionResponse,
@@ -195,6 +196,22 @@ export const getReviewApplyApi = (): ReviewApplyApi | null => {
 
   return {
     applyFileChange: (payload: ApplyFileChangePayload) => bridge.applyFileChange!(payload),
+  }
+}
+
+export interface GitReviewApi {
+  applyGitWorkingTreeAction(payload: ApplyGitWorkingTreeActionPayload): Promise<void>
+}
+
+export const getGitReviewApi = (): GitReviewApi | null => {
+  const bridge = typeof window === 'undefined' ? undefined : window.diffly
+  if (!bridge || typeof bridge.applyGitWorkingTreeAction !== 'function') {
+    return null
+  }
+
+  return {
+    applyGitWorkingTreeAction: (payload: ApplyGitWorkingTreeActionPayload) =>
+      bridge.applyGitWorkingTreeAction!(payload),
   }
 }
 

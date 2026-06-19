@@ -112,6 +112,7 @@
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
   export let reviewModeEnabled = false
   export let reviewSourceKind: CompareSourceKind = 'local'
+  export let reviewSessionId: string | null = null
   export let onReviewRefresh: () => Promise<void> | void = () => {}
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
@@ -477,6 +478,9 @@
       text: loadedEntry.diff?.text ?? null,
       refresh: onReviewRefresh,
       notify: setInteractionMessage,
+      gitReview: reviewSessionId && loadedEntry.entry.diffEntryId
+        ? { sessionId: reviewSessionId, entryId: loadedEntry.entry.diffEntryId }
+        : null,
     })
   }
 

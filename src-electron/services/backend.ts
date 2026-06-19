@@ -2,6 +2,7 @@ import { app, ipcMain, shell } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, normalize } from 'node:path'
 import type {
+  ApplyGitWorkingTreeActionPayload,
   CompareOptions,
   CompareResponse,
   CreateDiffSessionResponse,
@@ -9,6 +10,7 @@ import type {
   DiffEntryFilter,
   DiffSource,
   FileDiffResult,
+  GitWorkingTreeReviewAction,
   PersistedSession,
   UpdateChannel,
 } from '../../src/lib/types'
@@ -44,6 +46,9 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle('diffly:applyFileChange', (_event, payload: unknown) =>
     applyFileChange(payload),
+  )
+  ipcMain.handle('diffly:applyGitWorkingTreeAction', (_event, payload: unknown) =>
+    applyGitWorkingTreeAction(payload),
   )
   ipcMain.handle('diffly:listRoots', () =>
     loadExplorerService().then(({ listRoots }) => listRoots()),
@@ -297,6 +302,16 @@ export async function applyFileChange(payload: unknown): Promise<void> {
   return module.applyFileChange(payload)
 }
 
+export async function applyGitWorkingTreeAction(payload: unknown): Promise<void> {
+  const actionPayload = readApplyGitWorkingTreeActionPayload(payload)
+  const { diffSessionService } = await loadCompareServices()
+  await diffSessionService.applyGitWorkingTreeAction(
+    actionPayload.sessionId,
+    actionPayload.entryId,
+    actionPayload.action,
+  )
+}
+
 // Parses and re-validates the PR URL in the main process before any network
 // request; renderer-supplied owner/repo values are never trusted directly.
 export async function fetchGithubPullRequestMetadata(url: unknown) {
@@ -390,6 +405,31 @@ function readRemoveRecentSourceId(payload: unknown) {
   }
 
   return payload.id
+}
+
+function readApplyGitWorkingTreeActionPayload(
+  payload: unknown,
+): ApplyGitWorkingTreeActionPayload {
+  if (
+    !isRecord(payload) ||
+    typeof payload.sessionId !== 'string' ||
+    !payload.sessionId.trim() ||
+    typeof payload.entryId !== 'string' ||
+    !payload.entryId.trim() ||
+    !isGitWorkingTreeReviewAction(payload.action)
+  ) {
+    throw new Error('Invalid git working tree action payload.')
+  }
+
+  return {
+    sessionId: payload.sessionId,
+    entryId: payload.entryId,
+    action: payload.action,
+  }
+}
+
+function isGitWorkingTreeReviewAction(value: unknown): value is GitWorkingTreeReviewAction {
+  return value === 'stage' || value === 'unstage' || value === 'discard'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -11,7 +11,7 @@ import {
   vi,
 } from 'vitest'
 import { parseGithubPullRequestUrl } from '../../../src/lib/github/github-url'
-import type { DiffSource } from '../../../src/lib/types'
+import type { DiffEntry, DiffSource, GitWorkingTreeScope } from '../../../src/lib/types'
 import { validateGitRepository } from '../git/git-repository'
 import { disposeAllGitObjectStores } from '../git/git-object-store'
 import { GithubProvider } from '../providers/github-provider'
@@ -137,6 +137,84 @@ describe('git compare flow', () => {
     expect(refreshedOnce.sessionId).toBe(session.sessionId)
     expect(refreshedTwice.entries.map((entry) => entry.path)).toContain('tracked.txt')
     expect(refreshedTwice.entries).toEqual(refreshedOnce.entries)
+  }, 15000)
+
+  it('stages a working tree entry from the all scope', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'changed\n')
+
+    const service = createService()
+    const session = await service.create(gitWorkingTreeSource(repoPath), options)
+    const entry = findSessionEntry(session.entries, 'all', 'tracked.txt')
+
+    await service.applyGitWorkingTreeAction(session.sessionId, entry.id, 'stage')
+
+    expect(await gitOutput(repoPath, ['diff', '--cached'])).toContain('+changed')
+    expect((await gitOutput(repoPath, ['diff'])).trim()).toBe('')
+  }, 15000)
+
+  it('unstages a working tree entry from the all scope', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'changed\n')
+    await git(repoPath, ['add', 'tracked.txt'])
+
+    const service = createService()
+    const session = await service.create(gitWorkingTreeSource(repoPath), options)
+    const entry = findSessionEntry(session.entries, 'all', 'tracked.txt')
+
+    await service.applyGitWorkingTreeAction(session.sessionId, entry.id, 'unstage')
+
+    expect((await gitOutput(repoPath, ['diff', '--cached'])).trim()).toBe('')
+    expect(await gitOutput(repoPath, ['diff'])).toContain('+changed')
+  }, 15000)
+
+  it('discards only unstaged changes from all when staged changes also exist', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'staged\n')
+    await git(repoPath, ['add', 'tracked.txt'])
+    await writeFile(join(repoPath, 'tracked.txt'), 'worktree\n')
+
+    const service = createService()
+    const session = await service.create(gitWorkingTreeSource(repoPath), options)
+    const entry = findSessionEntry(session.entries, 'all', 'tracked.txt')
+
+    await service.applyGitWorkingTreeAction(session.sessionId, entry.id, 'discard')
+
+    expect(normalizeLineEndings(await readFile(join(repoPath, 'tracked.txt'), 'utf8')))
+      .toBe('staged\n')
+    expect(await gitOutput(repoPath, ['diff', '--cached'])).toContain('+staged')
+    expect((await gitOutput(repoPath, ['diff'])).trim()).toBe('')
+  }, 15000)
+
+  it('discards untracked files without cleaning directories', async () => {
+    const repoPath = await createRepo()
+    await writeFile(join(repoPath, 'new.txt'), 'untracked\n')
+
+    const service = createService()
+    const session = await service.create(gitWorkingTreeSource(repoPath), options)
+    const entry = findSessionEntry(session.entries, 'all', 'new.txt')
+
+    await service.applyGitWorkingTreeAction(session.sessionId, entry.id, 'discard')
+
+    expect(await fileExists(join(repoPath, 'new.txt'))).toBe(false)
+  }, 15000)
+
+  it('rejects stale working tree review entries', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'changed\n')
+
+    const service = createService()
+    const session = await service.create(gitWorkingTreeSource(repoPath), options)
+    const entry = findSessionEntry(session.entries, 'all', 'tracked.txt')
+    await git(repoPath, ['restore', '--worktree', '--', 'tracked.txt'])
+
+    await expect(
+      service.applyGitWorkingTreeAction(session.sessionId, entry.id, 'stage'),
+    ).rejects.toThrow('This file is no longer in that review state.')
   }, 15000)
 
   it('rejects opening entries from a disposed session', async () => {
@@ -333,6 +411,14 @@ async function git(repoPath: string, args: string[]) {
   })
 }
 
+async function gitOutput(repoPath: string, args: string[]) {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd: repoPath,
+    windowsHide: true,
+  })
+  return String(stdout)
+}
+
 async function initGitRepo(repoPath: string) {
   await git(repoPath, ['init'])
   await git(repoPath, ['checkout', '-b', 'main'])
@@ -357,4 +443,30 @@ async function removeTempPath(path: string) {
       await new Promise((resolve) => setTimeout(resolve, attempt * 250))
     }
   }
+}
+
+function findSessionEntry(
+  entries: DiffEntry[],
+  scope: GitWorkingTreeScope,
+  path: string,
+) {
+  const entry = entries.find((candidate) => candidate.scope === scope && candidate.path === path)
+  if (!entry) {
+    throw new Error(`Missing test entry for ${scope}:${path}.`)
+  }
+
+  return entry
+}
+
+async function fileExists(path: string) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function normalizeLineEndings(text: string) {
+  return text.replace(/\r\n/g, '\n')
 }

@@ -1,7 +1,13 @@
 import { writable } from 'svelte/store'
-import { getReviewApplyApi, getShellPathApi } from '../api'
+import { getGitReviewApi, getReviewApplyApi, getShellPathApi } from '../api'
 import type { CompareSourceKind } from '../actions/compare-actions'
-import type { DirectoryEntryResult, EntryStatus, TextDiffPayload } from '../types'
+import type {
+  DirectoryEntryResult,
+  EntryStatus,
+  GitWorkingTreeReviewAction,
+  GitWorkingTreeReviewCapabilities,
+  TextDiffPayload,
+} from '../types'
 import { buildUnifiedPatch, MAX_PATCH_SOURCE_LENGTH } from './unified-patch'
 
 // Review mode is session-only UI state: default off, never persisted. It
@@ -25,6 +31,7 @@ export interface ReviewEntryInfo {
   binary: boolean
   /** Whether a text diff payload is loaded for this file (copyPatch input). */
   hasTextDiff: boolean
+  gitReviewCapabilities?: GitWorkingTreeReviewCapabilities | null
 }
 
 export interface ReviewActionItem {
@@ -38,7 +45,6 @@ export interface ReviewActionItem {
 }
 
 const ACCEPT_DISABLED_REASON = 'Only modify-modify files can be accepted for now'
-const GIT_ACTIONS_DISABLED_REASON = 'Git review actions coming soon'
 
 export function reviewEntryInfoFromEntry(
   entry: DirectoryEntryResult,
@@ -48,6 +54,7 @@ export function reviewEntryInfoFromEntry(
     status: entry.status,
     binary: entry.binary === true,
     hasTextDiff,
+    gitReviewCapabilities: entry.gitReviewCapabilities ?? null,
   }
 }
 
@@ -108,13 +115,21 @@ function copyPatchAction(entry: ReviewEntryInfo): ReviewActionItem {
   }
 }
 
-function disabledGitAction(id: ReviewActionId, label: string): ReviewActionItem {
+function gitAction(
+  id: 'stageFile' | 'unstageFile' | 'discardFile',
+  label: string,
+  enabled: boolean,
+  enabledTooltip: string,
+  disabledTooltip: string,
+  danger = false,
+): ReviewActionItem {
   return {
     id,
     label,
-    tooltip: GIT_ACTIONS_DISABLED_REASON,
+    tooltip: enabled ? enabledTooltip : disabledTooltip,
     mutating: true,
-    enabled: false,
+    danger,
+    enabled,
   }
 }
 
@@ -136,13 +151,35 @@ export function reviewActionsForSource(
         copyPatchAction(entry),
       ]
     case 'gitWorkingTree':
-      return [
-        disabledGitAction('stageFile', 'Stage'),
-        disabledGitAction('unstageFile', 'Unstage'),
-        disabledGitAction('discardFile', 'Discard'),
-        openExternalAction(),
-        copyPatchAction(entry),
-      ]
+      {
+        const capabilities = entry.gitReviewCapabilities
+        return [
+          gitAction(
+            'stageFile',
+            'Stage',
+            capabilities?.stage === true,
+            'Stage unstaged changes for this file',
+            'No unstaged changes to stage for this file',
+          ),
+          gitAction(
+            'unstageFile',
+            'Unstage',
+            capabilities?.unstage === true,
+            'Unstage staged changes for this file',
+            'No staged changes to unstage for this file',
+          ),
+          gitAction(
+            'discardFile',
+            'Discard',
+            capabilities?.discard === true,
+            'Discard unstaged changes for this file',
+            'No unstaged changes to discard for this file',
+            true,
+          ),
+          openExternalAction(),
+          copyPatchAction(entry),
+        ]
+      }
     case 'gitRefRange':
     case 'gitCommit':
     case 'github':
@@ -160,6 +197,10 @@ export interface ReviewActionContext {
   text: TextDiffPayload | null
   refresh: () => Promise<void> | void
   notify: (message: string) => void
+  gitReview?: {
+    sessionId: string
+    entryId: string
+  } | null
   /** Injectable for tests; defaults to window.confirm. */
   confirmAction?: (message: string) => boolean
 }
@@ -179,16 +220,75 @@ export async function runReviewAction(
     case 'acceptRight':
       await runAccept('right', context)
       return
+    case 'stageFile':
+      await runGitAction('stage', context)
+      return
+    case 'unstageFile':
+      await runGitAction('unstage', context)
+      return
+    case 'discardFile':
+      await runGitAction('discard', context)
+      return
     case 'openExternal':
       await runOpenExternal(context)
       return
     case 'copyPatch':
       await runCopyPatch(context)
       return
-    default:
-      // stage/unstage/discard are rendered disabled in this iteration and
-      // never reach the runner; fail closed if they somehow do.
-      context.notify('This action is not available yet.')
+  }
+}
+
+async function runGitAction(
+  action: GitWorkingTreeReviewAction,
+  context: ReviewActionContext,
+) {
+  const api = getGitReviewApi()
+  if (!api) {
+    context.notify('Git review actions are unavailable in this build.')
+    return
+  }
+
+  if (!context.gitReview) {
+    context.notify('Git review action context is unavailable for this file.')
+    return
+  }
+
+  if (action === 'discard') {
+    const confirmAction =
+      context.confirmAction ??
+      ((message: string) => (typeof window === 'undefined' ? false : window.confirm(message)))
+    const confirmed = confirmAction(
+      `Discard unstaged or untracked changes for this file?\n\n` +
+        `${context.displayPath}\n\n` +
+        'Only unstaged/untracked changes will be discarded. Staged changes will be preserved.',
+    )
+    if (!confirmed) {
+      return
+    }
+  }
+
+  try {
+    await api.applyGitWorkingTreeAction({
+      ...context.gitReview,
+      action,
+    })
+  } catch (error) {
+    context.notify(error instanceof Error ? error.message : 'Unable to apply git action.')
+    return
+  }
+
+  context.notify(gitActionSuccessMessage(action))
+  await context.refresh()
+}
+
+function gitActionSuccessMessage(action: GitWorkingTreeReviewAction) {
+  switch (action) {
+    case 'stage':
+      return 'Staged file.'
+    case 'unstage':
+      return 'Unstaged file.'
+    case 'discard':
+      return 'Discarded unstaged changes.'
   }
 }
 

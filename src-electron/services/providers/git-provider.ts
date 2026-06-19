@@ -1,9 +1,13 @@
+import { lstat, unlink } from 'node:fs/promises'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type {
   CompareOptions,
   DiffEntry,
   DiffEntryStatus,
   DiffSource,
   FileDiffResult,
+  GitWorkingTreeReviewAction,
+  GitWorkingTreeReviewCapabilities,
   GitWorkingTreeScope,
 } from '../../../src/lib/types'
 import type {
@@ -64,6 +68,10 @@ const GIT_SCOPE_PATCH_OPTIONS = {
   maxStdoutBytes: 1024 * 1024 * 64,
 }
 
+const STALE_GIT_REVIEW_STATE_ERROR = 'This file is no longer in that review state.'
+const GIT_WORKING_TREE_ACTIONS_UNAVAILABLE_ERROR =
+  'Git working tree actions are unavailable for this source.'
+
 export class GitProvider implements DiffSessionProvider {
   create(source: DiffSource, options: CompareOptions): Promise<ProviderSessionData> {
     void options
@@ -95,6 +103,29 @@ export class GitProvider implements DiffSessionProvider {
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
+  }
+
+  async applyGitWorkingTreeAction(
+    session: DiffSessionRecordLike,
+    entryId: string,
+    action: GitWorkingTreeReviewAction,
+  ): Promise<void> {
+    if (session.source.kind !== 'git' || session.source.selection.kind !== 'workingTree') {
+      throw new Error(GIT_WORKING_TREE_ACTIONS_UNAVAILABLE_ERROR)
+    }
+
+    const snapshot = await readStatusSnapshot(session.source.repositoryRoot)
+    const currentData = buildWorkingTreeSessionDataFromStatus(session.source, snapshot)
+    const entry = currentData.entryData.get(entryId)
+    if (
+      !entry ||
+      entry.kind !== 'gitWorkingTree' ||
+      entry.gitReviewCapabilities?.[action] !== true
+    ) {
+      throw new Error(STALE_GIT_REVIEW_STATE_ERROR)
+    }
+
+    await applyGitWorkingTreeEntryAction(entry, action, snapshot)
   }
 
   dispose(session: DiffSessionRecordLike): void {
@@ -213,6 +244,128 @@ export class GitProvider implements DiffSessionProvider {
     const sessionData = buildWorkingTreeSessionDataFromStatus(source, snapshot)
     return await attachWorkingTreePatches(source.repositoryRoot, sessionData, snapshot)
   }
+}
+
+async function applyGitWorkingTreeEntryAction(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  action: GitWorkingTreeReviewAction,
+  snapshot: GitStatusSnapshot,
+) {
+  switch (action) {
+    case 'stage':
+      await stageGitWorkingTreeEntry(entry)
+      return
+    case 'unstage':
+      await unstageGitWorkingTreeEntry(entry, snapshot)
+      return
+    case 'discard':
+      await discardGitWorkingTreeEntry(entry)
+      return
+  }
+}
+
+async function stageGitWorkingTreeEntry(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+) {
+  const pathspecs = gitActionPathspecs(entry)
+  await runGit(entry.repositoryRoot, ['add', '--', ...pathspecs], GIT_ENTRY_OPTIONS)
+}
+
+async function unstageGitWorkingTreeEntry(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  snapshot: GitStatusSnapshot,
+) {
+  const pathspecs = gitActionPathspecs(entry)
+  const result = await runGit(
+    entry.repositoryRoot,
+    ['restore', '--staged', '--', ...pathspecs],
+    { ...GIT_ENTRY_OPTIONS, allowNonZeroExit: true },
+  )
+
+  if (result.exitCode === 0) {
+    return
+  }
+
+  if (!snapshot.branch.headSha && entry.status === 'added') {
+    await runGit(entry.repositoryRoot, ['rm', '--cached', '--', ...pathspecs], GIT_ENTRY_OPTIONS)
+    return
+  }
+
+  throwGitActionResult(result)
+}
+
+async function discardGitWorkingTreeEntry(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+) {
+  if (entry.status === 'untracked') {
+    await discardUntrackedFile(entry.repositoryRoot, entry.path)
+    return
+  }
+
+  const pathspecs = gitActionPathspecs(entry)
+  await runGit(entry.repositoryRoot, ['restore', '--worktree', '--', ...pathspecs], GIT_ENTRY_OPTIONS)
+}
+
+function gitActionPathspecs(entry: { path: string; oldPath: string | null }) {
+  const pathspecs: string[] = []
+  for (const path of [entry.oldPath, entry.path]) {
+    if (!path) {
+      continue
+    }
+    validateGitActionPath(path)
+    if (!pathspecs.includes(path)) {
+      pathspecs.push(path)
+    }
+  }
+
+  if (pathspecs.length === 0) {
+    throw new Error(STALE_GIT_REVIEW_STATE_ERROR)
+  }
+
+  return pathspecs
+}
+
+async function discardUntrackedFile(repositoryRoot: string, gitPath: string) {
+  const targetPath = resolveRepositoryRelativePath(repositoryRoot, gitPath)
+  let stat
+  try {
+    stat = await lstat(targetPath)
+  } catch {
+    throw new Error(STALE_GIT_REVIEW_STATE_ERROR)
+  }
+
+  if (!stat.isFile() && !stat.isSymbolicLink()) {
+    throw new Error(STALE_GIT_REVIEW_STATE_ERROR)
+  }
+
+  await unlink(targetPath)
+}
+
+function resolveRepositoryRelativePath(repositoryRoot: string, gitPath: string) {
+  validateGitActionPath(gitPath)
+  const targetPath = resolve(repositoryRoot, gitPath)
+  const relativePath = relative(repositoryRoot, targetPath)
+  if (
+    !relativePath ||
+    relativePath === '..' ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error('Refusing to discard a path outside the repository.')
+  }
+
+  return targetPath
+}
+
+function validateGitActionPath(path: string) {
+  if (!path || path.includes('\0')) {
+    throw new Error(STALE_GIT_REVIEW_STATE_ERROR)
+  }
+}
+
+function throwGitActionResult(result: { stdout: string; stderr: string; exitCode: number }) {
+  const message = result.stderr.trim() || result.stdout.trim() || 'Git command failed.'
+  throw new Error(message)
 }
 
 function buildWorkingTreeSessionDataFromStatus(
@@ -455,6 +608,11 @@ function addStatusEntries(
       path: item.path,
       oldPath: null,
       status: 'untracked',
+      gitReviewCapabilities: {
+        stage: true,
+        unstage: false,
+        discard: true,
+      },
       srcOid: null,
       dstOid: null,
     })
@@ -463,6 +621,11 @@ function addStatusEntries(
       path: item.path,
       oldPath: null,
       status: 'untracked',
+      gitReviewCapabilities: {
+        stage: true,
+        unstage: false,
+        discard: true,
+      },
       srcOid: null,
       dstOid: null,
     })
@@ -475,6 +638,7 @@ function addStatusEntries(
       path: item.path,
       oldPath: null,
       status: 'conflicted',
+      gitReviewCapabilities: disabledGitReviewCapabilities(),
       srcOid: null,
       dstOid: null,
     })
@@ -491,6 +655,12 @@ function addStatusEntries(
       path: item.path,
       oldPath: oldPathForStatus(item, allStatus),
       status: allStatus,
+      gitReviewCapabilities: gitReviewCapabilitiesForChangedScope(
+        'all',
+        allStatus,
+        stagedStatus,
+        unstagedStatus,
+      ),
       srcOid: item.headOid,
       dstOid: null,
     })
@@ -502,6 +672,12 @@ function addStatusEntries(
       path: item.path,
       oldPath: oldPathForStatus(item, stagedStatus),
       status: stagedStatus,
+      gitReviewCapabilities: gitReviewCapabilitiesForChangedScope(
+        'staged',
+        stagedStatus,
+        stagedStatus,
+        unstagedStatus,
+      ),
       srcOid: item.headOid,
       dstOid: item.indexOid,
     })
@@ -513,6 +689,12 @@ function addStatusEntries(
       path: item.path,
       oldPath: oldPathForStatus(item, unstagedStatus),
       status: unstagedStatus,
+      gitReviewCapabilities: gitReviewCapabilitiesForChangedScope(
+        'unstaged',
+        unstagedStatus,
+        stagedStatus,
+        unstagedStatus,
+      ),
       srcOid: item.indexOid,
       dstOid: null,
     })
@@ -524,6 +706,7 @@ interface StatusEntryInput {
   path: string
   oldPath: string | null
   status: DiffEntryStatus
+  gitReviewCapabilities: GitWorkingTreeReviewCapabilities
   srcOid: string | null
   dstOid: string | null
 }
@@ -541,6 +724,7 @@ function addStatusEntry(
     displayPath: displayPath(input.path, input.oldPath, input.status),
     status: input.status,
     scope: input.scope,
+    gitReviewCapabilities: input.gitReviewCapabilities,
     leftSize: null,
     rightSize: null,
   }
@@ -554,9 +738,56 @@ function addStatusEntry(
     path: input.path,
     oldPath: input.oldPath,
     status: input.status,
+    gitReviewCapabilities: input.gitReviewCapabilities,
     srcOid: input.srcOid,
     dstOid: input.dstOid,
   })
+}
+
+function gitReviewCapabilitiesForChangedScope(
+  scope: GitWorkingTreeScope,
+  status: DiffEntryStatus,
+  stagedStatus: DiffEntryStatus | null,
+  unstagedStatus: DiffEntryStatus | null,
+): GitWorkingTreeReviewCapabilities {
+  if (!isMutableGitReviewStatus(status)) {
+    return disabledGitReviewCapabilities()
+  }
+
+  switch (scope) {
+    case 'all':
+      return {
+        stage: isMutableGitReviewStatus(unstagedStatus),
+        unstage: isMutableGitReviewStatus(stagedStatus),
+        discard: isMutableGitReviewStatus(unstagedStatus),
+      }
+    case 'staged':
+      return {
+        stage: false,
+        unstage: true,
+        discard: false,
+      }
+    case 'unstaged':
+      return {
+        stage: true,
+        unstage: false,
+        discard: true,
+      }
+    case 'untracked':
+      return disabledGitReviewCapabilities()
+  }
+}
+
+function isMutableGitReviewStatus(status: DiffEntryStatus | null) {
+  return Boolean(status && status !== 'conflicted' && status !== 'unsupported')
+}
+
+function disabledGitReviewCapabilities(): GitWorkingTreeReviewCapabilities {
+  return {
+    stage: false,
+    unstage: false,
+    discard: false,
+  }
 }
 
 function statusFromStatusChar(code: string) {

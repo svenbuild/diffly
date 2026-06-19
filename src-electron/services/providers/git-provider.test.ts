@@ -17,6 +17,7 @@ import {
 import type {
   DiffEntry,
   DiffSource,
+  GitWorkingTreeReviewCapabilities,
   GitWorkingTreeScope,
 } from '../../../src/lib/types'
 import { MAX_TEXT_BYTES } from '../file-diff'
@@ -53,6 +54,111 @@ describe('GitProvider working tree entries', () => {
 
     expect(findEntry(entries, 'all', 'new.txt')?.status).toBe('untracked')
     expect(findEntry(entries, 'untracked', 'new.txt')?.status).toBe('untracked')
+  })
+
+  it('sets mutating capabilities for untracked entries', async () => {
+    const repoPath = await createRepo()
+    await writeFile(join(repoPath, 'new.txt'), 'new\n')
+
+    const entries = await createEntries(repoPath)
+
+    expectCapabilities(findEntry(entries, 'all', 'new.txt'), {
+      stage: true,
+      unstage: false,
+      discard: true,
+    })
+    expectCapabilities(findEntry(entries, 'untracked', 'new.txt'), {
+      stage: true,
+      unstage: false,
+      discard: true,
+    })
+  })
+
+  it('sets mutating capabilities for staged-only entries', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'baseline.txt', 'baseline\n')
+    await writeFile(join(repoPath, 'staged.txt'), 'staged\n')
+    await git(repoPath, ['add', 'staged.txt'])
+
+    const entries = await createEntries(repoPath)
+
+    expectCapabilities(findEntry(entries, 'all', 'staged.txt'), {
+      stage: false,
+      unstage: true,
+      discard: false,
+    })
+    expectCapabilities(findEntry(entries, 'staged', 'staged.txt'), {
+      stage: false,
+      unstage: true,
+      discard: false,
+    })
+  })
+
+  it('sets mutating capabilities for unstaged-only entries', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'baseline\n')
+    await writeFile(join(repoPath, 'tracked.txt'), 'changed\n')
+
+    const entries = await createEntries(repoPath)
+
+    expectCapabilities(findEntry(entries, 'all', 'tracked.txt'), {
+      stage: true,
+      unstage: false,
+      discard: true,
+    })
+    expectCapabilities(findEntry(entries, 'unstaged', 'tracked.txt'), {
+      stage: true,
+      unstage: false,
+      discard: true,
+    })
+  })
+
+  it('sets mutating capabilities for entries with staged and unstaged changes', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'both.txt', 'baseline\n')
+    await writeFile(join(repoPath, 'both.txt'), 'staged\n')
+    await git(repoPath, ['add', 'both.txt'])
+    await writeFile(join(repoPath, 'both.txt'), 'unstaged\n')
+
+    const entries = await createEntries(repoPath)
+
+    expectCapabilities(findEntry(entries, 'all', 'both.txt'), {
+      stage: true,
+      unstage: true,
+      discard: true,
+    })
+    expectCapabilities(findEntry(entries, 'staged', 'both.txt'), {
+      stage: false,
+      unstage: true,
+      discard: false,
+    })
+    expectCapabilities(findEntry(entries, 'unstaged', 'both.txt'), {
+      stage: true,
+      unstage: false,
+      discard: true,
+    })
+  })
+
+  it('does not expose mutating capabilities for conflicted entries', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'conflict.txt', 'base\n')
+    await git(repoPath, ['checkout', '-b', 'feature'])
+    await writeFile(join(repoPath, 'conflict.txt'), 'feature\n')
+    await git(repoPath, ['add', 'conflict.txt'])
+    await git(repoPath, ['commit', '-m', 'Feature change'])
+    await git(repoPath, ['checkout', 'main'])
+    await writeFile(join(repoPath, 'conflict.txt'), 'main\n')
+    await git(repoPath, ['add', 'conflict.txt'])
+    await git(repoPath, ['commit', '-m', 'Main change'])
+    await gitAllowFailure(repoPath, ['merge', 'feature'])
+
+    const entries = await createEntries(repoPath)
+
+    expectCapabilities(findEntry(entries, 'all', 'conflict.txt'), {
+      stage: false,
+      unstage: false,
+      discard: false,
+    })
   })
 
   it('maps staged, unstaged, and untracked entries to their scopes and all', async () => {
@@ -625,6 +731,16 @@ async function git(repoPath: string, args: string[]) {
   })
 }
 
+async function gitAllowFailure(repoPath: string, args: string[]) {
+  try {
+    await git(repoPath, args)
+  } catch {
+    return
+  }
+
+  throw new Error(`Expected git ${args.join(' ')} to fail.`)
+}
+
 async function initGitRepo(repoPath: string) {
   await git(repoPath, ['init'])
   await git(repoPath, ['checkout', '-b', 'main'])
@@ -657,4 +773,11 @@ function findEntry(
   path: string,
 ) {
   return entries.find((entry) => entry.scope === scope && entry.path === path)
+}
+
+function expectCapabilities(
+  entry: DiffEntry | undefined,
+  capabilities: GitWorkingTreeReviewCapabilities,
+) {
+  expect(entry?.gitReviewCapabilities).toEqual(capabilities)
 }

@@ -1,6 +1,6 @@
 import { get } from 'svelte/store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EntryStatus, TextDiffPayload } from '../types'
+import type { EntryStatus, GitWorkingTreeReviewCapabilities, TextDiffPayload } from '../types'
 import {
   reviewActionsForSource,
   reviewEntryInfoFromEntry,
@@ -53,6 +53,7 @@ function actionContext(overrides: Partial<ReviewActionContext> = {}): ReviewActi
     text: textPayload(),
     refresh: vi.fn(),
     notify: vi.fn(),
+    gitReview: { sessionId: 'session-1', entryId: 'git:all::src%2Fapp.ts' },
     confirmAction: vi.fn(() => true),
     ...overrides,
   }
@@ -103,8 +104,14 @@ describe('reviewActionsForSource', () => {
     }
   })
 
-  it('renders git working tree actions disabled with a coming-soon tooltip', () => {
-    const actions = reviewActionsForSource('gitWorkingTree', entryInfo())
+  it('enables git working tree actions from capabilities', () => {
+    const actions = reviewActionsForSource('gitWorkingTree', entryInfo({
+      gitReviewCapabilities: {
+        stage: true,
+        unstage: false,
+        discard: true,
+      },
+    }))
     expect(ids(actions)).toEqual([
       'stageFile',
       'unstageFile',
@@ -112,11 +119,26 @@ describe('reviewActionsForSource', () => {
       'openExternal',
       'copyPatch',
     ])
-    for (const id of ['stageFile', 'unstageFile', 'discardFile'] as const) {
-      const action = actions.find((candidate) => candidate.id === id)
-      expect(action?.enabled).toBe(false)
-      expect(action?.tooltip).toBe('Git review actions coming soon')
-    }
+    expect(actions.find((action) => action.id === 'stageFile')?.enabled).toBe(true)
+    expect(actions.find((action) => action.id === 'unstageFile')?.enabled).toBe(false)
+    expect(actions.find((action) => action.id === 'discardFile')?.enabled).toBe(true)
+    expect(actions.find((action) => action.id === 'discardFile')?.danger).toBe(true)
+  })
+
+  it('disables git working tree actions without capabilities', () => {
+    const actions = reviewActionsForSource('gitWorkingTree', entryInfo())
+    expect(actions.find((action) => action.id === 'stageFile')?.enabled).toBe(false)
+    expect(actions.find((action) => action.id === 'stageFile')?.tooltip).toBe(
+      'No unstaged changes to stage for this file',
+    )
+    expect(actions.find((action) => action.id === 'unstageFile')?.enabled).toBe(false)
+    expect(actions.find((action) => action.id === 'unstageFile')?.tooltip).toBe(
+      'No staged changes to unstage for this file',
+    )
+    expect(actions.find((action) => action.id === 'discardFile')?.enabled).toBe(false)
+    expect(actions.find((action) => action.id === 'discardFile')?.tooltip).toBe(
+      'No unstaged changes to discard for this file',
+    )
   })
 
   it('offers only copyPatch for read-only sources', () => {
@@ -147,7 +169,12 @@ describe('reviewEntryInfo helpers', () => {
       },
       false,
     )
-    expect(info).toEqual({ status: 'modified', binary: true, hasTextDiff: false })
+    expect(info).toEqual({
+      status: 'modified',
+      binary: true,
+      hasTextDiff: false,
+      gitReviewCapabilities: null,
+    })
   })
 
   it('derives modify/add/delete status from a text payload', () => {
@@ -163,9 +190,21 @@ describe('runReviewAction', () => {
       (action) => action.id === 'acceptLeft',
     ) as ReviewActionItem
 
+  const gitReviewAction = (
+    id: 'stageFile' | 'unstageFile' | 'discardFile',
+    capabilities: GitWorkingTreeReviewCapabilities,
+  ) =>
+    reviewActionsForSource('gitWorkingTree', entryInfo({ gitReviewCapabilities: capabilities }))
+      .find((action) => action.id === id) as ReviewActionItem
+
   function stubBridge(applyFileChange = vi.fn(() => Promise.resolve())) {
     vi.stubGlobal('window', { diffly: { applyFileChange } })
     return applyFileChange
+  }
+
+  function stubGitBridge(applyGitWorkingTreeAction = vi.fn(() => Promise.resolve())) {
+    vi.stubGlobal('window', { diffly: { applyGitWorkingTreeAction } })
+    return applyGitWorkingTreeAction
   }
 
   it('does nothing for disabled actions', async () => {
@@ -212,6 +251,105 @@ describe('runReviewAction', () => {
     const context = actionContext()
     await runReviewAction(acceptLeft(), context)
     expect(context.notify).toHaveBeenCalledWith('Accepting files is unavailable in this build.')
+    expect(context.refresh).not.toHaveBeenCalled()
+  })
+
+  it('stages git working tree files through the bridge and refreshes', async () => {
+    const applyGitWorkingTreeAction = stubGitBridge()
+    const context = actionContext()
+    await runReviewAction(gitReviewAction('stageFile', {
+      stage: true,
+      unstage: false,
+      discard: true,
+    }), context)
+
+    expect(applyGitWorkingTreeAction).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      entryId: 'git:all::src%2Fapp.ts',
+      action: 'stage',
+    })
+    expect(context.confirmAction).not.toHaveBeenCalled()
+    expect(context.refresh).toHaveBeenCalled()
+    expect(context.notify).toHaveBeenCalledWith('Staged file.')
+  })
+
+  it('unstages git working tree files through the bridge and refreshes', async () => {
+    const applyGitWorkingTreeAction = stubGitBridge()
+    const context = actionContext()
+    await runReviewAction(gitReviewAction('unstageFile', {
+      stage: false,
+      unstage: true,
+      discard: false,
+    }), context)
+
+    expect(applyGitWorkingTreeAction).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      entryId: 'git:all::src%2Fapp.ts',
+      action: 'unstage',
+    })
+    expect(context.confirmAction).not.toHaveBeenCalled()
+    expect(context.refresh).toHaveBeenCalled()
+    expect(context.notify).toHaveBeenCalledWith('Unstaged file.')
+  })
+
+  it('confirms before discarding unstaged git changes', async () => {
+    const applyGitWorkingTreeAction = stubGitBridge()
+    const context = actionContext()
+    await runReviewAction(gitReviewAction('discardFile', {
+      stage: true,
+      unstage: false,
+      discard: true,
+    }), context)
+
+    expect(context.confirmAction).toHaveBeenCalledWith(
+      expect.stringContaining('Only unstaged/untracked changes will be discarded.'),
+    )
+    expect(applyGitWorkingTreeAction).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      entryId: 'git:all::src%2Fapp.ts',
+      action: 'discard',
+    })
+    expect(context.refresh).toHaveBeenCalled()
+    expect(context.notify).toHaveBeenCalledWith('Discarded unstaged changes.')
+  })
+
+  it('does not discard git changes when confirmation is rejected', async () => {
+    const applyGitWorkingTreeAction = stubGitBridge()
+    const context = actionContext({ confirmAction: vi.fn(() => false) })
+    await runReviewAction(gitReviewAction('discardFile', {
+      stage: true,
+      unstage: false,
+      discard: true,
+    }), context)
+
+    expect(context.confirmAction).toHaveBeenCalled()
+    expect(applyGitWorkingTreeAction).not.toHaveBeenCalled()
+    expect(context.refresh).not.toHaveBeenCalled()
+  })
+
+  it('surfaces git backend errors without refreshing', async () => {
+    stubGitBridge(vi.fn(() => Promise.reject(new Error('This file is no longer in that review state.'))))
+    const context = actionContext()
+    await runReviewAction(gitReviewAction('stageFile', {
+      stage: true,
+      unstage: false,
+      discard: true,
+    }), context)
+
+    expect(context.notify).toHaveBeenCalledWith('This file is no longer in that review state.')
+    expect(context.refresh).not.toHaveBeenCalled()
+  })
+
+  it('reports when git review bridge is unavailable', async () => {
+    vi.stubGlobal('window', { diffly: {} })
+    const context = actionContext()
+    await runReviewAction(gitReviewAction('stageFile', {
+      stage: true,
+      unstage: false,
+      discard: true,
+    }), context)
+
+    expect(context.notify).toHaveBeenCalledWith('Git review actions are unavailable in this build.')
     expect(context.refresh).not.toHaveBeenCalled()
   })
 

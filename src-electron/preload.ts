@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ApplyFileChangePayload,
+  ApplyGitWorkingTreeActionPayload,
   CompareOptions,
   DiffEntryFilter,
   DiffSource,
@@ -27,6 +28,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<void>('diffly:revealPath', { path }),
   applyFileChange: (payload: ApplyFileChangePayload) =>
     invoke<void>('diffly:applyFileChange', payload),
+  applyGitWorkingTreeAction: (payload: ApplyGitWorkingTreeActionPayload) =>
+    invoke<void>('diffly:applyGitWorkingTreeAction', payload),
   listRoots: () =>
     invoke('diffly:listRoots'),
   listDirectory: (path: string) =>

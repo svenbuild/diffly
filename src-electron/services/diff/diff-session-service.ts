@@ -6,6 +6,7 @@ import type {
   DiffEntryFilter,
   DiffSource,
   FileDiffResult,
+  GitWorkingTreeReviewAction,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -108,6 +109,23 @@ export class DiffSessionService {
 
     this.sessions.set(session.id, session)
     return toCreateDiffSessionResponse(session)
+  }
+
+  async applyGitWorkingTreeAction(
+    sessionId: string,
+    entryId: string,
+    action: GitWorkingTreeReviewAction,
+  ): Promise<void> {
+    const session = this.getSession(sessionId)
+    if (
+      session.source.kind !== 'git' ||
+      session.source.selection.kind !== 'workingTree' ||
+      typeof session.provider.applyGitWorkingTreeAction !== 'function'
+    ) {
+      throw new Error('Git working tree actions are unavailable for this source.')
+    }
+
+    await session.provider.applyGitWorkingTreeAction(session, entryId, action)
   }
 
   dispose(sessionId: string): void {

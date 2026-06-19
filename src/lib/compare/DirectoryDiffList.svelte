@@ -1176,6 +1176,7 @@
       onSystemMonitorChange={handleSystemMonitorChange}
       {reviewModeEnabled}
       {reviewSourceKind}
+      reviewSessionId={detailLoader.kind === 'diffSession' ? detailLoader.sessionId : null}
       {onReviewRefresh}
       {resolveEntryBases}
     />

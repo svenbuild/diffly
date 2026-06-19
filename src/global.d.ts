@@ -1,5 +1,6 @@
 import type {
   ApplyFileChangePayload,
+  ApplyGitWorkingTreeActionPayload,
   CompareOptions,
   CompareResponse,
   CreateDiffSessionResponse,
@@ -36,6 +37,8 @@ declare global {
       revealPath?(path: string): Promise<void>
       /** Optional: absent on older preload builds; feature-detect before use. */
       applyFileChange?(payload: ApplyFileChangePayload): Promise<void>
+      /** Optional: absent on older preload builds; feature-detect before use. */
+      applyGitWorkingTreeAction?(payload: ApplyGitWorkingTreeActionPayload): Promise<void>
       listRoots(): Promise<ExplorerEntry[]>
       listDirectory(path: string): Promise<DirectoryListing>
       pathInfo(path: string): Promise<PathInfo>

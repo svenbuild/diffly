@@ -4,6 +4,8 @@ import type {
   DiffSource,
   DiffEntryStatus,
   FileDiffResult,
+  GitWorkingTreeReviewAction,
+  GitWorkingTreeReviewCapabilities,
   GitWorkingTreeScope,
 } from '../../../src/lib/types'
 
@@ -15,6 +17,11 @@ export interface DiffSessionProvider {
     options: CompareOptions,
   ): Promise<FileDiffResult>
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData>
+  applyGitWorkingTreeAction?(
+    session: DiffSessionRecordLike,
+    entryId: string,
+    action: GitWorkingTreeReviewAction,
+  ): Promise<void>
   dispose?(session: DiffSessionRecordLike): void
 }
 
@@ -51,6 +58,7 @@ export type ProviderEntryData =
       path: string
       oldPath: string | null
       status: DiffEntryStatus
+      gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
       // Full blob oids from the raw diff for this scope; null when unknown.
       // srcOid is the left side of the scope's diff command, dstOid the right.
       srcOid: string | null

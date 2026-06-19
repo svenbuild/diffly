@@ -92,6 +92,17 @@ export type GitWorkingTreeScope =
   | 'unstaged'
   | 'untracked'
 
+export type GitWorkingTreeReviewAction =
+  | 'stage'
+  | 'unstage'
+  | 'discard'
+
+export interface GitWorkingTreeReviewCapabilities {
+  stage: boolean
+  unstage: boolean
+  discard: boolean
+}
+
 export interface GithubPullRequestSource {
   kind: 'githubPullRequest'
   owner: string
@@ -199,6 +210,7 @@ export interface DiffEntry {
   displayPath: string
   status: DiffEntryStatus
   scope?: GitWorkingTreeScope
+  gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
   leftSize: number | null
   rightSize: number | null
   binary?: boolean
@@ -390,6 +402,7 @@ export interface DirectoryEntryResult {
   diffEntryAliasIds?: string[]
   diffEntryStatus?: DiffEntryStatus
   diffEntryScope?: GitWorkingTreeScope
+  gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
   binary?: boolean
   diffPatchText?: string | null
   diffPatchCacheKey?: string | null
@@ -508,6 +521,12 @@ export interface ApplyFileChangePayload {
   targetPath: string
   leftBase: string
   rightBase: string
+}
+
+export interface ApplyGitWorkingTreeActionPayload {
+  sessionId: string
+  entryId: string
+  action: GitWorkingTreeReviewAction
 }
 
 export type CompareResponse =
