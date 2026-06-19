@@ -1453,6 +1453,7 @@
     commentAnnotations,
     reviewModeEnabled,
     reviewSourceKind,
+    entryStructureRevision,
     void syncCodeView()
 
   $: scrollTargetRevision, void scrollToSelectedEntry()

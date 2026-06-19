@@ -1126,6 +1126,11 @@
       entries: textEntries.length,
     })
   }
+  $: if (!loading && detailLoader.kind === 'diffSession' && !hasRenderableDirectoryItems) {
+    finishCompareTimingOnNextFrame('directory-list-ready-empty', {
+      entries: directoryEntries.length,
+    })
+  }
   $: if (collapseAllRevision !== handledCollapseAllRevision) {
     handledCollapseAllRevision = collapseAllRevision
     setAllCollapsed(true)
