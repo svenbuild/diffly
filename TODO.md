@@ -20,9 +20,11 @@
 - [x] diffs custom header - 1. sollen sich mehr vom background abheben ein bisschen. 2. es sind keine icons für die verschiedenen file types da. nur solche pseudo SVG's. ich will wie in trees die geilen file type icons
 - [x] git mode lagt noch sehr. gab schon  einen commit der nach main gemacht wurde bezüglich dieses themas aber hat nichts geholfen (**`main` per Fast-Forward gemerged** (`44c3e41` → `6cc27ab`, kein Merge-Commit nötig, da `main` sich seit dem Branch-Start nicht bewegt hatte) und nach `origin/main` gepusht.)
 - [x] in den Compare settings sind die namen der settings komisch und zusannemgeschrieben. mache daraus einfache/logische namen die man einfach und schnell versteht was dieses setting genau macht. die namen sollten nicht zu lange sein. (für Trees und Diffs Settings)
-- [ ] wenn ich settings öffne und wieder schliesse lädt der diff immer neu. das kann doch nicht richtig sein. das zieht einige unnötige sekunden.
-- [ ] die windows custom top bar wird nicht effizient verwendet. ich habe jetzt die custom windows top bar und zusätzlich noch eine eigene top bar mit buttons und infos und so. das kann man doch alles in die custom windows top bar kompakter machen 
-- [ ] im Compare view anstatt einen button namens "Setup" zu haben soll dort ein "back" button mit einem pfeil der nach links zeigt sein. das ist intuitiver
+- [x] wenn ich settings öffne und wieder schliesse lädt der diff immer neu. das kann doch nicht richtig sein. das zieht einige unnötige sekunden.
+- [x] die windows custom top bar wird nicht effizient verwendet. ich habe jetzt die custom windows top bar und zusätzlich noch eine eigene top bar mit buttons und infos und so. das kann man doch alles in die custom windows top bar kompakter machen
+- [x] im Compare view anstatt einen button namens "Setup" zu haben soll dort ein "back" button mit einem pfeil der nach links zeigt sein. das ist intuitiver
+- [x] loading animation richtig machen bei allen modes. sobald ich compare drücke komme ich in den compare view mit der Loading animation Overlay bis der erste diff visuell gerendert wurde
+- [x] Github mode soll nur ein eingabe feld sein ohne switch zwischen pull/compare URL. es soll automatisch erkennen was es ist
 
 ## Follow-ups
 
