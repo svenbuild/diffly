@@ -32,6 +32,12 @@ Note: Windows is the primary tested platform right now. macOS and Linux builds a
 - Restore local compare sessions and app state across restarts.
 - Receive app updates through GitHub Releases.
 
+## Screenshots
+
+![Diffly compare view with a large GitHub diff](docs/assets/readme/compare-view.png)
+
+![Diffly GitHub setup view with recent diffs](docs/assets/readme/github-setup.png)
+
 ## Development
 
 ```bash
