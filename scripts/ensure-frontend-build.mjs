@@ -17,8 +17,6 @@ const watchedFiles = [
     'package-lock.json',
     'svelte.config.js',
     'tsconfig.app.json',
-    'tsconfig.json',
-    'tsconfig.node.json',
     'vite.config.ts'
 ].map((value) => path.join(projectRoot, value));
 

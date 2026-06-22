@@ -38,8 +38,7 @@ themes.txt
 *.temp
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 .claude/
 .idea
 .DS_Store

@@ -12,7 +12,7 @@
     "build:ensure": "node scripts/ensure-frontend-build.mjs",
     "build:ensure:debug": "node scripts/ensure-frontend-build.mjs --debug",
     "preview": "electron-vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.electron.json --noEmit",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.electron.json --noEmit",
     "test": "npm run check && npm run test:unit",
     "test:unit": "vitest run",
     "electron:dev": "electron-vite dev",
