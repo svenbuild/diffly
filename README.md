@@ -1,6 +1,14 @@
-# Diffly
+<h1 align="center">Diffly</h1>
 
 Diffly is a local desktop diff tool for comparing files, folders, Git working trees, Git commits, and GitHub diffs on Windows, macOS, and Linux. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and predictable desktop workflows.
+
+<p align="center">
+  <img src="docs/assets/readme/compare-view.png" alt="Diffly compare view with a large GitHub diff">
+</p>
+
+<p align="center">
+  <img src="docs/assets/readme/github-setup.png" alt="Diffly GitHub setup view with recent diffs">
+</p>
 
 ## Download
 
@@ -31,12 +39,6 @@ Note: Windows is the primary tested platform right now. macOS and Linux builds a
 - Keep large text, directory, and binary diffs responsive with virtual rendering.
 - Restore local compare sessions and app state across restarts.
 - Receive app updates through GitHub Releases.
-
-## Screenshots
-
-![Diffly compare view with a large GitHub diff](docs/assets/readme/compare-view.png)
-
-![Diffly GitHub setup view with recent diffs](docs/assets/readme/github-setup.png)
 
 ## Development
 
