@@ -1,10 +1,10 @@
 # Changelog
 
-## Diffly v0.2.4-rc.1
+## Diffly v0.2.4
 
-Released: 2026-06-17
+Released: 2026-06-22
 
-This is a prerelease for testing startup, Git diff, compare loading, and early review-mode improvements before the next stable release.
+This stable release focuses on startup speed, Git and GitHub compare workflows, compare loading behavior, review actions for Git working-tree diffs, and repository documentation cleanup.
 
 ### Highlights
 
@@ -13,16 +13,21 @@ This is a prerelease for testing startup, Git diff, compare loading, and early r
 - Sped up Git compare startup with faster working-tree initialization, selected-diff-first rendering, reused loaded Git diffs across scope changes, and responsive scope switching.
 - Rendered Git diffs from native patches and added a persistent `git cat-file --batch` object store with OID caching.
 - Added compare load timing instrumentation and kept the compare loading overlay visible until the first useful diff render is ready.
+- Added GitHub commit URL and PR-commit URL compare support.
 - Added preview-only planned file operations and a review-mode skeleton with whole-file accept support for local compares.
+- Enabled review actions for Git working-tree diffs and fixed refresh loading state handling.
+- Added directory diff collapse and expand-all controls, reduced collapsed directory parsing work, and improved directory reload and expansion feedback.
 - Improved diff headers, toolbar controls, Windows custom title-bar drag regions, material file icons, line-ending reuse, Windows text decoding, and placeholder layout stability.
+- Promoted README screenshots, moved planning notes under `docs/planning`, and trimmed redundant root config files.
 - Added focused tests for Git services, patch parsing, review mode, file-operation previews, diff concurrency, recents, local providers, and compare actions.
 
 ### Validation
 
 - `npm run build`
 - `npm run check`
+- `npm run test:unit`
 
-**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.3...v0.2.4-rc.1
+**Full Changelog**: https://github.com/svenbuild/diffly/compare/v0.2.3...v0.2.4
 
 ## Diffly v0.2.3
 

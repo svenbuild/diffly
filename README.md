@@ -14,9 +14,7 @@ Diffly is a Svelte, TypeScript, and Electron desktop app focused on fast navigat
 
 Install the latest Windows, macOS, or Linux build from [GitHub Releases](https://github.com/svenbuild/diffly/releases/latest).
 
-Current release: `v0.2.3`
-
-Current prerelease: `v0.2.4-rc.1`
+Current release: `v0.2.4`
 
 Supported desktop builds:
 
