@@ -64,4 +64,5 @@ npm run electron:package:linux
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
+- [Planning notes](docs/planning/README.md)
 - [License](LICENSE)
