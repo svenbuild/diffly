@@ -1,14 +1,14 @@
 <h1 align="center">Diffly</h1>
 
-Diffly is a local desktop diff tool for comparing files, folders, Git working trees, Git commits, and GitHub diffs on Windows, macOS, and Linux. It is built with Svelte, TypeScript, and Electron, with a focus on fast navigation, readable diffs, and predictable desktop workflows.
+<p align="center">
+  Local desktop diffs for files, folders, Git working trees, commits, and GitHub changes.
+</p>
 
 <p align="center">
   <img src="docs/assets/readme/compare-view.png" alt="Diffly compare view with a large GitHub diff">
 </p>
 
-<p align="center">
-  <img src="docs/assets/readme/github-setup.png" alt="Diffly GitHub setup view with recent diffs">
-</p>
+Diffly is a Svelte, TypeScript, and Electron desktop app focused on fast navigation, readable diffs, and predictable workflows across large local and GitHub comparisons.
 
 ## Download
 
@@ -31,8 +31,8 @@ Note: Windows is the primary tested platform right now. macOS and Linux builds a
 - Compare files or full directory trees.
 - Compare Git working trees, commit ranges, and single commits.
 - Open GitHub pull request and compare links directly.
-- Browse changed entries with a directory-aware sidebar.
 - Switch between side-by-side and unified text diffs.
+- Browse changed entries with a directory-aware sidebar.
 - Preview images and inspect binary files in a hex view.
 - Add persistent comments to diff lines.
 - Use Token Hover for quick syntax-token context.
