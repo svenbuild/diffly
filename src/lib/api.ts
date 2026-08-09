@@ -20,6 +20,9 @@ import type {
 export const choosePath = (kind: PathKind) =>
   window.diffly.choosePath(kind)
 
+export const getDroppedFilePath = (file: File) =>
+  window.diffly.getPathForFile(file)
+
 export const openExternalUrl = (url: string) =>
   window.diffly.openExternal(url)
 

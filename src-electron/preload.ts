@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   ApplyFileChangePayload,
   ApplyGitWorkingTreeActionPayload,
@@ -20,6 +20,7 @@ const invoke = <T>(channel: string, payload?: unknown) =>
 contextBridge.exposeInMainWorld('diffly', {
   choosePath: (kind: PathKind) =>
     invoke('diffly:choosePath', { kind }),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openExternal: (url: string) =>
     invoke<void>('diffly:openExternal', { url }),
   openPath: (path: string) =>

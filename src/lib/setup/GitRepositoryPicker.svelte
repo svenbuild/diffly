@@ -1,14 +1,8 @@
 <script lang="ts">
   import Dropdown from '../components/Dropdown.svelte'
-  import GitRepositoryBrowser from './GitRepositoryBrowser.svelte'
-  import type {
-    ExplorerEntry,
-    GitRefsResponse,
-    GitWorkingTreeScope,
-    PersistedGitSetupBrowser,
-  } from '../types'
+  import type { GitRefsResponse } from '../types'
 
-  type SelectionKind = 'workingTree' | 'refRange' | 'commit'
+  type SelectionKind = 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
   type RefsStatus = 'idle' | 'loading' | 'loaded' | 'error'
 
@@ -17,9 +11,7 @@
     label: string
   }
 
-  export let selectedRepoPath = ''
-  export let revealPath = ''
-  export let revealRequestId = 0
+  export let inputPath = ''
   export let validationStatus: 'idle' | 'validating' | 'valid' | 'invalid' = 'idle'
   export let validationError = ''
   export let repositoryRoot = ''
@@ -28,175 +20,58 @@
   export let refsStatus: RefsStatus = 'idle'
   export let refsError = ''
   export let gitRefs: GitRefsResponse | null = null
-  export let selectionKind: SelectionKind = 'workingTree'
-  export let workingTreeScope: GitWorkingTreeScope = 'all'
+  export let selectionKind: SelectionKind = 'refRange'
   export let baseRef = ''
   export let headRef = ''
-  export let notation: Notation = 'twoDot'
+  export let notation: Notation = 'threeDot'
   export let commitRef = ''
-  export let initialBrowserState: PersistedGitSetupBrowser | undefined = undefined
-  export let browserRoots: ExplorerEntry[] = []
+  export let loading = false
 
-  export let onSelectRepo: (path: string) => void
-  export let onBrowserStateChange: (state: PersistedGitSetupBrowser) => void = () => {}
+  export let onInputPathChange: (value: string) => void
+  export let onBrowse: () => void | Promise<void>
+  export let onValidate: () => void | Promise<void>
   export let onSelectionKindChange: (kind: SelectionKind) => void
-  export let onScopeChange: (scope: GitWorkingTreeScope) => void
   export let onBaseRefChange: (value: string) => void
   export let onHeadRefChange: (value: string) => void
   export let onNotationChange: (value: Notation) => void
   export let onCommitRefChange: (value: string) => void
+  export let onOpen: () => void | Promise<void>
 
-  // Compare cards: each card maps onto the existing selection model
-  // (selectionKind + workingTreeScope + notation) and shows the left/right
-  // semantics plus the equivalent git command, so users never have to guess.
-  type CompareCard =
-    | { id: string; title: string; semantics: string; command: string; kind: 'workingTree'; scope: GitWorkingTreeScope }
-    | { id: string; title: string; semantics: string; command: string; kind: 'refRange'; notation: Notation }
-    | { id: string; title: string; semantics: string; command: string; kind: 'commit' }
-
-  const compareCards: CompareCard[] = [
-    {
-      id: 'working-tree',
-      title: 'Working Tree',
-      semantics: 'HEAD ↔ Working Tree',
-      command: 'git diff HEAD',
-      kind: 'workingTree',
-      scope: 'all',
-    },
-    {
-      id: 'staged',
-      title: 'Staged',
-      semantics: 'HEAD ↔ Index',
-      command: 'git diff --cached',
-      kind: 'workingTree',
-      scope: 'staged',
-    },
-    {
-      id: 'unstaged',
-      title: 'Unstaged',
-      semantics: 'Index ↔ Working Tree',
-      command: 'git diff',
-      kind: 'workingTree',
-      scope: 'unstaged',
-    },
-    {
-      id: 'untracked',
-      title: 'Untracked',
-      semantics: 'Empty ↔ Untracked files',
-      command: 'git ls-files --others',
-      kind: 'workingTree',
-      scope: 'untracked',
-    },
-    {
-      id: 'ref-range',
-      title: 'Branch / Ref',
-      semantics: 'Base ↔ Head',
-      command: 'git diff base..head',
-      kind: 'refRange',
-      notation: 'twoDot',
-    },
-    {
-      id: 'pr-style',
-      title: 'Pull Request style',
-      semantics: 'Merge-base ↔ Head',
-      command: 'git diff base...head',
-      kind: 'refRange',
-      notation: 'threeDot',
-    },
-    {
-      id: 'commit',
-      title: 'Single Commit',
-      semantics: 'Parent ↔ Commit',
-      command: 'git show <commit>',
-      kind: 'commit',
-    },
+  const comparisonOptions: SelectOption[] = [
+    { value: 'threeDot', label: 'PR style' },
+    { value: 'twoDot', label: 'Direct' },
   ]
 
-  const scopeCardIds: Record<GitWorkingTreeScope, string> = {
-    all: 'working-tree',
-    staged: 'staged',
-    unstaged: 'unstaged',
-    untracked: 'untracked',
-  }
-
-  let cardButtons: Array<HTMLButtonElement | undefined> = []
-
-  function selectCard(card: CompareCard) {
-    if (card.kind === 'workingTree') {
-      onSelectionKindChange('workingTree')
-      onScopeChange(card.scope)
-    } else if (card.kind === 'refRange') {
-      onSelectionKindChange('refRange')
-      onNotationChange(card.notation)
-    } else {
-      onSelectionKindChange('commit')
-    }
-  }
-
-  // Radio-group keyboard pattern: arrows move selection, the active card is
-  // the only tab stop.
-  function handleCardKeydown(event: KeyboardEvent, index: number) {
-    let next = -1
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      next = (index + 1) % compareCards.length
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      next = (index - 1 + compareCards.length) % compareCards.length
-    } else if (event.key === 'Home') {
-      next = 0
-    } else if (event.key === 'End') {
-      next = compareCards.length - 1
-    }
-
-    if (next === -1) {
-      return
-    }
-
-    event.preventDefault()
-    selectCard(compareCards[next])
-    cardButtons[next]?.focus()
-  }
-
-  $: repoReady = validationStatus === 'valid'
-  $: activeCardId =
-    selectionKind === 'workingTree'
-      ? scopeCardIds[workingTreeScope]
-      : selectionKind === 'refRange'
-        ? (notation === 'threeDot' ? 'pr-style' : 'ref-range')
-        : 'commit'
-  $: activeCard = compareCards.find((card) => card.id === activeCardId) ?? compareCards[0]
-  // Concrete command for the chosen refs/commit, shown under the inputs.
-  $: activeCommandPreview =
-    selectionKind === 'refRange'
-      ? baseRef.trim() && headRef.trim()
-        ? `git diff ${baseRef.trim()}${notation === 'threeDot' ? '...' : '..'}${headRef.trim()}`
-        : ''
-      : selectionKind === 'commit' && commitRef.trim()
-        ? `git show ${commitRef.trim().slice(0, 12)}`
-        : ''
   $: shortHead = headSha ? headSha.slice(0, 7) : ''
-  $: branchDisplay = currentBranch || (headSha ? `Detached HEAD at ${shortHead}` : 'No HEAD')
+  $: repositoryName = repositoryRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Repository'
+  $: repositorySummary = [repositoryName, currentBranch || 'Detached HEAD', shortHead]
+    .filter(Boolean)
+    .join(' · ')
   $: refOptions = buildRefOptions(gitRefs, baseRef, headRef)
   $: commitOptions = buildCommitOptions(gitRefs, commitRef)
-  $: refsUnavailable = refsStatus === 'loading' || refsStatus === 'error' || refOptions.length === 0
-  $: commitsUnavailable =
-    refsStatus === 'loading' ||
-    refsStatus === 'error' ||
-    commitOptions.length === 0 ||
-    (gitRefs?.recentCommits.length ?? 0) === 0
-  $: refStatusMessage = refsStatus === 'loading'
-    ? 'Loading refs...'
-    : refsStatus === 'error'
-      ? refsError || 'Refs could not be loaded.'
-      : refsStatus === 'loaded' && refOptions.length === 0
-        ? 'No refs found.'
-        : ''
-  $: commitStatusMessage = refsStatus === 'loading'
-    ? 'Loading refs...'
-    : refsStatus === 'error'
-      ? refsError || 'Refs could not be loaded.'
-      : refsStatus === 'loaded' && (gitRefs?.recentCommits.length ?? 0) === 0
-        ? 'No commits found.'
-        : ''
+  $: refsUnavailable = refsStatus !== 'loaded' || refOptions.length === 0
+  $: commitsUnavailable = refsStatus !== 'loaded' || commitOptions.length === 0
+  $: canOpen =
+    validationStatus === 'valid' &&
+    !loading &&
+    (selectionKind === 'refRange'
+      ? Boolean(baseRef.trim() && headRef.trim())
+      : Boolean(commitRef.trim()))
+  $: commandPreview = selectionKind === 'refRange'
+    ? baseRef.trim() && headRef.trim()
+      ? `git diff ${baseRef.trim()}${notation === 'threeDot' ? '...' : '..'}${headRef.trim()}`
+      : ''
+    : commitRef.trim()
+      ? `git show ${commitRef.trim().slice(0, 12)}`
+      : ''
+
+  function handlePathKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter') {
+      return
+    }
+    event.preventDefault()
+    void onValidate()
+  }
 
   function buildRefOptions(
     refs: GitRefsResponse | null,
@@ -205,20 +80,19 @@
   ): SelectOption[] {
     const options = refs
       ? [
-          ...refs.localBranches.map((ref) => ({ value: ref.name, label: `Local: ${ref.name}` })),
-          ...refs.remoteBranches.map((ref) => ({ value: ref.name, label: `Remote: ${ref.name}` })),
-          ...refs.tags.map((ref) => ({ value: ref.name, label: `Tag: ${ref.name}` })),
+          ...refs.localBranches.map((ref) => ({ value: ref.name, label: ref.name })),
+          ...refs.remoteBranches.map((ref) => ({ value: ref.name, label: ref.name })),
+          ...refs.tags.map((ref) => ({ value: ref.name, label: ref.name })),
         ]
       : []
     const values = new Set(options.map((option) => option.value))
 
     for (const value of [currentBaseRef, currentHeadRef]) {
       if (value && !values.has(value)) {
-        options.push({ value, label: `Custom: ${value}` })
+        options.push({ value, label: value })
         values.add(value)
       }
     }
-
     return options
   }
 
@@ -229,136 +103,109 @@
     const options = refs
       ? refs.recentCommits.map((commit) => ({
           value: commit.sha,
-          label: commit.decorations.length > 0
-            ? `${commit.shortSha} ${commit.subject} · ${commit.decorations.join(', ')}`
-            : `${commit.shortSha} ${commit.subject}`,
+          label: `${commit.shortSha} ${commit.subject}`,
         }))
       : []
-    const hasCurrent = options.some((option) => option.value === currentCommitRef)
 
-    if (currentCommitRef && !hasCurrent) {
-      options.push({
-        value: currentCommitRef,
-        label: `Custom: ${currentCommitRef.slice(0, 12)}`,
-      })
+    if (currentCommitRef && !options.some((option) => option.value === currentCommitRef)) {
+      options.push({ value: currentCommitRef, label: currentCommitRef.slice(0, 12) })
     }
-
     return options
   }
 </script>
 
-<section class="git-setup-picker" aria-label="Git repository">
-  <h2 class="git-setup-picker-title">Git repository</h2>
+<section class="advanced-git-panel" aria-label="Advanced Git compare">
+  <h2>Advanced compare</h2>
 
-  <div class="git-setup-browser">
-    <GitRepositoryBrowser
-      {selectedRepoPath}
-      {revealPath}
-      {revealRequestId}
-      {onSelectRepo}
-      {initialBrowserState}
-      {onBrowserStateChange}
-      initialRoots={browserRoots}
-    />
+  <div class="advanced-field">
+    <label for="advanced-repository">Repository</label>
+    <div class="repository-input-row">
+      <input
+        id="advanced-repository"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Path to a Git repository"
+        value={inputPath}
+        on:input={(event) => onInputPathChange(event.currentTarget.value)}
+        on:keydown={handlePathKeydown}
+      />
+      <button class="secondary" type="button" disabled={loading} on:click={onBrowse}>Browse…</button>
+    </div>
   </div>
 
-  <div class="git-setup-status" aria-live="polite">
-    {#if validationStatus === 'idle'}
-      <p class="git-setup-status-hint">Select a local Git repository.</p>
-    {:else if validationStatus === 'validating'}
-      <p class="git-setup-status-hint">Validating…</p>
+  <div class="repository-status" aria-live="polite">
+    {#if validationStatus === 'validating'}
+      <span>Validating repository…</span>
     {:else if validationStatus === 'valid'}
-      <p class="git-setup-status-line git-setup-status-ok">Status: Valid Git repository</p>
-      <dl class="git-setup-status-details">
-        <div>
-          <dt>Root</dt>
-          <dd><code>{repositoryRoot}</code></dd>
-        </div>
-        <div>
-          <dt>Branch</dt>
-          <dd>{branchDisplay}</dd>
-        </div>
-        <div>
-          <dt>HEAD</dt>
-          <dd><code>{shortHead || '—'}</code></dd>
-        </div>
-      </dl>
+      <strong>✓ {repositorySummary}</strong>
+      <span title={repositoryRoot}>{repositoryRoot}</span>
+    {:else if validationStatus === 'invalid'}
+      <strong class="error">! {validationError || 'This folder is not a Git repository.'}</strong>
     {:else}
-      <p class="git-setup-status-line git-setup-status-error">
-        {validationError || 'This folder is not a Git repository.'}
-      </p>
+      <span>Choose a repository to load its refs.</span>
     {/if}
   </div>
 
-  <fieldset class="git-setup-compare-type" disabled={!repoReady}>
+  <fieldset disabled={validationStatus !== 'valid' || loading}>
     <legend>Compare</legend>
-
-    <div class="git-compare-cards" role="radiogroup" aria-label="Compare mode">
-      {#each compareCards as card, index (card.id)}
-        <button
-          type="button"
-          class="git-compare-card"
-          class:active={card.id === activeCardId}
-          role="radio"
-          aria-checked={card.id === activeCardId}
-          tabindex={card.id === activeCardId ? 0 : -1}
-          bind:this={cardButtons[index]}
-          on:click={() => selectCard(card)}
-          on:keydown={(event) => handleCardKeydown(event, index)}
-        >
-          <span class="git-compare-card-title">{card.title}</span>
-          <span class="git-compare-card-semantics">{card.semantics}</span>
-          <code class="git-compare-card-command">{card.command}</code>
-        </button>
-      {/each}
+    <div class="compare-kind" role="radiogroup" aria-label="Advanced comparison type">
+      <label>
+        <input
+          type="radio"
+          name="advanced-compare-kind"
+          checked={selectionKind === 'refRange'}
+          on:change={() => onSelectionKindChange('refRange')}
+        />
+        Branch / ref
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="advanced-compare-kind"
+          checked={selectionKind === 'commit'}
+          on:change={() => onSelectionKindChange('commit')}
+        />
+        Single commit
+      </label>
     </div>
 
     {#if selectionKind === 'refRange'}
-      <div class="git-compare-detail" aria-label="{activeCard.title} refs">
-        <p class="git-compare-detail-hint">
-          {#if notation === 'threeDot'}
-            Compares head against its merge-base with base — like a pull request diff.
-          {:else}
-            Compares base directly against head. Branches, tags, and commit hashes all work.
-          {/if}
-        </p>
-        <div class="git-setup-suboption-grid">
-          <div>
-            <span class="git-setup-label" id="git-setup-base-ref-label">Base (left)</span>
-            <Dropdown
-              ariaLabel="Base ref"
-              disabled={refsUnavailable}
-              options={refOptions}
-              value={baseRef}
-              onChange={onBaseRefChange}
-            />
-          </div>
-          <div>
-            <span class="git-setup-label" id="git-setup-head-ref-label">Head (right)</span>
-            <Dropdown
-              ariaLabel="Head ref"
-              disabled={refsUnavailable}
-              options={refOptions}
-              value={headRef}
-              onChange={onHeadRefChange}
-            />
-          </div>
-          {#if refStatusMessage}
-            <p class="git-setup-suboption-status">{refStatusMessage}</p>
-          {/if}
+      <div class="advanced-grid">
+        <div class="advanced-field">
+          <span>Base</span>
+          <Dropdown
+            ariaLabel="Base ref"
+            disabled={refsUnavailable}
+            options={refOptions}
+            value={baseRef}
+            onChange={onBaseRefChange}
+          />
         </div>
-        {#if activeCommandPreview}
-          <p class="git-compare-detail-command">
-            Runs <code>{activeCommandPreview}</code>
-          </p>
-        {/if}
+        <div class="advanced-field">
+          <span>Head</span>
+          <Dropdown
+            ariaLabel="Head ref"
+            disabled={refsUnavailable}
+            options={refOptions}
+            value={headRef}
+            onChange={onHeadRefChange}
+          />
+        </div>
+        <div class="advanced-field advanced-comparison">
+          <span>Comparison</span>
+          <Dropdown
+            ariaLabel="Comparison style"
+            disabled={refsUnavailable}
+            options={comparisonOptions}
+            value={notation}
+            onChange={(value) => onNotationChange(value as Notation)}
+          />
+        </div>
       </div>
-    {:else if selectionKind === 'commit'}
-      <div class="git-compare-detail" aria-label="{activeCard.title} commit">
-        <p class="git-compare-detail-hint">
-          Shows what a single commit changed, compared against its parent.
-        </p>
-        <span class="git-setup-label" id="git-setup-commit-ref-label">Commit</span>
+    {:else}
+      <div class="advanced-field">
+        <span>Commit</span>
         <Dropdown
           ariaLabel="Commit"
           disabled={commitsUnavailable}
@@ -366,236 +213,158 @@
           value={commitRef}
           onChange={onCommitRefChange}
         />
-        {#if commitStatusMessage}
-          <p class="git-setup-suboption-status">{commitStatusMessage}</p>
-        {/if}
-        {#if activeCommandPreview}
-          <p class="git-compare-detail-command">
-            Runs <code>{activeCommandPreview}</code>
-          </p>
-        {/if}
       </div>
     {/if}
+
+    {#if refsStatus === 'loading'}
+      <p class="status-note">Loading refs…</p>
+    {:else if refsStatus === 'error'}
+      <p class="status-note error">{refsError || 'Refs could not be loaded.'}</p>
+    {:else if commandPreview}
+      <code class="command-preview">{commandPreview}</code>
+    {/if}
+
+    <div class="advanced-actions">
+      <button class="primary" type="button" disabled={!canOpen} on:click={onOpen}>
+        {loading ? 'Opening…' : 'Open diff'}
+      </button>
+    </div>
   </fieldset>
 </section>
 
 <style>
-  .git-setup-picker {
+  .advanced-git-panel {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    min-height: 0;
-    padding: 12px;
+    gap: 16px;
+    width: min(720px, 100%);
+    padding: 18px;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     background: var(--panel-bg);
-    overflow-y: auto;
   }
 
-  .git-setup-picker-title {
+  h2,
+  p {
     margin: 0;
-    font-size: 13px;
-    line-height: 1.2;
+  }
+
+  h2 {
     color: var(--panel-title);
+    font-size: 15px;
   }
 
-  .git-setup-browser {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 240px;
-  }
-
-  .git-setup-browser > :global(.git-browser) {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .git-setup-label {
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .git-setup-status {
+  .advanced-field {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--card-bg);
+    min-width: 0;
   }
 
-  .git-setup-status-hint {
-    margin: 0;
-    color: var(--muted);
-    font-size: 12px;
-  }
-
-  .git-setup-status-line {
-    margin: 0;
-    font-size: 13px;
-  }
-
-  .git-setup-status-ok {
-    color: var(--success);
-  }
-
-  .git-setup-status-error {
-    color: var(--danger);
-  }
-
-  .git-setup-status-details {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-  }
-
-  .git-setup-status-details > div {
-    display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 8px;
-    align-items: baseline;
-  }
-
-  .git-setup-status-details dt {
+  .advanced-field label,
+  .advanced-field > span,
+  legend {
     color: var(--muted);
     font-size: 11px;
   }
 
-  .git-setup-status-details dd {
-    margin: 0;
+  .repository-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .repository-input-row input {
     min-width: 0;
-    color: var(--text);
+    font-family: var(--code, var(--font-code));
     font-size: 12px;
+  }
+
+  .repository-status {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 34px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .repository-status strong {
+    color: var(--success);
+    font-weight: 600;
+  }
+
+  .repository-status span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .git-setup-status-details code {
-    font-family: var(--code, var(--font-code));
-    font-size: 12px;
-  }
-
-  .git-setup-compare-type {
+  fieldset {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 14px;
     margin: 0;
     padding: 0;
     border: 0;
   }
 
-  .git-setup-compare-type[disabled] {
-    opacity: 0.5;
+  fieldset:disabled {
+    opacity: 0.58;
   }
 
-  .git-setup-compare-type legend {
-    padding: 0;
-    margin-bottom: 2px;
-    color: var(--panel-title);
+  .compare-kind {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+
+  .compare-kind label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text);
     font-size: 12px;
   }
 
-  .git-compare-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-  }
-
-  .git-compare-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--card-bg);
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .git-compare-card:hover {
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  }
-
-  .git-compare-card:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  .git-compare-card.active {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
-  }
-
-  .git-compare-card-title {
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.2;
-  }
-
-  .git-compare-card-semantics {
-    color: var(--text);
-    font-size: 11px;
-    line-height: 1.3;
-  }
-
-  .git-compare-card-command {
-    color: var(--muted);
-    font-family: var(--code, var(--font-code));
-    font-size: 11px;
-    line-height: 1.3;
-  }
-
-  .git-compare-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--card-bg);
-  }
-
-  .git-compare-detail-hint {
-    margin: 0;
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .git-compare-detail-command {
-    margin: 0;
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .git-compare-detail-command code {
-    color: var(--text);
-    font-family: var(--code, var(--font-code));
-    font-size: 11px;
-  }
-
-  .git-setup-suboption-grid {
+  .advanced-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px;
+    gap: 12px;
   }
 
-  .git-setup-suboption-grid > div {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .git-setup-suboption-status {
+  .advanced-comparison {
     grid-column: 1 / -1;
-    margin: 0;
+    width: min(260px, 100%);
+  }
+
+  .status-note,
+  .command-preview {
     color: var(--muted);
     font-size: 11px;
+  }
+
+  .command-preview {
+    display: block;
+    font-family: var(--code, var(--font-code));
+  }
+
+  .error {
+    color: var(--danger) !important;
+  }
+
+  .advanced-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  @media (max-width: 680px) {
+    .advanced-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .advanced-comparison {
+      grid-column: auto;
+    }
   }
 </style>

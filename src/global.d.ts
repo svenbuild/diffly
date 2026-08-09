@@ -30,6 +30,7 @@ declare global {
     __difflyStartupProfile?: import('./lib/app/startup-profile').StartupProfileSnapshot
     diffly: {
       choosePath(kind: PathKind): Promise<string | null>
+      getPathForFile(file: File): string
       openExternal(url: string): Promise<void>
       /** Optional: absent on older preload builds; feature-detect before use. */
       openPath?(path: string): Promise<void>

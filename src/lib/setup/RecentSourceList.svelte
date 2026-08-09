@@ -39,11 +39,14 @@
             title={item.detailTitle ?? item.detail}
             on:click={() => onSelect(item.id)}
           >
-            <span class="git-setup-recent-name">{item.name}</span>
-            <span class="git-setup-recent-path">{item.detail}</span>
+            <span class="git-setup-recent-copy">
+              <span class="git-setup-recent-name">{item.name}</span>
+              <span class="git-setup-recent-path">{item.detail}</span>
+            </span>
             {#if item.extra}
               <span class="git-setup-recent-branch">{item.extra}</span>
             {/if}
+            <span class="git-setup-recent-arrow" aria-hidden="true">→</span>
           </button>
         </li>
       {/each}
@@ -91,19 +94,27 @@
 
   .git-setup-recent-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
     width: 100%;
     padding: 6px 8px;
     border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
     text-align: left;
-    gap: 1px;
+    gap: 10px;
   }
 
   .git-setup-recent-item.active {
     border-color: var(--active-border);
     background: var(--active-surface);
+  }
+
+  .git-setup-recent-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 1px;
   }
 
   .git-setup-recent-name {
@@ -135,5 +146,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .git-setup-recent-arrow {
+    color: var(--muted);
+    font-size: 14px;
   }
 </style>

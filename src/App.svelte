@@ -181,15 +181,7 @@
   // Git is the default setup mode for fresh sessions; persisted sessions
   // restore their saved mode (or derive it from the saved source).
   let setupMode: SetupMode = 'git'
-  // Latest Git source emitted by GitSetupPanel, or null when its setup is
-  // incomplete. Transient setup-draft state — intentionally not persisted.
-  let gitSetupSource: GitDiffSource | null = null
   let gitSetup: PersistedGitSetup = {}
-  // Latest GitHub source parsed by GithubSetupPanel, or null while the URL is
-  // not parseable. Transient setup-draft state — intentionally not persisted.
-  let githubSetupSource: GithubDiffSource | null = null
-  // Metadata for the parsed PR (title etc.), used when saving recents.
-  let githubSetupMetadata: GithubPullRequestMetadata | null = null
   // Prefill for the GitHub URL input, restored from the persisted session in
   // applyPersistedSession.
   let initialGithubUrl = ''
@@ -2036,18 +2028,6 @@
     errorMessage = ''
   }
 
-  function handleGitSourceChange(source: GitDiffSource | null) {
-    gitSetupSource = source
-  }
-
-  function handleGithubSourceChange(source: GithubDiffSource | null) {
-    githubSetupSource = source
-  }
-
-  function handleGithubMetadataChange(metadata: GithubPullRequestMetadata | null) {
-    githubSetupMetadata = metadata
-  }
-
   function isGithubDiffSource(source: DiffSource | null): source is GithubDiffSource {
     return (
       source?.kind === 'githubPullRequest' ||
@@ -2056,19 +2036,16 @@
     )
   }
 
-  function handleGitSetupChange(nextSetup: PersistedGitSetup) {
-    gitSetup = nextSetup
-    scheduleSessionSave()
-  }
-
   function handleGlobalKeydown(event: KeyboardEvent) {
-    // Ctrl/Cmd+Enter runs the compare from anywhere on the setup screen.
+    // Local compare retains the global shortcut. Git and GitHub own their
+    // source-specific actions inside their setup panels.
     if (
       screen === 'setup' &&
+      setupMode === 'local' &&
       event.key === 'Enter' &&
       (event.ctrlKey || event.metaKey)
     ) {
-      if (!setupCanCompare || loading) {
+      if (!pickerCanCompare || loading) {
         return
       }
       event.preventDefault()
@@ -2079,17 +2056,11 @@
   async function runGitCompare() {
     const source = screen === 'compare' && activeDiffSource?.kind === 'git'
       ? activeDiffSource
-      : gitSetupSource
+      : null
     if (!source) {
       errorMessage = 'Select a valid Git repository and compare type first.'
       return
     }
-
-    void addRecentSource(source)
-      .then(() => {
-        recentsReloadRequestId += 1
-      })
-      .catch(() => undefined)
 
     await runSessionCompare(source)
   }
@@ -2097,12 +2068,38 @@
   async function runGithubCompare() {
     const source = screen === 'compare' && isGithubDiffSource(activeDiffSource)
       ? activeDiffSource
-      : githubSetupSource
+      : null
     if (!source) {
       errorMessage = 'Enter a GitHub pull request, compare, or commit URL.'
       return
     }
 
+    await runGithubSource(source, null)
+  }
+
+  async function openSessionSource(
+    source: GitDiffSource | GithubDiffSource,
+    metadata: GithubPullRequestMetadata | null = null,
+  ) {
+    if (source.kind === 'git') {
+      const succeeded = await runSessionCompare(source)
+      if (succeeded) {
+        void addRecentSource(source)
+          .then(() => {
+            recentsReloadRequestId += 1
+          })
+          .catch(() => undefined)
+      }
+      return
+    }
+
+    await runGithubSource(source, metadata)
+  }
+
+  async function runGithubSource(
+    source: GithubDiffSource,
+    metadata: GithubPullRequestMetadata | null,
+  ) {
     const succeeded = await runSessionCompare(source)
     if (!succeeded) {
       return
@@ -2124,14 +2121,14 @@
     }
 
     const metadataMatchesSource =
-      githubSetupMetadata !== null &&
-      githubSetupMetadata.owner.toLowerCase() === source.owner.toLowerCase() &&
-      githubSetupMetadata.repo.toLowerCase() === source.repo.toLowerCase() &&
-      githubSetupMetadata.pullNumber === source.pullNumber
+      metadata !== null &&
+      metadata.owner.toLowerCase() === source.owner.toLowerCase() &&
+      metadata.repo.toLowerCase() === source.repo.toLowerCase() &&
+      metadata.pullNumber === source.pullNumber
     void addRecentSource(
       source,
-      metadataMatchesSource && githubSetupMetadata
-        ? { title: githubSetupMetadata.title || null }
+      metadataMatchesSource && metadata
+        ? { title: metadata.title || null }
         : undefined,
     )
       .then(() => {
@@ -2825,7 +2822,6 @@
     { side: 'left' as Side, pane: leftExplorer },
     { side: 'right' as Side, pane: rightExplorer },
   ]
-  $: gitBrowserRoots = leftExplorer.roots.length > 0 ? leftExplorer.roots : rightExplorer.roots
   $: sameSelectionWarning =
     pickerCanCompare &&
     leftExplorer.selectedTargetKind === rightExplorer.selectedTargetKind &&
@@ -2847,19 +2843,7 @@
   $: setupTopbarWarning = sameSelectionWarning || setupHintMessage
   $: setupTopbarWarningGated = setupMode === 'local' ? setupTopbarWarning : ''
   $: setupCompareButtonTitle =
-    setupMode === 'local'
-      ? sameSelectionWarning || setupHintMessage || 'Compare selected targets'
-      : setupMode === 'git'
-        ? gitSetupSource
-          ? 'Create Git diff session'
-          : 'Select a valid Git repository and compare type'
-        : githubSetupSource
-          ? 'Load GitHub diff'
-          : 'Enter a GitHub pull request, compare, or commit URL'
-  $: setupCanCompare =
-    (setupMode === 'local' && pickerCanCompare) ||
-    (setupMode === 'git' && gitSetupSource !== null) ||
-    (setupMode === 'github' && githubSetupSource !== null)
+    sameSelectionWarning || setupHintMessage || 'Compare selected targets'
 </script>
 
 <svelte:head>
@@ -2880,19 +2864,14 @@
     onSetupModeChange={setSetupMode}
     setupTopbarWarning={setupTopbarWarningGated}
     {loading}
-    pickerCanCompare={setupCanCompare}
+    {pickerCanCompare}
     compareButtonTitle={setupCompareButtonTitle}
     {runCompare}
     {openSettings}
     {errorMessage}
-    onGitSourceChange={handleGitSourceChange}
-    {gitSetup}
-    onGitSetupChange={handleGitSetupChange}
-    onGithubSourceChange={handleGithubSourceChange}
-    onGithubMetadataChange={handleGithubMetadataChange}
+    {openSessionSource}
     {initialGithubUrl}
     reloadRecentsRequestId={recentsReloadRequestId}
-    {gitBrowserRoots}
     {pickerSides}
     {pickerLoading}
     {canGoBack}

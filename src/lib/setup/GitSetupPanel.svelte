@@ -2,34 +2,31 @@
   import { onMount } from 'svelte'
   import RecentSourceList from './RecentSourceList.svelte'
   import GitRepositoryPicker from './GitRepositoryPicker.svelte'
-  import { listGitRefs, loadRecentSources, validateGitRepository } from '../api'
+  import {
+    choosePath,
+    getDroppedFilePath,
+    listGitRefs,
+    loadRecentSources,
+    validateGitRepository,
+  } from '../api'
   import { markStartupProfile } from '../app/startup-profile'
   import { compactMiddlePath } from '../path-utils'
+  import { createAdvancedGitSource, createWorkingTreeSource } from './git-setup-source'
   import type {
-    ExplorerEntry,
     GitDiffSource,
     GitRefsResponse,
     GitSelection,
-    GitWorkingTreeScope,
-    PersistedGitSetup,
-    PersistedGitSetupBrowser,
     RecentGitRepository,
   } from '../types'
 
-  type SelectionKind = 'workingTree' | 'refRange' | 'commit'
+  type SelectionKind = 'refRange' | 'commit'
   type Notation = 'twoDot' | 'threeDot'
 
-  // Emits the constructed Git source (or null when the current setup cannot
-  // produce a valid one) so the parent can drive the Compare button.
-  export let onChange: (source: GitDiffSource | null) => void = () => {}
-  export let gitSetup: PersistedGitSetup = {}
-  export let onSetupChange: (setup: PersistedGitSetup) => void = () => {}
-  // Bumped by the parent after a recent repository is added (e.g. on Compare)
-  // so this panel reloads the list without waiting for a remount.
+  export let onOpenSource: (source: GitDiffSource) => void | Promise<void>
+  export let loading = false
   export let reloadRecentsRequestId = 0
-  export let browserRoots: ExplorerEntry[] = []
 
-  // GitSetupState — this panel is the single source of truth for Git setup.
+  let advancedOpen = false
   let inputPath = ''
   let repositoryRoot = ''
   let validationStatus: 'idle' | 'validating' | 'valid' | 'invalid' = 'idle'
@@ -39,30 +36,18 @@
   let refsStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   let refsError = ''
   let gitRefs: GitRefsResponse | null = null
-  let refsRequestToken = 0
-  let refsDefaultsPath = ''
-  let selectionKind: SelectionKind = 'workingTree'
-  let workingTreeScope: GitWorkingTreeScope = 'all'
+  let selectionKind: SelectionKind = 'refRange'
   let baseRef = ''
   let headRef = ''
-  let notation: Notation = 'twoDot'
+  let notation: Notation = 'threeDot'
   let commitRef = ''
+  let requestToken = 0
+  let refsRequestToken = 0
+  let openingPath = ''
+  let dropActive = false
 
   let recentRepositories: RecentGitRepository[] = []
   let recentLoadError = false
-
-  // Reveal trigger for the browser: bumped when a repo is chosen from the recents
-  // list so the browser navigates to that repo's parent folder and shows it.
-  let revealPath = ''
-  let revealRequestId = 0
-
-  // Monotonic token used to discard stale validation responses. Any newer
-  // validation (or a cleared path) bumps it so an older in-flight result can no
-  // longer write back a status for a path the user has moved on from.
-  let requestToken = 0
-  // The path whose validation result is currently reflected in the status block.
-  let validatedPath = ''
-
   let lastReloadRecentsRequestId = reloadRecentsRequestId
 
   async function loadRecents() {
@@ -85,244 +70,209 @@
     void loadRecents()
   })
 
-  // Reload when the parent signals a new recent was added (bumped on Compare).
   $: if (reloadRecentsRequestId !== lastReloadRecentsRequestId) {
     lastReloadRecentsRequestId = reloadRecentsRequestId
     void loadRecents()
   }
 
-  function clearValidation() {
+  function resetValidation(path: string) {
+    requestToken += 1
+    refsRequestToken += 1
+    inputPath = path
+    repositoryRoot = ''
     validationStatus = 'idle'
     validationError = ''
-    repositoryRoot = ''
     currentBranch = ''
     headSha = ''
-    validatedPath = ''
-    clearRefs()
-  }
-
-  function clearRefs() {
-    refsRequestToken += 1
     refsStatus = 'idle'
     refsError = ''
     gitRefs = null
-    refsDefaultsPath = ''
     baseRef = ''
     headRef = ''
     commitRef = ''
   }
 
-  function invalidateRefsForValidation(nextPath: string) {
-    refsRequestToken += 1
-    refsStatus = 'idle'
-    refsError = ''
-    gitRefs = null
-
-    if (nextPath !== validatedPath && nextPath !== repositoryRoot) {
-      refsDefaultsPath = ''
-      baseRef = ''
-      headRef = ''
-      commitRef = ''
-    }
+  function handleInputPathChange(value: string) {
+    resetValidation(value)
   }
 
-  async function validate(path: string) {
+  async function validate(path: string, loadRefsAfterValidation: boolean) {
     const trimmed = path.trim()
-
-    if (trimmed === '') {
-      requestToken += 1
-      clearValidation()
-      return
+    if (!trimmed) {
+      resetValidation('')
+      return null
     }
 
     const token = (requestToken += 1)
-    invalidateRefsForValidation(trimmed)
+    inputPath = trimmed
     validationStatus = 'validating'
+    validationError = ''
+    refsRequestToken += 1
+    refsStatus = 'idle'
+    gitRefs = null
 
     try {
       const result = await validateGitRepository(trimmed)
-      // Discard if a newer request started or the input no longer matches the
-      // path we validated (the user edited it while this was in flight).
       if (token !== requestToken || inputPath.trim() !== trimmed) {
-        return
+        return null
       }
-      validatedPath = trimmed
-      if (result.valid) {
-        repositoryRoot = result.repositoryRoot ?? ''
-        currentBranch = result.currentBranch ?? ''
-        headSha = result.headSha ?? ''
-        validationError = ''
-        validationStatus = 'valid'
-      } else {
+
+      if (!result.valid || !result.repositoryRoot) {
         repositoryRoot = ''
         currentBranch = ''
         headSha = ''
-        clearRefs()
-        validationError = result.error ?? 'This folder is not a Git repository.'
         validationStatus = 'invalid'
+        validationError = result.error || 'This folder is not a Git repository.'
+        return null
       }
+
+      repositoryRoot = result.repositoryRoot
+      currentBranch = result.currentBranch ?? ''
+      headSha = result.headSha ?? ''
+      validationStatus = 'valid'
+      validationError = ''
+
+      if (loadRefsAfterValidation) {
+        void loadRefs(result.repositoryRoot)
+      }
+      return result
     } catch {
       if (token !== requestToken || inputPath.trim() !== trimmed) {
-        return
+        return null
       }
-      validatedPath = trimmed
       repositoryRoot = ''
       currentBranch = ''
       headSha = ''
-      clearRefs()
-      validationError = 'This folder is not a Git repository.'
       validationStatus = 'invalid'
+      validationError = 'This folder is not a Git repository.'
+      return null
     }
   }
 
   async function loadRefs(root: string) {
-    if (!root) {
-      clearRefs()
-      return
-    }
-
     const token = (refsRequestToken += 1)
     refsStatus = 'loading'
     refsError = ''
-    gitRefs = null
 
     try {
       const refs = await listGitRefs(root)
       if (token !== refsRequestToken || repositoryRoot !== root) {
         return
       }
-
       gitRefs = refs
-      currentBranch = refs.currentBranch ?? ''
-      headSha = refs.headSha ?? ''
+      currentBranch = refs.currentBranch ?? currentBranch
+      headSha = refs.headSha ?? headSha
       refsStatus = 'loaded'
-      applyRefDefaults(root, refs)
+      applyRefDefaults(refs)
     } catch {
       if (token !== refsRequestToken || repositoryRoot !== root) {
         return
       }
-
       gitRefs = null
-      refsError = 'Refs could not be loaded.'
       refsStatus = 'error'
+      refsError = 'Refs could not be loaded.'
     }
   }
 
-  function applyRefDefaults(root: string, refs: GitRefsResponse) {
-    if (refsDefaultsPath === root) {
-      return
-    }
-
-    const defaultHeadRef = refs.currentBranch
+  function applyRefDefaults(refs: GitRefsResponse) {
+    const defaultHead = refs.currentBranch
       ?? refs.headSha
       ?? refs.localBranches[0]?.name
       ?? refs.remoteBranches[0]?.name
       ?? ''
-    const defaultBaseRef = refs.localBranches.find((ref) => ref.name === 'main')?.name
-      ?? refs.localBranches.find((ref) => ref.name === 'master')?.name
-      ?? refs.localBranches.find((ref) => ref.name !== defaultHeadRef)?.name
-      ?? refs.remoteBranches.find((ref) => ref.name !== defaultHeadRef)?.name
+    headRef = defaultHead
+    baseRef = refs.localBranches.find((ref) => ref.name === 'main' && ref.name !== defaultHead)?.name
+      ?? refs.localBranches.find((ref) => ref.name === 'master' && ref.name !== defaultHead)?.name
+      ?? refs.localBranches.find((ref) => ref.name !== defaultHead)?.name
+      ?? refs.remoteBranches.find((ref) => ref.name !== defaultHead)?.name
       ?? ''
-    const defaultCommitRef = refs.recentCommits[0]?.sha ?? refs.headSha ?? ''
-
-    headRef = defaultHeadRef
-    baseRef = defaultBaseRef
-    commitRef = defaultCommitRef
-    refsDefaultsPath = root
+    commitRef = refs.recentCommits[0]?.sha ?? refs.headSha ?? ''
   }
 
-  // Selected from the browser (the repo is already visible there).
-  function handleSelectRepo(path: string) {
-    inputPath = path
-    void validate(path)
+  async function openWorkingTree(path: string) {
+    if (loading || openingPath) {
+      return
+    }
+    openingPath = path
+    try {
+      const result = await validate(path, false)
+      if (result?.valid && result.repositoryRoot) {
+        await onOpenSource(createWorkingTreeSource(
+          path.trim(),
+          result.repositoryRoot,
+          result.currentBranch ?? null,
+        ))
+      }
+    } finally {
+      openingPath = ''
+    }
   }
 
-  // Selected from the recents list: validate and ask the browser to reveal it.
+  async function browseDefaultRepository() {
+    const selected = await choosePath('directory')
+    if (selected) {
+      await openWorkingTree(selected)
+    }
+  }
+
+  async function browseAdvancedRepository() {
+    const selected = await choosePath('directory')
+    if (!selected) {
+      return
+    }
+    resetValidation(selected)
+    await validate(selected, true)
+  }
+
+  async function validateAdvancedRepository() {
+    await validate(inputPath, true)
+  }
+
   function handleSelectRecent(id: string) {
-    const repo = recentRepositories.find((entry) => entry.id === id)
-    if (!repo) {
+    const recent = recentRepositories.find((entry) => entry.id === id)
+    if (recent) {
+      void openWorkingTree(recent.repoPath)
+    }
+  }
+
+  async function handleDrop(event: DragEvent) {
+    event.preventDefault()
+    dropActive = false
+    const file = event.dataTransfer?.files[0]
+    if (!file) {
+      return
+    }
+    const path = getDroppedFilePath(file)
+    if (path) {
+      await openWorkingTree(path)
+    }
+  }
+
+  async function openAdvancedDiff() {
+    if (validationStatus !== 'valid' || !repositoryRoot || loading) {
       return
     }
 
-    inputPath = repo.repoPath
-    revealPath = repo.repoPath
-    revealRequestId += 1
-    void validate(repo.repoPath)
-  }
-
-  function handleBrowserStateChange(browser: PersistedGitSetupBrowser) {
-    onSetupChange({
-      ...gitSetup,
-      browser,
-    })
-  }
-
-  function handleSelectionKindChange(kind: SelectionKind) {
-    selectionKind = kind
-  }
-
-  function handleScopeChange(scope: GitWorkingTreeScope) {
-    workingTreeScope = scope
-  }
-
-  function handleBaseRefChange(value: string) {
-    baseRef = value
-  }
-
-  function handleHeadRefChange(value: string) {
-    headRef = value
-  }
-
-  function handleNotationChange(value: Notation) {
-    notation = value
-  }
-
-  function handleCommitRefChange(value: string) {
-    commitRef = value
-  }
-
-  $: refsNeeded =
-    validationStatus === 'valid' &&
-    Boolean(repositoryRoot) &&
-    (selectionKind === 'refRange' || selectionKind === 'commit')
-  $: if (refsNeeded && refsStatus === 'idle') {
-    void loadRefs(repositoryRoot)
-  }
-
-  // Build the Git source from the current setup state. Returns null whenever the
-  // setup cannot yield a valid source (no validated repo, or an incomplete
-  // ref/commit selection). The inlined IIFE references every dependency directly
-  // so Svelte tracks them all and re-emits on any change.
-  $: gitSource = ((): GitDiffSource | null => {
-    if (validationStatus !== 'valid' || !repositoryRoot || !validatedPath) {
-      return null
-    }
-
     let selection: GitSelection | null = null
-    if (selectionKind === 'workingTree') {
+    if (selectionKind === 'refRange' && baseRef.trim() && headRef.trim()) {
       selection = {
-        kind: 'workingTree',
-        initialScope: workingTreeScope,
-        currentBranch: currentBranch.trim() || null,
+        kind: 'refRange',
+        baseRef: baseRef.trim(),
+        headRef: headRef.trim(),
+        notation,
       }
-    } else if (selectionKind === 'refRange') {
-      if (baseRef.trim() && headRef.trim()) {
-        selection = {
-          kind: 'refRange',
-          baseRef: baseRef.trim(),
-          headRef: headRef.trim(),
-          notation,
-        }
-      }
-    } else if (commitRef.trim()) {
+    } else if (selectionKind === 'commit' && commitRef.trim()) {
       selection = { kind: 'commit', commitRef: commitRef.trim() }
     }
 
-    return selection
-      ? { kind: 'git', repoPath: validatedPath, repositoryRoot, selection }
-      : null
-  })()
-  $: onChange(gitSource)
+    if (selection) {
+      await onOpenSource(createAdvancedGitSource(
+        inputPath.trim(),
+        repositoryRoot,
+        selection,
+      ))
+    }
+  }
 
   $: recentItems = recentRepositories.map((repo) => ({
     id: repo.id,
@@ -331,60 +281,198 @@
     detailTitle: repo.repoPath,
     extra: repo.lastBranch,
   }))
-  $: activeRecentId =
-    recentRepositories.find((repo) => repo.repoPath === inputPath)?.id ?? ''
 </script>
 
-<section class="git-setup-workspace" aria-label="Git compare setup">
-  <RecentSourceList
-    title="Recent Git repositories"
-    items={recentItems}
-    loadError={recentLoadError}
-    loadErrorMessage="Recent repositories could not be loaded."
-    emptyMessage="No recent repositories"
-    activeId={activeRecentId}
-    onSelect={handleSelectRecent}
-  />
+<section class="git-setup" aria-label="Git compare setup">
+  <div class="git-setup-content">
+    <header>
+      <h1>Git</h1>
+      <p>Open a repository to review its changes.</p>
+    </header>
 
-  <GitRepositoryPicker
-    selectedRepoPath={validationStatus === 'valid' ? validatedPath : ''}
-    {revealPath}
-    {revealRequestId}
-    {validationStatus}
-    {validationError}
-    {repositoryRoot}
-    {currentBranch}
-    {headSha}
-    {refsStatus}
-    {refsError}
-    {gitRefs}
-    {selectionKind}
-    {workingTreeScope}
-    {baseRef}
-    {headRef}
-    {notation}
-    {commitRef}
-    onSelectRepo={handleSelectRepo}
-    initialBrowserState={gitSetup.browser}
-    onBrowserStateChange={handleBrowserStateChange}
-    {browserRoots}
-    onSelectionKindChange={handleSelectionKindChange}
-    onScopeChange={handleScopeChange}
-    onBaseRefChange={handleBaseRefChange}
-    onHeadRefChange={handleHeadRefChange}
-    onNotationChange={handleNotationChange}
-    onCommitRefChange={handleCommitRefChange}
-  />
+    {#if !advancedOpen}
+      <div
+        class="git-open-area"
+        class:drop-active={dropActive}
+        role="group"
+        aria-label="Open or drop a Git repository"
+        on:dragenter|preventDefault={() => (dropActive = true)}
+        on:dragover|preventDefault={() => (dropActive = true)}
+        on:dragleave={() => (dropActive = false)}
+        on:drop={handleDrop}
+      >
+        <button
+          class="primary open-repository-button"
+          type="button"
+          disabled={loading || Boolean(openingPath)}
+          on:click={browseDefaultRepository}
+        >
+          {openingPath ? 'Opening repository…' : 'Open Git repository…'}
+        </button>
+        <span>or drop a repository folder here</span>
+      </div>
+
+      {#if validationStatus === 'invalid'}
+        <div class="git-open-error" role="alert">
+          <strong>! {validationError || 'This folder is not a Git repository.'}</strong>
+          <button class="secondary" type="button" on:click={browseDefaultRepository}>
+            Choose another folder
+          </button>
+        </div>
+      {/if}
+
+      <RecentSourceList
+        title="Recent repositories"
+        items={recentItems}
+        loadError={recentLoadError}
+        loadErrorMessage="Recent repositories could not be loaded."
+        emptyMessage="No recent repositories"
+        activeId=""
+        onSelect={handleSelectRecent}
+      />
+
+      <button class="advanced-toggle" type="button" on:click={() => (advancedOpen = true)}>
+        Advanced compare…
+      </button>
+    {:else}
+      <button class="advanced-back" type="button" on:click={() => (advancedOpen = false)}>
+        ← Back to repositories
+      </button>
+      <GitRepositoryPicker
+        {inputPath}
+        {validationStatus}
+        {validationError}
+        {repositoryRoot}
+        {currentBranch}
+        {headSha}
+        {refsStatus}
+        {refsError}
+        {gitRefs}
+        {selectionKind}
+        {baseRef}
+        {headRef}
+        {notation}
+        {commitRef}
+        {loading}
+        onInputPathChange={handleInputPathChange}
+        onBrowse={browseAdvancedRepository}
+        onValidate={validateAdvancedRepository}
+        onSelectionKindChange={(value) => (selectionKind = value)}
+        onBaseRefChange={(value) => (baseRef = value)}
+        onHeadRefChange={(value) => (headRef = value)}
+        onNotationChange={(value) => (notation = value)}
+        onCommitRefChange={(value) => (commitRef = value)}
+        onOpen={openAdvancedDiff}
+      />
+    {/if}
+  </div>
 </section>
 
 <style>
-  .git-setup-workspace {
-    display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-    gap: 10px;
+  .git-setup {
     min-height: 0;
     height: 100%;
+    overflow-y: auto;
+  }
+
+  .git-setup-content {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+    width: min(760px, 100%);
+    margin: 0 auto;
+    padding: 30px 12px;
+  }
+
+  header {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  h1,
+  p {
+    margin: 0;
+  }
+
+  h1 {
+    color: var(--title);
+    font-size: 20px;
+  }
+
+  header p {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .git-open-area {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
     width: 100%;
-    overflow: hidden;
+    padding: 20px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 8px;
+    transition: border-color 100ms ease, background 100ms ease;
+  }
+
+  .git-open-area.drop-active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .git-open-area span {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .open-repository-button {
+    min-width: 190px;
+  }
+
+  .git-open-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+    border-radius: 7px;
+    color: var(--danger);
+    font-size: 12px;
+  }
+
+  .git-setup-content > :global(.git-setup-recent) {
+    width: 100%;
+    max-height: 310px;
+  }
+
+  .advanced-toggle,
+  .advanced-back {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .advanced-toggle:hover,
+  .advanced-back:hover {
+    text-decoration: underline;
+  }
+
+  @media (max-width: 620px) {
+    .git-setup-content {
+      padding-top: 18px;
+    }
+
+    .git-open-error {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
 </style>

@@ -22,9 +22,35 @@
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
   export let activateListEntry: (side: Side, entry: ExplorerEntry) => Promise<void>
   export let isTargetSelected: (pane: ExplorerPaneState, entry: ExplorerEntry) => boolean
+  export let loading = false
+  export let canCompare = false
+  export let compareButtonTitle = ''
+  export let warning = ''
+  export let runCompare: () => void | Promise<void>
 </script>
 
 <section class="setup-launcher" aria-label="Compare setup">
+  <header class="setup-launcher-header">
+    <div>
+      <h2>Local compare</h2>
+      {#if warning}
+        <p class="setup-warning">{warning}</p>
+      {:else}
+        <p>Select a file or folder on each side.</p>
+      {/if}
+    </div>
+    <button
+      class="primary setup-compare-button"
+      class:compare-action-busy={loading}
+      aria-busy={loading}
+      disabled={!canCompare || loading}
+      title={compareButtonTitle}
+      type="button"
+      on:click={runCompare}
+    >
+      {loading ? 'Comparing…' : 'Compare'}
+    </button>
+  </header>
   <section class="picker-workspace">
     {#each pickerSides as item}
       <PickerPane

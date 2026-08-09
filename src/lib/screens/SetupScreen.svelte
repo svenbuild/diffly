@@ -10,7 +10,6 @@
     GitDiffSource,
     GithubDiffSource,
     GithubPullRequestMetadata,
-    PersistedGitSetup,
     SetupMode,
   } from '../types'
   import type {
@@ -35,14 +34,12 @@
   export let runCompare: () => void | Promise<void>
   export let openSettings: (section?: SettingsSection) => void
   export let errorMessage = ''
-  export let onGitSourceChange: (source: GitDiffSource | null) => void = () => {}
-  export let gitSetup: PersistedGitSetup = {}
-  export let onGitSetupChange: (setup: PersistedGitSetup) => void = () => {}
-  export let onGithubSourceChange: (source: GithubDiffSource | null) => void = () => {}
-  export let onGithubMetadataChange: (metadata: GithubPullRequestMetadata | null) => void = () => {}
+  export let openSessionSource: (
+    source: GitDiffSource | GithubDiffSource,
+    metadata?: GithubPullRequestMetadata | null,
+  ) => void | Promise<void>
   export let initialGithubUrl = ''
   export let reloadRecentsRequestId = 0
-  export let gitBrowserRoots: ExplorerEntry[] = []
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
   export let canGoBack: (pane: ExplorerPaneState) => boolean
@@ -136,28 +133,10 @@
 
     {#snippet middle()}
       <SetupModeSlider mode={setupMode} onChange={onSetupModeChange} />
-      {#if setupTopbarWarning}
-        <p class="setup-topbar-warning">{setupTopbarWarning}</p>
-      {/if}
     {/snippet}
 
     {#snippet actions()}
     <div class="setup-bar-actions">
-      <button
-        class="primary setup-compare-button"
-        class:compare-action-busy={loading}
-        aria-busy={loading}
-        disabled={!pickerCanCompare || loading}
-        title={compareButtonTitle}
-        type="button"
-        on:click={runCompare}
-      >
-        {#if loading}
-          Comparing...
-        {:else}
-          Compare
-        {/if}
-      </button>
       <button
         class="secondary icon-button settings-button"
         aria-label="Settings"
@@ -199,22 +178,25 @@
           {selectListEntry}
           {activateListEntry}
           {isTargetSelected}
+          {loading}
+          canCompare={pickerCanCompare}
+          {compareButtonTitle}
+          warning={setupTopbarWarning}
+          {runCompare}
         />
       {/if}
     {:else if setupMode === 'git'}
       <GitSetupPanel
-        onChange={onGitSourceChange}
-        {gitSetup}
-        onSetupChange={onGitSetupChange}
+        onOpenSource={openSessionSource}
+        {loading}
         {reloadRecentsRequestId}
-        browserRoots={gitBrowserRoots}
       />
     {:else}
       {#if GithubSetupPanelComponent}
         <svelte:component
           this={GithubSetupPanelComponent}
-          onChange={onGithubSourceChange}
-          onMetadataChange={onGithubMetadataChange}
+          onOpenSource={openSessionSource}
+          {loading}
           initialUrl={initialGithubUrl}
           {reloadRecentsRequestId}
         />
