@@ -13,6 +13,7 @@ import {
   dirname,
   join,
   resolve,
+  win32,
 } from 'node:path'
 import type {
   CompareMode,
@@ -141,7 +142,7 @@ function upsertGitRepository(
     id: gitRepositoryId(key),
     repoPath,
     repositoryRoot,
-    name: readMetadataString(metadata, 'name') ?? basename(repositoryRoot) ?? repositoryRoot,
+    name: readMetadataString(metadata, 'name') ?? (basenameStoredPath(repositoryRoot) || repositoryRoot),
     lastBranch: metadataLastBranch !== undefined
       ? metadataLastBranch
       : existing?.lastBranch ?? inferLastBranch(source),
@@ -241,7 +242,7 @@ function upsertLocalTarget(
     leftPath,
     rightPath,
     compareMode: source.compareMode,
-    name: readMetadataString(metadata, 'name') ?? `${basename(leftPath)} <> ${basename(rightPath)}`,
+    name: readMetadataString(metadata, 'name') ?? `${basenameStoredPath(leftPath)} <> ${basenameStoredPath(rightPath)}`,
     lastUsedAt: new Date().toISOString(),
   }
 
@@ -466,8 +467,10 @@ function normalizeLocalTargets(value: unknown): RecentLocalTarget[] {
 }
 
 function normalizePathKey(path: string) {
-  const resolved = resolve(path)
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+  const normalized = normalizeStoredPath(path)
+  const windowsPath = isWindowsStylePath(path)
+  const key = windowsPath ? normalized.replaceAll('\\', '/') : normalized
+  return process.platform === 'win32' || windowsPath ? key.toLowerCase() : key
 }
 
 function normalizeStoredPath(path: string) {
@@ -476,7 +479,15 @@ function normalizeStoredPath(path: string) {
     return ''
   }
 
-  return resolve(trimmed)
+  return isWindowsStylePath(trimmed) ? win32.normalize(trimmed) : resolve(trimmed)
+}
+
+function basenameStoredPath(path: string) {
+  return isWindowsStylePath(path) ? win32.basename(path) : basename(path)
+}
+
+function isWindowsStylePath(path: string) {
+  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\')
 }
 
 function normalizeRequiredPath(value: unknown) {
