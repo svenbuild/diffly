@@ -105,9 +105,9 @@ export interface DocumentDraft {
   originalRevision: DocumentRevision
   format: DocumentFormat
   selections: Array<{
-    start: { lineNumber: number; character: number }
-    end: { lineNumber: number; character: number }
-    direction: 'none' | 'backward' | 'forward'
+    start: { line: number; character: number }
+    end: { line: number; character: number }
+    direction: -1 | 0 | 1
   }>
   scrollTop: number
   updatedAt: string

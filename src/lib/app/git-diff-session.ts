@@ -45,6 +45,7 @@ export function mapSessionDiffEntry(
     diffEntryStatus: entry.status,
     diffEntryScope: entry.scope,
     gitReviewCapabilities: entry.gitReviewCapabilities,
+    capabilities: entry.capabilities,
     binary: entry.binary,
     diffPatchText: entry.diffPatchText ?? null,
     diffPatchCacheKey: entry.diffPatchCacheKey ?? null,

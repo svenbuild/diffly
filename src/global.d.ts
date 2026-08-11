@@ -33,6 +33,9 @@ import type {
   DocumentDraft,
   DraftSummary,
   SaveDraftRequest,
+  SearchBatch,
+  SearchJobStarted,
+  StartComparisonSearchRequest,
 } from './lib/types'
 
 declare global {
@@ -111,6 +114,11 @@ declare global {
         loadDraft(id: string): Promise<DocumentDraft | null>
         saveDraft(draft: SaveDraftRequest): Promise<DraftSummary>
         deleteDraft(id: string): Promise<void>
+      }
+      search: {
+        start(request: StartComparisonSearchRequest): Promise<SearchJobStarted>
+        poll(jobId: string): Promise<SearchBatch>
+        cancel(jobId: string): Promise<void>
       }
       /** Present only on frameless (Windows) builds. */
       windowControls?: {

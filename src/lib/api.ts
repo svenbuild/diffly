@@ -20,6 +20,7 @@ import type {
   SaveDocumentRequest,
   SaveDocumentsRequest,
   SaveDraftRequest,
+  StartComparisonSearchRequest,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -176,6 +177,15 @@ export const saveDocumentDraft = (draft: SaveDraftRequest) =>
 
 export const deleteDocumentDraft = (id: string) =>
   window.diffly.documents.deleteDraft(id)
+
+export const startComparisonSearch = (request: StartComparisonSearchRequest) =>
+  window.diffly.search.start(request)
+
+export const pollComparisonSearch = (jobId: string) =>
+  window.diffly.search.poll(jobId)
+
+export const cancelComparisonSearch = (jobId: string) =>
+  window.diffly.search.cancel(jobId)
 
 export interface WindowControls {
   minimize(): Promise<void>

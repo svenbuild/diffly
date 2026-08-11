@@ -19,6 +19,8 @@ import type {
   SaveDocumentsRequest,
   DocumentDraft,
   SaveDraftRequest,
+  StartComparisonSearchRequest,
+  ComparisonSearchQuery,
 } from '../../src/lib/types'
 
 interface CompareServices {
@@ -26,6 +28,7 @@ interface CompareServices {
   localProvider: import('./providers/local-provider').LocalProvider
   documentService: import('./documents/document-service').DocumentService
   draftStore: import('./documents/document-draft-store').DocumentDraftStore
+  searchService: import('./search/search-service').SearchService
 }
 
 let compareServicesPromise: Promise<CompareServices> | null = null
@@ -181,6 +184,18 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:documents:deleteDraft', async (_event, payload: unknown) => {
     const { draftStore } = await loadCompareServices()
     return draftStore.remove(readSha256Id(payload))
+  })
+  ipcMain.handle('diffly:search:start', async (_event, payload: unknown) => {
+    const { searchService } = await loadCompareServices()
+    return searchService.start(readStartSearchRequest(payload))
+  })
+  ipcMain.handle('diffly:search:poll', async (_event, payload: unknown) => {
+    const { searchService } = await loadCompareServices()
+    return searchService.poll(readJobId(payload))
+  })
+  ipcMain.handle('diffly:search:cancel', async (_event, payload: unknown) => {
+    const { searchService } = await loadCompareServices()
+    return searchService.cancel(readJobId(payload))
   })
 }
 
@@ -425,6 +440,7 @@ async function loadCompareServices() {
       import('./diff/diff-session-service'),
       import('./documents/document-service'),
       import('./documents/document-draft-store'),
+      import('./search/search-service'),
       import('./providers/github-provider'),
       import('./providers/git-provider'),
       import('./providers/local-provider'),
@@ -432,6 +448,7 @@ async function loadCompareServices() {
       { DiffSessionService },
       { DocumentService },
       { DocumentDraftStore },
+      { SearchService },
       { GithubProvider },
       { GitProvider },
       { LocalProvider },
@@ -446,12 +463,14 @@ async function loadCompareServices() {
       })
       const documentService = new DocumentService(diffSessionService)
       const draftStore = new DocumentDraftStore(join(app.getPath('userData'), 'drafts'))
+      const searchService = new SearchService(diffSessionService)
 
       return {
         diffSessionService,
         localProvider,
         documentService,
         draftStore,
+        searchService,
       }
     })
   }
@@ -618,7 +637,7 @@ function readDraftSelection(value: unknown): DocumentDraft['selections'][number]
   if (!isRecord(value) || !isRecord(value.start) || !isRecord(value.end)) {
     throw new Error('Invalid draft selection.')
   }
-  if (value.direction !== 'none' && value.direction !== 'backward' && value.direction !== 'forward') {
+  if (value.direction !== -1 && value.direction !== 0 && value.direction !== 1) {
     throw new Error('Invalid draft selection direction.')
   }
   return {
@@ -630,16 +649,16 @@ function readDraftSelection(value: unknown): DocumentDraft['selections'][number]
 
 function readDraftPosition(value: Record<string, unknown>) {
   if (
-    typeof value.lineNumber !== 'number' ||
-    !Number.isSafeInteger(value.lineNumber) ||
-    value.lineNumber < 1 ||
+    typeof value.line !== 'number' ||
+    !Number.isSafeInteger(value.line) ||
+    value.line < 0 ||
     typeof value.character !== 'number' ||
     !Number.isSafeInteger(value.character) ||
     value.character < 0
   ) {
     throw new Error('Invalid draft selection position.')
   }
-  return { lineNumber: value.lineNumber, character: value.character }
+  return { line: value.line, character: value.character }
 }
 
 function readSha256Id(payload: unknown) {
@@ -647,6 +666,44 @@ function readSha256Id(payload: unknown) {
     throw new Error('Invalid persisted object id.')
   }
   return payload.id
+}
+
+export function readStartSearchRequest(payload: unknown): StartComparisonSearchRequest {
+  if (!isRecord(payload) || !isRecord(payload.query)) {
+    throw new Error('Invalid comparison search payload.')
+  }
+  const query = payload.query
+  if (
+    typeof query.text !== 'string' ||
+    !query.text ||
+    query.text.length > 4096 ||
+    typeof query.caseSensitive !== 'boolean' ||
+    typeof query.wholeWord !== 'boolean' ||
+    typeof query.regex !== 'boolean' ||
+    typeof query.pathFilter !== 'string' ||
+    query.pathFilter.length > 4096 ||
+    !isSearchScope(query.scope)
+  ) {
+    throw new Error('Invalid comparison search query.')
+  }
+  const normalized: ComparisonSearchQuery = {
+    text: query.text,
+    caseSensitive: query.caseSensitive,
+    wholeWord: query.wholeWord,
+    regex: query.regex,
+    scope: query.scope,
+    pathFilter: query.pathFilter,
+  }
+  return { sessionId: requiredId(payload.sessionId), query: normalized }
+}
+
+function readJobId(payload: unknown) {
+  if (!isRecord(payload)) throw new Error('Invalid job payload.')
+  return requiredId(payload.jobId)
+}
+
+function isSearchScope(value: unknown): value is ComparisonSearchQuery['scope'] {
+  return value === 'all' || value === 'changed' || value === 'added' || value === 'deleted' || value === 'context'
 }
 
 async function readAddRecentSourcePayload(payload: unknown): Promise<{

@@ -30,6 +30,13 @@ export interface DiffSession {
   metadata: DiffSessionMetadata
 }
 
+export interface SearchDocumentDescriptor {
+  entryId: string
+  path: string
+  side: 'left' | 'right'
+  target: DocumentTarget
+}
+
 interface DiffSessionServiceProviders {
   localProvider: DiffSessionProvider
   gitProvider?: DiffSessionProvider
@@ -91,6 +98,26 @@ export class DiffSessionService {
     return session.entries.filter((entry) => matchesDiffEntryFilter(entry, filter))
   }
 
+  listSearchDocuments(sessionId: string): SearchDocumentDescriptor[] {
+    const session = this.getSession(sessionId)
+    const documents: SearchDocumentDescriptor[] = []
+    for (const entry of session.entries) {
+      if (!entry.capabilities.search || entry.binary) continue
+      const sides: Array<'left' | 'right'> = []
+      if (entry.status !== 'added' && entry.status !== 'untracked') sides.push('left')
+      if (entry.status !== 'deleted') sides.push('right')
+      for (const side of sides) {
+        documents.push({
+          entryId: entry.id,
+          path: side === 'left' ? entry.oldPath ?? entry.path : entry.path,
+          side,
+          target: searchTargetFor(session, entry, side),
+        })
+      }
+    }
+    return documents
+  }
+
   openEntry(
     sessionId: string,
     entryId: string,
@@ -98,6 +125,11 @@ export class DiffSessionService {
   ): Promise<FileDiffResult> {
     const session = this.getSession(sessionId)
     return session.provider.openEntry(session, entryId, options)
+  }
+
+  openEntryForSearch(sessionId: string, entryId: string): Promise<FileDiffResult> {
+    const session = this.getSession(sessionId)
+    return session.provider.openEntry(session, entryId, session.options)
   }
 
   openDocument(target: DocumentTarget): Promise<EditableDocument> {
@@ -183,6 +215,29 @@ export class DiffSessionService {
 
 function documentTargetSessionId(target: DocumentTarget) {
   return target.kind === 'scratch' ? target.sourceSessionId : target.sessionId
+}
+
+function searchTargetFor(
+  session: DiffSessionRecord,
+  entry: DiffEntry,
+  side: 'left' | 'right',
+): DocumentTarget {
+  if (session.source.kind === 'local') {
+    return { kind: 'local', sessionId: session.id, entryId: entry.id, side }
+  }
+  if (session.source.kind === 'git' && session.source.selection.kind === 'workingTree') {
+    if (side === 'right') {
+      return entry.scope === 'staged'
+        ? { kind: 'gitIndex', sessionId: session.id, entryId: entry.id }
+        : { kind: 'gitWorktree', sessionId: session.id, entryId: entry.id }
+    }
+  }
+  return {
+    kind: 'scratch',
+    sourceSessionId: session.id,
+    sourceEntryId: entry.id,
+    sourceSide: side,
+  }
 }
 
 function createUnsupportedProvider(message: string): DiffSessionProvider {

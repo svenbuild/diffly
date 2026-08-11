@@ -2,6 +2,7 @@ import type { AppearanceMode, AppearanceSettings } from './theme'
 import type { DiffEntryCapabilities } from './workspace-types'
 
 export type * from './workspace-types'
+export type * from './search-types'
 
 export type CompareMode = 'file' | 'directory'
 export type SetupMode = 'git' | 'local' | 'github'
@@ -425,6 +426,7 @@ export interface DirectoryEntryResult {
   binary?: boolean
   diffPatchText?: string | null
   diffPatchCacheKey?: string | null
+  capabilities?: DiffEntryCapabilities
 }
 
 // Selects how the directory diff list loads each entry's details. Local paths

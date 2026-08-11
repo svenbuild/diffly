@@ -22,6 +22,9 @@ import type {
   DocumentDraft,
   DraftSummary,
   SaveDraftRequest,
+  SearchBatch,
+  SearchJobStarted,
+  StartComparisonSearchRequest,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -153,6 +156,14 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<DraftSummary>('diffly:documents:saveDraft', draft),
     deleteDraft: (id: string) =>
       invoke<void>('diffly:documents:deleteDraft', { id }),
+  },
+  search: {
+    start: (request: StartComparisonSearchRequest) =>
+      invoke<SearchJobStarted>('diffly:search:start', request),
+    poll: (jobId: string) =>
+      invoke<SearchBatch>('diffly:search:poll', { jobId }),
+    cancel: (jobId: string) =>
+      invoke<void>('diffly:search:cancel', { jobId }),
   },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.

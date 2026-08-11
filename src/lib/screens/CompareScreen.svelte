@@ -12,7 +12,6 @@
   import collapseAllIconUrl from '../assets/icons/toolbar-collapse-all.svg'
   import expandAllIconUrl from '../assets/icons/toolbar-expand-all.svg'
   import reloadIconUrl from '../assets/icons/toolbar-reload.svg'
-  import reviewIconUrl from '../assets/icons/toolbar-review.svg'
   import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -28,11 +27,24 @@
     GitWorkingTreeScope,
     SystemMonitorSnapshot,
     ViewMode,
+    DocumentTarget,
   } from '../types'
   import type { SettingsSection } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
   import UpdateIndicator from './UpdateIndicator.svelte'
+  import WorkspaceEditor from '../workspace/WorkspaceEditor.svelte'
+  import {
+    activeWorkspaceDocument,
+    dirtyDocumentCount,
+    documentWorkspace,
+    setWorkspaceMode,
+  } from '../workspace/document-store'
+  import { workspaceDocumentController } from '../workspace/document-controller'
+  import SearchPanel from '../search/SearchPanel.svelte'
+  import { comparisonSearch } from '../search/search-store'
+  import { workspaceSearchController } from '../search/search-controller'
+  import type { SearchMatch } from '../search-types'
 
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
@@ -51,6 +63,7 @@
   }
   export let selectedRelativePath = ''
   export let activeDiffSource: DiffSource | null = null
+  export let activeDiffSessionId: string | null = null
   export let viewMode: ViewMode = 'sideBySide'
   export let textDiffActive = false
   export let toggleViewMode: () => void
@@ -117,8 +130,56 @@
 
   $: reviewSourceKind = compareSourceKind(activeDiffSource)
 
-  function toggleReviewMode() {
-    reviewModeEnabled.update((enabled) => !enabled)
+  function selectWorkspaceMode(nextMode: 'review' | 'edit' | 'resolve') {
+    setWorkspaceMode(nextMode)
+    reviewModeEnabled.set(nextMode === 'review')
+    if (nextMode === 'edit') void openSelectedDocument()
+  }
+
+  async function openSelectedDocument(side: 'left' | 'right' = 'right') {
+    const target = selectedDocumentTarget(side)
+    if (!target) return
+    try {
+      await workspaceDocumentController.open(target)
+    } catch (error) {
+      console.error('Unable to open editable document', error)
+    }
+  }
+
+  function selectedDocumentTarget(side: 'left' | 'right'): DocumentTarget | null {
+    if (!activeDiffSessionId || !activeDiffSource) return null
+    const entryId = mode === 'file'
+      ? 'file'
+      : directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)?.diffEntryId
+    if (!entryId) return null
+
+    if (activeDiffSource.kind === 'local') {
+      return { kind: 'local', sessionId: activeDiffSessionId, entryId, side }
+    }
+    if (activeDiffSource.kind === 'git') {
+      if (activeDiffSource.selection.kind === 'workingTree') {
+        return gitScope === 'staged'
+          ? { kind: 'gitIndex', sessionId: activeDiffSessionId, entryId }
+          : { kind: 'gitWorktree', sessionId: activeDiffSessionId, entryId }
+      }
+      return {
+        kind: 'scratch',
+        sourceSessionId: activeDiffSessionId,
+        sourceEntryId: entryId,
+        sourceSide: side,
+      }
+    }
+    return {
+      kind: 'scratch',
+      sourceSessionId: activeDiffSessionId,
+      sourceEntryId: entryId,
+      sourceSide: side,
+    }
+  }
+
+  async function saveAllDocuments() {
+    const result = await workspaceDocumentController.saveAll()
+    if (result?.ok) await runCompare()
   }
 
   function toggleAllFileDiffs() {
@@ -166,6 +227,19 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      comparisonSearch.update((state) => ({ ...state, open: true }))
+      return
+    }
+    if (event.key === 'F3') {
+      event.preventDefault()
+      workspaceSearchController.next(event.shiftKey ? -1 : 1)
+      const state = $comparisonSearch
+      const match = state.results[state.selectedIndex]
+      if (match) void navigateToSearchMatch(match)
+      return
+    }
     if (
       mode !== 'directory' ||
       event.defaultPrevented ||
@@ -180,9 +254,20 @@
     if (event.key === 'F2') {
       event.preventDefault()
       toggleSidebarPanel('diffStats')
-    } else if (event.key === 'F3') {
-      event.preventDefault()
-      toggleSidebarPanel('systemMonitor')
+    }
+  }
+
+  async function navigateToSearchMatch(match: SearchMatch) {
+    const entry = directoryEntries.find((candidate) => candidate.diffEntryId === match.entryId)
+    if (entry && selectedRelativePath !== entry.relativePath) await selectEntry(entry)
+    if ($documentWorkspace.mode === 'edit') {
+      await workspaceDocumentController.open(match.target)
+      workspaceDocumentController.focusMatch(
+        match.target,
+        match.lineNumber,
+        match.startColumn,
+        match.endColumn,
+      )
     }
   }
 </script>
@@ -239,18 +324,36 @@
           {/if}
         </button>
 
-        <button
-          aria-label={$reviewModeEnabled ? 'Turn review mode off' : 'Turn review mode on'}
-          aria-pressed={$reviewModeEnabled}
-          class="secondary toolbar-button icon-button review-mode-button"
-          title={$reviewModeEnabled
-            ? 'Review mode on — per-file actions are shown in diff headers'
-            : 'Review mode off — click to show per-file actions in diff headers'}
-          type="button"
-          on:click={toggleReviewMode}
-        >
-          <ToolbarSvgIcon src={reviewIconUrl} className="review-mode-icon" />
-        </button>
+        <div class="workspace-mode-switcher" aria-label="Workspace mode">
+          <button
+            class:active={$documentWorkspace.mode === 'review'}
+            aria-pressed={$documentWorkspace.mode === 'review'}
+            class="secondary toolbar-button"
+            type="button"
+            on:click={() => selectWorkspaceMode('review')}
+          >Review</button>
+          <button
+            class:active={$documentWorkspace.mode === 'edit'}
+            aria-pressed={$documentWorkspace.mode === 'edit'}
+            class="secondary toolbar-button"
+            type="button"
+            disabled={!activeDiffSessionId || !textDiffActive}
+            on:click={() => selectWorkspaceMode('edit')}
+          >Edit</button>
+          <button
+            class:active={$documentWorkspace.mode === 'resolve'}
+            aria-pressed={$documentWorkspace.mode === 'resolve'}
+            class="secondary toolbar-button"
+            type="button"
+            disabled={!directoryEntries.find((entry) => entry.relativePath === selectedRelativePath && entry.diffEntryStatus === 'conflicted')}
+            on:click={() => selectWorkspaceMode('resolve')}
+          >Resolve</button>
+        </div>
+
+        {#if $documentWorkspace.mode === 'edit' && activeDiffSource?.kind === 'local'}
+          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('left')}>Edit Left</button>
+          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('right')}>Edit Right</button>
+        {/if}
 
         {#if mode === 'directory'}
           <button
@@ -284,6 +387,14 @@
       {/if}
 
       <div class="compare-action-group utility-actions">
+        <button
+          class:active={$comparisonSearch.open}
+          aria-pressed={$comparisonSearch.open}
+          class="secondary toolbar-button"
+          type="button"
+          disabled={!activeDiffSessionId}
+          on:click={() => comparisonSearch.update((state) => ({ ...state, open: !state.open }))}
+        >Search</button>
         {#if srcActions.showSwap}
           <button
             class="secondary toolbar-button icon-button swap-button"
@@ -325,6 +436,12 @@
 
       <div class="compare-action-group global-actions">
         <button
+          class="secondary toolbar-button"
+          type="button"
+          disabled={$dirtyDocumentCount === 0}
+          on:click={saveAllDocuments}
+        >Save All{#if $dirtyDocumentCount > 0} ({$dirtyDocumentCount}){/if}</button>
+        <button
           class="secondary toolbar-button icon-button settings-button"
           aria-label="Settings"
           title="Settings"
@@ -354,6 +471,7 @@
   <section
     class:resizing-sidebar={compareSidebarResizeActive}
     class:single-pane={mode === 'file'}
+    class:search-panel-open={$comparisonSearch.open && Boolean(activeDiffSessionId)}
     class="compare-layout"
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
@@ -383,7 +501,20 @@
       ></button>
     {/if}
 
-    {#if CompareViewerComponent}
+    {#if $documentWorkspace.mode === 'edit' && $activeWorkspaceDocument}
+      <WorkspaceEditor
+        state={$activeWorkspaceDocument}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        onSaved={runCompare}
+      />
+    {:else if $documentWorkspace.mode === 'resolve'}
+      <section class="compare-viewer">
+        <div class="compare-viewer-state">
+          <p>Select a conflicted file to resolve.</p>
+        </div>
+      </section>
+    {:else if CompareViewerComponent}
       <svelte:component
         this={CompareViewerComponent}
         {mode}
@@ -424,6 +555,13 @@
           <p>Opening compare view...</p>
         </div>
       </section>
+    {/if}
+
+    {#if $comparisonSearch.open && activeDiffSessionId}
+      <SearchPanel
+        sessionId={activeDiffSessionId}
+        onNavigate={navigateToSearchMatch}
+      />
     {/if}
   </section>
 

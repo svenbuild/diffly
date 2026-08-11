@@ -2899,6 +2899,7 @@
     {compareLoadingState}
     {selectedRelativePath}
     {activeDiffSource}
+    {activeDiffSessionId}
     {viewMode}
     {textDiffActive}
     {toggleViewMode}
