@@ -27,7 +27,7 @@
   },
   "main": "out/main/main.cjs",
   "dependencies": {
-    "@pierre/diffs": "^1.2.5",
+    "@pierre/diffs": "1.3.5",
     "@pierre/trees": "^1.0.0-beta.4",
     "electron-updater": "^6.6.2",
     "material-file-icons": "^2.4.0"
