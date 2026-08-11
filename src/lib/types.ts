@@ -3,6 +3,7 @@ import type { DiffEntryCapabilities } from './workspace-types'
 
 export type * from './workspace-types'
 export type * from './search-types'
+export type * from './review-types'
 
 export type CompareMode = 'file' | 'directory'
 export type SetupMode = 'git' | 'local' | 'github'

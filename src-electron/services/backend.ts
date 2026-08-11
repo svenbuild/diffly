@@ -21,6 +21,8 @@ import type {
   SaveDraftRequest,
   StartComparisonSearchRequest,
   ComparisonSearchQuery,
+  ApplyPartialChangeRequest,
+  PartialChangeSelection,
 } from '../../src/lib/types'
 
 interface CompareServices {
@@ -29,6 +31,7 @@ interface CompareServices {
   documentService: import('./documents/document-service').DocumentService
   draftStore: import('./documents/document-draft-store').DocumentDraftStore
   searchService: import('./search/search-service').SearchService
+  partialApplyService: import('./review/partial-apply-service').PartialApplyService
 }
 
 let compareServicesPromise: Promise<CompareServices> | null = null
@@ -196,6 +199,19 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:search:cancel', async (_event, payload: unknown) => {
     const { searchService } = await loadCompareServices()
     return searchService.cancel(readJobId(payload))
+  })
+  ipcMain.handle('diffly:review:applyPartialChange', async (_event, payload: unknown) => {
+    const { partialApplyService } = await loadCompareServices()
+    return partialApplyService.apply(readApplyPartialChangeRequest(payload))
+  })
+  ipcMain.handle('diffly:review:listHunks', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid hunk-list payload.')
+    const { partialApplyService } = await loadCompareServices()
+    return partialApplyService.listHunks(requiredId(payload.sessionId), requiredId(payload.entryId))
+  })
+  ipcMain.handle('diffly:review:undoOperation', async (_event, payload: unknown) => {
+    const { partialApplyService } = await loadCompareServices()
+    return partialApplyService.undoLast(readSessionId(payload))
   })
 }
 
@@ -441,6 +457,8 @@ async function loadCompareServices() {
       import('./documents/document-service'),
       import('./documents/document-draft-store'),
       import('./search/search-service'),
+      import('./review/partial-apply-service'),
+      import('./review/operation-journal'),
       import('./providers/github-provider'),
       import('./providers/git-provider'),
       import('./providers/local-provider'),
@@ -449,6 +467,8 @@ async function loadCompareServices() {
       { DocumentService },
       { DocumentDraftStore },
       { SearchService },
+      { PartialApplyService },
+      { OperationJournal },
       { GithubProvider },
       { GitProvider },
       { LocalProvider },
@@ -464,6 +484,8 @@ async function loadCompareServices() {
       const documentService = new DocumentService(diffSessionService)
       const draftStore = new DocumentDraftStore(join(app.getPath('userData'), 'drafts'))
       const searchService = new SearchService(diffSessionService)
+      const operationJournal = new OperationJournal(join(app.getPath('userData'), 'operations'))
+      const partialApplyService = new PartialApplyService(diffSessionService, operationJournal)
 
       return {
         diffSessionService,
@@ -471,6 +493,7 @@ async function loadCompareServices() {
         documentService,
         draftStore,
         searchService,
+        partialApplyService,
       }
     })
   }
@@ -704,6 +727,63 @@ function readJobId(payload: unknown) {
 
 function isSearchScope(value: unknown): value is ComparisonSearchQuery['scope'] {
   return value === 'all' || value === 'changed' || value === 'added' || value === 'deleted' || value === 'context'
+}
+
+export function readApplyPartialChangeRequest(payload: unknown): ApplyPartialChangeRequest {
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.selections) ||
+    payload.selections.length < 1 ||
+    payload.selections.length > 10_000 ||
+    !isPartialChangeOperation(payload.operation)
+  ) {
+    throw new Error('Invalid partial change payload.')
+  }
+  return {
+    sessionId: requiredId(payload.sessionId),
+    entryId: requiredId(payload.entryId),
+    operation: payload.operation,
+    selections: payload.selections.map(readPartialChangeSelection),
+    leftRevision: payload.leftRevision === null ? null : readDocumentRevision(payload.leftRevision),
+    rightRevision: payload.rightRevision === null ? null : readDocumentRevision(payload.rightRevision),
+  }
+}
+
+function readPartialChangeSelection(value: unknown): PartialChangeSelection {
+  if (!isRecord(value) || !isRecord(value.fingerprint)) {
+    throw new Error('Invalid partial change selection.')
+  }
+  const fingerprint = value.fingerprint
+  const numbers = [fingerprint.oldStart, fingerprint.oldCount, fingerprint.newStart, fingerprint.newCount]
+  if (
+    numbers.some((item) => typeof item !== 'number' || !Number.isSafeInteger(item) || item < 0) ||
+    typeof fingerprint.contextHash !== 'string' || !/^[a-f0-9]{64}$/i.test(fingerprint.contextHash) ||
+    typeof fingerprint.changeHash !== 'string' || !/^[a-f0-9]{64}$/i.test(fingerprint.changeHash) ||
+    (value.changeIndex !== undefined &&
+      (typeof value.changeIndex !== 'number' || !Number.isSafeInteger(value.changeIndex) || value.changeIndex < 0))
+  ) {
+    throw new Error('Invalid hunk fingerprint.')
+  }
+  return {
+    fingerprint: {
+      oldStart: fingerprint.oldStart as number,
+      oldCount: fingerprint.oldCount as number,
+      newStart: fingerprint.newStart as number,
+      newCount: fingerprint.newCount as number,
+      contextHash: fingerprint.contextHash,
+      changeHash: fingerprint.changeHash,
+    },
+    changeIndex: value.changeIndex as number | undefined,
+  }
+}
+
+function isPartialChangeOperation(value: unknown): value is ApplyPartialChangeRequest['operation'] {
+  return value === 'applyRightToLeft' || value === 'applyLeftToRight' || value === 'stage' || value === 'unstage' || value === 'discard'
+}
+
+function readSessionId(payload: unknown) {
+  if (!isRecord(payload)) throw new Error('Invalid session payload.')
+  return requiredId(payload.sessionId)
 }
 
 async function readAddRecentSourcePayload(payload: unknown): Promise<{

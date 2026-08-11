@@ -36,6 +36,8 @@ import type {
   SearchBatch,
   SearchJobStarted,
   StartComparisonSearchRequest,
+  ApplyPartialChangeRequest,
+  ReviewHunkSummary,
 } from './lib/types'
 
 declare global {
@@ -119,6 +121,11 @@ declare global {
         start(request: StartComparisonSearchRequest): Promise<SearchJobStarted>
         poll(jobId: string): Promise<SearchBatch>
         cancel(jobId: string): Promise<void>
+      }
+      review: {
+        listHunks(sessionId: string, entryId: string): Promise<ReviewHunkSummary[]>
+        applyPartialChange(request: ApplyPartialChangeRequest): Promise<CreateDiffSessionResponse>
+        undoOperation(sessionId: string): Promise<CreateDiffSessionResponse>
       }
       /** Present only on frameless (Windows) builds. */
       windowControls?: {

@@ -21,6 +21,7 @@ import type {
   SaveDocumentsRequest,
   SaveDraftRequest,
   StartComparisonSearchRequest,
+  ApplyPartialChangeRequest,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -186,6 +187,15 @@ export const pollComparisonSearch = (jobId: string) =>
 
 export const cancelComparisonSearch = (jobId: string) =>
   window.diffly.search.cancel(jobId)
+
+export const applyPartialChange = (request: ApplyPartialChangeRequest) =>
+  window.diffly.review.applyPartialChange(request)
+
+export const listReviewHunks = (sessionId: string, entryId: string) =>
+  window.diffly.review.listHunks(sessionId, entryId)
+
+export const undoWorkspaceOperation = (sessionId: string) =>
+  window.diffly.review.undoOperation(sessionId)
 
 export interface WindowControls {
   minimize(): Promise<void>

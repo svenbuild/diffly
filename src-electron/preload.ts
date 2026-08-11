@@ -25,6 +25,9 @@ import type {
   SearchBatch,
   SearchJobStarted,
   StartComparisonSearchRequest,
+  ApplyPartialChangeRequest,
+  CreateDiffSessionResponse,
+  ReviewHunkSummary,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -164,6 +167,14 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<SearchBatch>('diffly:search:poll', { jobId }),
     cancel: (jobId: string) =>
       invoke<void>('diffly:search:cancel', { jobId }),
+  },
+  review: {
+    listHunks: (sessionId: string, entryId: string) =>
+      invoke<ReviewHunkSummary[]>('diffly:review:listHunks', { sessionId, entryId }),
+    applyPartialChange: (request: ApplyPartialChangeRequest) =>
+      invoke<CreateDiffSessionResponse>('diffly:review:applyPartialChange', request),
+    undoOperation: (sessionId: string) =>
+      invoke<CreateDiffSessionResponse>('diffly:review:undoOperation', { sessionId }),
   },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.

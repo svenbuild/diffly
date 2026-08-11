@@ -45,6 +45,7 @@
   import { comparisonSearch } from '../search/search-store'
   import { workspaceSearchController } from '../search/search-controller'
   import type { SearchMatch } from '../search-types'
+  import HunkReviewPanel from '../review/HunkReviewPanel.svelte'
 
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
@@ -129,6 +130,15 @@
   $: srcActions = sourceActions(activeDiffSource)
 
   $: reviewSourceKind = compareSourceKind(activeDiffSource)
+  $: selectedEntryId = mode === 'file'
+    ? 'file'
+    : directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)?.diffEntryId ?? null
+  $: showHunkReviewPanel =
+    $documentWorkspace.mode === 'review' &&
+    !$comparisonSearch.open &&
+    Boolean(activeDiffSessionId && selectedEntryId) &&
+    (activeDiffSource?.kind === 'local' ||
+      (activeDiffSource?.kind === 'git' && activeDiffSource.selection.kind === 'workingTree'))
 
   function selectWorkspaceMode(nextMode: 'review' | 'edit' | 'resolve') {
     setWorkspaceMode(nextMode)
@@ -472,6 +482,7 @@
     class:resizing-sidebar={compareSidebarResizeActive}
     class:single-pane={mode === 'file'}
     class:search-panel-open={$comparisonSearch.open && Boolean(activeDiffSessionId)}
+    class:review-panel-open={showHunkReviewPanel}
     class="compare-layout"
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
@@ -561,6 +572,15 @@
       <SearchPanel
         sessionId={activeDiffSessionId}
         onNavigate={navigateToSearchMatch}
+      />
+    {/if}
+    {#if showHunkReviewPanel && activeDiffSessionId && selectedEntryId}
+      <HunkReviewPanel
+        sessionId={activeDiffSessionId}
+        entryId={selectedEntryId}
+        sourceKind={activeDiffSource?.kind === 'local' ? 'local' : 'git'}
+        {gitScope}
+        onApplied={runCompare}
       />
     {/if}
   </section>
