@@ -638,6 +638,11 @@
   grid-row: 1;
 }
 
+.compare-layout > .merge-conflict-viewer {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .compare-layout > .workspace-search-panel {
   grid-column: 4;
 }
@@ -655,6 +660,10 @@
 }
 
 .compare-layout.single-pane > .workspace-editor {
+  grid-column: 1;
+}
+
+.compare-layout.single-pane > .merge-conflict-viewer {
   grid-column: 1;
 }
 

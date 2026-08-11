@@ -43,6 +43,7 @@ export function mapSessionDiffEntry(
     diffEntryId: entry.id,
     diffEntryAliasIds: diffEntryAliasIds.length > 0 ? diffEntryAliasIds : undefined,
     diffEntryStatus: entry.status,
+    conflictKind: entry.conflictKind,
     diffEntryScope: entry.scope,
     gitReviewCapabilities: entry.gitReviewCapabilities,
     capabilities: entry.capabilities,

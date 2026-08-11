@@ -69,6 +69,7 @@ export type ProviderEntryData =
       path: string
       oldPath: string | null
       status: DiffEntryStatus
+      conflictKind?: 'UU' | 'AA' | 'UD' | 'DU' | 'AU' | 'UA' | 'DD'
       gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
       // Full blob oids from the raw diff for this scope; null when unknown.
       // srcOid is the left side of the scope's diff command, dstOid the right.

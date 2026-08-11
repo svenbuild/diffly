@@ -22,6 +22,7 @@ import type {
   SaveDraftRequest,
   StartComparisonSearchRequest,
   ApplyPartialChangeRequest,
+  ResolveConflictRequest,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -196,6 +197,15 @@ export const listReviewHunks = (sessionId: string, entryId: string) =>
 
 export const undoWorkspaceOperation = (sessionId: string) =>
   window.diffly.review.undoOperation(sessionId)
+
+export const openConflict = (sessionId: string, entryId: string) =>
+  window.diffly.conflicts.open(sessionId, entryId)
+
+export const resolveConflict = (request: ResolveConflictRequest) =>
+  window.diffly.conflicts.resolve(request)
+
+export const undoConflictResolution = (sessionId: string) =>
+  window.diffly.conflicts.undoResolution(sessionId)
 
 export interface WindowControls {
   minimize(): Promise<void>

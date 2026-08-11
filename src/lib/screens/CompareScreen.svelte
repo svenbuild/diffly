@@ -46,6 +46,7 @@
   import { workspaceSearchController } from '../search/search-controller'
   import type { SearchMatch } from '../search-types'
   import HunkReviewPanel from '../review/HunkReviewPanel.svelte'
+  import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
 
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
@@ -130,9 +131,8 @@
   $: srcActions = sourceActions(activeDiffSource)
 
   $: reviewSourceKind = compareSourceKind(activeDiffSource)
-  $: selectedEntryId = mode === 'file'
-    ? 'file'
-    : directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)?.diffEntryId ?? null
+  $: selectedEntry = directoryEntries.find((entry) => entry.relativePath === selectedRelativePath) ?? null
+  $: selectedEntryId = mode === 'file' ? 'file' : selectedEntry?.diffEntryId ?? null
   $: showHunkReviewPanel =
     $documentWorkspace.mode === 'review' &&
     !$comparisonSearch.open &&
@@ -355,7 +355,7 @@
             aria-pressed={$documentWorkspace.mode === 'resolve'}
             class="secondary toolbar-button"
             type="button"
-            disabled={!directoryEntries.find((entry) => entry.relativePath === selectedRelativePath && entry.diffEntryStatus === 'conflicted')}
+            disabled={selectedEntry?.diffEntryStatus !== 'conflicted'}
             on:click={() => selectWorkspaceMode('resolve')}
           >Resolve</button>
         </div>
@@ -518,6 +518,14 @@
         {appearanceSettings}
         {resolvedThemeMode}
         onSaved={runCompare}
+      />
+    {:else if $documentWorkspace.mode === 'resolve' && activeDiffSessionId && selectedEntryId && selectedEntry?.diffEntryStatus === 'conflicted'}
+      <MergeConflictViewer
+        sessionId={activeDiffSessionId}
+        entryId={selectedEntryId}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        onResolved={runCompare}
       />
     {:else if $documentWorkspace.mode === 'resolve'}
       <section class="compare-viewer">

@@ -28,6 +28,8 @@ import type {
   ApplyPartialChangeRequest,
   CreateDiffSessionResponse,
   ReviewHunkSummary,
+  ConflictDocument,
+  ResolveConflictRequest,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -175,6 +177,14 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<CreateDiffSessionResponse>('diffly:review:applyPartialChange', request),
     undoOperation: (sessionId: string) =>
       invoke<CreateDiffSessionResponse>('diffly:review:undoOperation', { sessionId }),
+  },
+  conflicts: {
+    open: (sessionId: string, entryId: string) =>
+      invoke<ConflictDocument>('diffly:conflicts:open', { sessionId, entryId }),
+    resolve: (request: ResolveConflictRequest) =>
+      invoke<CreateDiffSessionResponse>('diffly:conflicts:resolve', request),
+    undoResolution: (sessionId: string) =>
+      invoke<CreateDiffSessionResponse>('diffly:conflicts:undoResolution', { sessionId }),
   },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.

@@ -23,6 +23,8 @@ import type {
   ComparisonSearchQuery,
   ApplyPartialChangeRequest,
   PartialChangeSelection,
+  ResolveConflictRequest,
+  ConflictRevision,
 } from '../../src/lib/types'
 
 interface CompareServices {
@@ -32,6 +34,7 @@ interface CompareServices {
   draftStore: import('./documents/document-draft-store').DocumentDraftStore
   searchService: import('./search/search-service').SearchService
   partialApplyService: import('./review/partial-apply-service').PartialApplyService
+  conflictService: import('./conflicts/conflict-service').ConflictService
 }
 
 let compareServicesPromise: Promise<CompareServices> | null = null
@@ -212,6 +215,19 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:review:undoOperation', async (_event, payload: unknown) => {
     const { partialApplyService } = await loadCompareServices()
     return partialApplyService.undoLast(readSessionId(payload))
+  })
+  ipcMain.handle('diffly:conflicts:open', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid conflict payload.')
+    const { conflictService } = await loadCompareServices()
+    return conflictService.open(requiredId(payload.sessionId), requiredId(payload.entryId))
+  })
+  ipcMain.handle('diffly:conflicts:resolve', async (_event, payload: unknown) => {
+    const { conflictService } = await loadCompareServices()
+    return conflictService.resolve(readResolveConflictRequest(payload))
+  })
+  ipcMain.handle('diffly:conflicts:undoResolution', async (_event, payload: unknown) => {
+    const { conflictService } = await loadCompareServices()
+    return conflictService.undoResolution(readSessionId(payload))
   })
 }
 
@@ -459,6 +475,7 @@ async function loadCompareServices() {
       import('./search/search-service'),
       import('./review/partial-apply-service'),
       import('./review/operation-journal'),
+      import('./conflicts/conflict-service'),
       import('./providers/github-provider'),
       import('./providers/git-provider'),
       import('./providers/local-provider'),
@@ -469,6 +486,7 @@ async function loadCompareServices() {
       { SearchService },
       { PartialApplyService },
       { OperationJournal },
+      { ConflictService },
       { GithubProvider },
       { GitProvider },
       { LocalProvider },
@@ -486,6 +504,7 @@ async function loadCompareServices() {
       const searchService = new SearchService(diffSessionService)
       const operationJournal = new OperationJournal(join(app.getPath('userData'), 'operations'))
       const partialApplyService = new PartialApplyService(diffSessionService, operationJournal)
+      const conflictService = new ConflictService(diffSessionService, operationJournal)
 
       return {
         diffSessionService,
@@ -494,6 +513,7 @@ async function loadCompareServices() {
         draftStore,
         searchService,
         partialApplyService,
+        conflictService,
       }
     })
   }
@@ -784,6 +804,53 @@ function isPartialChangeOperation(value: unknown): value is ApplyPartialChangeRe
 function readSessionId(payload: unknown) {
   if (!isRecord(payload)) throw new Error('Invalid session payload.')
   return requiredId(payload.sessionId)
+}
+
+export function readResolveConflictRequest(payload: unknown): ResolveConflictRequest {
+  if (!isRecord(payload) || !isRecord(payload.resolution)) {
+    throw new Error('Invalid conflict resolution payload.')
+  }
+  const resolution = payload.resolution
+  let normalized: ResolveConflictRequest['resolution']
+  if (resolution.kind === 'delete') {
+    normalized = { kind: 'delete' }
+  } else if (resolution.kind === 'side' && (resolution.side === 'current' || resolution.side === 'incoming')) {
+    normalized = { kind: 'side', side: resolution.side }
+  } else if (resolution.kind === 'contents' && typeof resolution.contents === 'string') {
+    if (Buffer.byteLength(resolution.contents) > 64 * 1024 * 1024) {
+      throw new Error('Resolved conflict contents are too large.')
+    }
+    normalized = {
+      kind: 'contents',
+      contents: resolution.contents,
+      format: resolution.format === undefined ? undefined : readDocumentFormatPatch(resolution.format),
+    }
+  } else {
+    throw new Error('Invalid conflict resolution.')
+  }
+  return {
+    sessionId: requiredId(payload.sessionId),
+    entryId: requiredId(payload.entryId),
+    expectedRevision: readConflictRevision(payload.expectedRevision),
+    resolution: normalized,
+  }
+}
+
+function readConflictRevision(value: unknown): ConflictRevision {
+  if (
+    !isRecord(value) ||
+    !isNullableOid(value.baseOid) ||
+    !isNullableOid(value.currentOid) ||
+    !isNullableOid(value.incomingOid)
+  ) {
+    throw new Error('Invalid conflict revision.')
+  }
+  return {
+    baseOid: value.baseOid,
+    currentOid: value.currentOid,
+    incomingOid: value.incomingOid,
+    workingRevision: value.workingRevision === null ? null : readDocumentRevision(value.workingRevision),
+  }
 }
 
 async function readAddRecentSourcePayload(payload: unknown): Promise<{

@@ -38,6 +38,8 @@ import type {
   StartComparisonSearchRequest,
   ApplyPartialChangeRequest,
   ReviewHunkSummary,
+  ConflictDocument,
+  ResolveConflictRequest,
 } from './lib/types'
 
 declare global {
@@ -126,6 +128,11 @@ declare global {
         listHunks(sessionId: string, entryId: string): Promise<ReviewHunkSummary[]>
         applyPartialChange(request: ApplyPartialChangeRequest): Promise<CreateDiffSessionResponse>
         undoOperation(sessionId: string): Promise<CreateDiffSessionResponse>
+      }
+      conflicts: {
+        open(sessionId: string, entryId: string): Promise<ConflictDocument>
+        resolve(request: ResolveConflictRequest): Promise<CreateDiffSessionResponse>
+        undoResolution(sessionId: string): Promise<CreateDiffSessionResponse>
       }
       /** Present only on frameless (Windows) builds. */
       windowControls?: {

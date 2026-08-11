@@ -862,6 +862,7 @@ function addStatusEntries(
       path: item.path,
       oldPath: null,
       status: 'conflicted',
+      conflictKind: readConflictKind(item.xy),
       gitReviewCapabilities: disabledGitReviewCapabilities(),
       srcOid: null,
       dstOid: null,
@@ -930,6 +931,7 @@ interface StatusEntryInput {
   path: string
   oldPath: string | null
   status: DiffEntryStatus
+  conflictKind?: 'UU' | 'AA' | 'UD' | 'DU' | 'AU' | 'UA' | 'DD'
   gitReviewCapabilities: GitWorkingTreeReviewCapabilities
   srcOid: string | null
   dstOid: string | null
@@ -947,6 +949,7 @@ function addStatusEntry(
     oldPath: input.oldPath,
     displayPath: displayPath(input.path, input.oldPath, input.status),
     status: input.status,
+    conflictKind: input.conflictKind,
     scope: input.scope,
     gitReviewCapabilities: input.gitReviewCapabilities,
     leftSize: null,
@@ -971,6 +974,13 @@ function addStatusEntry(
     srcOid: input.srcOid,
     dstOid: input.dstOid,
   })
+}
+
+function readConflictKind(value: string): NonNullable<StatusEntryInput['conflictKind']> {
+  if (value === 'UU' || value === 'AA' || value === 'UD' || value === 'DU' || value === 'AU' || value === 'UA' || value === 'DD') {
+    return value
+  }
+  throw new Error(`Unsupported Git conflict kind: ${value}`)
 }
 
 function gitReviewCapabilitiesForChangedScope(

@@ -53,11 +53,12 @@ export class OperationJournal {
     })
   }
 
-  latest(sessionId: string) {
+  latest(sessionId: string, kind?: OperationJournalEntry['kind']) {
     return this.enqueue(async () => {
       const file = await this.read()
       return [...file.entries].reverse().find((entry) =>
         entry.sessionId === sessionId &&
+        (!kind || entry.kind === kind) &&
         typeof entry.payload === 'object' &&
         entry.payload !== null &&
         'state' in entry.payload &&

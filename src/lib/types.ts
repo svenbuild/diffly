@@ -4,6 +4,7 @@ import type { DiffEntryCapabilities } from './workspace-types'
 export type * from './workspace-types'
 export type * from './search-types'
 export type * from './review-types'
+export type * from './conflict-types'
 
 export type CompareMode = 'file' | 'directory'
 export type SetupMode = 'git' | 'local' | 'github'
@@ -229,6 +230,7 @@ export interface DiffEntry {
   oldPath?: string | null
   displayPath: string
   status: DiffEntryStatus
+  conflictKind?: import('./conflict-types').ConflictKind
   scope?: GitWorkingTreeScope
   gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
   leftSize: number | null
@@ -422,6 +424,7 @@ export interface DirectoryEntryResult {
   diffEntryId?: string
   diffEntryAliasIds?: string[]
   diffEntryStatus?: DiffEntryStatus
+  conflictKind?: import('./conflict-types').ConflictKind
   diffEntryScope?: GitWorkingTreeScope
   gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
   binary?: boolean
