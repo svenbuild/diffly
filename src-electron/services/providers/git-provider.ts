@@ -9,6 +9,9 @@ import type {
   GitWorkingTreeReviewAction,
   GitWorkingTreeReviewCapabilities,
   GitWorkingTreeScope,
+  DocumentTarget,
+  EditableDocument,
+  SaveDocumentRequest,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -30,9 +33,21 @@ import {
   type GitStatusEntry,
   type GitStatusSnapshot,
 } from '../git/git-status'
-import { disposeGitObjectStore } from '../git/git-object-store'
+import { disposeGitObjectStore, readGitObjectByOid } from '../git/git-object-store'
 import { resolveGitCommitRef } from '../git/git-refs'
 import { runGit } from '../git/git-service'
+import {
+  gitWorkingTreeEntryCapabilities,
+  readOnlyEntryCapabilities,
+} from '../diff/capabilities'
+import {
+  encodeDocument,
+  hasTrailingNewline,
+  readLocalDocument,
+  readMemoryDocument,
+} from '../documents/document-reader'
+import { revisionsEqual } from '../documents/document-revision'
+import { StaleDocumentError, writeLocalDocument } from '../documents/document-writer'
 
 const GIT_ENTRY_OPTIONS = {
   maxStdoutBytes: 1024 * 1024 * 8,
@@ -104,6 +119,20 @@ export class GitProvider implements DiffSessionProvider {
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
+  }
+
+  openDocument(
+    session: DiffSessionRecordLike,
+    target: DocumentTarget,
+  ): Promise<EditableDocument> {
+    return openGitDocument(session, target)
+  }
+
+  saveDocument(
+    session: DiffSessionRecordLike,
+    request: SaveDocumentRequest,
+  ): Promise<EditableDocument> {
+    return saveGitDocument(session, request)
   }
 
   async applyGitWorkingTreeAction(
@@ -244,6 +273,200 @@ export class GitProvider implements DiffSessionProvider {
     const snapshot = await readStatusSnapshot(source.repositoryRoot)
     const sessionData = buildWorkingTreeSessionDataFromStatus(source, snapshot)
     return await attachWorkingTreePatches(source.repositoryRoot, sessionData, snapshot)
+  }
+}
+
+async function openGitDocument(
+  session: DiffSessionRecordLike,
+  target: DocumentTarget,
+): Promise<EditableDocument> {
+  const entryId = target.kind === 'scratch' ? target.sourceEntryId : target.entryId
+  const entry = session.entryData.get(entryId)
+  if (!entry || (entry.kind !== 'gitWorkingTree' && entry.kind !== 'gitRef')) {
+    throw new Error('Git diff entry was not found.')
+  }
+
+  if (target.kind === 'gitWorktree') {
+    if (entry.kind !== 'gitWorkingTree') {
+      throw new Error('The document has no working-tree file.')
+    }
+    const path = resolveRepositoryRelativePath(entry.repositoryRoot, entry.path)
+    const index = await readIndexEntry(entry.repositoryRoot, entry.path)
+    return readLocalDocument({
+      path,
+      target,
+      displayPath: entry.path,
+      gitOid: entry.srcOid,
+      indexOid: index?.oid ?? null,
+    })
+  }
+
+  if (target.kind === 'gitIndex') {
+    if (entry.kind !== 'gitWorkingTree') {
+      throw new Error('The document has no Git index version.')
+    }
+    return openGitIndexDocument(entry, target)
+  }
+
+  if (target.kind !== 'scratch') {
+    throw new Error('Invalid Git document target.')
+  }
+
+  if (entry.kind === 'gitRef') {
+    const oid = target.sourceSide === 'left' ? entry.srcOid : entry.dstOid
+    const path = target.sourceSide === 'left' ? entry.oldPath ?? entry.path : entry.path
+    if (!oid) throw new Error('That side of the comparison does not contain a file.')
+    return openGitBlob(entry.repositoryRoot, oid, path, target, true, null)
+  }
+
+  const scratchSource = resolveWorkingTreeScratchSource(entry, target.sourceSide)
+  if (scratchSource.kind === 'worktree') {
+    const document = await readLocalDocument({
+      path: resolveRepositoryRelativePath(entry.repositoryRoot, scratchSource.path),
+      target,
+      displayPath: scratchSource.path,
+      gitOid: entry.srcOid,
+      indexOid: (await readIndexEntry(entry.repositoryRoot, entry.path))?.oid ?? null,
+    })
+    return { ...document, readOnly: true }
+  }
+  return openGitBlob(
+    entry.repositoryRoot,
+    scratchSource.oid,
+    scratchSource.path,
+    target,
+    true,
+    scratchSource.indexOid,
+  )
+}
+
+async function saveGitDocument(
+  session: DiffSessionRecordLike,
+  request: SaveDocumentRequest,
+): Promise<EditableDocument> {
+  const entry = session.entryData.get(request.target.kind === 'scratch' ? request.target.sourceEntryId : request.target.entryId)
+  if (!entry || entry.kind !== 'gitWorkingTree') {
+    throw new Error('Git document is not writable.')
+  }
+
+  if (request.target.kind === 'gitWorktree') {
+    const current = await openGitDocument(session, request.target)
+    return writeLocalDocument({
+      path: resolveRepositoryRelativePath(entry.repositoryRoot, entry.path),
+      target: request.target,
+      displayPath: entry.path,
+      contents: request.contents,
+      expectedRevision: request.expectedRevision,
+      originalFormat: current.format,
+      format: request.format,
+      overwrite: request.overwrite,
+      gitOid: current.revision.gitOid,
+      indexOid: current.revision.indexOid,
+    })
+  }
+
+  if (request.target.kind !== 'gitIndex') {
+    throw new Error('Scratch Git documents must be saved with Save As.')
+  }
+
+  const current = await openGitIndexDocument(entry, request.target)
+  if (!request.overwrite && !revisionsEqual(current.revision, request.expectedRevision)) {
+    throw new StaleDocumentError(current.revision)
+  }
+  const format = {
+    ...current.format,
+    ...request.format,
+    hasTrailingNewline: request.format?.hasTrailingNewline ?? hasTrailingNewline(request.contents),
+  }
+  const bytes = encodeDocument(request.contents, format)
+  const hashed = await runGit(entry.repositoryRoot, ['hash-object', '-w', '--stdin'], {
+    ...GIT_ENTRY_OPTIONS,
+    stdin: bytes,
+  })
+  const oid = hashed.stdout.trim()
+  if (!/^[0-9a-f]{40}$/i.test(oid)) {
+    throw new Error('Git did not return a valid blob id.')
+  }
+  const mode = current.format.mode ?? 0o100644
+  await runGit(entry.repositoryRoot, [
+    'update-index',
+    '--add',
+    '--cacheinfo',
+    mode.toString(8),
+    oid,
+    entry.path,
+  ], GIT_ENTRY_OPTIONS)
+  return openGitIndexDocument(entry, request.target)
+}
+
+async function openGitIndexDocument(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  target: Extract<DocumentTarget, { kind: 'gitIndex' }>,
+) {
+  const index = await readIndexEntry(entry.repositoryRoot, entry.path)
+  if (!index) throw new Error('The file is no longer present in the Git index.')
+  return openGitBlob(
+    entry.repositoryRoot,
+    index.oid,
+    entry.path,
+    target,
+    false,
+    index.oid,
+    index.mode,
+  )
+}
+
+async function openGitBlob(
+  repositoryRoot: string,
+  oid: string,
+  path: string,
+  target: DocumentTarget,
+  readOnly: boolean,
+  indexOid: string | null,
+  mode: number | null = null,
+) {
+  const object = await readGitObjectByOid(repositoryRoot, oid)
+  if (object.kind !== 'object' || object.type !== 'blob') {
+    throw new Error('Git blob was not found.')
+  }
+  return readMemoryDocument({
+    bytes: object.bytes,
+    target,
+    displayPath: path,
+    readOnly,
+    gitOid: oid,
+    indexOid,
+    mode,
+  })
+}
+
+async function readIndexEntry(repositoryRoot: string, path: string) {
+  validateGitActionPath(path)
+  const result = await runGit(repositoryRoot, ['ls-files', '--stage', '-z', '--', path], GIT_ENTRY_OPTIONS)
+  const records = result.stdout.split('\0').filter(Boolean)
+  for (const record of records) {
+    const match = /^(\d{6}) ([0-9a-f]{40}) 0\t([\s\S]+)$/i.exec(record)
+    if (match?.[3] === path) {
+      return { mode: Number.parseInt(match[1], 8), oid: match[2] }
+    }
+  }
+  return null
+}
+
+function resolveWorkingTreeScratchSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  side: 'left' | 'right',
+): { kind: 'worktree'; path: string } | { kind: 'blob'; path: string; oid: string; indexOid: string | null } {
+  if (side === 'right' && entry.scope !== 'staged') {
+    return { kind: 'worktree', path: entry.path }
+  }
+  const oid = side === 'right' ? entry.dstOid : entry.srcOid
+  if (!oid) throw new Error('That side of the comparison does not contain a file.')
+  return {
+    kind: 'blob',
+    path: side === 'left' ? entry.oldPath ?? entry.path : entry.path,
+    oid,
+    indexOid: entry.scope === 'unstaged' || (entry.scope === 'staged' && side === 'right') ? oid : null,
   }
 }
 
@@ -728,6 +951,11 @@ function addStatusEntry(
     gitReviewCapabilities: input.gitReviewCapabilities,
     leftSize: null,
     rightSize: null,
+    capabilities: gitWorkingTreeEntryCapabilities(
+      input.status,
+      input.scope,
+      input.gitReviewCapabilities,
+    ),
   }
 
   entries.push(entry)
@@ -1137,6 +1365,10 @@ function buildGitRefSessionData(
       rightSize: null,
       binary: input.diff.binaryPaths.has(item.path) ||
         Boolean(item.oldPath && input.diff.binaryPaths.has(item.oldPath)),
+      capabilities: readOnlyEntryCapabilities(
+        input.diff.binaryPaths.has(item.path) ||
+          Boolean(item.oldPath && input.diff.binaryPaths.has(item.oldPath)),
+      ),
     }
     entries.push(entry)
     entryData.set(entry.id, {

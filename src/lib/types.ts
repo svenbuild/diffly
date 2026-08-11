@@ -1,4 +1,7 @@
 import type { AppearanceMode, AppearanceSettings } from './theme'
+import type { DiffEntryCapabilities } from './workspace-types'
+
+export type * from './workspace-types'
 
 export type CompareMode = 'file' | 'directory'
 export type SetupMode = 'git' | 'local' | 'github'
@@ -231,6 +234,7 @@ export interface DiffEntry {
   binary?: boolean
   diffPatchText?: string | null
   diffPatchCacheKey?: string | null
+  capabilities: DiffEntryCapabilities
 }
 
 export interface DiffEntryFilter {

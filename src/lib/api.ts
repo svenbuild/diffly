@@ -16,6 +16,10 @@ import type {
   PersistedSession,
   RecentSources,
   UpdateChannel,
+  DocumentTarget,
+  SaveDocumentRequest,
+  SaveDocumentsRequest,
+  SaveDraftRequest,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -151,6 +155,27 @@ export const refreshDiffSession = (sessionId: string): Promise<CreateDiffSession
 
 export const disposeDiffSession = (sessionId: string) =>
   window.diffly.disposeDiffSession(sessionId)
+
+export const openEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.open(target)
+
+export const saveEditableDocument = (request: SaveDocumentRequest) =>
+  window.diffly.documents.save(request)
+
+export const saveEditableDocuments = (request: SaveDocumentsRequest) =>
+  window.diffly.documents.saveAll(request)
+
+export const listDocumentDrafts = () =>
+  window.diffly.documents.listDrafts()
+
+export const loadDocumentDraft = (id: string) =>
+  window.diffly.documents.loadDraft(id)
+
+export const saveDocumentDraft = (draft: SaveDraftRequest) =>
+  window.diffly.documents.saveDraft(draft)
+
+export const deleteDocumentDraft = (id: string) =>
+  window.diffly.documents.deleteDraft(id)
 
 export interface WindowControls {
   minimize(): Promise<void>

@@ -24,6 +24,15 @@ import type {
   UpdateActionResult,
   UpdateChannel,
   UpdateCheckResult,
+  DocumentTarget,
+  EditableDocument,
+  MutationResult,
+  SaveDocumentRequest,
+  SaveDocumentResult,
+  SaveDocumentsRequest,
+  DocumentDraft,
+  DraftSummary,
+  SaveDraftRequest,
 } from './lib/types'
 
 declare global {
@@ -94,6 +103,15 @@ declare global {
       ): Promise<FileDiffResult>
       refreshDiffSession(sessionId: string): Promise<CreateDiffSessionResponse>
       disposeDiffSession(sessionId: string): Promise<void>
+      documents: {
+        open(target: DocumentTarget): Promise<EditableDocument>
+        save(request: SaveDocumentRequest): Promise<MutationResult<SaveDocumentResult>>
+        saveAll(request: SaveDocumentsRequest): Promise<MutationResult<EditableDocument[]>>
+        listDrafts(): Promise<DraftSummary[]>
+        loadDraft(id: string): Promise<DocumentDraft | null>
+        saveDraft(draft: SaveDraftRequest): Promise<DraftSummary>
+        deleteDraft(id: string): Promise<void>
+      }
       /** Present only on frameless (Windows) builds. */
       windowControls?: {
         minimize(): Promise<void>

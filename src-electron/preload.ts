@@ -13,6 +13,15 @@ import type {
   PersistedSession,
   RecentSources,
   UpdateChannel,
+  DocumentTarget,
+  EditableDocument,
+  MutationResult,
+  SaveDocumentRequest,
+  SaveDocumentResult,
+  SaveDocumentsRequest,
+  DocumentDraft,
+  DraftSummary,
+  SaveDraftRequest,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -129,6 +138,22 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:refreshDiffSession', { sessionId }),
   disposeDiffSession: (sessionId: string) =>
     invoke('diffly:disposeDiffSession', { sessionId }),
+  documents: {
+    open: (target: DocumentTarget) =>
+      invoke<EditableDocument>('diffly:documents:open', target),
+    save: (request: SaveDocumentRequest) =>
+      invoke<MutationResult<SaveDocumentResult>>('diffly:documents:save', request),
+    saveAll: (request: SaveDocumentsRequest) =>
+      invoke<MutationResult<EditableDocument[]>>('diffly:documents:saveAll', request),
+    listDrafts: () =>
+      invoke<DraftSummary[]>('diffly:documents:listDrafts'),
+    loadDraft: (id: string) =>
+      invoke<DocumentDraft | null>('diffly:documents:loadDraft', { id }),
+    saveDraft: (draft: SaveDraftRequest) =>
+      invoke<DraftSummary>('diffly:documents:saveDraft', draft),
+    deleteDraft: (id: string) =>
+      invoke<void>('diffly:documents:deleteDraft', { id }),
+  },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.
   windowControls:

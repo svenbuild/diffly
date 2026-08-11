@@ -4,6 +4,8 @@ import type {
   DiffEntryStatus,
   DiffSource,
   FileDiffResult,
+  DocumentTarget,
+  EditableDocument,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -19,6 +21,8 @@ import {
   fetchGithubRawDiff,
   type GithubPullRequestFile,
 } from '../github/github-service'
+import { readOnlyEntryCapabilities } from '../diff/capabilities'
+import { readMemoryDocument } from '../documents/document-reader'
 
 // Serves GitHub diffs through the normal diff session flow. Public PR and
 // compare URLs load from GitHub's raw .diff endpoint, avoiding the low
@@ -80,6 +84,32 @@ export class GithubProvider implements DiffSessionProvider {
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
+  }
+
+  async openDocument(
+    session: DiffSessionRecordLike,
+    target: DocumentTarget,
+  ): Promise<EditableDocument> {
+    if (target.kind !== 'scratch') {
+      throw new Error('GitHub documents are read-only and open as scratch documents.')
+    }
+    const entry = session.entryData.get(target.sourceEntryId)
+    if (!entry || entry.kind !== 'githubPullRequest') {
+      throw new Error('GitHub diff entry was not found.')
+    }
+    const reconstructed = entry.patch ? reconstructPatchText(entry.patch) : null
+    const contents = target.sourceSide === 'left' ? reconstructed?.left : reconstructed?.right
+    if (contents === null || contents === undefined) {
+      throw new Error('GitHub did not provide editable text for this file.')
+    }
+    const path = target.sourceSide === 'left' ? entry.oldPath ?? entry.path : entry.path
+    return readMemoryDocument({
+      bytes: Buffer.from(contents, 'utf8'),
+      target,
+      displayPath: path,
+      readOnly: true,
+      gitOid: target.sourceSide === 'left' ? entry.baseSha : entry.headSha,
+    })
   }
 }
 
@@ -197,6 +227,7 @@ function mapGithubFile(
     status: file.status,
     leftSize: null,
     rightSize: null,
+    capabilities: readOnlyEntryCapabilities(file.status === 'unsupported'),
   }
 }
 

@@ -7,6 +7,9 @@ import type {
   DiffSource,
   FileDiffResult,
   GitWorkingTreeReviewAction,
+  DocumentTarget,
+  EditableDocument,
+  SaveDocumentRequest,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -97,6 +100,25 @@ export class DiffSessionService {
     return session.provider.openEntry(session, entryId, options)
   }
 
+  openDocument(target: DocumentTarget): Promise<EditableDocument> {
+    const session = this.getSession(documentTargetSessionId(target))
+    if (typeof session.provider.openDocument !== 'function') {
+      throw new Error('Documents are unavailable for this source.')
+    }
+    return session.provider.openDocument(session, target)
+  }
+
+  saveDocument(request: SaveDocumentRequest): Promise<EditableDocument> {
+    if (request.target.kind === 'scratch') {
+      throw new Error('Scratch documents must be saved with Save As.')
+    }
+    const session = this.getSession(documentTargetSessionId(request.target))
+    if (typeof session.provider.saveDocument !== 'function') {
+      throw new Error('This source is read-only.')
+    }
+    return session.provider.saveDocument(session, request)
+  }
+
   async refresh(sessionId: string): Promise<CreateDiffSessionResponse> {
     const existing = this.getSession(sessionId)
     const providerData = await existing.provider.refresh(existing)
@@ -157,6 +179,10 @@ export class DiffSessionService {
 
     return session
   }
+}
+
+function documentTargetSessionId(target: DocumentTarget) {
+  return target.kind === 'scratch' ? target.sourceSessionId : target.sessionId
 }
 
 function createUnsupportedProvider(message: string): DiffSessionProvider {

@@ -5,12 +5,14 @@ import { resolve } from 'node:path'
 const DEFAULT_GIT_TIMEOUT_MS = 15_000
 const DEFAULT_GIT_STDOUT_LIMIT_BYTES = 1024 * 1024 * 8
 const DEFAULT_GIT_STDERR_LIMIT_BYTES = 1024 * 1024
+const MAX_GIT_STDIN_BYTES = 64 * 1024 * 1024
 
 export interface GitRunOptions {
   timeoutMs?: number
   maxStdoutBytes?: number
   maxStderrBytes?: number
   allowNonZeroExit?: boolean
+  stdin?: Uint8Array | string
 }
 
 export interface GitRunResult {
@@ -32,6 +34,7 @@ interface NormalizedGitRunOptions {
   maxStdoutBytes: number
   maxStderrBytes: number
   allowNonZeroExit: boolean
+  stdin?: Uint8Array | string
 }
 
 export interface ValidatedGitRunner {
@@ -92,6 +95,10 @@ class GitRunner implements ValidatedGitRunner {
         shell: false,
         windowsHide: true,
       })
+
+      if (runOptions.stdin !== undefined) {
+        child.stdin.end(runOptions.stdin)
+      }
 
       const stdoutChunks: Buffer[] = []
       const stderrChunks: Buffer[] = []
@@ -255,6 +262,12 @@ function validateGitArgs(args: string[]) {
 }
 
 function normalizeGitRunOptions(options?: GitRunOptions): NormalizedGitRunOptions {
+  if (
+    options?.stdin !== undefined &&
+    Buffer.byteLength(options.stdin) > MAX_GIT_STDIN_BYTES
+  ) {
+    throw new Error('Git stdin exceeds the supported size limit.')
+  }
   return {
     timeoutMs: normalizePositiveNumber(
       options?.timeoutMs,
@@ -272,6 +285,7 @@ function normalizeGitRunOptions(options?: GitRunOptions): NormalizedGitRunOption
       'Git stderr buffer limit must be a positive number.',
     ),
     allowNonZeroExit: options?.allowNonZeroExit === true,
+    stdin: options?.stdin,
   }
 }
 
