@@ -38,6 +38,7 @@
   }
   export let transitionActive = false
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void = () => {}
+  export let calculateAllStats = false
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
@@ -72,6 +73,7 @@
       {rightPath}
       {compareOptions}
       {onDiffStatsChange}
+      {calculateAllStats}
       {onSystemMonitorChange}
       {resolveEntryBases}
       {detailLoader}

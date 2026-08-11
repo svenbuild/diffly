@@ -5,6 +5,7 @@
     plannedFileOperations,
     plannedOperationNotice,
   } from './file-operation-preview'
+  import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
   import type {
     CompareTreeSettings,
@@ -33,6 +34,18 @@
 
   function formatNumber(value: number) {
     return numberFormatter.format(Math.max(0, Math.round(value)))
+  }
+
+  $: knownStatsFiles = directoryEntries.filter(isDiffableDirectoryEntry).length
+  $: displayedStatsFiles = knownStatsFiles
+  $: displayedCalculatedFiles = Math.min(diffStats.calculatedFiles, displayedStatsFiles)
+  $: statsCalculating =
+    diffStats.calculating ||
+    (activePanel === 'diffStats' && displayedCalculatedFiles < displayedStatsFiles)
+  $: hasCalculatedStats = displayedCalculatedFiles > 0
+
+  function formatDiffMetric(value: number) {
+    return statsCalculating && !hasCalculatedStats ? '—' : formatNumber(value)
   }
 </script>
 
@@ -138,22 +151,31 @@
         aria-hidden={activePanel !== 'diffStats'}
       >
         <div class="sidebar-metric-reveal-inner">
+          {#if statsCalculating}
+            <p class="diff-stats-progress" role="status">
+              <span class="refresh-spinner visible" aria-hidden="true"></span>
+              Calculating…
+              {#if displayedStatsFiles > 0}
+                <span>{displayedCalculatedFiles}/{displayedStatsFiles} files</span>
+              {/if}
+            </p>
+          {/if}
           <dl class="sidebar-metric-list">
             <div>
               <dt>Files</dt>
-              <dd>{formatNumber(diffStats.files)}</dd>
+              <dd>{formatNumber(displayedStatsFiles)}</dd>
             </div>
             <div>
               <dt>Additions</dt>
-              <dd class="metric-additions">{formatNumber(diffStats.additions)}</dd>
+              <dd class="metric-additions">{formatDiffMetric(diffStats.additions)}</dd>
             </div>
             <div>
               <dt>Deletions</dt>
-              <dd class="metric-deletions">{formatNumber(diffStats.deletions)}</dd>
+              <dd class="metric-deletions">{formatDiffMetric(diffStats.deletions)}</dd>
             </div>
             <div>
               <dt>Lines</dt>
-              <dd>{formatNumber(diffStats.lines)}</dd>
+              <dd>{formatDiffMetric(diffStats.lines)}</dd>
             </div>
           </dl>
         </div>

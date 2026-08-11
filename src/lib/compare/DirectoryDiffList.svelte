@@ -8,7 +8,11 @@
     finishCompareTimingOnNextFrame,
     markCompareTimingOnce,
   } from '../app/compare-timing'
-  import { EMPTY_DIFF_STATS, buildTextDiffStats } from '../app/diff-stats'
+  import {
+    EMPTY_DIFF_STATS,
+    buildDiffStatsSnapshot,
+    buildTextDiffStats,
+  } from '../app/diff-stats'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -61,6 +65,7 @@
     ignoreCase: false,
   }
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void = () => {}
+  export let calculateAllStats = false
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void = () => {}
   export let resolveEntryBases: (relativePath: string) => {
     leftBase: string
@@ -127,6 +132,7 @@
     lines: number
     signature: string
   }>()
+  let resolvedDiffStatsKeys = new Set<string>()
   let pendingDiffStats = new Map<string, PendingDiffStats>()
   let diffStatsTotals: DiffStatsSnapshot = { ...EMPTY_DIFF_STATS }
   let childSystemMonitor: SystemMonitorSnapshot = { ...EMPTY_SYSTEM_MONITOR }
@@ -342,16 +348,24 @@
   }
 
   function publishDiffStats() {
-    onDiffStatsChange({
-      files: directoryEntries.filter(isDiffableDirectoryEntry).length,
-      additions: diffStatsTotals.additions,
-      deletions: diffStatsTotals.deletions,
-      lines: diffStatsTotals.lines,
-    })
+    const activeKeys = directoryEntries
+      .filter(isDiffableDirectoryEntry)
+      .map(entryDetailKey)
+    const calculatedFiles = activeKeys.reduce(
+      (count, key) => count + (resolvedDiffStatsKeys.has(key) ? 1 : 0),
+      0,
+    )
+    onDiffStatsChange(buildDiffStatsSnapshot(
+      activeKeys.length,
+      calculatedFiles,
+      calculateAllStats,
+      diffStatsTotals,
+    ))
   }
 
   function resetDiffStats() {
     diffStatsByEntryKey = new Map()
+    resolvedDiffStatsKeys = new Set()
     diffStatsTotals = { ...EMPTY_DIFF_STATS }
     publishDiffStats()
   }
@@ -365,12 +379,21 @@
       }
 
       diffStatsTotals = {
+        ...diffStatsTotals,
         files: 0,
         additions: diffStatsTotals.additions - stats.additions,
         deletions: diffStatsTotals.deletions - stats.deletions,
         lines: diffStatsTotals.lines - stats.lines,
       }
       diffStatsByEntryKey.delete(key)
+      changed = true
+    }
+
+    const nextResolvedKeys = new Set(
+      Array.from(resolvedDiffStatsKeys).filter((key) => activeKeys.has(key)),
+    )
+    if (nextResolvedKeys.size !== resolvedDiffStatsKeys.size) {
+      resolvedDiffStatsKeys = nextResolvedKeys
       changed = true
     }
 
@@ -381,6 +404,7 @@
 
   function trackDiffStats(entry: DirectoryEntryResult, diff: FileDiffResult | null) {
     if (!diff?.text) {
+      markDiffStatsResolved(entry)
       return
     }
 
@@ -392,12 +416,24 @@
     }
 
     diffStatsByEntryKey.set(key, stats)
+    resolvedDiffStatsKeys = new Set(resolvedDiffStatsKeys).add(key)
     diffStatsTotals = {
+      ...diffStatsTotals,
       files: 0,
       additions: diffStatsTotals.additions + stats.additions - (previous?.additions ?? 0),
       deletions: diffStatsTotals.deletions + stats.deletions - (previous?.deletions ?? 0),
       lines: diffStatsTotals.lines + stats.lines - (previous?.lines ?? 0),
     }
+    publishDiffStats()
+  }
+
+  function markDiffStatsResolved(entry: DirectoryEntryResult) {
+    const key = entryDetailKey(entry)
+    if (resolvedDiffStatsKeys.has(key)) {
+      return
+    }
+
+    resolvedDiffStatsKeys = new Set(resolvedDiffStatsKeys).add(key)
     publishDiffStats()
   }
 
@@ -431,6 +467,7 @@
 
   function queueDiffStats(entry: DirectoryEntryResult, diff: FileDiffResult | null) {
     if (!diff?.text) {
+      markDiffStatsResolved(entry)
       return
     }
 
@@ -555,6 +592,7 @@
     }
 
     if (state?.error && state.revision === loadRevision) {
+      markDiffStatsResolved(entry)
       return
     }
 
@@ -589,6 +627,7 @@
             loading: false,
             revision: loadRevision,
           })
+          markDiffStatsResolved(entry)
           return
         }
         diff = await openDiffEntry(detailLoader.sessionId, entry.diffEntryId, compareOptions)
@@ -639,6 +678,7 @@
         loading: false,
         revision: loadRevision,
       })
+      markDiffStatsResolved(entry)
     }
   }
 
@@ -659,6 +699,43 @@
     }
 
     loadQueueKeys.add(path)
+    publishDirectorySystemMonitorStats()
+    pumpLoadQueue()
+  }
+
+  function scheduleAllStatsLoads() {
+    if (!calculateAllStats) {
+      return
+    }
+
+    for (const entry of directoryEntries) {
+      if (!isDiffableDirectoryEntry(entry)) {
+        continue
+      }
+
+      const detailKey = entryDetailKey(entry)
+      if (resolvedDiffStatsKeys.has(detailKey)) {
+        continue
+      }
+
+      const state = getEntryState(entry)
+      if (state?.diff) {
+        queueDiffStats(entry, state.diff)
+        continue
+      }
+      if (state?.error) {
+        markDiffStatsResolved(entry)
+        continue
+      }
+      if (state?.loading || loadQueueKeys.has(entry.relativePath)) {
+        continue
+      }
+
+      normalLoadQueue.push(entry.relativePath)
+      loadQueueKeys.add(entry.relativePath)
+    }
+
+    publishDiffStats()
     publishDirectorySystemMonitorStats()
     pumpLoadQueue()
   }
@@ -1119,6 +1196,12 @@
     scheduleActiveLoads()
 
   $: selectedRelativePath, scheduleSelectedEntryWindow(selectedRelativePath)
+  $: calculateAllStats,
+    directoryEntries,
+    entryByPath,
+    revision,
+    loadGeneration,
+    scheduleAllStatsLoads()
   $: hasRenderableDirectoryItems = textEntries.length > 0
   $: hasDiffableDirectoryItems = directoryEntries.some(isDiffableDirectoryEntry)
   $: if (!loading && detailLoader.kind === 'localPaths' && hasRenderableDirectoryItems) {

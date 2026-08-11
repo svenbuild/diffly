@@ -7,11 +7,38 @@ interface TextDiffStats {
   lines: number
 }
 
+type DiffStatsTotals = Pick<DiffStatsSnapshot, 'additions' | 'deletions' | 'lines'>
+
 export const EMPTY_DIFF_STATS: DiffStatsSnapshot = {
   files: 0,
+  calculatedFiles: 0,
+  calculating: false,
   additions: 0,
   deletions: 0,
   lines: 0,
+}
+
+export function buildDiffStatsSnapshot(
+  files: number,
+  calculatedFiles: number,
+  calculationRequested: boolean,
+  totals: DiffStatsTotals,
+): DiffStatsSnapshot {
+  const normalizedFiles = Math.max(0, Math.trunc(files))
+  const normalizedCalculatedFiles = Math.min(
+    normalizedFiles,
+    Math.max(0, Math.trunc(calculatedFiles)),
+  )
+
+  return {
+    files: normalizedFiles,
+    calculatedFiles: normalizedCalculatedFiles,
+    calculating:
+      calculationRequested && normalizedCalculatedFiles < normalizedFiles,
+    additions: totals.additions,
+    deletions: totals.deletions,
+    lines: totals.lines,
+  }
 }
 
 function countTextLines(contents: string, hasTrailingNewline: boolean) {

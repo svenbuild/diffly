@@ -253,6 +253,8 @@
   $: gitScopeCounts = countGitEntriesByScope(gitScopeEntries)
   let diffStats: DiffStatsSnapshot = {
     files: 0,
+    calculatedFiles: 0,
+    calculating: false,
     additions: 0,
     deletions: 0,
     lines: 0,
@@ -364,6 +366,8 @@
   function resetCompareMetrics() {
     diffStats = {
       files: 0,
+      calculatedFiles: 0,
+      calculating: false,
       additions: 0,
       deletions: 0,
       lines: 0,

@@ -405,6 +405,7 @@
         compareOptions={activeCompareOptions}
         transitionActive={compareSurfaceTransitioning}
         {onDiffStatsChange}
+        calculateAllStats={activeSidebarPanel === 'diffStats'}
         {onSystemMonitorChange}
         resolveEntryBases={getDetailBasesForPath}
         reviewModeEnabled={$reviewModeEnabled}

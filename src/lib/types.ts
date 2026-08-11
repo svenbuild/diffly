@@ -467,6 +467,8 @@ export interface FileDiffResult {
 
 export interface DiffStatsSnapshot {
   files: number
+  calculatedFiles: number
+  calculating: boolean
   additions: number
   deletions: number
   lines: number

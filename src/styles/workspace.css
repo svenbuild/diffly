@@ -1260,6 +1260,31 @@ img.diffly-comment-avatar {
   padding: 0 12px 8px;
 }
 
+.diff-stats-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 12px 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.diff-stats-progress .refresh-spinner {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-width: 1.5px;
+}
+
+.diff-stats-progress > span:last-child:not(.refresh-spinner) {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
+
 .sidebar-metric-list div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;

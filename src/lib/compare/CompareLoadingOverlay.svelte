@@ -1,18 +1,11 @@
 <script lang="ts">
   import type { CompareLoadingState } from '../app/compare-timing'
+  import {
+    compareLoadingCopy,
+    compareLoadingStageLabel,
+  } from './compare-loading-labels'
 
   const SLOW_HINT_MS = 12000
-  const STAGE_LABELS: Record<string, string> = {
-    'compare-start': 'Starting compare',
-    'session-request-start': 'Asking backend',
-    'session-created': 'Building file list',
-    'entries-published': 'Opening first file',
-    'first-entry-load-start': 'Loading first file',
-    'first-entry-loaded': 'Reading first file',
-    'first-text-entry-loaded': 'Preparing text diff',
-    'first-pierre-parse-start': 'Parsing first diff',
-    'first-pierre-parse-end': 'Handing diff to renderer',
-  }
 
   export let state: CompareLoadingState = {
     active: false,
@@ -23,20 +16,10 @@
     startedAt: 0,
   }
 
-  $: stageLabel = STAGE_LABELS[state.stage] ?? normalizeStageLabel(state.stage)
+  $: loadingCopy = compareLoadingCopy(state.label)
+  $: stageLabel = compareLoadingStageLabel(state.stage)
   $: elapsedLabel = formatElapsed(state.elapsedMs)
   $: showSlowHint = state.elapsedMs >= SLOW_HINT_MS
-
-  function normalizeStageLabel(stage: string) {
-    if (!stage) {
-      return 'Preparing compare'
-    }
-
-    return stage
-      .replace(/^first-/, '')
-      .replace(/-/g, ' ')
-      .replace(/^\w/, (character) => character.toUpperCase())
-  }
 
   function formatElapsed(elapsedMs: number) {
     const seconds = Math.max(0, elapsedMs / 1000)
@@ -68,15 +51,15 @@
       </div>
 
       <div class="loading-copy">
-        <p class="loading-kicker">{state.label || 'Compare'}</p>
-        <h2>Sorting the first diff blocks</h2>
+        <p class="loading-kicker">{loadingCopy.context}</p>
+        <h2>{loadingCopy.title}</h2>
         <p class="loading-stage">
           <span>{stageLabel}</span>
           <span aria-hidden="true">|</span>
           <span>{elapsedLabel}</span>
         </p>
         {#if showSlowHint}
-          <p class="loading-hint">Still waiting for Pierre to paint the first file.</p>
+          <p class="loading-hint">This is taking longer than usual. Large files or repositories may need more time.</p>
         {/if}
       </div>
     </div>
@@ -254,7 +237,11 @@
     min-width: 0;
     flex-wrap: wrap;
     gap: 6px;
+  }
+
+  .loading-stage > span:last-child {
     font-family: var(--font-code);
+    font-variant-numeric: tabular-nums;
   }
 
   .loading-hint {

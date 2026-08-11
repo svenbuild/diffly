@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TextDiffPayload } from '../types'
-import { buildTextDiffStats } from './diff-stats'
+import { buildDiffStatsSnapshot, buildTextDiffStats } from './diff-stats'
 
 function textPayload(overrides: Partial<TextDiffPayload>): TextDiffPayload {
   return {
@@ -43,5 +43,30 @@ describe('buildTextDiffStats', () => {
     expect(stats.additions).toBe(2)
     expect(stats.deletions).toBe(1)
     expect(stats.lines).toBe(3)
+  })
+})
+
+describe('buildDiffStatsSnapshot', () => {
+  it('marks requested partial totals as calculating', () => {
+    expect(buildDiffStatsSnapshot(12, 3, true, {
+      additions: 8,
+      deletions: 2,
+      lines: 40,
+    })).toEqual({
+      files: 12,
+      calculatedFiles: 3,
+      calculating: true,
+      additions: 8,
+      deletions: 2,
+      lines: 40,
+    })
+  })
+
+  it('finishes after every file is resolved', () => {
+    expect(buildDiffStatsSnapshot(2, 2, true, {
+      additions: 1,
+      deletions: 1,
+      lines: 4,
+    }).calculating).toBe(false)
   })
 })
