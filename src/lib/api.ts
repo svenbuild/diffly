@@ -23,6 +23,10 @@ import type {
   StartComparisonSearchRequest,
   ApplyPartialChangeRequest,
   ResolveConflictRequest,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReviewBundle,
+  ReviewAuthor,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -206,6 +210,45 @@ export const resolveConflict = (request: ResolveConflictRequest) =>
 
 export const undoConflictResolution = (sessionId: string) =>
   window.diffly.conflicts.undoResolution(sessionId)
+
+export const listReviewThreads = (sessionId: string, entryId?: string) =>
+  window.diffly.review.listThreads(sessionId, entryId)
+
+export const createReviewThread = (request: CreateReviewThreadRequest) =>
+  window.diffly.review.createThread(request)
+
+export const replyReviewThread = (request: ReplyReviewThreadRequest) =>
+  window.diffly.review.reply(request)
+
+export const editReviewComment = (sessionId: string, threadId: string, commentId: string, body: string) =>
+  window.diffly.review.editComment(sessionId, threadId, commentId, body)
+
+export const deleteReviewComment = (sessionId: string, threadId: string, commentId: string) =>
+  window.diffly.review.deleteComment(sessionId, threadId, commentId)
+
+export const resolveReviewThread = (sessionId: string, threadId: string) =>
+  window.diffly.review.resolveThread(sessionId, threadId)
+
+export const reopenReviewThread = (sessionId: string, threadId: string) =>
+  window.diffly.review.reopenThread(sessionId, threadId)
+
+export const exportReviewBundle = (sessionId: string) =>
+  window.diffly.review.export(sessionId)
+
+export const importReviewBundle = (sessionId: string, bundle: ReviewBundle) =>
+  window.diffly.review.import(sessionId, bundle)
+
+export const getReviewProfile = () => window.diffly.review.getProfile()
+
+export const saveReviewProfile = (author: ReviewAuthor) => window.diffly.review.saveProfile(author)
+
+export const listReviewDrafts = (sessionId: string) => window.diffly.review.listDrafts(sessionId)
+
+export const saveReviewDraft = (sessionId: string, key: string, body: string) =>
+  window.diffly.review.saveDraft(sessionId, key, body)
+
+export const deleteReviewDraft = (sessionId: string, key: string) =>
+  window.diffly.review.deleteDraft(sessionId, key)
 
 export interface WindowControls {
   minimize(): Promise<void>

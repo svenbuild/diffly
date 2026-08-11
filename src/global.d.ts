@@ -40,6 +40,12 @@ import type {
   ReviewHunkSummary,
   ConflictDocument,
   ResolveConflictRequest,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReviewBundle,
+  ReviewThread,
+  ReviewAuthor,
+  ReviewCommentDraft,
 } from './lib/types'
 
 declare global {
@@ -128,6 +134,20 @@ declare global {
         listHunks(sessionId: string, entryId: string): Promise<ReviewHunkSummary[]>
         applyPartialChange(request: ApplyPartialChangeRequest): Promise<CreateDiffSessionResponse>
         undoOperation(sessionId: string): Promise<CreateDiffSessionResponse>
+        listThreads(sessionId: string, entryId?: string): Promise<ReviewThread[]>
+        createThread(request: CreateReviewThreadRequest): Promise<ReviewThread>
+        reply(request: ReplyReviewThreadRequest): Promise<ReviewThread>
+        editComment(sessionId: string, threadId: string, commentId: string, body: string): Promise<ReviewThread>
+        deleteComment(sessionId: string, threadId: string, commentId: string): Promise<ReviewThread | null>
+        resolveThread(sessionId: string, threadId: string): Promise<ReviewThread>
+        reopenThread(sessionId: string, threadId: string): Promise<ReviewThread>
+        export(sessionId: string): Promise<{ json: string; markdown: string; bundle: ReviewBundle }>
+        import(sessionId: string, bundle: ReviewBundle): Promise<ReviewThread[]>
+        getProfile(): Promise<ReviewAuthor>
+        saveProfile(author: ReviewAuthor): Promise<ReviewAuthor>
+        listDrafts(sessionId: string): Promise<ReviewCommentDraft[]>
+        saveDraft(sessionId: string, key: string, body: string): Promise<ReviewCommentDraft>
+        deleteDraft(sessionId: string, key: string): Promise<void>
       }
       conflicts: {
         open(sessionId: string, entryId: string): Promise<ConflictDocument>

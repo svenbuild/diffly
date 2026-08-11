@@ -45,7 +45,7 @@
   import { comparisonSearch } from '../search/search-store'
   import { workspaceSearchController } from '../search/search-controller'
   import type { SearchMatch } from '../search-types'
-  import HunkReviewPanel from '../review/HunkReviewPanel.svelte'
+  import ReviewWorkspacePanel from '../review/ReviewWorkspacePanel.svelte'
   import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
 
   export let updateIndicatorState: UpdateIndicatorState
@@ -279,6 +279,12 @@
         match.endColumn,
       )
     }
+  }
+
+  async function navigateToReviewThread(side: 'deletions' | 'additions', lineNumber: number) {
+    window.dispatchEvent(new CustomEvent('diffly:scroll-to-diff-line', {
+      detail: { entryId: selectedEntryId, side, lineNumber },
+    }))
   }
 </script>
 
@@ -583,12 +589,14 @@
       />
     {/if}
     {#if showHunkReviewPanel && activeDiffSessionId && selectedEntryId}
-      <HunkReviewPanel
+      <ReviewWorkspacePanel
         sessionId={activeDiffSessionId}
         entryId={selectedEntryId}
+        entryPath={selectedRelativePath || activeDiff?.rightLabel || activeDiff?.leftLabel || ''}
         sourceKind={activeDiffSource?.kind === 'local' ? 'local' : 'git'}
         {gitScope}
         onApplied={runCompare}
+        onNavigateThread={navigateToReviewThread}
       />
     {/if}
   </section>

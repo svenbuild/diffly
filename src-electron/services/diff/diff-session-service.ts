@@ -108,6 +108,13 @@ export class DiffSessionService {
     return this.getSession(sessionId).source
   }
 
+  getEntry(sessionId: string, entryId: string) {
+    const session = this.getSession(sessionId)
+    const entry = session.entries.find((item) => item.id === entryId)
+    if (!entry) throw new Error('Diff entry was not found.')
+    return entry
+  }
+
   listSearchDocuments(sessionId: string): SearchDocumentDescriptor[] {
     const session = this.getSession(sessionId)
     const documents: SearchDocumentDescriptor[] = []

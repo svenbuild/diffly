@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import {
     CodeView,
     parseDiffFromFile,
@@ -1435,6 +1435,31 @@
       scheduleVisibleEntryRequest()
     }
   }
+
+  function handleReviewThreadNavigation(event: Event) {
+    const detail = (event as CustomEvent<{
+      entryId?: string | null
+      side?: 'deletions' | 'additions'
+      lineNumber?: number
+    }>).detail
+    if (!detail || !Number.isSafeInteger(detail.lineNumber) || !detail.side) return
+    const item = entries.find((candidate) => candidate.entry.diffEntryId === detail.entryId)
+    const id = item?.entry.relativePath ?? selectedRelativePath
+    if (!id || !codeView?.getItem(id)) return
+    codeView.scrollTo({
+      type: 'line',
+      id,
+      lineNumber: detail.lineNumber!,
+      side: detail.side,
+      align: 'center',
+      behavior: 'smooth-auto',
+    })
+  }
+
+  onMount(() => {
+    window.addEventListener('diffly:scroll-to-diff-line', handleReviewThreadNavigation)
+    return () => window.removeEventListener('diffly:scroll-to-diff-line', handleReviewThreadNavigation)
+  })
 
   $: host,
     syncNativeScrollHandling()

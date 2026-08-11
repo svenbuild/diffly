@@ -25,6 +25,11 @@ import type {
   PartialChangeSelection,
   ResolveConflictRequest,
   ConflictRevision,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReviewAuthor,
+  ReviewBundle,
+  ReviewThread,
 } from '../../src/lib/types'
 
 interface CompareServices {
@@ -35,6 +40,7 @@ interface CompareServices {
   searchService: import('./search/search-service').SearchService
   partialApplyService: import('./review/partial-apply-service').PartialApplyService
   conflictService: import('./conflicts/conflict-service').ConflictService
+  reviewService: import('./review/review-service').ReviewService
 }
 
 let compareServicesPromise: Promise<CompareServices> | null = null
@@ -228,6 +234,75 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:conflicts:undoResolution', async (_event, payload: unknown) => {
     const { conflictService } = await loadCompareServices()
     return conflictService.undoResolution(readSessionId(payload))
+  })
+  ipcMain.handle('diffly:review:listThreads', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid review list payload.')
+    const { reviewService } = await loadCompareServices()
+    return reviewService.listThreads(
+      requiredId(payload.sessionId),
+      payload.entryId === undefined ? undefined : requiredId(payload.entryId),
+    )
+  })
+  ipcMain.handle('diffly:review:createThread', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.createThread(readCreateReviewThreadRequest(payload))
+  })
+  ipcMain.handle('diffly:review:reply', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.reply(readReplyReviewThreadRequest(payload))
+  })
+  ipcMain.handle('diffly:review:editComment', async (_event, payload: unknown) => {
+    const value = readCommentMutation(payload, true)
+    const { reviewService } = await loadCompareServices()
+    return reviewService.editComment(value.sessionId, value.threadId, value.commentId, value.body!)
+  })
+  ipcMain.handle('diffly:review:deleteComment', async (_event, payload: unknown) => {
+    const value = readCommentMutation(payload, false)
+    const { reviewService } = await loadCompareServices()
+    return reviewService.deleteComment(value.sessionId, value.threadId, value.commentId)
+  })
+  ipcMain.handle('diffly:review:resolveThread', async (_event, payload: unknown) => {
+    const value = readThreadMutation(payload)
+    const { reviewService } = await loadCompareServices()
+    return reviewService.setThreadState(value.sessionId, value.threadId, 'resolved')
+  })
+  ipcMain.handle('diffly:review:reopenThread', async (_event, payload: unknown) => {
+    const value = readThreadMutation(payload)
+    const { reviewService } = await loadCompareServices()
+    return reviewService.setThreadState(value.sessionId, value.threadId, 'open')
+  })
+  ipcMain.handle('diffly:review:export', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.export(readSessionId(payload))
+  })
+  ipcMain.handle('diffly:review:import', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid review import payload.')
+    const { reviewService } = await loadCompareServices()
+    return reviewService.import(requiredId(payload.sessionId), readReviewBundle(payload.bundle))
+  })
+  ipcMain.handle('diffly:review:getProfile', async () => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.getProfile()
+  })
+  ipcMain.handle('diffly:review:saveProfile', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.saveProfile(readReviewAuthor(payload))
+  })
+  ipcMain.handle('diffly:review:listDrafts', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.listDrafts(readSessionId(payload))
+  })
+  ipcMain.handle('diffly:review:saveDraft', async (_event, payload: unknown) => {
+    if (!isRecord(payload) || typeof payload.body !== 'string' || Buffer.byteLength(payload.body) > 256 * 1024) {
+      throw new Error('Invalid review draft payload.')
+    }
+    const { reviewService } = await loadCompareServices()
+    return reviewService.saveDraft(requiredId(payload.sessionId), requiredId(payload.key), payload.body)
+  })
+  ipcMain.handle('diffly:review:deleteDraft', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid review draft payload.')
+    const { reviewService } = await loadCompareServices()
+    return reviewService.removeDraft(requiredId(payload.sessionId), requiredId(payload.key))
   })
 }
 
@@ -476,6 +551,9 @@ async function loadCompareServices() {
       import('./review/partial-apply-service'),
       import('./review/operation-journal'),
       import('./conflicts/conflict-service'),
+      import('./review/review-service'),
+      import('./review/review-store'),
+      import('./review/review-preferences-store'),
       import('./providers/github-provider'),
       import('./providers/git-provider'),
       import('./providers/local-provider'),
@@ -487,6 +565,9 @@ async function loadCompareServices() {
       { PartialApplyService },
       { OperationJournal },
       { ConflictService },
+      { ReviewService },
+      { ReviewStore },
+      { ReviewPreferencesStore },
       { GithubProvider },
       { GitProvider },
       { LocalProvider },
@@ -505,6 +586,9 @@ async function loadCompareServices() {
       const operationJournal = new OperationJournal(join(app.getPath('userData'), 'operations'))
       const partialApplyService = new PartialApplyService(diffSessionService, operationJournal)
       const conflictService = new ConflictService(diffSessionService, operationJournal)
+      const reviewStore = new ReviewStore(join(app.getPath('userData'), 'reviews'))
+      const reviewPreferences = new ReviewPreferencesStore(join(app.getPath('userData'), 'reviews'))
+      const reviewService = new ReviewService(diffSessionService, reviewStore, reviewPreferences)
 
       return {
         diffSessionService,
@@ -514,6 +598,7 @@ async function loadCompareServices() {
         searchService,
         partialApplyService,
         conflictService,
+        reviewService,
       }
     })
   }
@@ -851,6 +936,125 @@ function readConflictRevision(value: unknown): ConflictRevision {
     incomingOid: value.incomingOid,
     workingRevision: value.workingRevision === null ? null : readDocumentRevision(value.workingRevision),
   }
+}
+
+export function readCreateReviewThreadRequest(payload: unknown): CreateReviewThreadRequest {
+  if (!isRecord(payload) || (payload.side !== 'deletions' && payload.side !== 'additions')) {
+    throw new Error('Invalid create review thread payload.')
+  }
+  return {
+    sessionId: requiredId(payload.sessionId),
+    entryId: requiredId(payload.entryId),
+    side: payload.side,
+    lineNumber: readPositiveInteger(payload.lineNumber, 'Invalid review line number.'),
+    body: readReviewBody(payload.body),
+    author: readReviewAuthor(payload.author),
+  }
+}
+
+export function readReplyReviewThreadRequest(payload: unknown): ReplyReviewThreadRequest {
+  if (!isRecord(payload)) throw new Error('Invalid review reply payload.')
+  return {
+    sessionId: requiredId(payload.sessionId),
+    threadId: requiredId(payload.threadId),
+    body: readReviewBody(payload.body),
+    author: readReviewAuthor(payload.author),
+  }
+}
+
+function readReviewAuthor(value: unknown): ReviewAuthor {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' || !value.id || value.id.length > 256 ||
+    typeof value.name !== 'string' || !value.name.trim() || value.name.length > 256 ||
+    (value.avatar !== null && (typeof value.avatar !== 'string' || value.avatar.length > 1024 * 1024))
+  ) {
+    throw new Error('Invalid review author.')
+  }
+  return { id: value.id, name: value.name.trim(), avatar: value.avatar }
+}
+
+function readReviewBody(value: unknown) {
+  if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value) > 256 * 1024) {
+    throw new Error('Invalid review comment body.')
+  }
+  return value
+}
+
+function readThreadMutation(payload: unknown) {
+  if (!isRecord(payload)) throw new Error('Invalid review thread mutation.')
+  return { sessionId: requiredId(payload.sessionId), threadId: requiredId(payload.threadId) }
+}
+
+function readCommentMutation(payload: unknown, requiresBody: boolean) {
+  if (!isRecord(payload)) throw new Error('Invalid review comment mutation.')
+  return {
+    ...readThreadMutation(payload),
+    commentId: requiredId(payload.commentId),
+    body: requiresBody ? readReviewBody(payload.body) : undefined,
+  }
+}
+
+function readReviewBundle(value: unknown): ReviewBundle {
+  if (
+    !isRecord(value) || value.schemaVersion !== 1 ||
+    typeof value.compareIdentity !== 'string' || !/^[a-f0-9]{64}$/.test(value.compareIdentity) ||
+    typeof value.exportedAt !== 'string' || !Array.isArray(value.threads) || value.threads.length > 100_000
+  ) {
+    throw new Error('Invalid review bundle.')
+  }
+  const threads: ReviewThread[] = value.threads.map((thread): ReviewThread => {
+    if (!isRecord(thread) || !isRecord(thread.anchor) || !Array.isArray(thread.comments)) {
+      throw new Error('Invalid review thread in bundle.')
+    }
+    if (
+      thread.compareIdentity !== value.compareIdentity ||
+      typeof thread.entryIdentity !== 'string' || !/^[a-f0-9]{64}$/.test(thread.entryIdentity) ||
+      (thread.state !== 'open' && thread.state !== 'resolved' && thread.state !== 'outdated') ||
+      (thread.anchor.side !== 'deletions' && thread.anchor.side !== 'additions') ||
+      typeof thread.anchor.revision !== 'string' ||
+      typeof thread.anchor.lineHash !== 'string' || !/^[a-f0-9]{64}$/.test(thread.anchor.lineHash) ||
+      !Array.isArray(thread.anchor.contextBefore) || !thread.anchor.contextBefore.every((item) => typeof item === 'string') ||
+      !Array.isArray(thread.anchor.contextAfter) || !thread.anchor.contextAfter.every((item) => typeof item === 'string')
+    ) {
+      throw new Error('Invalid review thread metadata in bundle.')
+    }
+    return {
+      id: requiredId(thread.id),
+      compareIdentity: value.compareIdentity as string,
+      entryIdentity: thread.entryIdentity,
+      anchor: {
+        side: thread.anchor.side as ReviewThread['anchor']['side'],
+        lineNumber: readPositiveInteger(thread.anchor.lineNumber, 'Invalid review anchor line.'),
+        revision: thread.anchor.revision,
+        lineHash: thread.anchor.lineHash,
+        contextBefore: thread.anchor.contextBefore,
+        contextAfter: thread.anchor.contextAfter,
+      },
+      state: thread.state as ReviewThread['state'],
+      comments: thread.comments.map((comment) => {
+        if (!isRecord(comment) || typeof comment.createdAt !== 'string' ||
+          (comment.editedAt !== null && typeof comment.editedAt !== 'string')) {
+          throw new Error('Invalid review comment in bundle.')
+        }
+        return {
+          id: requiredId(comment.id),
+          author: readReviewAuthor(comment.author),
+          body: readReviewBody(comment.body),
+          createdAt: comment.createdAt,
+          editedAt: comment.editedAt,
+        }
+      }),
+      createdAt: typeof thread.createdAt === 'string' ? thread.createdAt : '',
+      updatedAt: typeof thread.updatedAt === 'string' ? thread.updatedAt : '',
+    }
+  })
+  return { schemaVersion: 1, compareIdentity: value.compareIdentity, threads, exportedAt: value.exportedAt }
+}
+
+function readPositiveInteger(value: unknown, message: string) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new Error(message)
+  return value
 }
 
 async function readAddRecentSourcePayload(payload: unknown): Promise<{

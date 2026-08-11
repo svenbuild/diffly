@@ -9,6 +9,7 @@
   export let sourceKind: 'local' | 'git'
   export let gitScope: 'all' | 'staged' | 'unstaged' | 'untracked' = 'all'
   export let onApplied: () => Promise<void> | void = () => {}
+  export let embedded = false
 
   $: hunks = $hunkResolution.hunksByEntry.get(entryId) ?? []
   $: plannedCount = Array.from($hunkResolution.planned.values()).filter((item) => item.entryId === entryId).length
@@ -45,7 +46,7 @@
   }
 </script>
 
-<aside class="hunk-review-panel" aria-label="Hunk review">
+<aside class:embedded class="hunk-review-panel" aria-label="Hunk review">
   <header><strong>Review changes</strong><span>{hunks.length} hunks</span></header>
   {#if $hunkResolution.loadingEntryId === entryId}<p>Loading hunks…</p>{/if}
   {#if $hunkResolution.error}<p class="error">{$hunkResolution.error}</p>{/if}
@@ -90,6 +91,7 @@
 
 <style>
   .hunk-review-panel { grid-row: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-left: 1px solid var(--border-color); background: var(--panel-surface); }
+  .hunk-review-panel.embedded { grid-row: auto; border-left: 0; }
   header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
   header span, p { color: var(--muted-text); font-size: 11px; }
   p { padding: 8px 10px; }

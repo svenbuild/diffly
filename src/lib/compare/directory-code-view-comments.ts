@@ -18,13 +18,6 @@ type CommentAnnotation =
   | DiffLineAnnotation<DifflyCommentAnnotation>
   | LineAnnotation<DifflyCommentAnnotation>
 
-interface StoredComment {
-  side: AnnotationSide
-  lineNumber: number
-  id: string
-  text: string
-}
-
 const sendIcon = () => createAppIcon('send')
 const closeIcon = () => createAppIcon('close')
 
@@ -39,104 +32,25 @@ function createCommentAvatar(seed: string): HTMLImageElement {
 }
 
 export function commentsStorageKey(compareKey: string) {
-  return `diffly:comments:${compareKey}`
+  return `legacy-comments-disabled:${compareKey}`
 }
 
 export function persistCommentAnnotations(
-  compareKey: string,
-  commentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>,
+  _compareKey: string,
+  _commentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>,
 ) {
-  if (typeof localStorage === 'undefined' || !compareKey) {
-    return
-  }
-
-  const payload: Record<string, StoredComment[]> = {}
-  for (const [itemId, list] of commentAnnotations) {
-    const stored = list
-      .filter((entry) => entry.metadata.text.trim().length > 0)
-      .map((entry) => ({
-        side: entry.side,
-        lineNumber: entry.lineNumber,
-        id: entry.metadata.id,
-        text: entry.metadata.text,
-      }))
-    if (stored.length > 0) {
-      payload[itemId] = stored
-    }
-  }
-
-  try {
-    if (Object.keys(payload).length === 0) {
-      localStorage.removeItem(commentsStorageKey(compareKey))
-    } else {
-      localStorage.setItem(commentsStorageKey(compareKey), JSON.stringify(payload))
-    }
-  } catch {
-    // Storage may be unavailable or full; comments stay in-memory.
-  }
+  // Persistence moved to the versioned backend ReviewStore. The legacy
+  // Pierre adapter remains view-only until all inline annotations are hydrated
+  // from ReviewThread records by the workspace controller.
 }
 
 export function loadStoredCommentAnnotations(
-  compareKey: string,
+  _compareKey: string,
   currentCommentId: number,
 ) {
-  if (typeof localStorage === 'undefined' || !compareKey) {
-    return {
-      annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
-      commentId: currentCommentId,
-    }
-  }
-
-  let raw: string | null = null
-  try {
-    raw = localStorage.getItem(commentsStorageKey(compareKey))
-  } catch {
-    raw = null
-  }
-
-  const next = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
-  let maxId = currentCommentId
-  let generatedCommentId = currentCommentId
-
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, StoredComment[]>
-      for (const [itemId, list] of Object.entries(parsed)) {
-        if (!Array.isArray(list)) {
-          continue
-        }
-        const annotations = list
-          .filter((entry) => entry && typeof entry.lineNumber === 'number')
-          .map((entry) => {
-            const match = /(\d+)$/.exec(String(entry.id ?? ''))
-            if (match) {
-              maxId = Math.max(maxId, Number(match[1]))
-            }
-
-            return {
-              side: (entry.side === 'deletions' ? 'deletions' : 'additions') as AnnotationSide,
-              lineNumber: entry.lineNumber,
-              metadata: {
-                id: String(entry.id ?? `comment-${(generatedCommentId += 1)}`),
-                text: String(entry.text ?? ''),
-              },
-            }
-          })
-        if (annotations.length > 0) {
-          next.set(itemId, annotations)
-        }
-      }
-    } catch {
-      return {
-        annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
-        commentId: currentCommentId,
-      }
-    }
-  }
-
   return {
-    annotations: next,
-    commentId: Math.max(generatedCommentId, maxId),
+    annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
+    commentId: currentCommentId,
   }
 }
 

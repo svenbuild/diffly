@@ -30,6 +30,12 @@ import type {
   ReviewHunkSummary,
   ConflictDocument,
   ResolveConflictRequest,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReviewBundle,
+  ReviewThread,
+  ReviewAuthor,
+  ReviewCommentDraft,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -177,6 +183,32 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<CreateDiffSessionResponse>('diffly:review:applyPartialChange', request),
     undoOperation: (sessionId: string) =>
       invoke<CreateDiffSessionResponse>('diffly:review:undoOperation', { sessionId }),
+    listThreads: (sessionId: string, entryId?: string) =>
+      invoke<ReviewThread[]>('diffly:review:listThreads', { sessionId, entryId }),
+    createThread: (request: CreateReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:createThread', request),
+    reply: (request: ReplyReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:reply', request),
+    editComment: (sessionId: string, threadId: string, commentId: string, body: string) =>
+      invoke<ReviewThread>('diffly:review:editComment', { sessionId, threadId, commentId, body }),
+    deleteComment: (sessionId: string, threadId: string, commentId: string) =>
+      invoke<ReviewThread | null>('diffly:review:deleteComment', { sessionId, threadId, commentId }),
+    resolveThread: (sessionId: string, threadId: string) =>
+      invoke<ReviewThread>('diffly:review:resolveThread', { sessionId, threadId }),
+    reopenThread: (sessionId: string, threadId: string) =>
+      invoke<ReviewThread>('diffly:review:reopenThread', { sessionId, threadId }),
+    export: (sessionId: string) =>
+      invoke<{ json: string; markdown: string; bundle: ReviewBundle }>('diffly:review:export', { sessionId }),
+    import: (sessionId: string, bundle: ReviewBundle) =>
+      invoke<ReviewThread[]>('diffly:review:import', { sessionId, bundle }),
+    getProfile: () => invoke<ReviewAuthor>('diffly:review:getProfile'),
+    saveProfile: (author: ReviewAuthor) => invoke<ReviewAuthor>('diffly:review:saveProfile', author),
+    listDrafts: (sessionId: string) =>
+      invoke<ReviewCommentDraft[]>('diffly:review:listDrafts', { sessionId }),
+    saveDraft: (sessionId: string, key: string, body: string) =>
+      invoke<ReviewCommentDraft>('diffly:review:saveDraft', { sessionId, key, body }),
+    deleteDraft: (sessionId: string, key: string) =>
+      invoke<void>('diffly:review:deleteDraft', { sessionId, key }),
   },
   conflicts: {
     open: (sessionId: string, entryId: string) =>
