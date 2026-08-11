@@ -4,6 +4,7 @@ import type {
   DocumentTarget,
   DraftSummary,
   EditableDocument,
+  DocumentFormat,
 } from '../workspace-types'
 
 export type WorkspaceMode = 'review' | 'edit' | 'resolve'
@@ -12,9 +13,11 @@ export interface WorkspaceDocumentState {
   id: string
   document: EditableDocument
   contents: string
+  format: DocumentFormat
   dirty: boolean
   saving: boolean
   externalChanged: boolean
+  externalDocument: EditableDocument | null
   error: string | null
   selections: DocumentDraft['selections']
   scrollTop: number

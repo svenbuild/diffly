@@ -86,3 +86,26 @@ export async function assertRegularNonSymlink(path: string) {
     throw new Error('Only regular files can be saved.')
   }
 }
+
+export async function writeDocumentAs(path: string, contents: string, format: DocumentFormat) {
+  const bytes = encodeDocument(contents, format)
+  const tempPath = join(dirname(path), `.diffly-export-${process.pid}-${randomBytes(8).toString('hex')}.tmp`)
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    handle = await open(tempPath, 'wx', format.mode ?? 0o666)
+    await handle.writeFile(bytes)
+    await handle.sync()
+    await handle.close()
+    handle = null
+    if (format.mode !== null) await chmod(tempPath, format.mode)
+    await replaceFile(tempPath, path)
+  } catch (error) {
+    await handle?.close().catch(() => undefined)
+    await rm(tempPath, { force: true }).catch(() => undefined)
+    throw error
+  }
+  return readLocalDocument({
+    path,
+    target: { kind: 'scratch', sourceSessionId: 'export', sourceEntryId: 'export', sourceSide: 'right' },
+  })
+}

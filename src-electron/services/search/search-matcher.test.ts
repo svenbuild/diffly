@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ComparisonSearchQuery } from '../../../src/lib/search-types'
-import { createSearchMatcher, pathMatchesFilter, validateSafeRegex } from './search-matcher'
+import { createSearchMatcher, pathMatchesFilter, replaceSearchMatches, validateSafeRegex } from './search-matcher'
 
 const query: ComparisonSearchQuery = {
   text: 'auth',
@@ -37,5 +37,13 @@ describe('workspace search matcher', () => {
   it('matches comma-separated glob filters', () => {
     expect(pathMatchesFilter('src/auth/login.ts', 'src/**/*.ts, tests/**')).toBe(true)
     expect(pathMatchesFilter('README.md', 'src/**/*.ts, tests/**')).toBe(false)
+  })
+
+  it('expands regex capture groups and treats literal replacement dollars literally', () => {
+    expect(replaceSearchMatches('name: Ada', { ...query, text: '(name): (\\w+)', regex: true }, '$2 ($1)')).toEqual({
+      contents: 'Ada (name)',
+      count: 1,
+    })
+    expect(replaceSearchMatches('auth', query, '$1')).toEqual({ contents: '$1', count: 1 })
   })
 })

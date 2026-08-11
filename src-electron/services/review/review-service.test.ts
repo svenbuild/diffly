@@ -7,6 +7,7 @@ import { DiffSessionService } from '../diff/diff-session-service'
 import { LocalProvider } from '../providers/local-provider'
 import { ReviewService } from './review-service'
 import { ReviewStore } from './review-store'
+import { ReviewPreferencesStore } from './review-preferences-store'
 
 const author: ReviewAuthor = { id: 'local-user', name: 'Reviewer', avatar: null }
 
@@ -29,7 +30,11 @@ describe('ReviewService', () => {
     const source: DiffSource = { kind: 'local', compareMode: 'file', leftPath: left, rightPath: right }
     const sessions = new DiffSessionService({ localProvider: new LocalProvider() })
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
-    const service = new ReviewService(sessions, new ReviewStore(join(root, 'reviews')))
+    const service = new ReviewService(
+      sessions,
+      new ReviewStore(join(root, 'reviews')),
+      new ReviewPreferencesStore(join(root, 'reviews')),
+    )
 
     const thread = await service.createThread({
       sessionId: session.sessionId,
@@ -64,14 +69,23 @@ describe('ReviewService', () => {
       { kind: 'local', compareMode: 'file', leftPath: left, rightPath: right },
       { ignoreCase: false, ignoreWhitespace: false },
     )
-    const service = new ReviewService(sessions, new ReviewStore(join(root, 'reviews')))
+    const service = new ReviewService(
+      sessions,
+      new ReviewStore(join(root, 'reviews')),
+      new ReviewPreferencesStore(join(root, 'reviews')),
+    )
     const thread = await service.createThread({
       sessionId: session.sessionId, entryId: 'file', side: 'additions', lineNumber: 1, body: 'Review', author,
     })
     expect((await service.setThreadState(session.sessionId, thread.id, 'resolved')).state).toBe('resolved')
     expect((await service.setThreadState(session.sessionId, thread.id, 'open')).state).toBe('open')
+    await service.setDecision(session.sessionId, 'file', {
+      oldStart: 1, oldCount: 1, newStart: 1, newCount: 1,
+      contextHash: 'a'.repeat(64), changeHash: 'b'.repeat(64),
+    }, null, 'needsChanges')
     const exported = await service.export(session.sessionId)
     expect(exported.bundle.schemaVersion).toBe(1)
     expect(exported.markdown).toContain('Reviewer')
+    expect(exported.bundle.decisions).toHaveLength(1)
   })
 })

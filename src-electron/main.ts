@@ -41,6 +41,7 @@ if (startupUserDataDir) {
 let mainWindow: Electron.BrowserWindow | null = null
 const windows = new Set<Electron.BrowserWindow>()
 const pendingLaunchContexts: LaunchContext[] = []
+const closeApproved = new Set<number>()
 const mainStartupStartedAt = Date.now()
 
 function markMainStartup(name: string, detail?: Record<string, unknown>) {
@@ -123,8 +124,12 @@ function createWindow(launchContext: LaunchContext | null = null) {
   window.on('maximize', sendMaximizedChange)
   window.on('unmaximize', sendMaximizedChange)
 
-  window.on('close', () => {
+  window.on('close', (event) => {
     saveWindowState(window)
+    if (!closeApproved.has(window.id) && !window.webContents.isDestroyed()) {
+      event.preventDefault()
+      window.webContents.send('diffly:workspace:closeRequested')
+    }
   })
 
   window.on('closed', () => {
@@ -208,6 +213,14 @@ function registerWindowControlIpcHandlers() {
   ipcMain.handle('diffly:windowIsMaximized', (event) =>
     windowFromIpcEvent(event)?.isMaximized() ?? false,
   )
+  ipcMain.handle('diffly:workspace:closeDecision', (event, payload: unknown) => {
+    const window = windowFromIpcEvent(event)
+    if (!window || typeof payload !== 'object' || payload === null || !('allow' in payload)) return
+    if (payload.allow === true) {
+      closeApproved.add(window.id)
+      window.close()
+    }
+  })
 }
 
 function openLaunchWindow(launchContext: LaunchContext) {

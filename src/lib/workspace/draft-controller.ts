@@ -32,7 +32,7 @@ export class DraftController {
       contents: state.contents,
       originalRevision: state.document.revision,
       format: {
-        ...state.document.format,
+        ...state.format,
         hasTrailingNewline: /(?:\r\n|\r|\n)$/.test(state.contents),
       },
       selections: state.selections,

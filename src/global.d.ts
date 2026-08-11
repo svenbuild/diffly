@@ -46,12 +46,23 @@ import type {
   ReviewThread,
   ReviewAuthor,
   ReviewCommentDraft,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  ApplyComparisonReplaceResult,
+  ReplaceAllPreview,
+  SaveDocumentAsRequest,
+  SaveDocumentAsResult,
+  ExternalDocumentChange,
+  HunkFingerprint,
+  ReviewDecision,
+  ReviewDecisionStatus,
 } from './lib/types'
 
 declare global {
   interface Window {
     __difflyStartupProfile?: import('./lib/app/startup-profile').StartupProfileSnapshot
     diffly: {
+      clipboard: { readText(): Promise<string> }
       choosePath(kind: PathKind): Promise<string | null>
       getPathForFile(file: File): string
       openExternal(url: string): Promise<void>
@@ -120,6 +131,10 @@ declare global {
         open(target: DocumentTarget): Promise<EditableDocument>
         save(request: SaveDocumentRequest): Promise<MutationResult<SaveDocumentResult>>
         saveAll(request: SaveDocumentsRequest): Promise<MutationResult<EditableDocument[]>>
+        saveAs(request: SaveDocumentAsRequest): Promise<SaveDocumentAsResult>
+        watch(target: DocumentTarget): Promise<boolean>
+        unwatch(target: DocumentTarget): Promise<void>
+        onExternalChange(callback: (change: ExternalDocumentChange) => void): () => void
         listDrafts(): Promise<DraftSummary[]>
         loadDraft(id: string): Promise<DocumentDraft | null>
         saveDraft(draft: SaveDraftRequest): Promise<DraftSummary>
@@ -129,6 +144,8 @@ declare global {
         start(request: StartComparisonSearchRequest): Promise<SearchJobStarted>
         poll(jobId: string): Promise<SearchBatch>
         cancel(jobId: string): Promise<void>
+        previewReplace(request: PreviewComparisonReplaceRequest): Promise<ReplaceAllPreview>
+        replaceAll(request: ApplyComparisonReplaceRequest): Promise<ApplyComparisonReplaceResult>
       }
       review: {
         listHunks(sessionId: string, entryId: string): Promise<ReviewHunkSummary[]>
@@ -148,11 +165,18 @@ declare global {
         listDrafts(sessionId: string): Promise<ReviewCommentDraft[]>
         saveDraft(sessionId: string, key: string, body: string): Promise<ReviewCommentDraft>
         deleteDraft(sessionId: string, key: string): Promise<void>
+        listDecisions(sessionId: string, entryId: string): Promise<ReviewDecision[]>
+        setDecision(sessionId: string, entryId: string, fingerprint: HunkFingerprint, changeIndex: number | null, status: ReviewDecisionStatus | null): Promise<ReviewDecision[]>
+        resetDecisions(sessionId: string, entryId: string): Promise<void>
       }
       conflicts: {
         open(sessionId: string, entryId: string): Promise<ConflictDocument>
         resolve(request: ResolveConflictRequest): Promise<CreateDiffSessionResponse>
         undoResolution(sessionId: string): Promise<CreateDiffSessionResponse>
+      }
+      workspaceLifecycle: {
+        onCloseRequested(callback: () => void): () => void
+        respondToClose(allow: boolean): Promise<void>
       }
       /** Present only on frameless (Windows) builds. */
       windowControls?: {

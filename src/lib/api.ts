@@ -27,6 +27,11 @@ import type {
   ReplyReviewThreadRequest,
   ReviewBundle,
   ReviewAuthor,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  SaveDocumentAsRequest,
+  HunkFingerprint,
+  ReviewDecisionStatus,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -172,6 +177,24 @@ export const saveEditableDocument = (request: SaveDocumentRequest) =>
 export const saveEditableDocuments = (request: SaveDocumentsRequest) =>
   window.diffly.documents.saveAll(request)
 
+export const saveEditableDocumentAs = (request: SaveDocumentAsRequest) =>
+  window.diffly.documents.saveAs(request)
+
+export const watchEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.watch(target)
+
+export const unwatchEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.unwatch(target)
+
+export const onEditableDocumentExternalChange = (callback: Parameters<typeof window.diffly.documents.onExternalChange>[0]) =>
+  window.diffly.documents.onExternalChange(callback)
+
+export const onWorkspaceCloseRequested = (callback: () => void) =>
+  window.diffly.workspaceLifecycle.onCloseRequested(callback)
+
+export const respondToWorkspaceClose = (allow: boolean) =>
+  window.diffly.workspaceLifecycle.respondToClose(allow)
+
 export const listDocumentDrafts = () =>
   window.diffly.documents.listDrafts()
 
@@ -192,6 +215,12 @@ export const pollComparisonSearch = (jobId: string) =>
 
 export const cancelComparisonSearch = (jobId: string) =>
   window.diffly.search.cancel(jobId)
+
+export const previewComparisonReplace = (request: PreviewComparisonReplaceRequest) =>
+  window.diffly.search.previewReplace(request)
+
+export const applyComparisonReplace = (request: ApplyComparisonReplaceRequest) =>
+  window.diffly.search.replaceAll(request)
 
 export const applyPartialChange = (request: ApplyPartialChangeRequest) =>
   window.diffly.review.applyPartialChange(request)
@@ -249,6 +278,15 @@ export const saveReviewDraft = (sessionId: string, key: string, body: string) =>
 
 export const deleteReviewDraft = (sessionId: string, key: string) =>
   window.diffly.review.deleteDraft(sessionId, key)
+
+export const listReviewDecisions = (sessionId: string, entryId: string) =>
+  window.diffly.review.listDecisions(sessionId, entryId)
+
+export const setReviewDecision = (sessionId: string, entryId: string, fingerprint: HunkFingerprint, changeIndex: number | null, status: ReviewDecisionStatus | null) =>
+  window.diffly.review.setDecision(sessionId, entryId, fingerprint, changeIndex, status)
+
+export const resetReviewDecisions = (sessionId: string, entryId: string) =>
+  window.diffly.review.resetDecisions(sessionId, entryId)
 
 export interface WindowControls {
   minimize(): Promise<void>

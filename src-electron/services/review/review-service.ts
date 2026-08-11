@@ -6,6 +6,8 @@ import type {
   ReviewBundle,
   ReviewComment,
   ReviewThread,
+  HunkFingerprint,
+  ReviewDecisionStatus,
 } from '../../../src/lib/review-types'
 import type { DiffSessionService } from '../diff/diff-session-service'
 import { createReviewAnchor, relocateReviewAnchor } from './review-anchor'
@@ -113,10 +115,12 @@ export class ReviewService {
   async export(sessionId: string) {
     const compareIdentity = this.compareIdentity(sessionId)
     const file = await this.store.read(compareIdentity)
+    const decisions = this.preferences ? await this.preferences.listDecisions(compareIdentity) : []
     const bundle: ReviewBundle = {
       schemaVersion: 1,
       compareIdentity,
       threads: file.threads,
+      decisions,
       exportedAt: new Date().toISOString(),
     }
     return { json: JSON.stringify(bundle, null, 2), markdown: renderMarkdown(bundle), bundle }
@@ -127,6 +131,7 @@ export class ReviewService {
       throw new Error('Review bundle belongs to a different comparison.')
     }
     await this.store.import(bundle)
+    if (this.preferences) await this.preferences.saveDecisions(bundle.compareIdentity, bundle.decisions)
     return this.listThreads(sessionId)
   }
 
@@ -149,6 +154,39 @@ export class ReviewService {
 
   removeDraft(sessionId: string, key: string) {
     return this.requirePreferences().removeDraft(this.compareIdentity(sessionId), key)
+  }
+
+  async listDecisions(sessionId: string, entryId: string) {
+    const entryIdentity = this.entryIdentity(sessionId, entryId)
+    return (await this.requirePreferences().listDecisions(this.compareIdentity(sessionId)))
+      .filter((decision) => decision.entryIdentity === entryIdentity)
+  }
+
+  async setDecision(
+    sessionId: string,
+    entryId: string,
+    fingerprint: HunkFingerprint,
+    changeIndex: number | null,
+    status: ReviewDecisionStatus | null,
+  ) {
+    const compareIdentity = this.compareIdentity(sessionId)
+    const entryIdentity = this.entryIdentity(sessionId, entryId)
+    const all = await this.requirePreferences().listDecisions(compareIdentity)
+    const key = decisionKey(entryIdentity, fingerprint, changeIndex)
+    const next = all.filter((decision) => decisionKey(decision.entryIdentity, decision.fingerprint, decision.changeIndex) !== key)
+    if (status) next.push({ entryIdentity, fingerprint, changeIndex, status, updatedAt: new Date().toISOString() })
+    await this.requirePreferences().saveDecisions(compareIdentity, next)
+    return next.filter((decision) => decision.entryIdentity === entryIdentity)
+  }
+
+  async resetDecisions(sessionId: string, entryId: string) {
+    const compareIdentity = this.compareIdentity(sessionId)
+    const entryIdentity = this.entryIdentity(sessionId, entryId)
+    const all = await this.requirePreferences().listDecisions(compareIdentity)
+    await this.requirePreferences().saveDecisions(
+      compareIdentity,
+      all.filter((decision) => decision.entryIdentity !== entryIdentity),
+    )
   }
 
   private async mutateThread(
@@ -233,6 +271,10 @@ function validateAuthor(author: ReviewAuthor) {
 
 function renderMarkdown(bundle: ReviewBundle) {
   const lines = ['# Diffly review', '']
+  for (const decision of bundle.decisions) {
+    lines.push(`- **${decision.status}** · hunk ${decision.fingerprint.changeHash.slice(0, 12)}${decision.changeIndex === null ? '' : ` block ${decision.changeIndex + 1}`}`)
+  }
+  if (bundle.decisions.length > 0) lines.push('')
   for (const thread of bundle.threads) {
     lines.push(`## ${thread.state.toUpperCase()} · ${thread.anchor.side} line ${thread.anchor.lineNumber}`, '')
     for (const comment of thread.comments) {
@@ -244,4 +286,8 @@ function renderMarkdown(bundle: ReviewBundle) {
 
 function hash(value: string) {
   return createHash('sha256').update(value).digest('hex')
+}
+
+function decisionKey(entryIdentity: string, fingerprint: HunkFingerprint, changeIndex: number | null) {
+  return `${entryIdentity}:${fingerprint.changeHash}:${changeIndex ?? 'hunk'}`
 }

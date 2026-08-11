@@ -10,13 +10,34 @@ import type { DiffSessionService } from '../diff/diff-session-service'
 import { UnsupportedDocumentEncodingError } from './document-reader'
 import { revisionsEqual } from './document-revision'
 import { StaleDocumentError } from './document-writer'
+import type { DocumentWatchService } from './document-watch-service'
 
 export class DocumentService {
   private mutationQueue: Promise<unknown> = Promise.resolve()
   private readonly diffSessions: DiffSessionService
+  private readonly watchers: DocumentWatchService | null
 
-  constructor(diffSessions: DiffSessionService) {
+  constructor(diffSessions: DiffSessionService, watchers: DocumentWatchService | null = null) {
     this.diffSessions = diffSessions
+    this.watchers = watchers
+  }
+
+  watch(id: string, target: SaveDocumentRequest['target'], onChange: (change: {
+    target: SaveDocumentRequest['target']
+    revision: EditableDocument['revision'] | null
+  }) => void) {
+    const path = this.diffSessions.resolveWatchPath(target)
+    if (!path || !this.watchers) return false
+    this.watchers.watch(id, path, () => {
+      void this.open(target)
+        .then((document) => onChange({ target, revision: document.revision }))
+        .catch(() => onChange({ target, revision: null }))
+    })
+    return true
+  }
+
+  unwatch(id: string) {
+    this.watchers?.unwatch(id)
   }
 
   open(target: Parameters<DiffSessionService['openDocument']>[0]) {

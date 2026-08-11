@@ -136,9 +136,13 @@
   $: showHunkReviewPanel =
     $documentWorkspace.mode === 'review' &&
     !$comparisonSearch.open &&
-    Boolean(activeDiffSessionId && selectedEntryId) &&
-    (activeDiffSource?.kind === 'local' ||
-      (activeDiffSource?.kind === 'git' && activeDiffSource.selection.kind === 'workingTree'))
+    Boolean(activeDiffSessionId && selectedEntryId)
+
+  $: hunkReviewSourceKind = activeDiffSource?.kind === 'local'
+    ? 'local' as const
+    : activeDiffSource?.kind === 'git' && activeDiffSource.selection.kind === 'workingTree'
+      ? 'git' as const
+      : 'readOnly' as const
 
   function selectWorkspaceMode(nextMode: 'review' | 'edit' | 'resolve') {
     setWorkspaceMode(nextMode)
@@ -237,6 +241,11 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      comparisonSearch.update((state) => ({ ...state, open: true }))
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
       event.preventDefault()
       comparisonSearch.update((state) => ({ ...state, open: true }))
@@ -586,6 +595,7 @@
       <SearchPanel
         sessionId={activeDiffSessionId}
         onNavigate={navigateToSearchMatch}
+        onReplaced={runCompare}
       />
     {/if}
     {#if showHunkReviewPanel && activeDiffSessionId && selectedEntryId}
@@ -593,7 +603,7 @@
         sessionId={activeDiffSessionId}
         entryId={selectedEntryId}
         entryPath={selectedRelativePath || activeDiff?.rightLabel || activeDiff?.leftLabel || ''}
-        sourceKind={activeDiffSource?.kind === 'local' ? 'local' : 'git'}
+        sourceKind={hunkReviewSourceKind}
         {gitScope}
         onApplied={runCompare}
         onNavigateThread={navigateToReviewThread}

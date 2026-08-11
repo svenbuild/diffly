@@ -31,6 +31,11 @@ interface IndexUndoData {
   afterOid: string | null
 }
 
+interface DocumentsUndoData {
+  type: 'documents'
+  documents: FileUndoData[]
+}
+
 export class PartialApplyService {
   private readonly sessions: DiffSessionService
   private readonly journal: OperationJournal
@@ -81,7 +86,22 @@ export class PartialApplyService {
     const entry = await this.journal.latest(sessionId)
     if (!entry) throw new Error('There is no operation to undo.')
     const data = readUndoData(entry)
-    if (data.type === 'file') {
+    if (data.type === 'documents') {
+      for (const document of data.documents) {
+        const current = await this.sessions.openDocument(document.target)
+        if (!revisionsEqual(current.revision, document.afterRevision)) {
+          throw new Error('A document changed after Replace All and cannot be undone safely.')
+        }
+      }
+      for (const document of data.documents) {
+        await this.sessions.saveDocument({
+          target: document.target,
+          contents: document.contents,
+          expectedRevision: document.afterRevision,
+          format: document.format,
+        })
+      }
+    } else if (data.type === 'file') {
       const current = await this.sessions.openDocument(data.target)
       if (!revisionsEqual(current.revision, data.afterRevision)) {
         throw new Error('The document changed after the operation and cannot be undone safely.')
@@ -240,14 +260,15 @@ async function readIndexEntry(repositoryRoot: string, path: string) {
   return null
 }
 
-function readUndoData(entry: OperationJournalEntry): FileUndoData | IndexUndoData {
+function readUndoData(entry: OperationJournalEntry): FileUndoData | IndexUndoData | DocumentsUndoData {
   if (
     typeof entry.payload !== 'object' || entry.payload === null ||
     !('state' in entry.payload) || entry.payload.state !== 'complete' ||
     !('data' in entry.payload) || typeof entry.payload.data !== 'object' || entry.payload.data === null ||
-    !('type' in entry.payload.data) || (entry.payload.data.type !== 'file' && entry.payload.data.type !== 'index')
+    !('type' in entry.payload.data) ||
+    (entry.payload.data.type !== 'file' && entry.payload.data.type !== 'index' && entry.payload.data.type !== 'documents')
   ) {
     throw new Error('Operation journal entry is invalid.')
   }
-  return entry.payload.data as FileUndoData | IndexUndoData
+  return entry.payload.data as FileUndoData | IndexUndoData | DocumentsUndoData
 }

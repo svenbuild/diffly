@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, join, normalize } from 'node:path'
 import type {
@@ -30,6 +30,10 @@ import type {
   ReviewAuthor,
   ReviewBundle,
   ReviewThread,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  SaveDocumentAsRequest,
+  ExternalDocumentChange,
 } from '../../src/lib/types'
 
 interface CompareServices {
@@ -55,6 +59,7 @@ function loadExplorerService() {
 }
 
 export function registerIpcHandlers() {
+  ipcMain.handle('diffly:clipboard:readText', () => clipboard.readText())
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
     loadExplorerService().then(({ choosePath }) => choosePath(payload.kind)),
   )
@@ -181,6 +186,33 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:documents:saveAll', (_event, payload: unknown) =>
     saveEditableDocuments(payload),
   )
+  ipcMain.handle('diffly:documents:saveAs', async (event, payload: unknown) => {
+    const request = readSaveDocumentAsRequest(payload)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { title: 'Save document as', defaultPath: request.suggestedName }
+    const selection = window
+      ? await dialog.showSaveDialog(window, options)
+      : await dialog.showSaveDialog(options)
+    if (selection.canceled || !selection.filePath) return { canceled: true, path: null, revision: null }
+    const { writeDocumentAs } = await import('./documents/document-writer')
+    const saved = await writeDocumentAs(selection.filePath, request.contents, request.format)
+    return { canceled: false, path: selection.filePath, revision: saved.revision }
+  })
+  ipcMain.handle('diffly:documents:watch', async (event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid document watch payload.')
+    const target = readDocumentTargetPayload(payload.target)
+    const id = `${event.sender.id}:${documentWatchId(target)}`
+    const { documentService } = await loadCompareServices()
+    return documentService.watch(id, target, (change: ExternalDocumentChange) => {
+      if (!event.sender.isDestroyed()) event.sender.send('diffly:documents:externalChange', change)
+    })
+  })
+  ipcMain.handle('diffly:documents:unwatch', async (event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid document watch payload.')
+    const target = readDocumentTargetPayload(payload.target)
+    const { documentService } = await loadCompareServices()
+    documentService.unwatch(`${event.sender.id}:${documentWatchId(target)}`)
+  })
   ipcMain.handle('diffly:documents:listDrafts', async () => {
     const { draftStore } = await loadCompareServices()
     return draftStore.list()
@@ -208,6 +240,14 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:search:cancel', async (_event, payload: unknown) => {
     const { searchService } = await loadCompareServices()
     return searchService.cancel(readJobId(payload))
+  })
+  ipcMain.handle('diffly:search:previewReplace', async (_event, payload: unknown) => {
+    const { searchService } = await loadCompareServices()
+    return searchService.previewReplace(readPreviewReplaceRequest(payload))
+  })
+  ipcMain.handle('diffly:search:replaceAll', async (_event, payload: unknown) => {
+    const { searchService } = await loadCompareServices()
+    return searchService.replaceAll(readApplyReplaceRequest(payload))
   })
   ipcMain.handle('diffly:review:applyPartialChange', async (_event, payload: unknown) => {
     const { partialApplyService } = await loadCompareServices()
@@ -303,6 +343,33 @@ export function registerIpcHandlers() {
     if (!isRecord(payload)) throw new Error('Invalid review draft payload.')
     const { reviewService } = await loadCompareServices()
     return reviewService.removeDraft(requiredId(payload.sessionId), requiredId(payload.key))
+  })
+  ipcMain.handle('diffly:review:listDecisions', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid review decision payload.')
+    const { reviewService } = await loadCompareServices()
+    return reviewService.listDecisions(requiredId(payload.sessionId), requiredId(payload.entryId))
+  })
+  ipcMain.handle('diffly:review:setDecision', async (_event, payload: unknown) => {
+    if (!isRecord(payload) || (payload.status !== null && payload.status !== 'accepted' && payload.status !== 'rejected' && payload.status !== 'needsChanges')) {
+      throw new Error('Invalid review decision payload.')
+    }
+    const selection = readPartialChangeSelection({
+      fingerprint: payload.fingerprint,
+      ...(payload.changeIndex === null ? {} : { changeIndex: payload.changeIndex }),
+    })
+    const { reviewService } = await loadCompareServices()
+    return reviewService.setDecision(
+      requiredId(payload.sessionId),
+      requiredId(payload.entryId),
+      selection.fingerprint,
+      selection.changeIndex ?? null,
+      payload.status,
+    )
+  })
+  ipcMain.handle('diffly:review:resetDecisions', async (_event, payload: unknown) => {
+    if (!isRecord(payload)) throw new Error('Invalid review decision payload.')
+    const { reviewService } = await loadCompareServices()
+    return reviewService.resetDecisions(requiredId(payload.sessionId), requiredId(payload.entryId))
   })
 }
 
@@ -547,6 +614,7 @@ async function loadCompareServices() {
       import('./diff/diff-session-service'),
       import('./documents/document-service'),
       import('./documents/document-draft-store'),
+      import('./documents/document-watch-service'),
       import('./search/search-service'),
       import('./review/partial-apply-service'),
       import('./review/operation-journal'),
@@ -561,6 +629,7 @@ async function loadCompareServices() {
       { DiffSessionService },
       { DocumentService },
       { DocumentDraftStore },
+      { DocumentWatchService },
       { SearchService },
       { PartialApplyService },
       { OperationJournal },
@@ -580,10 +649,11 @@ async function loadCompareServices() {
         gitProvider,
         githubProvider,
       })
-      const documentService = new DocumentService(diffSessionService)
+      const documentWatchService = new DocumentWatchService()
+      const documentService = new DocumentService(diffSessionService, documentWatchService)
       const draftStore = new DocumentDraftStore(join(app.getPath('userData'), 'drafts'))
-      const searchService = new SearchService(diffSessionService)
       const operationJournal = new OperationJournal(join(app.getPath('userData'), 'operations'))
+      const searchService = new SearchService(diffSessionService, documentService, operationJournal)
       const partialApplyService = new PartialApplyService(diffSessionService, operationJournal)
       const conflictService = new ConflictService(diffSessionService, operationJournal)
       const reviewStore = new ReviewStore(join(app.getPath('userData'), 'reviews'))
@@ -651,6 +721,34 @@ export function readSaveDocumentRequest(payload: unknown): SaveDocumentRequest {
   }
 }
 
+function readSaveDocumentAsRequest(payload: unknown): SaveDocumentAsRequest {
+  if (
+    !isRecord(payload) || typeof payload.contents !== 'string' ||
+    Buffer.byteLength(payload.contents) > 64 * 1024 * 1024 ||
+    typeof payload.suggestedName !== 'string' || !payload.suggestedName.trim() ||
+    payload.suggestedName.length > 1024 || payload.suggestedName.includes('\0') ||
+    !isRecord(payload.format)
+  ) throw new Error('Invalid Save As payload.')
+  const format = readDocumentFormatPatch(payload.format)
+  if (
+    format.encoding === undefined || format.lineEnding === undefined ||
+    format.hasTrailingNewline === undefined ||
+    (payload.format.mode !== null &&
+      (typeof payload.format.mode !== 'number' || !Number.isSafeInteger(payload.format.mode)))
+  ) throw new Error('Invalid Save As document format.')
+  return {
+    target: readDocumentTargetPayload(payload.target),
+    contents: payload.contents,
+    suggestedName: payload.suggestedName,
+    format: {
+      encoding: format.encoding,
+      lineEnding: format.lineEnding,
+      hasTrailingNewline: format.hasTrailingNewline,
+      mode: payload.format.mode,
+    } as SaveDocumentAsRequest['format'],
+  }
+}
+
 function readDocumentRevision(value: unknown): DocumentRevision {
   if (
     !isRecord(value) ||
@@ -703,6 +801,10 @@ function requiredId(value: unknown) {
     throw new Error('Invalid document identity.')
   }
   return value
+}
+
+function documentWatchId(target: DocumentTarget) {
+  return Buffer.from(JSON.stringify(target)).toString('base64url')
 }
 
 function readDocumentSide(value: unknown) {
@@ -823,6 +925,30 @@ export function readStartSearchRequest(payload: unknown): StartComparisonSearchR
     pathFilter: query.pathFilter,
   }
   return { sessionId: requiredId(payload.sessionId), query: normalized }
+}
+
+function readPreviewReplaceRequest(payload: unknown): PreviewComparisonReplaceRequest {
+  if (!isRecord(payload) || typeof payload.replacement !== 'string' || Buffer.byteLength(payload.replacement) > 1024 * 1024) {
+    throw new Error('Invalid comparison replace payload.')
+  }
+  return { ...readStartSearchRequest(payload), replacement: payload.replacement }
+}
+
+function readApplyReplaceRequest(payload: unknown): ApplyComparisonReplaceRequest {
+  const preview = readPreviewReplaceRequest(payload)
+  if (!isRecord(payload) || !Array.isArray(payload.documents) || payload.documents.length > 100_000) {
+    throw new Error('Invalid comparison replace targets.')
+  }
+  return {
+    ...preview,
+    documents: payload.documents.map((value) => {
+      if (!isRecord(value)) throw new Error('Invalid comparison replace target.')
+      return {
+        target: readDocumentTargetPayload(value.target),
+        expectedRevision: readDocumentRevision(value.expectedRevision),
+      }
+    }),
+  }
 }
 
 function readJobId(payload: unknown) {
@@ -1049,7 +1175,32 @@ function readReviewBundle(value: unknown): ReviewBundle {
       updatedAt: typeof thread.updatedAt === 'string' ? thread.updatedAt : '',
     }
   })
-  return { schemaVersion: 1, compareIdentity: value.compareIdentity, threads, exportedAt: value.exportedAt }
+  const decisions = value.decisions === undefined ? [] : readReviewDecisions(value.decisions)
+  return { schemaVersion: 1, compareIdentity: value.compareIdentity, threads, decisions, exportedAt: value.exportedAt }
+}
+
+function readReviewDecisions(value: unknown): ReviewBundle['decisions'] {
+  if (!Array.isArray(value) || value.length > 100_000) throw new Error('Invalid review decisions.')
+  return value.map((decision) => {
+    if (
+      !isRecord(decision) || !isRecord(decision.fingerprint) ||
+      typeof decision.entryIdentity !== 'string' || !/^[a-f0-9]{64}$/.test(decision.entryIdentity) ||
+      (decision.status !== 'accepted' && decision.status !== 'rejected' && decision.status !== 'needsChanges') ||
+      typeof decision.updatedAt !== 'string' ||
+      (decision.changeIndex !== null && (typeof decision.changeIndex !== 'number' || !Number.isSafeInteger(decision.changeIndex) || decision.changeIndex < 0))
+    ) throw new Error('Invalid review decision.')
+    const selection = readPartialChangeSelection({
+      fingerprint: decision.fingerprint,
+      ...(decision.changeIndex === null ? {} : { changeIndex: decision.changeIndex }),
+    })
+    return {
+      entryIdentity: decision.entryIdentity,
+      fingerprint: selection.fingerprint,
+      changeIndex: decision.changeIndex,
+      status: decision.status,
+      updatedAt: decision.updatedAt,
+    }
+  })
 }
 
 function readPositiveInteger(value: unknown, message: string) {

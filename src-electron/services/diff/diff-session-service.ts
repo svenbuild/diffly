@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import type {
   CompareOptions,
   CreateDiffSessionResponse,
@@ -166,6 +167,19 @@ export class DiffSessionService {
       throw new Error('This source is read-only.')
     }
     return session.provider.saveDocument(session, request)
+  }
+
+  resolveWatchPath(target: DocumentTarget) {
+    if (target.kind === 'scratch' || target.kind === 'gitIndex') return null
+    const entry = this.getProviderEntry(target.sessionId, target.entryId)
+    if (target.kind === 'local') {
+      if (entry.kind === 'localFile') return target.side === 'left' ? entry.leftPath : entry.rightPath
+      if (entry.kind === 'localDirectory') {
+        return join(target.side === 'left' ? entry.leftBase : entry.rightBase, entry.relativePath)
+      }
+      return null
+    }
+    return entry.kind === 'gitWorkingTree' ? join(entry.repositoryRoot, entry.path) : null
   }
 
   async refresh(sessionId: string): Promise<CreateDiffSessionResponse> {

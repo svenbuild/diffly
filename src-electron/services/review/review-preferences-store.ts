@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ReviewAuthor, ReviewCommentDraft } from '../../../src/lib/review-types'
+import type { ReviewAuthor, ReviewCommentDraft, ReviewDecision } from '../../../src/lib/review-types'
 import { replaceFile } from '../atomic-file'
 
 const MAX_DRAFT_BYTES = 512 * 1024
@@ -57,6 +57,26 @@ export class ReviewPreferencesStore {
       } else {
         await this.writeJson(draftFile(compareIdentity), next)
       }
+    })
+  }
+
+  listDecisions(compareIdentity: string) {
+    return this.enqueue(async () => {
+      try {
+        const value = JSON.parse(await readFile(join(this.directory, decisionFile(compareIdentity)), 'utf8'))
+        if (!Array.isArray(value)) throw new Error('Review decisions are corrupt.')
+        return value as ReviewDecision[]
+      } catch (error) {
+        if (isNotFound(error)) return []
+        throw error
+      }
+    })
+  }
+
+  saveDecisions(compareIdentity: string, decisions: ReviewDecision[]) {
+    return this.enqueue(async () => {
+      await this.writeJson(decisionFile(compareIdentity), decisions)
+      return decisions
     })
   }
 
@@ -116,6 +136,11 @@ function validateDraft(value: unknown): ReviewCommentDraft {
 function draftFile(compareIdentity: string) {
   if (!/^[a-f0-9]{64}$/.test(compareIdentity)) throw new Error('Invalid compare identity.')
   return `${compareIdentity}.drafts.json`
+}
+
+function decisionFile(compareIdentity: string) {
+  if (!/^[a-f0-9]{64}$/.test(compareIdentity)) throw new Error('Invalid compare identity.')
+  return `${compareIdentity}.decisions.json`
 }
 
 function isNotFound(error: unknown) {

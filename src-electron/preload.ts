@@ -36,12 +36,25 @@ import type {
   ReviewThread,
   ReviewAuthor,
   ReviewCommentDraft,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  ApplyComparisonReplaceResult,
+  ReplaceAllPreview,
+  SaveDocumentAsRequest,
+  SaveDocumentAsResult,
+  ExternalDocumentChange,
+  HunkFingerprint,
+  ReviewDecision,
+  ReviewDecisionStatus,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
   ipcRenderer.invoke(channel, payload) as Promise<T>
 
 contextBridge.exposeInMainWorld('diffly', {
+  clipboard: {
+    readText: () => invoke<string>('diffly:clipboard:readText'),
+  },
   choosePath: (kind: PathKind) =>
     invoke('diffly:choosePath', { kind }),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -159,6 +172,15 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<MutationResult<SaveDocumentResult>>('diffly:documents:save', request),
     saveAll: (request: SaveDocumentsRequest) =>
       invoke<MutationResult<EditableDocument[]>>('diffly:documents:saveAll', request),
+    saveAs: (request: SaveDocumentAsRequest) =>
+      invoke<SaveDocumentAsResult>('diffly:documents:saveAs', request),
+    watch: (target: DocumentTarget) => invoke<boolean>('diffly:documents:watch', { target }),
+    unwatch: (target: DocumentTarget) => invoke<void>('diffly:documents:unwatch', { target }),
+    onExternalChange: (callback: (change: ExternalDocumentChange) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, change: ExternalDocumentChange) => callback(change)
+      ipcRenderer.on('diffly:documents:externalChange', listener)
+      return () => ipcRenderer.removeListener('diffly:documents:externalChange', listener)
+    },
     listDrafts: () =>
       invoke<DraftSummary[]>('diffly:documents:listDrafts'),
     loadDraft: (id: string) =>
@@ -175,6 +197,10 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<SearchBatch>('diffly:search:poll', { jobId }),
     cancel: (jobId: string) =>
       invoke<void>('diffly:search:cancel', { jobId }),
+    previewReplace: (request: PreviewComparisonReplaceRequest) =>
+      invoke<ReplaceAllPreview>('diffly:search:previewReplace', request),
+    replaceAll: (request: ApplyComparisonReplaceRequest) =>
+      invoke<ApplyComparisonReplaceResult>('diffly:search:replaceAll', request),
   },
   review: {
     listHunks: (sessionId: string, entryId: string) =>
@@ -209,6 +235,12 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<ReviewCommentDraft>('diffly:review:saveDraft', { sessionId, key, body }),
     deleteDraft: (sessionId: string, key: string) =>
       invoke<void>('diffly:review:deleteDraft', { sessionId, key }),
+    listDecisions: (sessionId: string, entryId: string) =>
+      invoke<ReviewDecision[]>('diffly:review:listDecisions', { sessionId, entryId }),
+    setDecision: (sessionId: string, entryId: string, fingerprint: HunkFingerprint, changeIndex: number | null, status: ReviewDecisionStatus | null) =>
+      invoke<ReviewDecision[]>('diffly:review:setDecision', { sessionId, entryId, fingerprint, changeIndex, status }),
+    resetDecisions: (sessionId: string, entryId: string) =>
+      invoke<void>('diffly:review:resetDecisions', { sessionId, entryId }),
   },
   conflicts: {
     open: (sessionId: string, entryId: string) =>
@@ -217,6 +249,15 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<CreateDiffSessionResponse>('diffly:conflicts:resolve', request),
     undoResolution: (sessionId: string) =>
       invoke<CreateDiffSessionResponse>('diffly:conflicts:undoResolution', { sessionId }),
+  },
+  workspaceLifecycle: {
+    onCloseRequested: (callback: () => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('diffly:workspace:closeRequested', listener)
+      return () => ipcRenderer.removeListener('diffly:workspace:closeRequested', listener)
+    },
+    respondToClose: (allow: boolean) =>
+      invoke<void>('diffly:workspace:closeDecision', { allow }),
   },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.

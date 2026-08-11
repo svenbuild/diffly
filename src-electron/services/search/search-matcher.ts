@@ -30,10 +30,29 @@ export function createSearchMatcher(query: ComparisonSearchQuery) {
   }
 }
 
+export function replaceSearchMatches(line: string, query: ComparisonSearchQuery, replacement: string) {
+  if (query.regex) {
+    const expression = createRegex(query)
+    let count = 0
+    return {
+      contents: line.replace(expression, (...args: unknown[]) => {
+        count += 1
+        return expandReplacement(replacement, args)
+      }),
+      count,
+    }
+  }
+  const matches = createSearchMatcher(query)(line)
+  let contents = line
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const match = matches[index]!
+    contents = `${contents.slice(0, match.startColumn)}${replacement}${contents.slice(match.endColumn)}`
+  }
+  return { contents, count: matches.length }
+}
+
 function createRegexMatcher(query: ComparisonSearchQuery) {
-  validateSafeRegex(query.text)
-  const source = query.wholeWord ? `\\b(?:${query.text})\\b` : query.text
-  const expression = new RegExp(source, query.caseSensitive ? 'gu' : 'giu')
+  const expression = createRegex(query)
   return (line: string): LineMatch[] => {
     expression.lastIndex = 0
     const matches: LineMatch[] = []
@@ -44,6 +63,32 @@ function createRegexMatcher(query: ComparisonSearchQuery) {
     }
     return matches
   }
+}
+
+function createRegex(query: ComparisonSearchQuery) {
+  validateSafeRegex(query.text)
+  const source = query.wholeWord ? `\\b(?:${query.text})\\b` : query.text
+  return new RegExp(source, query.caseSensitive ? 'gu' : 'giu')
+}
+
+function expandReplacement(replacement: string, args: unknown[]) {
+  const match = String(args[0] ?? '')
+  const offsetIndex = args.findIndex((value, index) => index > 0 && typeof value === 'number')
+  const input = offsetIndex >= 0 ? String(args[offsetIndex + 1] ?? '') : ''
+  const offset = offsetIndex >= 0 ? Number(args[offsetIndex]) : 0
+  const groups = offsetIndex > 1 ? args.slice(1, offsetIndex) : []
+  const named = typeof args.at(-1) === 'object' && args.at(-1) !== null
+    ? args.at(-1) as Record<string, string>
+    : null
+  return replacement.replace(/\$(\$|&|`|'|<[^>]+>|\d{1,2})/g, (token, reference: string) => {
+    if (reference === '$') return '$'
+    if (reference === '&') return match
+    if (reference === '`') return input.slice(0, offset)
+    if (reference === "'") return input.slice(offset + match.length)
+    if (reference.startsWith('<')) return named?.[reference.slice(1, -1)] ?? token
+    const index = Number(reference)
+    return index > 0 && index <= groups.length ? String(groups[index - 1] ?? '') : token
+  })
 }
 
 export function validateSafeRegex(source: string) {

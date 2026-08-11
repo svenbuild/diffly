@@ -1,4 +1,4 @@
-import type { DocumentTarget } from './workspace-types'
+import type { DocumentRevision, DocumentTarget, EditableDocument, MutationResult } from './workspace-types'
 
 export type ComparisonSearchScope = 'all' | 'changed' | 'added' | 'deleted' | 'context'
 
@@ -45,7 +45,7 @@ export interface SearchJobStarted {
 export interface ReplaceAllFilePreview {
   target: DocumentTarget
   path: string
-  revisionSha256: string
+  revision: DocumentRevision
   matchCount: number
   before: string
   after: string
@@ -55,3 +55,15 @@ export interface ReplaceAllPreview {
   files: ReplaceAllFilePreview[]
   totalMatches: number
 }
+
+export interface PreviewComparisonReplaceRequest {
+  sessionId: string
+  query: ComparisonSearchQuery
+  replacement: string
+}
+
+export interface ApplyComparisonReplaceRequest extends PreviewComparisonReplaceRequest {
+  documents: Array<{ target: DocumentTarget; expectedRevision: DocumentRevision }>
+}
+
+export type ApplyComparisonReplaceResult = MutationResult<EditableDocument[]>

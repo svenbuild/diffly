@@ -77,6 +77,24 @@ export interface SaveDocumentResult {
   document: EditableDocument
 }
 
+export interface SaveDocumentAsRequest {
+  target: DocumentTarget
+  contents: string
+  format: DocumentFormat
+  suggestedName: string
+}
+
+export interface SaveDocumentAsResult {
+  canceled: boolean
+  path: string | null
+  revision: DocumentRevision | null
+}
+
+export interface ExternalDocumentChange {
+  target: DocumentTarget
+  revision: DocumentRevision | null
+}
+
 export type MutationResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: MutationError }

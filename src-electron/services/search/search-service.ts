@@ -1,21 +1,31 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  ApplyComparisonReplaceRequest,
   ComparisonSearchQuery,
+  PreviewComparisonReplaceRequest,
+  ReplaceAllPreview,
   SearchMatch,
   StartComparisonSearchRequest,
 } from '../../../src/lib/search-types'
 import type { DiffSessionService, SearchDocumentDescriptor } from '../diff/diff-session-service'
+import type { DocumentService } from '../documents/document-service'
+import { revisionsEqual } from '../documents/document-revision'
+import type { OperationJournal } from '../review/operation-journal'
 import { SearchJobStore, type SearchJob } from './search-job-store'
-import { createSearchMatcher, pathMatchesFilter } from './search-matcher'
+import { createSearchMatcher, pathMatchesFilter, replaceSearchMatches } from './search-matcher'
 
 const SEARCH_CONCURRENCY = 4
 
 export class SearchService {
   private readonly sessions: DiffSessionService
+  private readonly documents: DocumentService | null
+  private readonly journal: OperationJournal | null
   private readonly jobs = new SearchJobStore()
 
-  constructor(sessions: DiffSessionService) {
+  constructor(sessions: DiffSessionService, documents: DocumentService | null = null, journal: OperationJournal | null = null) {
     this.sessions = sessions
+    this.documents = documents
+    this.journal = journal
   }
 
   start(request: StartComparisonSearchRequest) {
@@ -36,6 +46,73 @@ export class SearchService {
 
   cancel(jobId: string) {
     this.jobs.cancel(jobId)
+  }
+
+  async previewReplace(request: PreviewComparisonReplaceRequest): Promise<ReplaceAllPreview> {
+    createSearchMatcher(request.query)
+    const descriptors = writableSearchDocuments(this.sessions, request)
+    const lineScopes = new Map<string, Promise<LineScopes>>()
+    const files = []
+    let totalMatches = 0
+    for (const descriptor of descriptors) {
+      const document = await this.sessions.openDocument(descriptor.target)
+      if (document.readOnly || descriptor.target.kind === 'scratch') continue
+      const allowed = request.query.scope === 'all'
+        ? null
+        : await getLineScopes(this.sessions, lineScopes, request.sessionId, descriptor.entryId)
+      const result = replaceDocument(document.contents, request.query, request.replacement, descriptor.side, allowed)
+      if (result.count === 0) continue
+      totalMatches += result.count
+      files.push({
+        target: descriptor.target,
+        path: descriptor.path,
+        revision: document.revision,
+        matchCount: result.count,
+        before: document.contents,
+        after: result.contents,
+      })
+    }
+    return { files, totalMatches }
+  }
+
+  async replaceAll(request: ApplyComparisonReplaceRequest) {
+    if (!this.documents || !this.journal) throw new Error('Workspace replace is unavailable.')
+    const preview = await this.previewReplace(request)
+    const selected = new Map(request.documents.map((item) => [targetKey(item.target), item]))
+    const files = preview.files.filter((file) => selected.has(targetKey(file.target)))
+    if (files.length !== selected.size) throw new Error('One or more replace targets are stale or no longer match.')
+    for (const file of files) {
+      const expected = selected.get(targetKey(file.target))!.expectedRevision
+      if (!revisionsEqual(file.revision, expected)) throw new Error('STALE_DOCUMENT')
+    }
+    const journalId = await this.journal.start({
+      kind: 'replaceAll', sessionId: request.sessionId, entryId: null,
+    })
+    try {
+      const result = await this.documents.saveAll({
+        documents: files.map((file) => ({
+          target: file.target, contents: file.after, expectedRevision: file.revision,
+        })),
+      })
+      if (!result.ok) {
+        await this.journal.fail(journalId)
+        return result
+      }
+      await this.journal.complete(journalId, {
+        type: 'documents',
+        documents: files.map((file, index) => ({
+          target: file.target,
+          contents: file.before,
+          format: result.value[index]!.format,
+          afterRevision: result.value[index]!.revision,
+        })),
+      })
+      await this.sessions.refresh(request.sessionId)
+      return result
+    } catch (error) {
+      await this.journal.fail(journalId).catch(() => undefined)
+      throw error
+    }
   }
 
   private async run(
@@ -93,6 +170,45 @@ export class SearchService {
       job.done = true
     }
   }
+}
+
+function writableSearchDocuments(sessions: DiffSessionService, request: PreviewComparisonReplaceRequest) {
+  const seen = new Set<string>()
+  return sessions.listSearchDocuments(request.sessionId)
+    .filter((document) => pathMatchesFilter(document.path, request.query.pathFilter))
+    .filter((document) => sideMatchesScope(document.side, request.query.scope))
+    .filter((document) => {
+      const key = targetKey(document.target)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function replaceDocument(
+  contents: string,
+  query: ComparisonSearchQuery,
+  replacement: string,
+  side: 'left' | 'right',
+  scopes: LineScopes | null,
+) {
+  const parts = contents.split(/(\r\n|\r|\n)/)
+  let lineNumber = 1
+  let count = 0
+  for (let index = 0; index < parts.length; index += 2) {
+    if (!scopes || lineAllowed(scopes, side, lineNumber, query.scope)) {
+      const result = replaceSearchMatches(parts[index] ?? '', query, replacement)
+      parts[index] = result.contents
+      count += result.count
+    }
+    lineNumber += 1
+  }
+  return { contents: parts.join(''), count }
+}
+
+function targetKey(target: SearchDocumentDescriptor['target']) {
+  if (target.kind === 'scratch') return `scratch:${target.sourceSessionId}:${target.sourceEntryId}:${target.sourceSide}`
+  return `${target.kind}:${target.sessionId}:${target.entryId}:${target.kind === 'local' ? target.side : ''}`
 }
 
 interface LineScopes {
