@@ -6,6 +6,7 @@ import type {
   DiffEntryFilter,
   DiffSource,
   GithubPullRequestMetadata,
+  GitRefValidation,
   GitRefsResponse,
   GitRepositoryValidation,
   PathKind,
@@ -65,6 +66,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<GitRepositoryValidation>('diffly:validateGitRepository', { path }),
   listGitRefs: (repoPath: string) =>
     invoke<GitRefsResponse>('diffly:listGitRefs', { repoPath }),
+  validateGitRef: (repoPath: string, ref: string) =>
+    invoke<GitRefValidation>('diffly:validateGitRef', { repoPath, ref }),
   detectGitRepositories: (paths: string[]) =>
     invoke<string[]>('diffly:detectGitRepositories', { paths }),
   fetchGithubPullRequestMetadata: (url: string) =>

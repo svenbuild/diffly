@@ -7,6 +7,8 @@
     getDroppedFilePath,
     listGitRefs,
     loadRecentSources,
+    removeRecentSource,
+    validateGitRef,
     validateGitRepository,
   } from '../api'
   import { markStartupProfile } from '../app/startup-profile'
@@ -16,6 +18,7 @@
     GitDiffSource,
     GitRefsResponse,
     GitSelection,
+    GitSetupDraft,
     RecentGitRepository,
   } from '../types'
 
@@ -25,9 +28,11 @@
   export let onOpenSource: (source: GitDiffSource) => void | Promise<void>
   export let loading = false
   export let reloadRecentsRequestId = 0
+  export let draft: GitSetupDraft
+  export let onDraftChange: (draft: GitSetupDraft) => void
 
-  let advancedOpen = false
-  let inputPath = ''
+  let advancedOpen = draft.advancedOpen
+  let inputPath = draft.inputPath
   let repositoryRoot = ''
   let validationStatus: 'idle' | 'validating' | 'valid' | 'invalid' = 'idle'
   let validationError = ''
@@ -36,11 +41,13 @@
   let refsStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   let refsError = ''
   let gitRefs: GitRefsResponse | null = null
-  let selectionKind: SelectionKind = 'refRange'
-  let baseRef = ''
-  let headRef = ''
-  let notation: Notation = 'threeDot'
-  let commitRef = ''
+  let selectionKind: SelectionKind = draft.selectionKind
+  let baseRef = draft.baseRef
+  let headRef = draft.headRef
+  let notation: Notation = draft.notation
+  let commitRef = draft.commitRef
+  let validatingSelection = false
+  let selectionError = ''
   let requestToken = 0
   let refsRequestToken = 0
   let openingPath = ''
@@ -48,6 +55,7 @@
 
   let recentRepositories: RecentGitRepository[] = []
   let recentLoadError = false
+  let recentActionError = ''
   let lastReloadRecentsRequestId = reloadRecentsRequestId
 
   async function loadRecents() {
@@ -68,6 +76,9 @@
   onMount(() => {
     markStartupProfile('git-setup-mounted')
     void loadRecents()
+    if (advancedOpen && inputPath.trim()) {
+      void validate(inputPath, true)
+    }
   })
 
   $: if (reloadRecentsRequestId !== lastReloadRecentsRequestId) {
@@ -90,6 +101,25 @@
     baseRef = ''
     headRef = ''
     commitRef = ''
+    selectionError = ''
+    emitDraft()
+  }
+
+  function emitDraft() {
+    onDraftChange({
+      advancedOpen,
+      inputPath,
+      selectionKind,
+      baseRef,
+      headRef,
+      notation,
+      commitRef,
+    })
+  }
+
+  function setAdvancedOpen(value: boolean) {
+    advancedOpen = value
+    emitDraft()
   }
 
   function handleInputPathChange(value: string) {
@@ -180,13 +210,14 @@
       ?? refs.localBranches[0]?.name
       ?? refs.remoteBranches[0]?.name
       ?? ''
-    headRef = defaultHead
-    baseRef = refs.localBranches.find((ref) => ref.name === 'main' && ref.name !== defaultHead)?.name
+    headRef ||= defaultHead
+    baseRef ||= refs.localBranches.find((ref) => ref.name === 'main' && ref.name !== defaultHead)?.name
       ?? refs.localBranches.find((ref) => ref.name === 'master' && ref.name !== defaultHead)?.name
       ?? refs.localBranches.find((ref) => ref.name !== defaultHead)?.name
       ?? refs.remoteBranches.find((ref) => ref.name !== defaultHead)?.name
       ?? ''
-    commitRef = refs.recentCommits[0]?.sha ?? refs.headSha ?? ''
+    commitRef ||= refs.recentCommits[0]?.sha ?? refs.headSha ?? ''
+    emitDraft()
   }
 
   async function openWorkingTree(path: string) {
@@ -235,6 +266,16 @@
     }
   }
 
+  async function handleRemoveRecent(id: string) {
+    recentActionError = ''
+    try {
+      const recents = await removeRecentSource(id)
+      recentRepositories = recents.gitRepositories ?? []
+    } catch {
+      recentActionError = 'Recent repository could not be removed.'
+    }
+  }
+
   async function handleDrop(event: DragEvent) {
     event.preventDefault()
     dropActive = false
@@ -265,13 +306,73 @@
       selection = { kind: 'commit', commitRef: commitRef.trim() }
     }
 
-    if (selection) {
+    if (!selection) {
+      return
+    }
+
+    validatingSelection = true
+    selectionError = ''
+    try {
+      if (selection.kind === 'refRange') {
+        const [baseValidation, headValidation] = await Promise.all([
+          validateGitRef(repositoryRoot, selection.baseRef),
+          validateGitRef(repositoryRoot, selection.headRef),
+        ])
+        if (!baseValidation.valid) {
+          selectionError = `Base ref “${selection.baseRef}” was not found.`
+          return
+        }
+        if (!headValidation.valid) {
+          selectionError = `Head ref “${selection.headRef}” was not found.`
+          return
+        }
+      } else {
+        const validation = await validateGitRef(repositoryRoot, selection.commitRef)
+        if (!validation.valid) {
+          selectionError = `Commit “${selection.commitRef}” was not found.`
+          return
+        }
+      }
+
       await onOpenSource(createAdvancedGitSource(
         inputPath.trim(),
         repositoryRoot,
         selection,
       ))
+    } catch {
+      selectionError = 'The selected ref could not be validated.'
+    } finally {
+      validatingSelection = false
     }
+  }
+
+  function updateSelectionKind(value: SelectionKind) {
+    selectionKind = value
+    selectionError = ''
+    emitDraft()
+  }
+
+  function updateBaseRef(value: string) {
+    baseRef = value
+    selectionError = ''
+    emitDraft()
+  }
+
+  function updateHeadRef(value: string) {
+    headRef = value
+    selectionError = ''
+    emitDraft()
+  }
+
+  function updateNotation(value: Notation) {
+    notation = value
+    emitDraft()
+  }
+
+  function updateCommitRef(value: string) {
+    commitRef = value
+    selectionError = ''
+    emitDraft()
   }
 
   $: recentItems = recentRepositories.map((repo) => ({
@@ -329,13 +430,15 @@
         emptyMessage="No recent repositories"
         activeId=""
         onSelect={handleSelectRecent}
+        onRemove={handleRemoveRecent}
+        actionErrorMessage={recentActionError}
       />
 
-      <button class="advanced-toggle" type="button" on:click={() => (advancedOpen = true)}>
+      <button class="advanced-toggle" type="button" on:click={() => setAdvancedOpen(true)}>
         Advanced compare…
       </button>
     {:else}
-      <button class="advanced-back" type="button" on:click={() => (advancedOpen = false)}>
+      <button class="advanced-back" type="button" on:click={() => setAdvancedOpen(false)}>
         ← Back to repositories
       </button>
       <GitRepositoryPicker
@@ -354,14 +457,16 @@
         {notation}
         {commitRef}
         {loading}
+        {validatingSelection}
+        {selectionError}
         onInputPathChange={handleInputPathChange}
         onBrowse={browseAdvancedRepository}
         onValidate={validateAdvancedRepository}
-        onSelectionKindChange={(value) => (selectionKind = value)}
-        onBaseRefChange={(value) => (baseRef = value)}
-        onHeadRefChange={(value) => (headRef = value)}
-        onNotationChange={(value) => (notation = value)}
-        onCommitRefChange={(value) => (commitRef = value)}
+        onSelectionKindChange={updateSelectionKind}
+        onBaseRefChange={updateBaseRef}
+        onHeadRefChange={updateHeadRef}
+        onNotationChange={updateNotation}
+        onCommitRefChange={updateCommitRef}
         onOpen={openAdvancedDiff}
       />
     {/if}

@@ -18,6 +18,8 @@
   export let emptyMessage = 'No recent sources'
   export let activeId = ''
   export let onSelect: (id: string) => void
+  export let onRemove: ((id: string) => void | Promise<void>) | null = null
+  export let actionErrorMessage = ''
 </script>
 
 <section class="git-setup-recent" aria-label={title}>
@@ -48,9 +50,21 @@
             {/if}
             <span class="git-setup-recent-arrow" aria-hidden="true">→</span>
           </button>
+          {#if onRemove}
+            <button
+              aria-label={`Remove ${item.name} from recent sources`}
+              class="git-setup-recent-remove"
+              title="Remove from recent sources"
+              type="button"
+              on:click={() => onRemove?.(item.id)}
+            >×</button>
+          {/if}
         </li>
       {/each}
     </ul>
+  {/if}
+  {#if actionErrorMessage}
+    <p class="git-setup-recent-action-error" role="alert">{actionErrorMessage}</p>
   {/if}
 </section>
 
@@ -92,6 +106,11 @@
     gap: 2px;
   }
 
+  .git-setup-recent-list li {
+    position: relative;
+    min-width: 0;
+  }
+
   .git-setup-recent-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -103,6 +122,48 @@
     background: transparent;
     text-align: left;
     gap: 10px;
+  }
+
+  .git-setup-recent-list li:has(.git-setup-recent-remove) .git-setup-recent-item {
+    padding-right: 36px;
+  }
+
+  .git-setup-recent-remove {
+    position: absolute;
+    top: 50%;
+    right: 7px;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    opacity: 0;
+    transform: translateY(-50%);
+    transition: opacity 100ms ease, color 100ms ease, background 100ms ease;
+  }
+
+  .git-setup-recent-list li:hover .git-setup-recent-remove,
+  .git-setup-recent-remove:focus-visible {
+    opacity: 1;
+  }
+
+  .git-setup-recent-remove:hover,
+  .git-setup-recent-remove:focus-visible {
+    background: var(--surface-alt);
+    color: var(--danger);
+  }
+
+  .git-setup-recent-action-error {
+    margin: 0;
+    padding: 0 12px 10px;
+    color: var(--danger);
+    font-size: 11px;
   }
 
   .git-setup-recent-item.active {

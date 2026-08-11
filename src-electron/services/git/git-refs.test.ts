@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { listGitRefs } from './git-refs'
+import { listGitRefs, validateGitRef } from './git-refs'
 
 const execFileAsync = promisify(execFile)
 const tempPaths: string[] = []
@@ -27,6 +27,46 @@ describe('listGitRefs', () => {
     expect(refs.headSha).toBe(headSha)
     expect(refs.localBranches.find((ref) => ref.name === 'main')?.sha).toBe(headSha)
     expect(refs.recentCommits[0]?.sha).toBe(headSha)
+  })
+
+  it('validates branch, tag, and SHA commit references without walking history', async () => {
+    const repoPath = await createRepo()
+    await commitFile(repoPath, 'tracked.txt', 'base\n')
+    const headSha = await gitStdout(repoPath, ['rev-parse', 'HEAD'])
+    await git(repoPath, ['tag', 'v1'])
+    await git(repoPath, ['checkout', '-b', 'feature/setup'])
+    await commitFile(repoPath, 'feature.txt', 'feature\n')
+    const featureSha = await gitStdout(repoPath, ['rev-parse', 'HEAD'])
+    await git(repoPath, ['checkout', 'main'])
+
+    await expect(validateGitRef(repoPath, 'main')).resolves.toEqual({
+      valid: true,
+      resolvedSha: headSha,
+    })
+    await expect(validateGitRef(repoPath, 'v1')).resolves.toEqual({
+      valid: true,
+      resolvedSha: headSha,
+    })
+    await expect(validateGitRef(repoPath, headSha.slice(0, 12))).resolves.toEqual({
+      valid: true,
+      resolvedSha: headSha,
+    })
+    await expect(validateGitRef(repoPath, 'feature/setup')).resolves.toEqual({
+      valid: true,
+      resolvedSha: featureSha,
+    })
+    await expect(validateGitRef(repoPath, featureSha)).resolves.toEqual({
+      valid: true,
+      resolvedSha: featureSha,
+    })
+    await expect(validateGitRef(repoPath, 'missing-ref')).resolves.toEqual({
+      valid: false,
+      resolvedSha: null,
+    })
+    await expect(validateGitRef(repoPath, '--help')).resolves.toEqual({
+      valid: false,
+      resolvedSha: null,
+    })
   })
 })
 

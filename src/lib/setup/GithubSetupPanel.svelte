@@ -5,6 +5,7 @@
     fetchGithubPullRequestMetadata,
     loadRecentSources,
     openExternalUrl,
+    removeRecentSource,
   } from '../api'
   import {
     finishStartupProfileAfterPaint,
@@ -31,9 +32,8 @@
   // this panel reloads the list without waiting for a remount.
   export let reloadRecentsRequestId = 0
   // Prefill for the URL input (e.g. the restored session's GitHub source).
-  export let initialUrl = ''
-
-  let githubUrl = initialUrl
+  export let githubUrl = ''
+  export let onGithubUrlChange: (value: string) => void
   let metadataStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle'
   let metadata: GithubPullRequestMetadata | null = null
   // Canonical URL of the PR the current metadata state belongs to. Newer
@@ -45,6 +45,7 @@
   let recentPullRequests: RecentGithubPullRequest[] = []
   let recentCompares: RecentGithubCompare[] = []
   let recentLoadError = false
+  let recentActionError = ''
   let lastReloadRecentsRequestId = reloadRecentsRequestId
 
   async function loadRecents() {
@@ -84,6 +85,7 @@
 
   function handleInput(value: string) {
     githubUrl = value
+    onGithubUrlChange(value)
   }
 
   function handleSelectRecent(id: string) {
@@ -91,6 +93,7 @@
     if (recentPr) {
       const source = parseGithubDiffUrl(recentPr.url)
       if (source) {
+        handleInput(recentPr.url)
         void onOpenSource(source, null)
       }
       return
@@ -100,8 +103,20 @@
     if (recentCompare) {
       const source = parseGithubDiffUrl(recentCompare.url)
       if (source) {
+        handleInput(recentCompare.url)
         void onOpenSource(source, null)
       }
+    }
+  }
+
+  async function handleRemoveRecent(id: string) {
+    recentActionError = ''
+    try {
+      const recents = await removeRecentSource(id)
+      recentPullRequests = recents.githubPullRequests ?? []
+      recentCompares = recents.githubCompares ?? []
+    } catch {
+      recentActionError = 'Recent GitHub diff could not be removed.'
     }
   }
 
@@ -294,6 +309,8 @@
       emptyMessage="No recent GitHub diffs"
       activeId={activeRecentId}
       onSelect={handleSelectRecent}
+      onRemove={handleRemoveRecent}
+      actionErrorMessage={recentActionError}
     />
   </div>
 </section>

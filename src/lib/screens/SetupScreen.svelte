@@ -8,6 +8,7 @@
   import type {
     ExplorerEntry,
     GitDiffSource,
+    GitSetupDraft,
     GithubDiffSource,
     GithubPullRequestMetadata,
     SetupMode,
@@ -38,7 +39,10 @@
     source: GitDiffSource | GithubDiffSource,
     metadata?: GithubPullRequestMetadata | null,
   ) => void | Promise<void>
-  export let initialGithubUrl = ''
+  export let githubUrl = ''
+  export let onGithubUrlChange: (value: string) => void
+  export let gitDraft: GitSetupDraft
+  export let onGitDraftChange: (draft: GitSetupDraft) => void
   export let reloadRecentsRequestId = 0
   export let pickerSides: Array<{ side: Side; pane: ExplorerPaneState }> = []
   export let pickerLoading = false
@@ -190,6 +194,8 @@
         onOpenSource={openSessionSource}
         {loading}
         {reloadRecentsRequestId}
+        draft={gitDraft}
+        onDraftChange={onGitDraftChange}
       />
     {:else}
       {#if GithubSetupPanelComponent}
@@ -197,7 +203,8 @@
           this={GithubSetupPanelComponent}
           onOpenSource={openSessionSource}
           {loading}
-          initialUrl={initialGithubUrl}
+          {githubUrl}
+          {onGithubUrlChange}
           {reloadRecentsRequestId}
         />
       {/if}

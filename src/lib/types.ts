@@ -69,6 +69,21 @@ export interface GitRefsResponse {
   recentCommits: GitCommitSummary[]
 }
 
+export interface GitRefValidation {
+  valid: boolean
+  resolvedSha: string | null
+}
+
+export interface GitSetupDraft {
+  advancedOpen: boolean
+  inputPath: string
+  selectionKind: 'refRange' | 'commit'
+  baseRef: string
+  headRef: string
+  notation: 'twoDot' | 'threeDot'
+  commitRef: string
+}
+
 export type GitSelection =
   | {
       kind: 'workingTree'

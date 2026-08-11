@@ -31,6 +31,7 @@ import {
   type GitStatusSnapshot,
 } from '../git/git-status'
 import { disposeGitObjectStore } from '../git/git-object-store'
+import { resolveGitCommitRef } from '../git/git-refs'
 import { runGit } from '../git/git-service'
 
 const GIT_ENTRY_OPTIONS = {
@@ -1181,25 +1182,7 @@ async function resolveCommitSha(repoPath: string, ref: string, errorMessage: str
 }
 
 async function tryResolveCommitSha(repoPath: string, ref: string) {
-  const trimmed = ref.trim()
-  // Refs are passed as positional git args; a leading '-' could otherwise be
-  // parsed as an option.
-  if (!trimmed || trimmed.startsWith('-')) {
-    return null
-  }
-
-  const result = await runGit(repoPath, [
-    'rev-parse',
-    '--verify',
-    '--quiet',
-    `${trimmed}^{commit}`,
-  ], GIT_OPTIONAL_HEAD_OPTIONS)
-
-  if (result.exitCode !== 0) {
-    return null
-  }
-
-  return result.stdout.trim() || null
+  return resolveGitCommitRef(repoPath, ref)
 }
 
 async function resolveMergeBase(repoPath: string, baseSha: string, headSha: string) {

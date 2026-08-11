@@ -3,6 +3,7 @@ import type {
   GitCommitSummary,
   GitRef,
   GitRefKind,
+  GitRefValidation,
   GitRefsResponse,
 } from '../../../src/lib/types'
 import { readCurrentBranchFromGitDir } from './git-head'
@@ -26,6 +27,37 @@ const COMMIT_OPTIONS = {
 }
 
 const FULL_OID_PATTERN = /^[0-9a-f]{40}$/i
+
+export async function validateGitRef(
+  repoPath: string,
+  ref: string,
+): Promise<GitRefValidation> {
+  const resolvedSha = await resolveGitCommitRef(repoPath, ref)
+
+  return {
+    valid: resolvedSha !== null,
+    resolvedSha,
+  }
+}
+
+export async function resolveGitCommitRef(
+  repoPath: string,
+  ref: string,
+): Promise<string | null> {
+  const trimmed = typeof ref === 'string' ? ref.trim() : ''
+  if (!trimmed || trimmed.startsWith('-')) {
+    return null
+  }
+
+  const result = await runGit(repoPath, [
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `${trimmed}^{commit}`,
+  ], HEAD_OPTIONS)
+  const resolvedSha = result.exitCode === 0 ? result.stdout.trim() : ''
+  return FULL_OID_PATTERN.test(resolvedSha) ? resolvedSha : null
+}
 
 export async function listGitRefs(repoPath: string): Promise<GitRefsResponse> {
   const [head, refs, recentCommits] = await Promise.all([

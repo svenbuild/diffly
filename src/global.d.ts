@@ -11,6 +11,7 @@ import type {
   ExplorerEntry,
   FileDiffResult,
   GithubPullRequestMetadata,
+  GitRefValidation,
   GitRefsResponse,
   GitRepositoryValidation,
   LaunchContext,
@@ -52,6 +53,7 @@ declare global {
       removeRecentSource(id: string): Promise<RecentSources>
       validateGitRepository(path: string): Promise<GitRepositoryValidation>
       listGitRefs(repoPath: string): Promise<GitRefsResponse>
+      validateGitRef(repoPath: string, ref: string): Promise<GitRefValidation>
       detectGitRepositories(paths: string[]): Promise<string[]>
       fetchGithubPullRequestMetadata(url: string): Promise<GithubPullRequestMetadata>
       getAppVersion(): Promise<string>

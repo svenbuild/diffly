@@ -1,5 +1,6 @@
 <script lang="ts">
   import Dropdown from '../components/Dropdown.svelte'
+  import EditableCombobox from '../components/EditableCombobox.svelte'
   import type { GitRefsResponse } from '../types'
 
   type SelectionKind = 'refRange' | 'commit'
@@ -26,6 +27,8 @@
   export let notation: Notation = 'threeDot'
   export let commitRef = ''
   export let loading = false
+  export let validatingSelection = false
+  export let selectionError = ''
 
   export let onInputPathChange: (value: string) => void
   export let onBrowse: () => void | Promise<void>
@@ -49,11 +52,10 @@
     .join(' · ')
   $: refOptions = buildRefOptions(gitRefs, baseRef, headRef)
   $: commitOptions = buildCommitOptions(gitRefs, commitRef)
-  $: refsUnavailable = refsStatus !== 'loaded' || refOptions.length === 0
-  $: commitsUnavailable = refsStatus !== 'loaded' || commitOptions.length === 0
   $: canOpen =
     validationStatus === 'valid' &&
     !loading &&
+    !validatingSelection &&
     (selectionKind === 'refRange'
       ? Boolean(baseRef.trim() && headRef.trim())
       : Boolean(commitRef.trim()))
@@ -174,20 +176,24 @@
       <div class="advanced-grid">
         <div class="advanced-field">
           <span>Base</span>
-          <Dropdown
+          <EditableCombobox
             ariaLabel="Base ref"
-            disabled={refsUnavailable}
+            disabled={refsStatus === 'loading'}
+            invalid={Boolean(selectionError)}
             options={refOptions}
+            placeholder="Search or enter ref…"
             value={baseRef}
             onChange={onBaseRefChange}
           />
         </div>
         <div class="advanced-field">
           <span>Head</span>
-          <Dropdown
+          <EditableCombobox
             ariaLabel="Head ref"
-            disabled={refsUnavailable}
+            disabled={refsStatus === 'loading'}
+            invalid={Boolean(selectionError)}
             options={refOptions}
+            placeholder="Search or enter ref…"
             value={headRef}
             onChange={onHeadRefChange}
           />
@@ -196,7 +202,7 @@
           <span>Comparison</span>
           <Dropdown
             ariaLabel="Comparison style"
-            disabled={refsUnavailable}
+            disabled={refsStatus === 'loading'}
             options={comparisonOptions}
             value={notation}
             onChange={(value) => onNotationChange(value as Notation)}
@@ -206,10 +212,12 @@
     {:else}
       <div class="advanced-field">
         <span>Commit</span>
-        <Dropdown
+        <EditableCombobox
           ariaLabel="Commit"
-          disabled={commitsUnavailable}
+          disabled={refsStatus === 'loading'}
+          invalid={Boolean(selectionError)}
           options={commitOptions}
+          placeholder="SHA, branch, tag, or search…"
           value={commitRef}
           onChange={onCommitRefChange}
         />
@@ -220,13 +228,17 @@
       <p class="status-note">Loading refs…</p>
     {:else if refsStatus === 'error'}
       <p class="status-note error">{refsError || 'Refs could not be loaded.'}</p>
+    {:else if validatingSelection}
+      <p class="status-note">Validating ref…</p>
+    {:else if selectionError}
+      <p class="status-note error" role="alert">{selectionError}</p>
     {:else if commandPreview}
       <code class="command-preview">{commandPreview}</code>
     {/if}
 
     <div class="advanced-actions">
       <button class="primary" type="button" disabled={!canOpen} on:click={onOpen}>
-        {loading ? 'Opening…' : 'Open diff'}
+        {loading ? 'Opening…' : validatingSelection ? 'Validating…' : 'Open diff'}
       </button>
     </div>
   </fieldset>

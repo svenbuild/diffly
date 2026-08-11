@@ -123,6 +123,7 @@
     ExplorerEntry,
     FileDiffResult,
     GitDiffSource,
+    GitSetupDraft,
     GithubDiffSource,
     GithubPullRequestMetadata,
     GitWorkingTreeScope,
@@ -182,9 +183,16 @@
   // restore their saved mode (or derive it from the saved source).
   let setupMode: SetupMode = 'git'
   let gitSetup: PersistedGitSetup = {}
-  // Prefill for the GitHub URL input, restored from the persisted session in
-  // applyPersistedSession.
-  let initialGithubUrl = ''
+  let githubUrlDraft = ''
+  let advancedGitDraft: GitSetupDraft = {
+    advancedOpen: false,
+    inputPath: '',
+    selectionKind: 'refRange',
+    baseRef: '',
+    headRef: '',
+    notation: 'threeDot',
+    commitRef: '',
+  }
   let activeDiffSource: DiffSource | null = null
   let activeDiffSessionId: string | null = null
   // How the directory diff list loads each entry: local paths for local compares,
@@ -1508,7 +1516,7 @@
 
     const restoredGithubSource = session.source ?? null
     if (isGithubDiffSource(restoredGithubSource) && typeof restoredGithubSource.url === 'string') {
-      initialGithubUrl = restoredGithubSource.url
+      githubUrlDraft = restoredGithubSource.url
     }
 
     gitSetup = session.gitSetup ?? {}
@@ -2168,26 +2176,6 @@
           ? gitScope
           : source.selection.initialScope
         : null
-
-    if (!wasCompareScreen) {
-      mode = 'directory'
-      activeDiffSource = source
-      activeDiffSessionId = null
-      gitScopeEntries = []
-      gitScopeDirectoryEntries = []
-      gitScope = targetScope ?? 'all'
-      directoryEntries = []
-      directoryEntriesRevision += 1
-      syncFilteredDirectoryState([])
-      selectedRelativePath = ''
-      activeDiff = null
-      activeDetailRequestId += 1
-      resetCompareMetrics()
-      cancelBackgroundDiffPreload()
-      stopDirectoryComparePolling(true)
-      screen = 'compare'
-      pulseCompareSurface()
-    }
 
     try {
       markCompareTiming('session-request-start')
@@ -2870,7 +2858,10 @@
     {openSettings}
     {errorMessage}
     {openSessionSource}
-    {initialGithubUrl}
+    githubUrl={githubUrlDraft}
+    onGithubUrlChange={(value) => (githubUrlDraft = value)}
+    gitDraft={advancedGitDraft}
+    onGitDraftChange={(draft) => (advancedGitDraft = draft)}
     reloadRecentsRequestId={recentsReloadRequestId}
     {pickerSides}
     {pickerLoading}

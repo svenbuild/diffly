@@ -96,6 +96,11 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:listGitRefs', (_event, payload) =>
     import('./git/git-refs').then(({ listGitRefs }) => listGitRefs(payload?.repoPath)),
   )
+  ipcMain.handle('diffly:validateGitRef', (_event, payload) =>
+    import('./git/git-refs').then(({ validateGitRef }) =>
+      validateGitRef(payload?.repoPath, payload?.ref),
+    ),
+  )
   ipcMain.handle('diffly:detectGitRepositories', (_event, payload) =>
     import('./git/git-detection').then(({ detectGitRepositories }) =>
       detectGitRepositories(payload?.paths),
