@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Ensure Electron binary
+        run: node scripts/ensure-electron.mjs
       - name: Electron E2E (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum npm run test:e2e
