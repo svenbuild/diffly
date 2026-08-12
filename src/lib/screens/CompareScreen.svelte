@@ -80,7 +80,7 @@
   export let openExternalUrl: (url: string) => void = () => {}
   export let compareNeedsRefresh = false
   export let runCompare: () => Promise<void> | void
-  export let refreshSession: () => Promise<void> | void = runCompare
+  export let refreshSession: (invalidateRelativePath?: string) => Promise<void> | void = runCompare
   export let openSettings: (section?: SettingsSection) => void
   export let goToSetup: () => void
   export let errorMessage = ''
@@ -109,6 +109,8 @@
   export let directoryScrollTargetRevision = 0
   export let viewerSettings: CompareViewerSettings
   export let compareRevision = 0
+  export let invalidatedEntryPath = ''
+  export let invalidatedEntryRevision = 0
   export let leftPath = ''
   export let rightPath = ''
   export let activeCompareOptions: CompareOptions
@@ -252,7 +254,7 @@
   async function handleConflictResolved() {
     canUndoResolution = true
     resolutionError = ''
-    await refreshSession()
+    await refreshSession(selectedRelativePath)
   }
 
   async function undoLastResolution() {
@@ -261,7 +263,7 @@
       await workspaceConflictController.undo(activeDiffSessionId)
       canUndoResolution = false
       resolutionError = ''
-      await refreshSession()
+      await refreshSession(selectedRelativePath)
     } catch (error) {
       resolutionError = error instanceof Error ? error.message : String(error)
     }
@@ -609,7 +611,7 @@
         {viewMode}
         reviewSessionId={activeDiffSessionId ?? ''}
         reviewEntryId={selectedEntryId ?? ''}
-        onSaved={refreshSession}
+        onSaved={() => refreshSession(selectedRelativePath)}
       />
     {:else if $documentWorkspace.mode === 'resolve' && activeDiffSessionId && selectedEntryId && selectedEntry?.diffEntryStatus === 'conflicted'}
       <MergeConflictViewer
@@ -644,6 +646,8 @@
         {resolvedThemeMode}
         {viewMode}
         revision={compareRevision}
+        {invalidatedEntryPath}
+        {invalidatedEntryRevision}
         {leftPath}
         {rightPath}
         compareOptions={activeCompareOptions}
@@ -688,7 +692,7 @@
         gitCapabilities={selectedEntry?.gitReviewCapabilities ?? null}
         sourceKind={hunkReviewSourceKind}
         {gitScope}
-        onApplied={refreshSession}
+        onApplied={() => refreshSession(selectedRelativePath)}
         onNavigateThread={navigateToReviewThread}
       />
     {/if}

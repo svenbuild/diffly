@@ -43,10 +43,18 @@ describe('document encoding and revisions', () => {
     })
   }
 
-  it('rejects invalid legacy byte sequences instead of corrupting them', () => {
-    expect(() => decodeDocument(Uint8Array.from([0xc3, 0x28]))).toThrow(
-      UnsupportedDocumentEncodingError,
-    )
+  it('detects and round-trips configured legacy encodings without lossy writes', () => {
+    const decoded = decodeDocument(Uint8Array.from([0x63, 0x61, 0x66, 0xe9, 0x20, 0x80]))
+    expect(decoded).toEqual({ contents: 'café €', encoding: 'windows1252' })
+    const format: DocumentFormat = {
+      encoding: 'windows1252',
+      lineEnding: 'lf',
+      hasTrailingNewline: false,
+      mode: 0o644,
+    }
+    expect(Array.from(encodeDocument(decoded.contents, format))).toEqual([0x63, 0x61, 0x66, 0xe9, 0x20, 0x80])
+    expect(Array.from(encodeDocument('café', { ...format, encoding: 'latin1' }))).toEqual([0x63, 0x61, 0x66, 0xe9])
+    expect(() => encodeDocument('emoji 😀', format)).toThrow(UnsupportedDocumentEncodingError)
   })
 
   it('changes the content-sensitive cache key after a save', async () => {

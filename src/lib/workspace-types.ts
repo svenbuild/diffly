@@ -32,7 +32,13 @@ export interface DocumentRevision {
   indexOid: string | null
 }
 
-export type DocumentEncoding = 'utf8' | 'utf8-bom' | 'utf16le' | 'utf16be'
+export type DocumentEncoding =
+  | 'utf8'
+  | 'utf8-bom'
+  | 'utf16le'
+  | 'utf16be'
+  | 'windows1252'
+  | 'latin1'
 export type DocumentLineEnding = 'lf' | 'crlf' | 'cr'
 
 export interface DocumentFormat {

@@ -27,10 +27,9 @@ export interface StartupTarget {
   kind: PathKind
 }
 
-export interface E2ECompareTarget {
-  leftPath: string
-  rightPath: string
-}
+export type E2ECompareTarget =
+  | { kind: 'local'; leftPath: string; rightPath: string }
+  | { kind: 'git'; repositoryRoot: string }
 
 export interface E2EHarness {
   getState(): {
@@ -85,8 +84,10 @@ export function readE2ECompareTarget(): E2ECompareTarget | null {
   const params = new URLSearchParams(window.location.search)
   const left = params.get('difflyE2ELeft')?.trim()
   const right = params.get('difflyE2ERight')?.trim()
+  const repositoryRoot = params.get('difflyE2EGit')?.trim()
 
-  return left && right ? { leftPath: left, rightPath: right } : null
+  if (left && right) return { kind: 'local', leftPath: left, rightPath: right }
+  return repositoryRoot ? { kind: 'git', repositoryRoot } : null
 }
 
 export function isLaunchContext(value: unknown): value is LaunchContext {

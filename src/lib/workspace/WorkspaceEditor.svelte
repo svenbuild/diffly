@@ -448,7 +448,7 @@
 
   <footer class="workspace-editor-status">
     <span>{positionLabel}</span>
-    <label class="status-select"><span class="sr-only">Encoding</span><select value={state.format.encoding} on:change={(event) => workspaceDocumentController.updateFormat(state.id, { encoding: (event.currentTarget as HTMLSelectElement).value as typeof state.format.encoding })}><option value="utf8">UTF-8</option><option value="utf8-bom">UTF-8 BOM</option><option value="utf16le">UTF-16 LE</option><option value="utf16be">UTF-16 BE</option></select></label>
+    <label class="status-select"><span class="sr-only">Encoding</span><select value={state.format.encoding} on:change={(event) => workspaceDocumentController.updateFormat(state.id, { encoding: (event.currentTarget as HTMLSelectElement).value as typeof state.format.encoding })}><option value="utf8">UTF-8</option><option value="utf8-bom">UTF-8 BOM</option><option value="utf16le">UTF-16 LE</option><option value="utf16be">UTF-16 BE</option><option value="windows1252">Windows-1252</option><option value="latin1">ISO-8859-1</option></select></label>
     <label class="status-select"><span class="sr-only">Line endings</span><select value={state.format.lineEnding} on:change={(event) => workspaceDocumentController.updateFormat(state.id, { lineEnding: (event.currentTarget as HTMLSelectElement).value as typeof state.format.lineEnding })}><option value="lf">LF</option><option value="crlf">CRLF</option><option value="cr">CR</option></select></label>
     <span>{getFiletypeFromFileName(state.document.name)}</span>
     <span>{indentationLabel(state.contents)}</span>

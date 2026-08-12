@@ -285,6 +285,8 @@
     diffCache: 0,
   }
   let compareRevision = 0
+  let invalidatedEntryPath = ''
+  let invalidatedEntryRevision = 0
   let activeDirectoryCompareJobId = ''
   let directoryComparePollTimer: number | null = null
   let directoryCompareEntrySlots: Array<DirectoryEntryResult | null | undefined> = []
@@ -1622,8 +1624,21 @@
 
   async function applyE2ECompareTarget(target: E2ECompareTarget) {
     e2eHarnessEnabled = true
-    setupMode = 'local'
     mode = 'directory'
+    await loadCompareComponents()
+
+    if (target.kind === 'git') {
+      setupMode = 'git'
+      await runSessionCompare({
+        kind: 'git',
+        repoPath: target.repositoryRoot,
+        repositoryRoot: target.repositoryRoot,
+        selection: { kind: 'workingTree', initialScope: 'all' },
+      })
+      return
+    }
+
+    setupMode = 'local'
 
     const [leftOpened, rightOpened] = await Promise.all([
       openDirectory('left', target.leftPath, 'keep'),
@@ -1637,7 +1652,6 @@
 
     selectTarget('left', target.leftPath, 'directory')
     selectTarget('right', target.rightPath, 'directory')
-    await loadCompareComponents()
     await runCompare()
   }
 
@@ -2641,7 +2655,7 @@
     }
   }
 
-  async function refreshActiveSession() {
+  async function refreshActiveSession(invalidateRelativePath?: string) {
     const sessionId = activeDiffSessionId
     if (!sessionId) {
       await runCompare()
@@ -2651,8 +2665,14 @@
     try {
       const session = await refreshDiffSession(sessionId)
       if (activeDiffSessionId !== sessionId) return
-      compareRevision += 1
-      diffCache.clearDetailDiffs()
+      const targetedRefresh = mode === 'directory' && Boolean(invalidateRelativePath)
+      if (targetedRefresh) {
+        invalidatedEntryPath = invalidateRelativePath!
+        invalidatedEntryRevision += 1
+      } else {
+        compareRevision += 1
+        diffCache.clearDetailDiffs()
+      }
       if (mode === 'file') {
         activeDiff = await openDiffEntry(sessionId, 'file', activeCompareOptions)
         pulseCompareSurface()
@@ -3104,6 +3124,8 @@
     {directoryScrollTargetRevision}
     {viewerSettings}
     {compareRevision}
+    {invalidatedEntryPath}
+    {invalidatedEntryRevision}
     {leftPath}
     {rightPath}
     {activeCompareOptions}

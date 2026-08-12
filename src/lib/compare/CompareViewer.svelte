@@ -30,6 +30,8 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
+  export let invalidatedEntryPath = ''
+  export let invalidatedEntryRevision = 0
   export let leftPath = ''
   export let rightPath = ''
   export let compareOptions: CompareOptions = {
@@ -71,6 +73,8 @@
       {resolvedThemeMode}
       {viewMode}
       {revision}
+      {invalidatedEntryPath}
+      {invalidatedEntryRevision}
       {leftPath}
       {rightPath}
       {compareOptions}

@@ -180,9 +180,12 @@ function startupProfileQuery() {
   if (process.env.DIFFLY_STARTUP_PROFILE === '1') query.difflyStartupProfile = '1'
   const left = process.env.DIFFLY_E2E_LEFT?.trim()
   const right = process.env.DIFFLY_E2E_RIGHT?.trim()
+  const git = process.env.DIFFLY_E2E_GIT?.trim()
   if (left && right) {
     query.difflyE2ELeft = left
     query.difflyE2ERight = right
+  } else if (git) {
+    query.difflyE2EGit = git
   }
   return Object.keys(query).length > 0 ? query : undefined
 }

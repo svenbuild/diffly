@@ -791,7 +791,7 @@ function readDocumentFormatPatch(value: unknown): NonNullable<SaveDocumentReques
   if (!isRecord(value)) throw new Error('Invalid document format.')
   const format: NonNullable<SaveDocumentRequest['format']> = {}
   if (value.encoding !== undefined) {
-    if (!['utf8', 'utf8-bom', 'utf16le', 'utf16be'].includes(String(value.encoding))) {
+    if (!['utf8', 'utf8-bom', 'utf16le', 'utf16be', 'windows1252', 'latin1'].includes(String(value.encoding))) {
       throw new Error('Invalid document encoding.')
     }
     format.encoding = value.encoding as NonNullable<typeof format.encoding>
