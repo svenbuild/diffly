@@ -34,6 +34,8 @@ export interface E2ECompareTarget {
 
 export interface E2EHarness {
   getState(): {
+    activeDocumentDirty: boolean
+    activeDocumentSaving: boolean
     directoryEntries: number
     errorMessage: string
     loading: boolean

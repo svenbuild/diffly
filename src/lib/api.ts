@@ -25,6 +25,7 @@ import type {
   ResolveConflictRequest,
   CreateReviewThreadRequest,
   ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
   ReviewBundle,
   ReviewAuthor,
   PreviewComparisonReplaceRequest,
@@ -243,6 +244,9 @@ export const undoConflictResolution = (sessionId: string) =>
 export const listReviewThreads = (sessionId: string, entryId?: string) =>
   window.diffly.review.listThreads(sessionId, entryId)
 
+export const listReviewThreadCounts = (sessionId: string) =>
+  window.diffly.review.listThreadCounts(sessionId)
+
 export const createReviewThread = (request: CreateReviewThreadRequest) =>
   window.diffly.review.createThread(request)
 
@@ -260,6 +264,9 @@ export const resolveReviewThread = (sessionId: string, threadId: string) =>
 
 export const reopenReviewThread = (sessionId: string, threadId: string) =>
   window.diffly.review.reopenThread(sessionId, threadId)
+
+export const reattachReviewThread = (request: ReattachReviewThreadRequest) =>
+  window.diffly.review.reattachThread(request)
 
 export const exportReviewBundle = (sessionId: string) =>
   window.diffly.review.export(sessionId)

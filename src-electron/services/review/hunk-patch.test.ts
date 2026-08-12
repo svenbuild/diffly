@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applySelectedHunks, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
+import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
 
 const patch = [
   'diff --git a/file.txt b/file.txt',
@@ -46,6 +46,17 @@ describe('hunk patch operations', () => {
     expect(selectedPatch).toContain('-old-b\n+new-b')
     expect(selectedPatch).not.toContain('-old-a')
     expect(selectedPatch).toContain(' old-a')
+  })
+
+  it('keeps both versions on either target side without duplicating context', () => {
+    const fingerprint = parseSingleFilePatch(patch).hunks[0]!.fingerprint
+    const combined = 'one\nold-a\nnew-a\nmiddle\nold-b\nnew-b\ntail\n'
+    expect(applySelectedHunksBoth(
+      'one\nold-a\nmiddle\nold-b\ntail\n', patch, [{ fingerprint }], 'left',
+    )).toBe(combined)
+    expect(applySelectedHunksBoth(
+      'one\nnew-a\nmiddle\nnew-b\ntail\n', patch, [{ fingerprint }], 'right',
+    )).toBe(combined)
   })
 
   it('rejects stale fingerprints and non-applicable contents', () => {

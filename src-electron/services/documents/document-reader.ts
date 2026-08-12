@@ -19,7 +19,13 @@ export async function readLocalDocument(input: {
   gitOid?: string | null
   indexOid?: string | null
 }): Promise<EditableDocument> {
-  const info = await lstat(input.path, { bigint: true })
+  let info: Awaited<ReturnType<typeof lstat>>
+  try {
+    info = await lstat(input.path, { bigint: true })
+  } catch (error) {
+    if (isNotFound(error)) return missingLocalDocument(input)
+    throw error
+  }
   if (info.isSymbolicLink() || !info.isFile()) {
     throw new Error('Only regular files can be opened for editing.')
   }
@@ -49,6 +55,27 @@ export async function readLocalDocument(input: {
       hasTrailingNewline: hasTrailingNewline(decoded.contents),
       mode: Number(info.mode & BigInt(0o7777)),
     },
+    readOnly: false,
+    cacheKey: documentCacheKey(documentTargetIdentity(input.target), revision),
+  }
+}
+
+function missingLocalDocument(input: Parameters<typeof readLocalDocument>[0]): EditableDocument {
+  const bytes = new Uint8Array()
+  const revision = createDocumentRevision({
+    bytes,
+    modifiedNs: null,
+    gitOid: input.gitOid,
+    indexOid: input.indexOid,
+  })
+  const displayPath = input.displayPath ?? input.path
+  return {
+    target: input.target,
+    name: basename(displayPath),
+    displayPath,
+    contents: '',
+    revision,
+    format: { encoding: 'utf8', lineEnding: 'lf', hasTrailingNewline: false, mode: null },
     readOnly: false,
     cacheKey: documentCacheKey(documentTargetIdentity(input.target), revision),
   }
@@ -188,6 +215,10 @@ function decodeUtf16Le(bytes: Uint8Array) {
     throw new UnsupportedDocumentEncodingError('The UTF-16 document has an incomplete code unit.')
   }
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf16le')
+}
+
+function isNotFound(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
 function normalizeLineEndings(contents: string, lineEnding: DocumentFormat['lineEnding']) {

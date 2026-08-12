@@ -51,6 +51,8 @@
   })
   export let reviewModeEnabled = false
   export let reviewSourceKind: CompareSourceKind = 'local'
+  export let reviewSessionId: string | null = null
+  export let reviewEntryId = 'file'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
   export let collapseAllRevision = 0
   export let expandAllRevision = 0
@@ -108,6 +110,8 @@
       {reviewSourceKind}
       reviewLeftPath={leftPath}
       reviewRightPath={rightPath}
+      {reviewSessionId}
+      {reviewEntryId}
       {onReviewRefresh}
     />
   {:else}

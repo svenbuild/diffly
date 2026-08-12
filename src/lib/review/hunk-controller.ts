@@ -5,10 +5,14 @@ import type { PartialChangeOperation, PartialChangeSelection } from '../review-t
 import { hunkResolution, hunkSelectionKey } from './hunk-resolution-store'
 
 export class HunkController {
+  private loadRevision = 0
+
   async load(sessionId: string, entryId: string) {
+    const revision = ++this.loadRevision
     hunkResolution.update((state) => ({ ...state, loadingEntryId: entryId, error: null }))
     try {
       const hunks = await listReviewHunks(sessionId, entryId)
+      if (revision !== this.loadRevision) return hunks
       hunkResolution.update((state) => {
         const hunksByEntry = new Map(state.hunksByEntry)
         hunksByEntry.set(entryId, hunks)
@@ -16,6 +20,7 @@ export class HunkController {
       })
       return hunks
     } catch (error) {
+      if (revision !== this.loadRevision) return []
       hunkResolution.update((state) => ({
         ...state,
         loadingEntryId: null,
@@ -31,7 +36,12 @@ export class HunkController {
       const key = hunkSelectionKey(entryId, selection)
       const existing = planned.get(key)
       if (existing?.operation === operation) planned.delete(key)
-      else planned.set(key, { entryId, operation, selection })
+      else {
+        for (const [plannedKey, item] of planned) {
+          if (item.entryId === entryId && item.operation !== operation) planned.delete(plannedKey)
+        }
+        planned.set(key, { entryId, operation, selection })
+      }
       return { ...state, planned }
     })
   }
@@ -84,7 +94,7 @@ async function loadRevisions(
   entryId: string,
   operation: PartialChangeOperation,
 ) {
-  if (operation === 'applyRightToLeft' || operation === 'applyLeftToRight') {
+  if (operation.startsWith('apply')) {
     const [left, right] = await Promise.all([
       openEditableDocument({ kind: 'local', sessionId, entryId, side: 'left' }),
       openEditableDocument({ kind: 'local', sessionId, entryId, side: 'right' }),

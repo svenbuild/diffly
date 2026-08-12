@@ -90,6 +90,35 @@ export function applySelectedHunks(
   return source.join(eol) + (trailing ? eol : '')
 }
 
+export function applySelectedHunksBoth(
+  contents: string,
+  patch: string,
+  selections: PartialChangeSelection[],
+  targetSide: 'left' | 'right',
+) {
+  const parsed = parseSingleFilePatch(patch)
+  const hunks = selectHunks(parsed.hunks, selections)
+  const eol = contents.includes('\r\n') ? '\r\n' : contents.includes('\r') ? '\r' : '\n'
+  const trailing = /(?:\r\n|\r|\n)$/.test(contents)
+  const source = contents.split(/\r\n|\r|\n/)
+  if (trailing) source.pop()
+  let offset = 0
+
+  for (const hunk of hunks) {
+    const before = hunk.lines.filter((line) => line[0] !== '+').map(stripPrefix)
+    const after = hunk.lines.filter((line) => line[0] !== '-').map(stripPrefix)
+    const expected = targetSide === 'left' ? before : after
+    const combined = hunk.lines.filter((line) => !line.startsWith('\\')).map(stripPrefix)
+    const start = (targetSide === 'left' ? hunk.oldStart : hunk.newStart) - 1 + offset
+    if (start < 0 || !arraysEqual(source.slice(start, start + expected.length), expected)) {
+      throw new Error('PATCH_DOES_NOT_APPLY')
+    }
+    source.splice(start, expected.length, ...combined)
+    offset += combined.length - expected.length
+  }
+  return source.join(eol) + (trailing ? eol : '')
+}
+
 export function fingerprintHunk(hunk: Omit<ParsedHunk, 'fingerprint'>): HunkFingerprint {
   const context = hunk.lines.filter((line) => line.startsWith(' ')).join('\n')
   const changes = hunk.lines.filter((line) => line.startsWith('+') || line.startsWith('-')).join('\n')

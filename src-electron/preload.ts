@@ -32,6 +32,7 @@ import type {
   ResolveConflictRequest,
   CreateReviewThreadRequest,
   ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
   ReviewBundle,
   ReviewThread,
   ReviewAuthor,
@@ -46,6 +47,7 @@ import type {
   HunkFingerprint,
   ReviewDecision,
   ReviewDecisionStatus,
+  ReviewThreadCount,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
@@ -54,6 +56,7 @@ const invoke = <T>(channel: string, payload?: unknown) =>
 contextBridge.exposeInMainWorld('diffly', {
   clipboard: {
     readText: () => invoke<string>('diffly:clipboard:readText'),
+    writeText: (text: string) => invoke<void>('diffly:clipboard:writeText', { text }),
   },
   choosePath: (kind: PathKind) =>
     invoke('diffly:choosePath', { kind }),
@@ -211,6 +214,8 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<CreateDiffSessionResponse>('diffly:review:undoOperation', { sessionId }),
     listThreads: (sessionId: string, entryId?: string) =>
       invoke<ReviewThread[]>('diffly:review:listThreads', { sessionId, entryId }),
+    listThreadCounts: (sessionId: string) =>
+      invoke<Record<string, ReviewThreadCount>>('diffly:review:listThreadCounts', { sessionId }),
     createThread: (request: CreateReviewThreadRequest) =>
       invoke<ReviewThread>('diffly:review:createThread', request),
     reply: (request: ReplyReviewThreadRequest) =>
@@ -223,6 +228,8 @@ contextBridge.exposeInMainWorld('diffly', {
       invoke<ReviewThread>('diffly:review:resolveThread', { sessionId, threadId }),
     reopenThread: (sessionId: string, threadId: string) =>
       invoke<ReviewThread>('diffly:review:reopenThread', { sessionId, threadId }),
+    reattachThread: (request: ReattachReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:reattachThread', request),
     export: (sessionId: string) =>
       invoke<{ json: string; markdown: string; bundle: ReviewBundle }>('diffly:review:export', { sessionId }),
     import: (sessionId: string, bundle: ReviewBundle) =>

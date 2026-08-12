@@ -30,7 +30,18 @@
     hydratedFor = hydrationKey
   }
 
-  onMount(() => void reviewThreadController.load(sessionId, entryId))
+  function handleReviewChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string; entryId?: string | null }>).detail
+    if (detail?.sessionId === sessionId && detail.entryId === entryId) {
+      void reviewThreadController.load(sessionId, entryId)
+    }
+  }
+
+  onMount(() => {
+    void reviewThreadController.load(sessionId, entryId)
+    window.addEventListener('diffly:review-changed', handleReviewChanged)
+    return () => window.removeEventListener('diffly:review-changed', handleReviewChanged)
+  })
   $: if ($reviewThreads.sessionId !== sessionId || $reviewThreads.entryId !== entryId) {
     void reviewThreadController.load(sessionId, entryId)
   }
@@ -135,6 +146,9 @@
         {#if thread.state === 'outdated'}
           <p class="outdated-note">The original line is no longer unique. Review the old context before reattaching.</p>
           <pre>{[...thread.anchor.contextBefore, thread.anchor.contextAfter[0] ?? ''].join('\n')}</pre>
+          <button class="secondary" type="button" on:click={() => reviewThreadController.reattach(thread.id, side, lineNumber)}>
+            Reattach at {side === 'additions' ? 'New' : 'Old'} line {lineNumber}
+          </button>
         {/if}
         {#each thread.comments as comment (comment.id)}
           <div class="comment">

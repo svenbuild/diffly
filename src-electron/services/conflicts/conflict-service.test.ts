@@ -50,6 +50,12 @@ describe('ConflictService integration', () => {
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
     const entry = session.entries.find((item) => item.status === 'conflicted')
     expect(entry?.conflictKind).toBe('UU')
+    const reviewDiff = await sessions.openEntry(session.sessionId, entry!.id, {
+      ignoreCase: false,
+      ignoreWhitespace: false,
+    })
+    expect(reviewDiff.text?.leftText).toBe('current\n')
+    expect(reviewDiff.text?.rightText).toBe('incoming\n')
     const service = new ConflictService(sessions, new OperationJournal(join(root, '.journal')))
     const conflict = await service.open(session.sessionId, entry!.id)
     expect(conflict.base?.contents).toBe('base\n')

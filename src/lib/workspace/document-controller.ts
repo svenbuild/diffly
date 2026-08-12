@@ -26,6 +26,7 @@ import {
   type WorkspaceDocumentState,
 } from './document-store'
 import { DraftController } from './draft-controller'
+import { createDocumentPatch } from './patch-export'
 
 interface DocumentApi {
   open(target: DocumentTarget): Promise<EditableDocument>
@@ -205,6 +206,18 @@ export class DocumentController {
     }
   }
 
+  async exportPatch(id: string) {
+    const current = get(documentWorkspace).documents.get(id)
+    if (!current) return null
+    const contents = createDocumentPatch(current.document.name, current.document.contents, current.contents)
+    return this.api.saveAs({
+      target: current.document.target,
+      contents,
+      format: { encoding: 'utf8', lineEnding: 'lf', hasTrailingNewline: true, mode: 0o100644 },
+      suggestedName: `${current.document.name}.patch`,
+    })
+  }
+
   async loadRecoveryIndex() {
     const recoveredDrafts = await this.api.listDrafts()
     documentWorkspace.update((state) => ({ ...state, recoveredDrafts }))
@@ -262,6 +275,7 @@ export class DocumentController {
       selections: draft.selections,
       scrollTop: draft.scrollTop,
       focusRevision: 0,
+      renderRevision: 0,
     }
     documentWorkspace.update((state) => {
       const documents = new Map(state.documents)
@@ -445,6 +459,7 @@ export class DocumentController {
         dirty: false,
         externalChanged: false,
         externalDocument: null,
+        renderRevision: current.renderRevision + 1,
       })
       return { ...state, documents }
     })
@@ -472,6 +487,7 @@ function workspaceStateFromDocument(document: EditableDocument): WorkspaceDocume
     selections: [],
     scrollTop: 0,
     focusRevision: 0,
+    renderRevision: 0,
   }
 }
 

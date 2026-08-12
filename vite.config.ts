@@ -9,6 +9,7 @@ export default defineConfig({
     strictPort: true,
   },
   test: {
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'out/**'],
     testTimeout: 15000,
   },
 })

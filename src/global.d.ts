@@ -42,6 +42,7 @@ import type {
   ResolveConflictRequest,
   CreateReviewThreadRequest,
   ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
   ReviewBundle,
   ReviewThread,
   ReviewAuthor,
@@ -56,13 +57,14 @@ import type {
   HunkFingerprint,
   ReviewDecision,
   ReviewDecisionStatus,
+  ReviewThreadCount,
 } from './lib/types'
 
 declare global {
   interface Window {
     __difflyStartupProfile?: import('./lib/app/startup-profile').StartupProfileSnapshot
     diffly: {
-      clipboard: { readText(): Promise<string> }
+      clipboard: { readText(): Promise<string>; writeText(text: string): Promise<void> }
       choosePath(kind: PathKind): Promise<string | null>
       getPathForFile(file: File): string
       openExternal(url: string): Promise<void>
@@ -152,12 +154,14 @@ declare global {
         applyPartialChange(request: ApplyPartialChangeRequest): Promise<CreateDiffSessionResponse>
         undoOperation(sessionId: string): Promise<CreateDiffSessionResponse>
         listThreads(sessionId: string, entryId?: string): Promise<ReviewThread[]>
+        listThreadCounts(sessionId: string): Promise<Record<string, ReviewThreadCount>>
         createThread(request: CreateReviewThreadRequest): Promise<ReviewThread>
         reply(request: ReplyReviewThreadRequest): Promise<ReviewThread>
         editComment(sessionId: string, threadId: string, commentId: string, body: string): Promise<ReviewThread>
         deleteComment(sessionId: string, threadId: string, commentId: string): Promise<ReviewThread | null>
         resolveThread(sessionId: string, threadId: string): Promise<ReviewThread>
         reopenThread(sessionId: string, threadId: string): Promise<ReviewThread>
+        reattachThread(request: ReattachReviewThreadRequest): Promise<ReviewThread>
         export(sessionId: string): Promise<{ json: string; markdown: string; bundle: ReviewBundle }>
         import(sessionId: string, bundle: ReviewBundle): Promise<ReviewThread[]>
         getProfile(): Promise<ReviewAuthor>

@@ -24,6 +24,8 @@ export interface ReviewHunkSummary {
 export type PartialChangeOperation =
   | 'applyRightToLeft'
   | 'applyLeftToRight'
+  | 'applyBothToLeft'
+  | 'applyBothToRight'
   | 'stage'
   | 'unstage'
   | 'discard'
@@ -80,16 +82,34 @@ export interface ReviewThread {
   updatedAt: string
 }
 
+export interface ReviewThreadCount {
+  open: number
+  resolved: number
+  outdated: number
+  total: number
+}
+
 export interface ReviewBundle {
   schemaVersion: 1
   compareIdentity: string
   threads: ReviewThread[]
+  decisions: ReviewDecision[]
   exportedAt: string
 }
 
 export interface ReviewCommentDraft {
   key: string
   body: string
+  updatedAt: string
+}
+
+export type ReviewDecisionStatus = 'accepted' | 'rejected' | 'needsChanges'
+
+export interface ReviewDecision {
+  entryIdentity: string
+  fingerprint: HunkFingerprint
+  changeIndex: number | null
+  status: ReviewDecisionStatus
   updatedAt: string
 }
 
@@ -107,4 +127,12 @@ export interface ReplyReviewThreadRequest {
   threadId: string
   body: string
   author: ReviewAuthor
+}
+
+export interface ReattachReviewThreadRequest {
+  sessionId: string
+  entryId: string
+  threadId: string
+  side: ReviewAnchor['side']
+  lineNumber: number
 }

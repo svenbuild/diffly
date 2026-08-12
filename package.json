@@ -17,6 +17,7 @@
     "test": "npm run check && npm run test:unit",
     "test:unit": "vitest run",
     "test:bundle": "npm run build && npm run verify:edit-lazy",
+    "test:e2e": "npm run build && playwright test",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "electron:package": "npm run electron:package:win",
@@ -35,6 +36,7 @@
     "material-file-icons": "^2.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tsconfig/svelte": "^5.0.6",
     "@types/node": "^24.10.1",

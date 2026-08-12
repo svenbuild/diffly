@@ -27,6 +27,7 @@ import type {
   ConflictRevision,
   CreateReviewThreadRequest,
   ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
   ReviewAuthor,
   ReviewBundle,
   ReviewThread,
@@ -60,6 +61,12 @@ function loadExplorerService() {
 
 export function registerIpcHandlers() {
   ipcMain.handle('diffly:clipboard:readText', () => clipboard.readText())
+  ipcMain.handle('diffly:clipboard:writeText', (_event, payload: unknown) => {
+    if (!isRecord(payload) || typeof payload.text !== 'string' || Buffer.byteLength(payload.text) > 64 * 1024 * 1024) {
+      throw new Error('Invalid clipboard payload.')
+    }
+    clipboard.writeText(payload.text)
+  })
   ipcMain.handle('diffly:choosePath', (_event, payload: { kind: string }) =>
     loadExplorerService().then(({ choosePath }) => choosePath(payload.kind)),
   )
@@ -283,6 +290,10 @@ export function registerIpcHandlers() {
       payload.entryId === undefined ? undefined : requiredId(payload.entryId),
     )
   })
+  ipcMain.handle('diffly:review:listThreadCounts', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.listThreadCounts(readSessionId(payload))
+  })
   ipcMain.handle('diffly:review:createThread', async (_event, payload: unknown) => {
     const { reviewService } = await loadCompareServices()
     return reviewService.createThread(readCreateReviewThreadRequest(payload))
@@ -310,6 +321,10 @@ export function registerIpcHandlers() {
     const value = readThreadMutation(payload)
     const { reviewService } = await loadCompareServices()
     return reviewService.setThreadState(value.sessionId, value.threadId, 'open')
+  })
+  ipcMain.handle('diffly:review:reattachThread', async (_event, payload: unknown) => {
+    const { reviewService } = await loadCompareServices()
+    return reviewService.reattachThread(readReattachReviewThreadRequest(payload))
   })
   ipcMain.handle('diffly:review:export', async (_event, payload: unknown) => {
     const { reviewService } = await loadCompareServices()
@@ -1009,7 +1024,9 @@ function readPartialChangeSelection(value: unknown): PartialChangeSelection {
 }
 
 function isPartialChangeOperation(value: unknown): value is ApplyPartialChangeRequest['operation'] {
-  return value === 'applyRightToLeft' || value === 'applyLeftToRight' || value === 'stage' || value === 'unstage' || value === 'discard'
+  return value === 'applyRightToLeft' || value === 'applyLeftToRight' ||
+    value === 'applyBothToLeft' || value === 'applyBothToRight' ||
+    value === 'stage' || value === 'unstage' || value === 'discard'
 }
 
 function readSessionId(payload: unknown) {
@@ -1085,6 +1102,19 @@ export function readReplyReviewThreadRequest(payload: unknown): ReplyReviewThrea
     threadId: requiredId(payload.threadId),
     body: readReviewBody(payload.body),
     author: readReviewAuthor(payload.author),
+  }
+}
+
+export function readReattachReviewThreadRequest(payload: unknown): ReattachReviewThreadRequest {
+  if (!isRecord(payload) || (payload.side !== 'deletions' && payload.side !== 'additions')) {
+    throw new Error('Invalid review reattach payload.')
+  }
+  return {
+    sessionId: requiredId(payload.sessionId),
+    entryId: requiredId(payload.entryId),
+    threadId: requiredId(payload.threadId),
+    side: payload.side,
+    lineNumber: readPositiveInteger(payload.lineNumber, 'Invalid review line number.'),
   }
 }
 

@@ -7,7 +7,7 @@ import type {
 import type { DiffSessionService } from '../diff/diff-session-service'
 import { revisionsEqual } from '../documents/document-revision'
 import { runGit } from '../git/git-service'
-import { applySelectedHunks, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
+import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
 import { OperationJournal } from './operation-journal'
 
 const GIT_OPTIONS = {
@@ -134,11 +134,11 @@ export class PartialApplyService {
     patch: string,
     journalId: string,
   ) {
-    if (request.operation !== 'applyRightToLeft' && request.operation !== 'applyLeftToRight') {
+    if (!request.operation.startsWith('apply')) {
       throw new Error('Invalid local partial change operation.')
     }
-    const sourceSide = request.operation === 'applyRightToLeft' ? 'right' : 'left'
-    const targetSide = sourceSide === 'right' ? 'left' : 'right'
+    const targetSide = request.operation.endsWith('ToLeft') ? 'left' : 'right'
+    const sourceSide = targetSide === 'left' ? 'right' : 'left'
     const sourceTarget: DocumentTarget = {
       kind: 'local', sessionId: request.sessionId, entryId: request.entryId, side: sourceSide,
     }
@@ -151,12 +151,14 @@ export class PartialApplyService {
     ])
     assertRevision(source, sourceSide === 'left' ? request.leftRevision : request.rightRevision)
     assertRevision(original, targetSide === 'left' ? request.leftRevision : request.rightRevision)
-    const contents = applySelectedHunks(
-      original.contents,
-      patch,
-      request.selections,
-      request.operation === 'applyRightToLeft' ? 'forward' : 'reverse',
-    )
+    const contents = request.operation.startsWith('applyBoth')
+      ? applySelectedHunksBoth(original.contents, patch, request.selections, targetSide)
+      : applySelectedHunks(
+          original.contents,
+          patch,
+          request.selections,
+          request.operation === 'applyRightToLeft' ? 'forward' : 'reverse',
+        )
     const saved = await this.sessions.saveDocument({
       target,
       contents,

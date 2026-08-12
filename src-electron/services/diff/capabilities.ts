@@ -25,18 +25,16 @@ export function localEntryCapabilities(
   status: DiffEntryStatus,
   binary = false,
 ): DiffEntryCapabilities {
-  const leftExists = status !== 'added'
-  const rightExists = status !== 'deleted'
   const editable = !binary && status !== 'unsupported'
 
   return {
     ...NONE,
-    editLeft: editable && leftExists,
-    editRight: editable && rightExists,
+    editLeft: editable,
+    editRight: editable,
     save: editable,
     saveAs: true,
-    partialApplyLeftToRight: editable && leftExists,
-    partialApplyRightToLeft: editable && rightExists,
+    partialApplyLeftToRight: editable && status !== 'added',
+    partialApplyRightToLeft: editable && status !== 'deleted',
     search: editable,
   }
 }

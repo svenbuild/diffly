@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { applyComparisonReplace, previewComparisonReplace } from '../api'
   import type { ComparisonSearchQuery, SearchMatch } from '../search-types'
   import type { ReplaceAllPreview } from '../search-types'
   import { comparisonSearch } from './search-store'
   import { workspaceSearchController } from './search-controller'
+  import { workspaceDocumentController } from '../workspace/document-controller'
 
   export let sessionId: string
   export let onNavigate: (match: SearchMatch) => Promise<void> | void = () => {}
@@ -18,6 +19,24 @@
   let selectedTargets = new Set<string>()
   let replacing = false
   let replaceError = ''
+  let resultsViewport: HTMLDivElement | null = null
+  let resultScrollTop = 0
+  let resultViewportHeight = 0
+  let ensuredSelectedIndex = -2
+
+  const resultRowHeight = 52
+  const resultOverscan = 8
+
+  $: resultWindowStart = Math.max(0, Math.floor(resultScrollTop / resultRowHeight) - resultOverscan)
+  $: resultWindowEnd = Math.min(
+    $comparisonSearch.results.length,
+    Math.ceil((resultScrollTop + resultViewportHeight) / resultRowHeight) + resultOverscan,
+  )
+  $: visibleResults = $comparisonSearch.results.slice(resultWindowStart, resultWindowEnd)
+  $: if ($comparisonSearch.selectedIndex !== ensuredSelectedIndex) {
+    ensuredSelectedIndex = $comparisonSearch.selectedIndex
+    void ensureSelectedResultVisible(ensuredSelectedIndex)
+  }
 
   onMount(() => searchInput?.focus())
 
@@ -46,18 +65,26 @@
     replacing = true
     try {
       const files = replacePreview.files.filter((file) => selectedTargets.has(targetKey(file.target)))
-      const result = await applyComparisonReplace({
-        sessionId,
-        query: { ...query },
-        replacement,
-        documents: files.map((file) => ({ target: file.target, expectedRevision: file.revision })),
-      })
-      if (!result.ok) {
-        replaceError = result.error.code
-        return
+      const writable = files.filter((file) => file.target.kind !== 'scratch')
+      const scratch = files.filter((file) => file.target.kind === 'scratch')
+      if (writable.length > 0) {
+        const result = await applyComparisonReplace({
+          sessionId,
+          query: { ...query },
+          replacement,
+          documents: writable.map((file) => ({ target: file.target, expectedRevision: file.revision })),
+        })
+        if (!result.ok) {
+          replaceError = result.error.code
+          return
+        }
+      }
+      for (const file of scratch) {
+        const document = await workspaceDocumentController.open(file.target)
+        workspaceDocumentController.updateContents(document.id, file.after)
       }
       replacePreview = null
-      await onReplaced()
+      if (writable.length > 0) await onReplaced()
       run()
     } catch (error) {
       replaceError = error instanceof Error ? error.message : String(error)
@@ -85,6 +112,18 @@
   function activate(match: SearchMatch, index: number) {
     workspaceSearchController.select(index)
     void onNavigate(match)
+  }
+
+  async function ensureSelectedResultVisible(index: number) {
+    if (index < 0) return
+    await tick()
+    if (!resultsViewport) return
+    const top = index * resultRowHeight
+    const bottom = top + resultRowHeight
+    if (top < resultsViewport.scrollTop) resultsViewport.scrollTop = top
+    else if (bottom > resultsViewport.scrollTop + resultsViewport.clientHeight) {
+      resultsViewport.scrollTop = Math.max(0, bottom - resultsViewport.clientHeight)
+    }
   }
 </script>
 
@@ -144,17 +183,26 @@
       <button type="button" disabled={selectedTargets.size === 0 || replacing} on:click={applyReplace}>Replace in {selectedTargets.size} files</button>
     </div>
   {/if}
-  <div class="workspace-search-results">
-    {#each $comparisonSearch.results as match, index (match.id)}
-      <button
-        class:selected={$comparisonSearch.selectedIndex === index}
-        type="button"
-        on:click={() => activate(match, index)}
-      >
-        <strong>{match.path}:{match.lineNumber}</strong>
-        <code>{match.preview}</code>
-      </button>
-    {/each}
+  <div
+    class="workspace-search-results"
+    bind:this={resultsViewport}
+    bind:clientHeight={resultViewportHeight}
+    on:scroll={(event) => resultScrollTop = event.currentTarget.scrollTop}
+  >
+    <div class="workspace-search-results-spacer" style:height={`${$comparisonSearch.results.length * resultRowHeight}px`}>
+      <div class="workspace-search-results-window" style:transform={`translateY(${resultWindowStart * resultRowHeight}px)`}>
+        {#each visibleResults as match, offset (match.id)}
+          <button
+            class:selected={$comparisonSearch.selectedIndex === resultWindowStart + offset}
+            type="button"
+            on:click={() => activate(match, resultWindowStart + offset)}
+          >
+            <strong>{match.path}:{match.lineNumber}</strong>
+            <code>{match.preview}</code>
+          </button>
+        {/each}
+      </div>
+    </div>
   </div>
 </aside>
 
@@ -170,6 +218,8 @@
   .workspace-search-summary, .workspace-search-error { margin: 0; padding: 5px 10px; color: var(--muted-text); font-size: 11px; }
   .workspace-search-error { color: var(--diff-removed); }
   .workspace-search-results { min-height: 0; overflow: auto; }
+  .workspace-search-results-spacer { position: relative; min-width: 0; }
+  .workspace-search-results-window { position: absolute; inset: 0 0 auto; }
   .replace-preview { display: grid; gap: 6px; max-height: 42%; padding: 8px; border-block: 1px solid var(--border-color); overflow: auto; }
   .replace-preview header { padding: 0; border: 0; }
   .replace-files { display: grid; gap: 4px; }
@@ -177,7 +227,7 @@
   .replace-files span { display: grid; min-width: 0; }
   .replace-files strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .replace-files small { color: var(--muted-text); }
-  .workspace-search-results button { display: grid; width: 100%; gap: 3px; border: 0; border-radius: 0; padding: 7px 10px; text-align: left; background: transparent; }
+  .workspace-search-results button { display: grid; width: 100%; height: 52px; gap: 3px; border: 0; border-radius: 0; padding: 7px 10px; text-align: left; background: transparent; }
   .workspace-search-results button:hover, .workspace-search-results button.selected { background: var(--hover-surface); }
   .workspace-search-results strong, .workspace-search-results code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-search-results code { color: var(--muted-text); }

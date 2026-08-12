@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type {
   CreateReviewThreadRequest,
   ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
   ReviewAuthor,
   ReviewBundle,
   ReviewComment,
@@ -41,6 +42,24 @@ export class ReviewService {
       })
     }
     return threads
+  }
+
+  async listThreadCounts(sessionId: string) {
+    const compareIdentity = this.compareIdentity(sessionId)
+    const file = await this.store.read(compareIdentity)
+    const byIdentity = new Map<string, { open: number; resolved: number; outdated: number; total: number }>()
+    for (const thread of file.threads) {
+      const count = byIdentity.get(thread.entryIdentity) ?? { open: 0, resolved: 0, outdated: 0, total: 0 }
+      count[thread.state] += 1
+      count.total += 1
+      byIdentity.set(thread.entryIdentity, count)
+    }
+    return Object.fromEntries(this.sessions.listEntries(sessionId).map((entry) => [
+      entry.id,
+      byIdentity.get(hash(JSON.stringify({ path: entry.path, oldPath: entry.oldPath ?? null }))) ?? {
+        open: 0, resolved: 0, outdated: 0, total: 0,
+      },
+    ]))
   }
 
   async createThread(request: CreateReviewThreadRequest) {
@@ -108,6 +127,25 @@ export class ReviewService {
   setThreadState(sessionId: string, threadId: string, state: 'open' | 'resolved') {
     return this.mutateThread(sessionId, threadId, (thread) => {
       thread.state = state
+      thread.updatedAt = new Date().toISOString()
+    })
+  }
+
+  async reattachThread(request: ReattachReviewThreadRequest) {
+    const diff = await this.sessions.openEntryForSearch(request.sessionId, request.entryId)
+    const side = reviewSide(diff, request.side)
+    const entryIdentity = this.entryIdentity(request.sessionId, request.entryId)
+    return this.mutateThread(request.sessionId, request.threadId, (thread) => {
+      if (thread.entryIdentity !== entryIdentity) {
+        throw new Error('Review thread does not belong to the selected entry.')
+      }
+      thread.anchor = createReviewAnchor({
+        contents: side.contents,
+        side: request.side,
+        lineNumber: request.lineNumber,
+        revision: side.revision,
+      })
+      thread.state = 'open'
       thread.updatedAt = new Date().toISOString()
     })
   }

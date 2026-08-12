@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import {
     FileDiff,
     areOptionsEqual,
@@ -39,8 +39,15 @@
   } from '../types'
   import {
     renderCommentAnnotationElement,
+    reviewThreadsToAnnotations,
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
+  import {
+    createReviewThread,
+    deleteReviewComment,
+    getReviewProfile,
+    listReviewThreads,
+  } from '../api'
   import { findOpenDraft, focusDraftEditor } from './comment-drafts'
   import {
     DIFF_HEADER_UNSAFE_CSS,
@@ -73,6 +80,8 @@
   /** Absolute on-disk side paths; empty for session-backed sources. */
   export let reviewLeftPath = ''
   export let reviewRightPath = ''
+  export let reviewSessionId: string | null = null
+  export let reviewEntryId = 'file'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
 
   let host: HTMLDivElement | null = null
@@ -93,6 +102,7 @@
   let lastWorkerOptionsKey = ''
   let leftFileCache: { key: string; file: FileContents } | null = null
   let rightFileCache: { key: string; file: FileContents } | null = null
+  let reviewHydrationKey = ''
 
   const tokenHoverController = createTokenHoverController()
   const DIFF_RENDER_CACHE_SIZE = 100
@@ -195,6 +205,25 @@
     ]
   }
 
+  async function hydrateReviewAnnotations(key: string) {
+    if (!reviewSessionId) return
+    try {
+      const threads = await listReviewThreads(reviewSessionId, reviewEntryId)
+      if (`${reviewSessionId}:${reviewEntryId}:${textKey()}` !== key) return
+      commentAnnotations = reviewThreadsToAnnotations(threads)
+    } catch (error) {
+      setInteractionMessage(error instanceof Error ? error.message : 'Unable to load review threads.')
+    }
+  }
+
+  function handleReviewChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string; entryId?: string | null }>).detail
+    if (!reviewSessionId || detail?.sessionId !== reviewSessionId || detail.entryId !== reviewEntryId) return
+    const key = `${reviewSessionId}:${reviewEntryId}:${textKey()}`
+    reviewHydrationKey = key
+    void hydrateReviewAnnotations(key)
+  }
+
   function applyCollapsedState() {
     const container = host?.querySelector('diffs-container') as HTMLElement | null
 
@@ -294,8 +323,35 @@
 
   function renderCommentAnnotation(annotation: DiffLineAnnotation<DifflyCommentAnnotation>) {
     return renderCommentAnnotationElement(annotation, {
-      onSave: () => setInteractionMessage('Comment saved.'),
-      onDelete: (target) => {
+      onSave: async (target) => {
+        if (!reviewSessionId) throw new Error('Review persistence is unavailable for this comparison.')
+        const anchored = target as DiffLineAnnotation<DifflyCommentAnnotation>
+        const author = await getReviewProfile()
+        const thread = await createReviewThread({
+          sessionId: reviewSessionId,
+          entryId: reviewEntryId,
+          side: anchored.side,
+          lineNumber: anchored.lineNumber,
+          body: target.metadata.text,
+          author,
+        })
+        const comment = thread.comments[0]!
+        target.metadata.threadId = thread.id
+        target.metadata.commentId = comment.id
+        target.metadata.author = comment.author
+        target.metadata.state = thread.state
+        window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+          detail: { sessionId: reviewSessionId, entryId: reviewEntryId },
+        }))
+        setInteractionMessage('Comment saved.')
+      },
+      onDelete: async (target) => {
+        if (reviewSessionId && target.metadata.threadId && target.metadata.commentId) {
+          await deleteReviewComment(reviewSessionId, target.metadata.threadId, target.metadata.commentId)
+          window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+            detail: { sessionId: reviewSessionId, entryId: reviewEntryId },
+          }))
+        }
         commentAnnotations = commentAnnotations.filter(
           (entry) => entry.metadata.id !== target.metadata.id,
         )
@@ -580,6 +636,19 @@
   }
 
   $: tokenHoverLanguage = getFiletypeFromFileName(fileName(rightLabel || leftLabel))
+
+  $: {
+    const key = reviewSessionId ? `${reviewSessionId}:${reviewEntryId}:${textKey()}` : ''
+    if (key && reviewHydrationKey !== key) {
+      reviewHydrationKey = key
+      void hydrateReviewAnnotations(key)
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('diffly:review-changed', handleReviewChanged)
+    return () => window.removeEventListener('diffly:review-changed', handleReviewChanged)
+  })
 
   $: host, text, leftLabel, rightLabel, viewerSettings, appearanceSettings, resolvedThemeMode, viewMode, collapsed, commentAnnotations, void renderDiff()
 

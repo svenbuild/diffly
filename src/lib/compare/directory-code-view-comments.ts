@@ -5,6 +5,7 @@ import type {
 } from '@pierre/diffs'
 import { pickAvatar } from '../assets/avatars'
 import { createAppIcon } from '../icons/app-icons'
+import type { ReviewAuthor, ReviewThread } from '../review-types'
 import { markDraftSaved, registerDraftEditor } from './comment-drafts'
 
 export interface DifflyCommentAnnotation {
@@ -12,6 +13,10 @@ export interface DifflyCommentAnnotation {
   text: string
   draft?: boolean
   savedAt?: string
+  threadId?: string
+  commentId?: string
+  author?: ReviewAuthor
+  state?: ReviewThread['state']
 }
 
 type CommentAnnotation =
@@ -29,29 +34,6 @@ function createCommentAvatar(seed: string): HTMLImageElement {
   img.setAttribute('aria-hidden', 'true')
   img.draggable = false
   return img
-}
-
-export function commentsStorageKey(compareKey: string) {
-  return `legacy-comments-disabled:${compareKey}`
-}
-
-export function persistCommentAnnotations(
-  _compareKey: string,
-  _commentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>,
-) {
-  // Persistence moved to the versioned backend ReviewStore. The legacy
-  // Pierre adapter remains view-only until all inline annotations are hydrated
-  // from ReviewThread records by the workspace controller.
-}
-
-export function loadStoredCommentAnnotations(
-  _compareKey: string,
-  currentCommentId: number,
-) {
-  return {
-    annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
-    commentId: currentCommentId,
-  }
 }
 
 export function removeCommentAnnotation(
@@ -83,8 +65,29 @@ export function removeCommentAnnotation(
 }
 
 interface CommentCallbacks {
-  onSave: () => void
-  onDelete: (annotation: CommentAnnotation) => void
+  onSave: (annotation: CommentAnnotation) => void | Promise<void>
+  onDelete: (annotation: CommentAnnotation) => void | Promise<void>
+}
+
+export function reviewThreadsToAnnotations(threads: ReviewThread[]) {
+  return threads.flatMap((thread): Array<DiffLineAnnotation<DifflyCommentAnnotation>> => {
+    if (thread.state === 'outdated') return []
+    const comment = thread.comments[0]
+    if (!comment) return []
+    return [{
+      side: thread.anchor.side,
+      lineNumber: thread.anchor.lineNumber,
+      metadata: {
+        id: `thread-${thread.id}`,
+        text: thread.comments.map((item) => item.body).join('\n\n'),
+        threadId: thread.id,
+        commentId: comment.id,
+        author: comment.author,
+        state: thread.state,
+        savedAt: thread.updatedAt,
+      },
+    }]
+  })
 }
 
 function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbacks): HTMLElement {
@@ -95,7 +98,7 @@ function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbac
   body.className = 'diffly-comment-body'
   const author = document.createElement('strong')
   author.className = 'diffly-comment-author'
-  author.textContent = pickAvatar(annotation.metadata.id).name
+  author.textContent = annotation.metadata.author?.name ?? pickAvatar(annotation.metadata.id).name
   const text = document.createElement('p')
   text.className = 'diffly-comment-text'
   text.textContent = annotation.metadata.text
@@ -110,7 +113,11 @@ function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbac
   remove.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
-    callbacks.onDelete(annotation)
+    remove.disabled = true
+    void Promise.resolve(callbacks.onDelete(annotation)).catch((error) => {
+      remove.disabled = false
+      remove.title = error instanceof Error ? error.message : 'Unable to delete comment.'
+    })
   })
 
   card.append(createCommentAvatar(annotation.metadata.id), body, remove)
@@ -138,15 +145,19 @@ function buildComposer(
   submit.appendChild(sendIcon())
 
   input.addEventListener('input', () => {
+    input.setCustomValidity('')
     annotation.metadata.text = input.value
   })
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      callbacks.onDelete(annotation)
+      void Promise.resolve(callbacks.onDelete(annotation)).catch((error) => {
+        input.setCustomValidity(error instanceof Error ? error.message : 'Unable to delete comment.')
+        input.reportValidity()
+      })
     }
   })
   const unregisterDraftEditor = registerDraftEditor(annotation.metadata.id, input)
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault()
     const value = input.value.trim()
     if (!value) {
@@ -154,10 +165,18 @@ function buildComposer(
       return
     }
     annotation.metadata.text = value
-    markDraftSaved(annotation)
-    unregisterDraftEditor()
-    callbacks.onSave()
-    onSaved()
+    submit.disabled = true
+    try {
+      await callbacks.onSave(annotation)
+      markDraftSaved(annotation)
+      unregisterDraftEditor()
+      onSaved()
+    } catch (error) {
+      input.setCustomValidity(error instanceof Error ? error.message : 'Unable to save comment.')
+      input.reportValidity()
+    } finally {
+      submit.disabled = false
+    }
   })
 
   form.append(createCommentAvatar(annotation.metadata.id), input, submit)

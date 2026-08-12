@@ -88,4 +88,35 @@ describe('document encoding and revisions', () => {
     expect((error as StaleDocumentError).currentRevision.sha256).not.toBe(opened.revision.sha256)
     expect(await readFile(path, 'utf8')).toBe('external\n')
   })
+
+  it('creates a missing session target and rejects an externally created replacement', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'diffly-document-create-'))
+    roots.push(root)
+    const path = join(root, 'restored.txt')
+    const missing = await readLocalDocument({ path, target })
+    expect(missing.contents).toBe('')
+    expect(missing.revision.modifiedNs).toBeNull()
+
+    const created = await writeLocalDocument({
+      path,
+      target,
+      contents: 'restored\n',
+      expectedRevision: missing.revision,
+      originalFormat: missing.format,
+    })
+    expect(await readFile(path, 'utf8')).toBe('restored\n')
+    expect(created.revision.modifiedNs).not.toBeNull()
+
+    const secondPath = join(root, 'new.txt')
+    const secondMissing = await readLocalDocument({ path: secondPath, target })
+    await writeFile(secondPath, 'external\n')
+    await expect(writeLocalDocument({
+      path: secondPath,
+      target,
+      contents: 'draft\n',
+      expectedRevision: secondMissing.revision,
+      originalFormat: secondMissing.format,
+    })).rejects.toBeInstanceOf(StaleDocumentError)
+    expect(await readFile(secondPath, 'utf8')).toBe('external\n')
+  })
 })

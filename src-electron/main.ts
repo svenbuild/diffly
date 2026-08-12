@@ -176,9 +176,15 @@ function installStartupProfileExit(window: Electron.BrowserWindow) {
 }
 
 function startupProfileQuery() {
-  return process.env.DIFFLY_STARTUP_PROFILE === '1'
-    ? { difflyStartupProfile: '1' }
-    : undefined
+  const query: Record<string, string> = {}
+  if (process.env.DIFFLY_STARTUP_PROFILE === '1') query.difflyStartupProfile = '1'
+  const left = process.env.DIFFLY_E2E_LEFT?.trim()
+  const right = process.env.DIFFLY_E2E_RIGHT?.trim()
+  if (left && right) {
+    query.difflyE2ELeft = left
+    query.difflyE2ERight = right
+  }
+  return Object.keys(query).length > 0 ? query : undefined
 }
 
 function appendStartupProfileQuery(params: URLSearchParams) {

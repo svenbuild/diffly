@@ -77,7 +77,13 @@ describe('ReviewService', () => {
     const thread = await service.createThread({
       sessionId: session.sessionId, entryId: 'file', side: 'additions', lineNumber: 1, body: 'Review', author,
     })
+    expect((await service.listThreadCounts(session.sessionId)).file).toEqual({
+      open: 1, resolved: 0, outdated: 0, total: 1,
+    })
     expect((await service.setThreadState(session.sessionId, thread.id, 'resolved')).state).toBe('resolved')
+    expect((await service.listThreadCounts(session.sessionId)).file).toEqual({
+      open: 0, resolved: 1, outdated: 0, total: 1,
+    })
     expect((await service.setThreadState(session.sessionId, thread.id, 'open')).state).toBe('open')
     await service.setDecision(session.sessionId, 'file', {
       oldStart: 1, oldCount: 1, newStart: 1, newCount: 1,
@@ -87,5 +93,39 @@ describe('ReviewService', () => {
     expect(exported.bundle.schemaVersion).toBe(1)
     expect(exported.markdown).toContain('Reviewer')
     expect(exported.bundle.decisions).toHaveLength(1)
+  })
+
+  it('reattaches an outdated thread only to an explicit current line', async () => {
+    const left = join(root, 'left.txt')
+    const right = join(root, 'right.txt')
+    await writeFile(left, 'old\n')
+    await writeFile(right, 'first\nanchor\n')
+    const sessions = new DiffSessionService({ localProvider: new LocalProvider() })
+    const session = await sessions.create(
+      { kind: 'local', compareMode: 'file', leftPath: left, rightPath: right },
+      { ignoreCase: false, ignoreWhitespace: false },
+    )
+    const service = new ReviewService(
+      sessions,
+      new ReviewStore(join(root, 'reviews')),
+      new ReviewPreferencesStore(join(root, 'reviews')),
+    )
+    const thread = await service.createThread({
+      sessionId: session.sessionId, entryId: 'file', side: 'additions', lineNumber: 2, body: 'Move me', author,
+    })
+    await writeFile(right, 'replacement\n')
+    await sessions.refresh(session.sessionId)
+    expect((await service.listThreads(session.sessionId, 'file'))[0]?.state).toBe('outdated')
+
+    const reattached = await service.reattachThread({
+      sessionId: session.sessionId,
+      entryId: 'file',
+      threadId: thread.id,
+      side: 'additions',
+      lineNumber: 1,
+    })
+    expect(reattached.state).toBe('open')
+    expect(reattached.anchor.lineNumber).toBe(1)
+    expect(reattached.anchor.lineHash).not.toBe(thread.anchor.lineHash)
   })
 })

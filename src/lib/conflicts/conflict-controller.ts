@@ -4,12 +4,13 @@ import { conflictStore } from './conflict-store'
 
 export class ConflictController {
   async open(sessionId: string, entryId: string) {
-    conflictStore.set({ document: null, draft: '', loading: true, resolving: false, error: null })
+    conflictStore.set({ document: null, draft: '', renderRevision: 0, loading: true, resolving: false, error: null })
     try {
       const document = await openConflict(sessionId, entryId)
       conflictStore.set({
         document,
         draft: document.markerContents ?? document.workingFile?.contents ?? document.current?.contents ?? document.incoming?.contents ?? '',
+        renderRevision: 0,
         loading: false,
         resolving: false,
         error: null,
@@ -23,6 +24,25 @@ export class ConflictController {
 
   updateDraft(contents: string) {
     conflictStore.update((state) => ({ ...state, draft: contents, error: null }))
+  }
+
+  replaceDraft(contents: string) {
+    conflictStore.update((state) => ({
+      ...state,
+      draft: contents,
+      renderRevision: state.renderRevision + 1,
+      error: null,
+    }))
+  }
+
+  resetDraft() {
+    conflictStore.update((state) => ({
+      ...state,
+      draft: state.document?.markerContents ?? state.document?.workingFile?.contents ??
+        state.document?.current?.contents ?? state.document?.incoming?.contents ?? '',
+      renderRevision: state.renderRevision + 1,
+      error: null,
+    }))
   }
 
   async saveDraft() {

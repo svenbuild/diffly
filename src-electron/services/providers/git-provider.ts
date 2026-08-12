@@ -48,6 +48,7 @@ import {
 } from '../documents/document-reader'
 import { revisionsEqual } from '../documents/document-revision'
 import { StaleDocumentError, writeLocalDocument } from '../documents/document-writer'
+import { readUnmergedStages, type UnmergedStage } from '../conflicts/conflict-index'
 
 const GIT_ENTRY_OPTIONS = {
   maxStdoutBytes: 1024 * 1024 * 8,
@@ -107,7 +108,8 @@ export class GitProvider implements DiffSessionProvider {
       throw new Error('Unsupported git diff entry data.')
     }
     if (entry.status === 'conflicted') {
-      throw new Error('Git conflicted file details are not implemented yet.')
+      if (entry.kind !== 'gitWorkingTree') throw new Error('Invalid conflicted Git entry.')
+      return buildFileDiffFromGit(...await conflictSnapshots(entry), options)
     }
 
     const [left, right] = entry.kind === 'gitWorkingTree'
@@ -273,6 +275,33 @@ export class GitProvider implements DiffSessionProvider {
     const snapshot = await readStatusSnapshot(source.repositoryRoot)
     const sessionData = buildWorkingTreeSessionDataFromStatus(source, snapshot)
     return await attachWorkingTreePatches(source.repositoryRoot, sessionData, snapshot)
+  }
+}
+
+async function conflictSnapshots(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+): Promise<[GitSnapshotSource, GitSnapshotSource]> {
+  const stages = await readUnmergedStages(entry.repositoryRoot, entry.path)
+  return [
+    conflictStageSource(entry, stages.find((stage) => stage.stage === 2), 'Current'),
+    conflictStageSource(entry, stages.find((stage) => stage.stage === 3), 'Incoming'),
+  ]
+}
+
+function conflictStageSource(
+  entry: Extract<ProviderEntryData, { kind: 'gitWorkingTree' }>,
+  stage: UnmergedStage | undefined,
+  label: string,
+): GitSnapshotSource {
+  if (!stage) return { kind: 'empty', label, logicalPath: entry.path }
+  return {
+    kind: 'ref',
+    repoPath: entry.repoPath,
+    repositoryRoot: entry.repositoryRoot,
+    ref: stage.oid,
+    path: entry.path,
+    label,
+    oid: stage.oid,
   }
 }
 
@@ -1115,7 +1144,7 @@ function stagedSnapshots(
         indexSource(entry, entry.path, entry.dstOid),
       ]
     case 'conflicted':
-      throw new Error('Git conflicted file details are not implemented yet.')
+      throw new Error('Conflicted snapshots require unmerged index stages.')
   }
 }
 
@@ -1144,7 +1173,7 @@ function unstagedSnapshots(
         workingTreeSource(entry),
       ]
     case 'conflicted':
-      throw new Error('Git conflicted file details are not implemented yet.')
+      throw new Error('Conflicted snapshots require unmerged index stages.')
   }
 }
 
@@ -1173,7 +1202,7 @@ function allSnapshots(
         workingTreeSource(entry),
       ]
     case 'conflicted':
-      throw new Error('Git conflicted file details are not implemented yet.')
+      throw new Error('Conflicted snapshots require unmerged index stages.')
   }
 }
 
@@ -1204,7 +1233,7 @@ function gitRefSnapshots(
         rightSource,
       ]
     case 'conflicted':
-      throw new Error('Git conflicted file details are not implemented yet.')
+      throw new Error('Conflicted snapshots require unmerged index stages.')
   }
 }
 

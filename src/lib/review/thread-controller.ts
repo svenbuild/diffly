@@ -9,6 +9,7 @@ import {
   listReviewDrafts,
   listReviewThreads,
   reopenReviewThread,
+  reattachReviewThread,
   replyReviewThread,
   resolveReviewThread,
   saveReviewDraft,
@@ -156,6 +157,7 @@ export class ThreadController {
           ? replaceThread(value.threads, thread)
           : value.threads.filter((item) => item.id !== threadId),
       }))
+      notifyReviewChanged(state.sessionId, state.entryId)
     } catch (error) {
       reviewThreads.update((value) => ({ ...value, saving: false, error: message(error) }))
       throw error
@@ -170,6 +172,18 @@ export class ThreadController {
     return this.setState(threadId, false)
   }
 
+  async reattach(threadId: string, side: 'deletions' | 'additions', lineNumber: number) {
+    const state = get(reviewThreads)
+    if (!state.sessionId || !state.entryId) throw new Error('No review entry is selected.')
+    return this.mutate(() => reattachReviewThread({
+      sessionId: state.sessionId!,
+      entryId: state.entryId!,
+      threadId,
+      side,
+      lineNumber,
+    }))
+  }
+
   async export(format: 'json' | 'markdown') {
     const sessionId = get(reviewThreads).sessionId
     if (!sessionId) throw new Error('No review session is active.')
@@ -182,6 +196,7 @@ export class ThreadController {
     if (!sessionId) throw new Error('No review session is active.')
     const threads = await importReviewBundle(sessionId, bundle)
     reviewThreads.update((state) => ({ ...state, threads, error: null }))
+    notifyReviewChanged(sessionId, get(reviewThreads).entryId)
   }
 
   private async setState(threadId: string, resolved: boolean) {
@@ -202,6 +217,8 @@ export class ThreadController {
         threads: replaceThread(state.threads, thread),
         selectedThreadId: thread.id,
       }))
+      const state = get(reviewThreads)
+      notifyReviewChanged(state.sessionId, state.entryId)
       return thread
     } catch (error) {
       reviewThreads.update((state) => ({ ...state, saving: false, error: message(error) }))
@@ -220,6 +237,13 @@ function replaceThread(threads: ReviewThread[], replacement: ReviewThread) {
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function notifyReviewChanged(sessionId: string | null, entryId: string | null) {
+  if (!sessionId || typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+    detail: { sessionId, entryId },
+  }))
 }
 
 export const reviewThreadController = new ThreadController()

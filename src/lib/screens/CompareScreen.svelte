@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import AppTopBar from '../AppTopBar.svelte'
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
@@ -47,6 +48,9 @@
   import type { SearchMatch } from '../search-types'
   import ReviewWorkspacePanel from '../review/ReviewWorkspacePanel.svelte'
   import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
+  import { workspaceConflictController } from '../conflicts/conflict-controller'
+  import { listReviewThreadCounts } from '../api'
+  import type { ReviewThreadCount } from '../review-types'
 
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
@@ -76,6 +80,7 @@
   export let openExternalUrl: (url: string) => void = () => {}
   export let compareNeedsRefresh = false
   export let runCompare: () => Promise<void> | void
+  export let refreshSession: () => Promise<void> | void = runCompare
   export let openSettings: (section?: SettingsSection) => void
   export let goToSetup: () => void
   export let errorMessage = ''
@@ -122,6 +127,12 @@
   let collapseAllRevision = 0
   let expandAllRevision = 0
   let toolbarReloadPending = false
+  let canUndoResolution = false
+  let resolutionError = ''
+  let reviewThreadCounts: Record<string, ReviewThreadCount> = {}
+  let reviewThreadCountsSession = ''
+  let reviewThreadCountsGeneration = 0
+  let reviewThreadCountsRevision = 0
 
   $: showGitScopeTabs =
     mode === 'directory' &&
@@ -131,8 +142,29 @@
   $: srcActions = sourceActions(activeDiffSource)
 
   $: reviewSourceKind = compareSourceKind(activeDiffSource)
+  $: sidebarDirectoryEntries = directoryEntries.map((entry) => ({
+    ...entry,
+    reviewThreadCount: entry.diffEntryId ? reviewThreadCounts[entry.diffEntryId] : undefined,
+  }))
+  $: sidebarEntriesRevision = directoryEntriesRevision * 1_000_000 + reviewThreadCountsRevision
+  $: if (activeDiffSessionId !== reviewThreadCountsSession) {
+    reviewThreadCountsSession = activeDiffSessionId ?? ''
+    reviewThreadCounts = {}
+    if (activeDiffSessionId) void loadReviewThreadCounts(activeDiffSessionId)
+  }
   $: selectedEntry = directoryEntries.find((entry) => entry.relativePath === selectedRelativePath) ?? null
   $: selectedEntryId = mode === 'file' ? 'file' : selectedEntry?.diffEntryId ?? null
+  $: hunkEntryId = gitScope === 'all' && selectedEntry?.diffEntryAliasIds?.length === 1
+    ? selectedEntry.diffEntryAliasIds[0]!
+    : selectedEntryId
+  $: canEditSelected = mode === 'file'
+    ? textDiffActive
+    : Boolean(selectedEntry && !selectedEntry.binary && (
+      selectedEntry.capabilities?.editLeft ||
+      selectedEntry.capabilities?.editRight ||
+      selectedEntry.capabilities?.editIndex ||
+      selectedEntry.capabilities?.saveAs
+    ))
   $: showHunkReviewPanel =
     $documentWorkspace.mode === 'review' &&
     !$comparisonSearch.open &&
@@ -217,6 +249,24 @@
     }
   }
 
+  async function handleConflictResolved() {
+    canUndoResolution = true
+    resolutionError = ''
+    await refreshSession()
+  }
+
+  async function undoLastResolution() {
+    if (!activeDiffSessionId) return
+    try {
+      await workspaceConflictController.undo(activeDiffSessionId)
+      canUndoResolution = false
+      resolutionError = ''
+      await refreshSession()
+    } catch (error) {
+      resolutionError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   // Planned file operations are preview state for one specific compare;
   // switching source or compared paths invalidates every recorded plan.
   $: compareIdentityKey = JSON.stringify({ activeDiffSource, leftPath, rightPath })
@@ -295,6 +345,30 @@
       detail: { entryId: selectedEntryId, side, lineNumber },
     }))
   }
+
+  async function loadReviewThreadCounts(sessionId: string) {
+    const generation = ++reviewThreadCountsGeneration
+    try {
+      const counts = await listReviewThreadCounts(sessionId)
+      if (generation !== reviewThreadCountsGeneration || activeDiffSessionId !== sessionId) return
+      reviewThreadCounts = counts
+      reviewThreadCountsRevision += 1
+    } catch {
+      if (generation === reviewThreadCountsGeneration) reviewThreadCounts = {}
+    }
+  }
+
+  function handleReviewCountsChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string }>).detail
+    if (detail?.sessionId && detail.sessionId === activeDiffSessionId) {
+      void loadReviewThreadCounts(detail.sessionId)
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
+    return () => window.removeEventListener('diffly:review-changed', handleReviewCountsChanged)
+  })
 </script>
 
 <svelte:window on:keydown={handleCompareKeydown} />
@@ -362,7 +436,7 @@
             aria-pressed={$documentWorkspace.mode === 'edit'}
             class="secondary toolbar-button"
             type="button"
-            disabled={!activeDiffSessionId || !textDiffActive}
+            disabled={!activeDiffSessionId || !canEditSelected}
             on:click={() => selectWorkspaceMode('edit')}
           >Edit</button>
           <button
@@ -504,8 +578,8 @@
     {#if mode === 'directory'}
       <CompareDirectorySidebar
         {loading}
-        {directoryEntries}
-        entriesRevision={directoryEntriesRevision}
+        directoryEntries={sidebarDirectoryEntries}
+        entriesRevision={sidebarEntriesRevision}
         {selectedRelativePath}
         {treeSettings}
         {appearanceSettings}
@@ -532,7 +606,10 @@
         state={$activeWorkspaceDocument}
         {appearanceSettings}
         {resolvedThemeMode}
-        onSaved={runCompare}
+        {viewMode}
+        reviewSessionId={activeDiffSessionId ?? ''}
+        reviewEntryId={selectedEntryId ?? ''}
+        onSaved={refreshSession}
       />
     {:else if $documentWorkspace.mode === 'resolve' && activeDiffSessionId && selectedEntryId && selectedEntry?.diffEntryStatus === 'conflicted'}
       <MergeConflictViewer
@@ -540,12 +617,14 @@
         entryId={selectedEntryId}
         {appearanceSettings}
         {resolvedThemeMode}
-        onResolved={runCompare}
+        onResolved={handleConflictResolved}
       />
     {:else if $documentWorkspace.mode === 'resolve'}
       <section class="compare-viewer">
         <div class="compare-viewer-state">
           <p>Select a conflicted file to resolve.</p>
+          {#if canUndoResolution}<button type="button" on:click={undoLastResolution}>Undo last resolution</button>{/if}
+          {#if resolutionError}<p class="error-banner">{resolutionError}</p>{/if}
         </div>
       </section>
     {:else if CompareViewerComponent}
@@ -575,6 +654,8 @@
         resolveEntryBases={getDetailBasesForPath}
         reviewModeEnabled={$reviewModeEnabled}
         {reviewSourceKind}
+        reviewSessionId={activeDiffSessionId}
+        reviewEntryId={selectedEntryId ?? 'file'}
         onReviewRefresh={runCompare}
         {collapseAllRevision}
         {expandAllRevision}
@@ -595,7 +676,7 @@
       <SearchPanel
         sessionId={activeDiffSessionId}
         onNavigate={navigateToSearchMatch}
-        onReplaced={runCompare}
+        onReplaced={refreshSession}
       />
     {/if}
     {#if showHunkReviewPanel && activeDiffSessionId && selectedEntryId}
@@ -603,9 +684,11 @@
         sessionId={activeDiffSessionId}
         entryId={selectedEntryId}
         entryPath={selectedRelativePath || activeDiff?.rightLabel || activeDiff?.leftLabel || ''}
+        hunkEntryId={hunkEntryId ?? selectedEntryId}
+        gitCapabilities={selectedEntry?.gitReviewCapabilities ?? null}
         sourceKind={hunkReviewSourceKind}
         {gitScope}
-        onApplied={runCompare}
+        onApplied={refreshSession}
         onNavigateThread={navigateToReviewThread}
       />
     {/if}

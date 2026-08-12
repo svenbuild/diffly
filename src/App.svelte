@@ -7,7 +7,6 @@
     addRecentSource,
     choosePath,
     checkForUpdates,
-    comparePaths,
     cancelDirectoryCompare,
     createDiffSession,
     disposeDiffSession,
@@ -19,12 +18,14 @@
     loadSessionState,
     onLaunchContext,
     openCompareItem,
+    openDiffEntry,
     openExternalUrl as openExternalUrlApi,
     onWorkspaceCloseRequested,
     pollDirectoryCompare,
     pathInfo,
     saveSessionState,
     respondToWorkspaceClose,
+    refreshDiffSession,
     startDirectoryCompare,
   } from './lib/api'
   import {
@@ -557,6 +558,12 @@
   function syncE2EHarness() {
     installE2EHarness(e2eHarnessEnabled, {
       getState: () => ({
+        activeDocumentDirty: getWorkspaceSnapshot().activeDocumentId
+          ? getWorkspaceSnapshot().documents.get(getWorkspaceSnapshot().activeDocumentId!)?.dirty ?? false
+          : false,
+        activeDocumentSaving: getWorkspaceSnapshot().activeDocumentId
+          ? getWorkspaceSnapshot().documents.get(getWorkspaceSnapshot().activeDocumentId!)?.saving ?? false
+          : false,
         directoryEntries: directoryEntries.length,
         errorMessage,
         loading,
@@ -1330,6 +1337,30 @@
     }, DIRECTORY_COMPARE_POLL_INTERVAL_MS)
   }
 
+  async function attachLocalDirectorySession(revision: number, previousSelectedPath: string) {
+    if (revision !== compareRevision || directoryComparePairs.length !== 1) return
+    const pair = directoryComparePairs[0]!
+    const source: DiffSource = {
+      kind: 'local',
+      compareMode: 'directory',
+      leftPath: pair.leftBase,
+      rightPath: pair.rightBase,
+    }
+    const session = await createDiffSession(source, activeCompareOptions)
+    if (revision !== compareRevision) {
+      disposeDiffSessionQuietly(session.sessionId)
+      return
+    }
+    activeDiffSource = source
+    activeDiffSessionId = session.sessionId
+    directoryEntries = mapSessionDiffEntries(session.entries)
+    directoryEntriesRevision += 1
+    syncFilteredDirectoryState(directoryEntries)
+    const nextEntry = filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
+      ?? defaultDirectoryEntry(filteredDirectoryEntries)
+    if (nextEntry) await selectEntry(nextEntry, revision)
+  }
+
   async function pollDirectoryCompareJob(
     jobId: string,
     pairIndex: number,
@@ -1373,6 +1404,9 @@
 
         const allDone = directoryComparePairJobs.every((entry) => entry.done)
         if (allDone) {
+          if (!response.error && directoryComparePairJobs.length === 1) {
+            await attachLocalDirectorySession(revision, selectedRelativePath || previousSelectedPath)
+          }
           stopDirectoryComparePolling(false, false)
           loading = false
 
@@ -1588,6 +1622,7 @@
 
   async function applyE2ECompareTarget(target: E2ECompareTarget) {
     e2eHarnessEnabled = true
+    setupMode = 'local'
     mode = 'directory'
 
     const [leftOpened, rightOpened] = await Promise.all([
@@ -2530,7 +2565,6 @@
         directoryEntriesRevision += 1
         syncFilteredDirectoryState([])
         selectedRelativePath = ''
-
         const pairs = buildDirectoryComparePairs(leftSelected, rightSelected)
         directoryComparePairs = pairs
         directoryComparePairSlots = pairs.map(() => [])
@@ -2538,100 +2572,59 @@
         directoryComparePairIndexSets = pairs.map(() => new Set<number>())
         directoryComparePairIndexOrderDirty = pairs.map(() => false)
         directoryComparePairTimers = pairs.map(() => null)
-        directoryComparePairJobs = pairs.map((_, pairIndex) => ({
-          jobId: '',
-          pairIndex,
-          done: false,
-        }))
-
-        const startResults = await Promise.all(
-          pairs.map((pair) =>
-            startDirectoryCompare(pair.leftBase, pair.rightBase, nextCompareOptions),
-          ),
-        )
-
+        directoryComparePairJobs = pairs.map((_, pairIndex) => ({ jobId: '', pairIndex, done: false }))
+        const startResults = await Promise.all(pairs.map((pair) =>
+          startDirectoryCompare(pair.leftBase, pair.rightBase, nextCompareOptions),
+        ))
         if (revision !== compareRevision) {
-          for (const response of startResults) {
-            void cancelDirectoryCompare(response.jobId).catch(() => undefined)
-          }
+          for (const response of startResults) void cancelDirectoryCompare(response.jobId).catch(() => undefined)
           return
         }
-
         for (const [pairIndex, response] of startResults.entries()) {
-          directoryComparePairJobs[pairIndex] = {
-            jobId: response.jobId,
-            pairIndex,
-            done: false,
-          }
-        }
-
-        activeDirectoryCompareJobId = startResults[0]?.jobId ?? ''
-
-        for (const [pairIndex, response] of startResults.entries()) {
+          directoryComparePairJobs[pairIndex] = { jobId: response.jobId, pairIndex, done: false }
           void pollDirectoryCompareJob(
-            response.jobId,
-            pairIndex,
-            previousSelectedPath,
-            revision,
-            restoreScroll,
+            response.jobId, pairIndex, previousSelectedPath, revision, restoreScroll,
           )
         }
+        activeDirectoryCompareJobId = startResults[0]?.jobId ?? ''
         directoryPollingStarted = true
         return
       }
 
-      const response = await comparePaths(
-        nextLeftPath,
-        nextRightPath,
-        mode,
-        nextCompareOptions,
-      )
+      const source: DiffSource = {
+        kind: 'local',
+        compareMode: 'file',
+        leftPath: nextLeftPath,
+        rightPath: nextRightPath,
+      }
+      const session = await createDiffSession(source, nextCompareOptions)
+      const result = await openDiffEntry(session.sessionId, 'file', nextCompareOptions)
 
       if (revision !== compareRevision) {
+        disposeDiffSessionQuietly(session.sessionId)
         return
       }
 
-      if (response.kind === 'directory') {
-        directoryEntries = response.entries
-        directoryEntriesRevision += 1
-        syncFilteredDirectoryState(response.entries)
+      activeDiffSource = source
+      activeDiffSessionId = session.sessionId
 
-        const preservedEntry = filteredDirectoryEntries.find(
-          (entry) => entry.relativePath === previousSelectedPath,
-        )
-
-        if (preservedEntry) {
-          void selectEntry(preservedEntry, compareRevision, restoreScroll)
-        } else if (filteredDirectoryEntries.length > 0) {
-          const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
-          void selectEntry(nextEntry, compareRevision)
-        } else {
-          selectedRelativePath = ''
-          activeDiff = null
-          cancelBackgroundDiffPreload()
-          finishCompareTiming('compare-ready-empty', {
-            entries: response.entries.length,
-          })
-        }
-      } else {
-        selectedRelativePath = ''
-        activeDiff = response.result
-        cancelBackgroundDiffPreload()
-        markCompareTiming('first-entry-loaded', {
-          contentKind: response.result.contentKind,
-          hasTextDiff: Boolean(response.result.contentKind === 'text' && response.result.text),
+      selectedRelativePath = ''
+      activeDiff = result
+      cancelBackgroundDiffPreload()
+      markCompareTiming('first-entry-loaded', {
+        contentKind: result.contentKind,
+        hasTextDiff: Boolean(result.contentKind === 'text' && result.text),
+        mode,
+      })
+      if (result.contentKind === 'text' && result.text) {
+        markCompareTiming('first-text-entry-loaded', {
           mode,
         })
-        if (response.result.contentKind === 'text' && response.result.text) {
-          markCompareTiming('first-text-entry-loaded', {
-            mode,
-          })
-        } else {
-          finishCompareTimingOnNextFrame('compare-ready-non-text', {
-            contentKind: response.result.contentKind,
-            mode,
-          })
-        }
+      } else {
+        finishCompareTimingOnNextFrame('compare-ready-non-text', {
+          contentKind: result.contentKind,
+          mode,
+        })
       }
     } catch (error) {
       if (requestRevision === compareRevision) {
@@ -2645,6 +2638,48 @@
       if (!directoryPollingStarted && requestRevision === compareRevision) {
         loading = false
       }
+    }
+  }
+
+  async function refreshActiveSession() {
+    const sessionId = activeDiffSessionId
+    if (!sessionId) {
+      await runCompare()
+      return
+    }
+    const previousSelectedPath = selectedRelativePath
+    try {
+      const session = await refreshDiffSession(sessionId)
+      if (activeDiffSessionId !== sessionId) return
+      compareRevision += 1
+      diffCache.clearDetailDiffs()
+      if (mode === 'file') {
+        activeDiff = await openDiffEntry(sessionId, 'file', activeCompareOptions)
+        pulseCompareSurface()
+        return
+      }
+      const mapped = mapSessionDiffEntries(session.entries)
+      const isScopedGit = activeDiffSource?.kind === 'git' &&
+        activeDiffSource.selection.kind === 'workingTree'
+      if (isScopedGit) {
+        gitScopeEntries = session.entries
+        gitScopeDirectoryEntries = mapped
+        directoryEntries = mapped.filter((entry) => entry.diffEntryScope === gitScope)
+      } else {
+        directoryEntries = mapped
+      }
+      directoryEntriesRevision += 1
+      syncFilteredDirectoryState(directoryEntries)
+      const nextEntry = filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
+        ?? defaultDirectoryEntry(filteredDirectoryEntries)
+      if (nextEntry) await selectEntry(nextEntry, compareRevision)
+      else {
+        selectedRelativePath = ''
+        activeDiff = null
+      }
+      pulseCompareSurface()
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Unable to refresh comparison.'
     }
   }
 
@@ -3045,6 +3080,7 @@
     {openExternalUrl}
     {compareNeedsRefresh}
     {runCompare}
+    refreshSession={refreshActiveSession}
     {openSettings}
     {goToSetup}
     {errorMessage}

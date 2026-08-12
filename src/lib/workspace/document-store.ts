@@ -22,6 +22,7 @@ export interface WorkspaceDocumentState {
   selections: DocumentDraft['selections']
   scrollTop: number
   focusRevision: number
+  renderRevision: number
 }
 
 export interface DocumentWorkspaceState {

@@ -431,6 +431,7 @@ export interface DirectoryEntryResult {
   diffPatchText?: string | null
   diffPatchCacheKey?: string | null
   capabilities?: DiffEntryCapabilities
+  reviewThreadCount?: import('./review-types').ReviewThreadCount
 }
 
 // Selects how the directory diff list loads each entry's details. Local paths

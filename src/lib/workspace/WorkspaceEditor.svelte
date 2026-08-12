@@ -1,21 +1,40 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { File, getFiletypeFromFileName, type EditorState, type FileContents } from '@pierre/diffs'
+  import {
+    File,
+    FileDiff,
+    getFiletypeFromFileName,
+    type DiffLineAnnotation,
+    type EditorState,
+    type FileContents,
+    type LineAnnotation,
+  } from '@pierre/diffs'
   import type { Editor } from '@pierre/diffs/edit'
+  import { deleteReviewComment, listReviewThreads } from '../api'
+  import {
+    renderCommentAnnotationElement,
+    reviewThreadsToAnnotations,
+    type DifflyCommentAnnotation,
+  } from '../compare/directory-code-view-comments'
+  import '../compare/directory-code-view.css'
   import type { AppearanceSettings } from '../theme'
   import { buildPierreDiffUnsafeCss, resolvePierreDiffTheme } from '../theme/pierre'
   import { workspaceDocumentController } from './document-controller'
   import type { WorkspaceDocumentState } from './document-store'
   import { diagnoseDocument, type DiagnosticMarker } from './diagnostics'
+  import { createDocumentPatch } from './patch-export'
 
   export let state: WorkspaceDocumentState
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark'
+  export let viewMode: 'sideBySide' | 'unified' = 'sideBySide'
   export let onSaved: () => Promise<void> | void = () => {}
+  export let reviewSessionId = ''
+  export let reviewEntryId = ''
 
   let host: HTMLDivElement | null = null
-  let fileView: File | null = null
-  let editor: Editor<undefined> | null = null
+  let fileView: File<DifflyCommentAnnotation> | FileDiff<DifflyCommentAnnotation> | null = null
+  let editor: Editor<DifflyCommentAnnotation> | null = null
   let detachEditor: (() => void) | null = null
   let loading = true
   let loadError = ''
@@ -28,12 +47,16 @@
   let diagnosticTimer: number | null = null
   let diagnosticsPending = false
   let selectedMarker = -1
+  let editorSurface: 'file' | 'diff' = 'file'
+  let reviewAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
+  let reviewHydrationGeneration = 0
 
   $: canUndo = Boolean(editor?.canUndo) && historyRevision >= 0
   $: canRedo = Boolean(editor?.canRedo) && historyRevision >= 0
 
   onMount(() => {
     let cancelled = false
+    window.addEventListener('diffly:review-changed', handleReviewChanged)
     void import('@pierre/diffs/edit')
       .then(({ Editor }) => {
         if (cancelled || !host) return
@@ -44,10 +67,11 @@
           autoSurround: 'default',
           enabledSelectionAction: true,
           clipboard: { readText: () => window.diffly.clipboard.readText() },
-          onChange: (file) => handleEditorChange(file),
+          onChange: (file, annotations) => handleEditorChange(file, annotations),
         })
         renderDocument(true)
         updateDiagnostics(state.contents)
+        void hydrateReviewAnnotations()
         editor.focus({ lineNumber: 'first-visible' })
         loading = false
       })
@@ -57,6 +81,7 @@
       })
     return () => {
       cancelled = true
+      window.removeEventListener('diffly:review-changed', handleReviewChanged)
     }
   })
 
@@ -65,10 +90,13 @@
     detachEditor?.()
     editor?.cleanUp()
     fileView?.cleanUp()
+    reviewHydrationGeneration += 1
   })
 
   function renderDocument(force = false) {
-    if (!host || !editor || (!force && renderedCacheKey === state.document.cacheKey)) return
+    const layoutKey = `${editorSurface}:${viewMode}:${resolvedThemeMode}:${JSON.stringify(appearanceSettings)}`
+    const renderKey = `${state.id}:${state.renderRevision}:${layoutKey}`
+    if (!host || !editor || (!force && renderedCacheKey === renderKey)) return
     const file: FileContents = {
       name: state.document.name,
       contents: state.contents,
@@ -77,14 +105,37 @@
     }
     detachEditor?.()
     fileView?.cleanUp()
-    fileView = new File({
+    const commonOptions = {
       theme: resolvePierreDiffTheme(appearanceSettings),
       themeType: resolvedThemeMode,
-      overflow: 'scroll',
+      overflow: 'scroll' as const,
       disableVirtualizationBuffers: false,
       unsafeCSS: buildPierreDiffUnsafeCss(appearanceSettings),
-    })
-    fileView.render({ file, containerWrapper: host })
+      renderAnnotation: (annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>) =>
+        renderReviewAnnotation(annotation),
+    }
+    if (editorSurface === 'diff') {
+      fileView = new FileDiff({
+        ...commonOptions,
+        diffStyle: viewMode === 'unified' ? 'unified' : 'split',
+        expandUnchanged: true,
+        disableFileHeader: true,
+      })
+      fileView.render({
+        oldFile: {
+          name: state.document.name,
+          contents: state.document.contents,
+          cacheKey: `${state.document.cacheKey}:base`,
+          lang: file.lang,
+        },
+        newFile: file,
+        containerWrapper: host,
+        lineAnnotations: reviewAnnotations,
+      })
+    } else {
+      fileView = new File<DifflyCommentAnnotation>(commonOptions)
+      fileView.render({ file, containerWrapper: host, lineAnnotations: fileReviewAnnotations() })
+    }
     detachEditor = editor.edit(fileView)
     if (state.selections.length > 0 || state.scrollTop > 0) {
       editor.setState({
@@ -92,12 +143,20 @@
         view: { scrollLeft: 0, scrollTop: state.scrollTop },
       })
     }
-    renderedCacheKey = state.document.cacheKey
+    renderedCacheKey = renderKey
     updateStatus()
   }
 
-  function handleEditorChange(file: FileContents) {
+  function handleEditorChange(
+    file: FileContents,
+    annotations?: Array<LineAnnotation<DifflyCommentAnnotation> | DiffLineAnnotation<DifflyCommentAnnotation>>,
+  ) {
     if (!editor) return
+    if (annotations) {
+      reviewAnnotations = editorSurface === 'diff'
+        ? annotations as Array<DiffLineAnnotation<DifflyCommentAnnotation>>
+        : mergeFileReviewAnnotations(annotations as Array<LineAnnotation<DifflyCommentAnnotation>>)
+    }
     const editorState = editor.getState()
     workspaceDocumentController.updateContents(state.id, file.contents, {
       selections: normalizeSelections(editorState),
@@ -170,11 +229,20 @@
 
   async function save() {
     const result = await workspaceDocumentController.save(state.id)
-    if (result?.ok) await onSaved()
+    if (result?.ok) {
+      await onSaved()
+      await hydrateReviewAnnotations()
+    }
   }
 
   async function saveAs() {
     await workspaceDocumentController.saveAs(state.id)
+  }
+
+  async function copyPatch() {
+    await window.diffly.clipboard.writeText(
+      createDocumentPatch(state.document.name, state.document.contents, state.contents),
+    )
   }
 
   async function overwriteExternal() {
@@ -194,12 +262,92 @@
     }))
   }
 
+  function setEditorSurface(surface: 'file' | 'diff') {
+    if (editorSurface === surface) return
+    editorSurface = surface
+    renderDocument(true)
+    editor?.focus({ lineNumber: 'first-visible' })
+  }
+
   function sourceLabel(kind: WorkspaceDocumentState['document']['target']['kind']) {
     switch (kind) {
       case 'local': return 'LOCAL'
       case 'gitWorktree': return 'WORKTREE'
       case 'gitIndex': return 'INDEX'
       case 'scratch': return 'SCRATCH'
+    }
+  }
+
+  function editableReviewSide(): 'deletions' | 'additions' {
+    return state.document.target.kind === 'local' && state.document.target.side === 'left'
+      ? 'deletions'
+      : 'additions'
+  }
+
+  function fileReviewAnnotations(): Array<LineAnnotation<DifflyCommentAnnotation>> {
+    const side = editableReviewSide()
+    return reviewAnnotations
+      .filter((annotation) => annotation.side === side)
+      .map((annotation) => ({ lineNumber: annotation.lineNumber, metadata: annotation.metadata }))
+  }
+
+  function mergeFileReviewAnnotations(
+    annotations: Array<LineAnnotation<DifflyCommentAnnotation>>,
+  ): Array<DiffLineAnnotation<DifflyCommentAnnotation>> {
+    const side = editableReviewSide()
+    const visibleIds = new Set(annotations.map((annotation) => annotation.metadata.id))
+    return [
+      ...reviewAnnotations.filter((annotation) => annotation.side !== side && !visibleIds.has(annotation.metadata.id)),
+      ...annotations.map((annotation) => ({ ...annotation, side })),
+    ]
+  }
+
+  async function hydrateReviewAnnotations() {
+    const generation = ++reviewHydrationGeneration
+    if (!reviewSessionId || !reviewEntryId) {
+      reviewAnnotations = []
+      applyReviewAnnotations()
+      return
+    }
+    try {
+      const threads = await listReviewThreads(reviewSessionId, reviewEntryId)
+      if (generation !== reviewHydrationGeneration) return
+      reviewAnnotations = reviewThreadsToAnnotations(threads)
+      applyReviewAnnotations()
+    } catch {
+      // Review persistence must not block editing or saving the document.
+    }
+  }
+
+  function applyReviewAnnotations() {
+    if (fileView instanceof FileDiff) fileView.setLineAnnotations(reviewAnnotations)
+    else if (fileView instanceof File) fileView.setLineAnnotations(fileReviewAnnotations())
+  }
+
+  function renderReviewAnnotation(
+    annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
+  ) {
+    return renderCommentAnnotationElement(annotation, {
+      onSave: () => {
+        throw new Error('Create review threads from Review mode.')
+      },
+      onDelete: async (target) => {
+        if (reviewSessionId && target.metadata.threadId && target.metadata.commentId) {
+          await deleteReviewComment(reviewSessionId, target.metadata.threadId, target.metadata.commentId)
+        }
+        reviewAnnotations = reviewAnnotations.filter((item) => item.metadata.id !== target.metadata.id)
+        applyReviewAnnotations()
+        window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+          detail: { sessionId: reviewSessionId, entryId: reviewEntryId },
+        }))
+      },
+    })
+  }
+
+  function handleReviewChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string; entryId?: string | null }>).detail
+    if (detail?.sessionId === reviewSessionId && detail.entryId === reviewEntryId) {
+      void hydrateReviewAnnotations()
     }
   }
 
@@ -224,7 +372,8 @@
     return left
   }
 
-  $: state.document.cacheKey, appearanceSettings, resolvedThemeMode, renderDocument()
+  $: state.renderRevision, appearanceSettings, resolvedThemeMode, renderDocument()
+  $: reviewSessionId, reviewEntryId, void hydrateReviewAnnotations()
   $: if (editor && state.focusRevision !== handledFocusRevision) {
     handledFocusRevision = state.focusRevision
     editor.setState({ selections: state.selections })
@@ -248,12 +397,18 @@
     <div class="workspace-editor-actions">
       <button class="secondary" type="button" disabled={!canUndo} on:click={undo}>Undo</button>
       <button class="secondary" type="button" disabled={!canRedo} on:click={redo}>Redo</button>
+      <button class:active={editorSurface === 'file'} class="secondary" type="button" on:click={() => setEditorSurface('file')}>File</button>
+      <button class:active={editorSurface === 'diff'} class="secondary" type="button" on:click={() => setEditorSurface('diff')}>Diff</button>
       <button class="secondary" type="button" on:click={() => openFind(false)}>Find</button>
       <button class="secondary" type="button" on:click={() => openFind(true)}>Replace</button>
       <button type="button" disabled={!state.dirty || state.saving || state.document.readOnly} on:click={save}>
         {state.saving ? 'Saving…' : 'Save'}
       </button>
       <button class="secondary" type="button" disabled={state.saving} on:click={saveAs}>Save As…</button>
+      {#if state.document.target.kind === 'scratch'}
+        <button class="secondary" type="button" on:click={copyPatch}>Copy Patch</button>
+        <button class="secondary" type="button" on:click={() => workspaceDocumentController.exportPatch(state.id)}>Export Patch…</button>
+      {/if}
     </div>
   </header>
 

@@ -56,7 +56,7 @@ export class SearchService {
     let totalMatches = 0
     for (const descriptor of descriptors) {
       const document = await this.sessions.openDocument(descriptor.target)
-      if (document.readOnly || descriptor.target.kind === 'scratch') continue
+      if (document.readOnly && descriptor.target.kind !== 'scratch') continue
       const allowed = request.query.scope === 'all'
         ? null
         : await getLineScopes(this.sessions, lineScopes, request.sessionId, descriptor.entryId)
