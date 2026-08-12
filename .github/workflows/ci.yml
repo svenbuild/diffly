@@ -58,7 +58,7 @@ jobs:
         run: npm run build
 
       - name: Package Windows app
-        run: npx electron-builder --win nsis --publish never
+        run: node scripts/build-windows.mjs
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
