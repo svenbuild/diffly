@@ -9,6 +9,7 @@ let page: Page
 let root: string
 let left: string
 let right: string
+const editorEndShortcut = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End'
 
 async function launchWorkspace() {
   const appEnvironment = { ...process.env }
@@ -54,7 +55,7 @@ test('edits, undoes, redoes, and saves through the shared document workspace', a
   await expect(editor).toBeVisible()
   const editable = editor.locator('[contenteditable="true"]').first()
   await editable.click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press(editorEndShortcut)
   await page.keyboard.type('// e2e')
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -68,7 +69,7 @@ test('edits, undoes, redoes, and saves through the shared document workspace', a
   await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 
   await editable.click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press(editorEndShortcut)
   await page.keyboard.type('\n// diff edit')
   await editor.getByRole('button', { name: 'Diff', exact: true }).click()
   await expect(editor.locator('[contenteditable="true"]').first()).toBeVisible()
@@ -124,7 +125,7 @@ test('guards window close while an editor draft is dirty', async () => {
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   const editable = page.locator('[contenteditable="true"]').first()
   await editable.click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press(editorEndShortcut)
   await page.keyboard.type('// unsaved')
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close())
@@ -145,7 +146,7 @@ test('recovers a debounced editor draft after an unclean shutdown', async () => 
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   const editable = page.locator('[contenteditable="true"]').first()
   await editable.click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press(editorEndShortcut)
   await page.keyboard.type('// crash draft')
 
   const manifest = join(root, 'user-data', 'drafts', 'manifest.json')
