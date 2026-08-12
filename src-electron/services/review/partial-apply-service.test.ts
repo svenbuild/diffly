@@ -12,6 +12,8 @@ import { PartialApplyService } from './partial-apply-service'
 
 describe('PartialApplyService Git integration', () => {
   let root: string
+  let sessions: DiffSessionService | undefined
+  let sessionId: string | undefined
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'diffly-partial-git-'))
@@ -21,7 +23,12 @@ describe('PartialApplyService Git integration', () => {
   })
 
   afterEach(async () => {
-    await rm(root, { recursive: true, force: true })
+    if (sessions && sessionId) {
+      sessions.dispose(sessionId)
+    }
+    sessions = undefined
+    sessionId = undefined
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('stages only the selected hunk and leaves the other worktree change untouched', async () => {
@@ -36,7 +43,7 @@ describe('PartialApplyService Git integration', () => {
     await writeFile(path, `${changed.join('\n')}\n`)
 
     const gitProvider = new GitProvider()
-    const sessions = new DiffSessionService({ localProvider: new LocalProvider(), gitProvider })
+    sessions = new DiffSessionService({ localProvider: new LocalProvider(), gitProvider })
     const source: DiffSource = {
       kind: 'git',
       repoPath: root,
@@ -44,6 +51,7 @@ describe('PartialApplyService Git integration', () => {
       selection: { kind: 'workingTree', initialScope: 'unstaged' },
     }
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
+    sessionId = session.sessionId
     const entry = session.entries.find((item) => item.scope === 'unstaged' && item.path === 'file.txt')
     expect(entry).toBeDefined()
     const service = new PartialApplyService(sessions, new OperationJournal(join(root, '.journal')))

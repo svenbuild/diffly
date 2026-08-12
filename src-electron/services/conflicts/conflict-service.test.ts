@@ -12,6 +12,8 @@ import { ConflictService } from './conflict-service'
 
 describe('ConflictService integration', () => {
   let root: string
+  let sessions: DiffSessionService | undefined
+  let sessionId: string | undefined
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'diffly-conflict-'))
@@ -21,7 +23,12 @@ describe('ConflictService integration', () => {
   })
 
   afterEach(async () => {
-    await rm(root, { recursive: true, force: true })
+    if (sessions && sessionId) {
+      sessions.dispose(sessionId)
+    }
+    sessions = undefined
+    sessionId = undefined
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('loads all index stages, resolves and stages, then restores the unmerged index', async () => {
@@ -40,7 +47,7 @@ describe('ConflictService integration', () => {
     expect(merge.exitCode).not.toBe(0)
 
     const provider = new GitProvider()
-    const sessions = new DiffSessionService({ localProvider: new LocalProvider(), gitProvider: provider })
+    sessions = new DiffSessionService({ localProvider: new LocalProvider(), gitProvider: provider })
     const source: DiffSource = {
       kind: 'git',
       repoPath: root,
@@ -48,6 +55,7 @@ describe('ConflictService integration', () => {
       selection: { kind: 'workingTree', initialScope: 'all' },
     }
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
+    sessionId = session.sessionId
     const entry = session.entries.find((item) => item.status === 'conflicted')
     expect(entry?.conflictKind).toBe('UU')
     const reviewDiff = await sessions.openEntry(session.sessionId, entry!.id, {

@@ -10,9 +10,18 @@ import { LocalProvider } from '../providers/local-provider'
 import { DocumentService } from './document-service'
 
 const roots: string[] = []
+const sessionsToDispose: Array<{ service: DiffSessionService; sessionId: string }> = []
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  for (const { service, sessionId } of sessionsToDispose.splice(0)) {
+    service.dispose(sessionId)
+  }
+  await Promise.all(roots.splice(0).map((root) => rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  })))
 })
 
 describe('DocumentService integration', () => {
@@ -34,6 +43,7 @@ describe('DocumentService integration', () => {
       selection: { kind: 'workingTree', initialScope: 'staged' },
     }
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
+    sessionsToDispose.push({ service: sessions, sessionId: session.sessionId })
     const entry = session.entries.find((item) => item.scope === 'staged' && item.path === 'file.txt')!
     const documents = new DocumentService(sessions)
     const target = { kind: 'gitIndex' as const, sessionId: session.sessionId, entryId: entry.id }
@@ -65,6 +75,7 @@ describe('DocumentService integration', () => {
       selection: { kind: 'workingTree', initialScope: 'staged' },
     }
     const session = await sessions.create(source, { ignoreCase: false, ignoreWhitespace: false })
+    sessionsToDispose.push({ service: sessions, sessionId: session.sessionId })
     const entry = session.entries.find((item) => item.scope === 'staged' && item.path === 'file.txt')!
     const documents = new DocumentService(sessions)
     const target = { kind: 'gitIndex' as const, sessionId: session.sessionId, entryId: entry.id }

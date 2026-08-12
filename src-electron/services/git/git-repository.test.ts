@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -23,7 +23,7 @@ describe('validateGitRepository', () => {
     const result = await validateGitRepository(repoPath)
 
     expect(result.valid).toBe(true)
-    expect(resolve(result.repositoryRoot!)).toBe(resolve(repoPath))
+    expect(await realpath(resolve(result.repositoryRoot!))).toBe(await realpath(resolve(repoPath)))
     expect(result.currentBranch).toBe('main')
     expect(result.headSha).toMatch(/^[0-9a-f]{40}$/)
     expect(result.isBare).toBe(false)
@@ -35,7 +35,7 @@ describe('validateGitRepository', () => {
     const result = await validateGitRepository(repoPath)
 
     expect(result.valid).toBe(true)
-    expect(resolve(result.repositoryRoot!)).toBe(resolve(repoPath))
+    expect(await realpath(resolve(result.repositoryRoot!))).toBe(await realpath(resolve(repoPath)))
     expect(result.currentBranch).toBeNull()
     expect(result.headSha).toBeNull()
     expect(result.isBare).toBe(false)
