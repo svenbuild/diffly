@@ -63,6 +63,8 @@ test('resolves a merge conflict with Current and stages the result', async () =>
   await writeFile(path, 'current\n')
   await git(['commit', '-am', 'current'])
   await git(['merge', 'incoming'], true)
+  const conflictContents = await readFile(path, 'utf8')
+  const expectedEol = conflictContents.includes('\r\n') ? '\r\n' : '\n'
 
   await launchGitWorkspace()
   await page.getByRole('button', { name: 'Resolve', exact: true }).click()
@@ -73,7 +75,7 @@ test('resolves a merge conflict with Current and stages the result', async () =>
   await finish.click()
 
   await expect.poll(async () => (await git(['ls-files', '--unmerged'])).stdout).toBe('')
-  expect(await readFile(path, 'utf8')).toBe('current\n')
+  expect(await readFile(path, 'utf8')).toBe(`current${expectedEol}`)
 })
 
 async function launchGitWorkspace() {
