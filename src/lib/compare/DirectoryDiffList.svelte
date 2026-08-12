@@ -58,6 +58,8 @@
   export let viewMode: ViewMode
   export let scrollTargetRevision = 0
   export let revision = 0
+  export let invalidatedEntryPath = ''
+  export let invalidatedEntryRevision = 0
   export let leftPath = ''
   export let rightPath = ''
   export let compareOptions: CompareOptions = {
@@ -182,12 +184,15 @@
   }
 
   function entryDetailKey(entry: DirectoryEntryResult) {
-    return entry.diffEntryId ?? [
+    const baseKey = entry.diffEntryId ?? [
       detailLoader.kind,
       entry.relativePath,
       entry.leftPath ?? '',
       entry.rightPath ?? '',
     ].join('\u0000')
+    return entry.relativePath === invalidatedEntryPath
+      ? `${baseKey}\u0000invalidate:${invalidatedEntryRevision}`
+      : baseKey
   }
 
   function entryDetailKeys(entry: DirectoryEntryResult) {
@@ -1162,6 +1167,8 @@
 
   $: {
     directoryEntries
+    invalidatedEntryPath
+    invalidatedEntryRevision
     const nextSignature = directoryEntriesSignature()
     if (nextSignature !== entriesSignature) {
       const revisionChanged = resolvedEntryStateRevision !== revision

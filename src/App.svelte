@@ -7,7 +7,6 @@
     addRecentSource,
     choosePath,
     checkForUpdates,
-    comparePaths,
     cancelDirectoryCompare,
     createDiffSession,
     disposeDiffSession,
@@ -19,10 +18,14 @@
     loadSessionState,
     onLaunchContext,
     openCompareItem,
+    openDiffEntry,
     openExternalUrl as openExternalUrlApi,
+    onWorkspaceCloseRequested,
     pollDirectoryCompare,
     pathInfo,
     saveSessionState,
+    respondToWorkspaceClose,
+    refreshDiffSession,
     startDirectoryCompare,
   } from './lib/api'
   import {
@@ -156,6 +159,12 @@
     SettingsSection,
     Side,
   } from './lib/ui-types'
+  import {
+    documentWorkspace,
+    getWorkspaceSnapshot,
+    setWorkspaceMode,
+  } from './lib/workspace/document-store'
+  import { workspaceDocumentController } from './lib/workspace/document-controller'
 
   const SESSION_SAVE_DELAY_MS = 180
   const THEME_SWITCH_DURATION_MS = 140
@@ -173,6 +182,14 @@
   export let initialSession: PersistedSession | null = null
   export let startupFolderPath: string | null = null
   let pendingStartupOverridePath: string | null = null
+  let unsavedDialogOpen = false
+  let unsavedDialogBusy = false
+  let unsavedDialogError = ''
+  let unsavedDecisionResolve: ((allow: boolean) => void) | null = null
+  let recoveryDialogOpen = false
+  let recoveryDialogBusy = false
+  let recoveryDialogError = ''
+  let recoveryCheckedSessionId = ''
   let e2eHarnessEnabled = false
 
   let screen: Screen = 'setup'
@@ -268,6 +285,8 @@
     diffCache: 0,
   }
   let compareRevision = 0
+  let invalidatedEntryPath = ''
+  let invalidatedEntryRevision = 0
   let activeDirectoryCompareJobId = ''
   let directoryComparePollTimer: number | null = null
   let directoryCompareEntrySlots: Array<DirectoryEntryResult | null | undefined> = []
@@ -541,6 +560,12 @@
   function syncE2EHarness() {
     installE2EHarness(e2eHarnessEnabled, {
       getState: () => ({
+        activeDocumentDirty: getWorkspaceSnapshot().activeDocumentId
+          ? getWorkspaceSnapshot().documents.get(getWorkspaceSnapshot().activeDocumentId!)?.dirty ?? false
+          : false,
+        activeDocumentSaving: getWorkspaceSnapshot().activeDocumentId
+          ? getWorkspaceSnapshot().documents.get(getWorkspaceSnapshot().activeDocumentId!)?.saving ?? false
+          : false,
         directoryEntries: directoryEntries.length,
         errorMessage,
         loading,
@@ -558,6 +583,98 @@
         return true
       },
     })
+  }
+
+  function requestUnsavedDecision() {
+    const dirty = Array.from(getWorkspaceSnapshot().documents.values()).filter((item) => item.dirty)
+    if (dirty.length === 0) return Promise.resolve(true)
+    if (unsavedDialogOpen) return Promise.resolve(false)
+    unsavedDialogOpen = true
+    unsavedDialogError = ''
+    return new Promise<boolean>((resolve) => {
+      unsavedDecisionResolve = resolve
+    })
+  }
+
+  async function resolveUnsavedDecision(choice: 'save' | 'discard' | 'review' | 'cancel') {
+    if (unsavedDialogBusy) return
+    if (choice === 'review') {
+      const first = Array.from(getWorkspaceSnapshot().documents.values()).find((item) => item.dirty)
+      if (first) {
+        documentWorkspace.update((state) => ({ ...state, activeDocumentId: first.id, mode: 'edit' }))
+        setWorkspaceMode('edit')
+        screen = 'compare'
+      }
+      finishUnsavedDecision(false)
+      return
+    }
+    if (choice === 'cancel') {
+      finishUnsavedDecision(false)
+      return
+    }
+    unsavedDialogBusy = true
+    unsavedDialogError = ''
+    try {
+      if (choice === 'save') {
+        const result = await workspaceDocumentController.saveAll()
+        if (result && !result.ok) {
+          unsavedDialogError = `Save failed: ${result.error.code}`
+          return
+        }
+      } else {
+        for (const item of Array.from(getWorkspaceSnapshot().documents.values())) {
+          workspaceDocumentController.close(item.id, true)
+        }
+      }
+      finishUnsavedDecision(true)
+    } catch (error) {
+      unsavedDialogError = error instanceof Error ? error.message : String(error)
+    } finally {
+      unsavedDialogBusy = false
+    }
+  }
+
+  function finishUnsavedDecision(allow: boolean) {
+    const resolve = unsavedDecisionResolve
+    unsavedDecisionResolve = null
+    unsavedDialogOpen = false
+    unsavedDialogError = ''
+    resolve?.(allow)
+  }
+
+  async function checkDraftRecovery(sessionId: string) {
+    try {
+      const drafts = await workspaceDocumentController.loadRecoveryIndex()
+      recoveryDialogOpen = drafts.length > 0
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  async function handleDraftRecovery(action: 'restoreAll' | 'review' | 'discard' | 'saveCopies') {
+    if (!activeDiffSessionId || recoveryDialogBusy) return
+    recoveryDialogBusy = true
+    recoveryDialogError = ''
+    const ids = $documentWorkspace.recoveredDrafts.map((draft) => draft.id)
+    try {
+      if (action === 'restoreAll') {
+        for (const id of ids) await workspaceDocumentController.restoreDraft(id, activeDiffSessionId)
+        setWorkspaceMode('edit')
+      } else if (action === 'review') {
+        const first = ids[0]
+        if (first) await workspaceDocumentController.restoreDraft(first, activeDiffSessionId)
+        setWorkspaceMode('edit')
+      } else if (action === 'discard') {
+        await workspaceDocumentController.discardRecoveredDrafts(ids)
+      } else if (!(await workspaceDocumentController.saveRecoveredDraftCopies(ids))) {
+        return
+      }
+      recoveryDialogOpen = false
+    } catch (error) {
+      recoveryDialogError = error instanceof Error ? error.message : String(error)
+    } finally {
+      recoveryDialogBusy = false
+    }
   }
 
   onMount(() => {
@@ -587,6 +704,9 @@
       const openHerePath = isLaunchContext(context) ? context.openHerePath : ''
       void applyStartupOverride(openHerePath)
     })
+    const removeCloseRequestListener = onWorkspaceCloseRequested(() => {
+      void requestUnsavedDecision().then((allow) => respondToWorkspaceClose(allow))
+    })
 
     void initializeAppStartup()
     scheduleCompareComponentsPreload()
@@ -608,9 +728,11 @@
       compareComponentsPreloadCancel = null
 
       removeLaunchContextListener()
+      removeCloseRequestListener()
       unsubscribeCompareLoading()
       diffCache.cancelBackgroundPreload()
       disposeDiffSessionQuietly(activeDiffSessionId)
+      workspaceDocumentController.dispose()
 
       if (themeTransitionTimer !== null) {
         window.clearTimeout(themeTransitionTimer)
@@ -832,6 +954,7 @@
   }
 
   async function applyDownloadedUpdate() {
+    if (!(await requestUnsavedDecision())) return
     updateIndicatorState = await updateController.applyDownloadedUpdate(
       updateIndicatorState,
       updateChannel,
@@ -843,6 +966,12 @@
   }
 
   function openSettings(section: SettingsSection = 'appearance') {
+    if (screen === 'compare' && Array.from(getWorkspaceSnapshot().documents.values()).some((item) => item.dirty)) {
+      void requestUnsavedDecision().then((allow) => {
+        if (allow) openSettings(section)
+      })
+      return
+    }
     const requestId = (settingsRouteRequestId += 1)
     if (screen !== 'settings') {
       settingsReturnScreen = screen
@@ -1210,6 +1339,30 @@
     }, DIRECTORY_COMPARE_POLL_INTERVAL_MS)
   }
 
+  async function attachLocalDirectorySession(revision: number, previousSelectedPath: string) {
+    if (revision !== compareRevision || directoryComparePairs.length !== 1) return
+    const pair = directoryComparePairs[0]!
+    const source: DiffSource = {
+      kind: 'local',
+      compareMode: 'directory',
+      leftPath: pair.leftBase,
+      rightPath: pair.rightBase,
+    }
+    const session = await createDiffSession(source, activeCompareOptions)
+    if (revision !== compareRevision) {
+      disposeDiffSessionQuietly(session.sessionId)
+      return
+    }
+    activeDiffSource = source
+    activeDiffSessionId = session.sessionId
+    directoryEntries = mapSessionDiffEntries(session.entries)
+    directoryEntriesRevision += 1
+    syncFilteredDirectoryState(directoryEntries)
+    const nextEntry = filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
+      ?? defaultDirectoryEntry(filteredDirectoryEntries)
+    if (nextEntry) await selectEntry(nextEntry, revision)
+  }
+
   async function pollDirectoryCompareJob(
     jobId: string,
     pairIndex: number,
@@ -1253,6 +1406,9 @@
 
         const allDone = directoryComparePairJobs.every((entry) => entry.done)
         if (allDone) {
+          if (!response.error && directoryComparePairJobs.length === 1) {
+            await attachLocalDirectorySession(revision, selectedRelativePath || previousSelectedPath)
+          }
           stopDirectoryComparePolling(false, false)
           loading = false
 
@@ -1469,6 +1625,20 @@
   async function applyE2ECompareTarget(target: E2ECompareTarget) {
     e2eHarnessEnabled = true
     mode = 'directory'
+    await loadCompareComponents()
+
+    if (target.kind === 'git') {
+      setupMode = 'git'
+      await runSessionCompare({
+        kind: 'git',
+        repoPath: target.repositoryRoot,
+        repositoryRoot: target.repositoryRoot,
+        selection: { kind: 'workingTree', initialScope: 'all' },
+      })
+      return
+    }
+
+    setupMode = 'local'
 
     const [leftOpened, rightOpened] = await Promise.all([
       openDirectory('left', target.leftPath, 'keep'),
@@ -1482,7 +1652,6 @@
 
     selectTarget('left', target.leftPath, 'directory')
     selectTarget('right', target.rightPath, 'directory')
-    await loadCompareComponents()
     await runCompare()
   }
 
@@ -1611,6 +1780,12 @@
   }
 
   function goToSetup() {
+    if (Array.from(getWorkspaceSnapshot().documents.values()).some((item) => item.dirty)) {
+      void requestUnsavedDecision().then((allow) => {
+        if (allow) goToSetup()
+      })
+      return
+    }
     const previousSessionId = activeDiffSessionId
     activeDiffSource = null
     activeDiffSessionId = null
@@ -2300,6 +2475,11 @@
   }
 
   async function runCompare() {
+    if (
+      activeDiffSessionId &&
+      Array.from(getWorkspaceSnapshot().documents.values()).some((item) => item.dirty) &&
+      !(await requestUnsavedDecision())
+    ) return
     // On the compare screen, Refresh follows the active source; the setup-mode
     // slider only matters while the setup screen chooses what to compare next.
     if (screen === 'compare' && activeDiffSource?.kind === 'git') {
@@ -2399,7 +2579,6 @@
         directoryEntriesRevision += 1
         syncFilteredDirectoryState([])
         selectedRelativePath = ''
-
         const pairs = buildDirectoryComparePairs(leftSelected, rightSelected)
         directoryComparePairs = pairs
         directoryComparePairSlots = pairs.map(() => [])
@@ -2407,100 +2586,59 @@
         directoryComparePairIndexSets = pairs.map(() => new Set<number>())
         directoryComparePairIndexOrderDirty = pairs.map(() => false)
         directoryComparePairTimers = pairs.map(() => null)
-        directoryComparePairJobs = pairs.map((_, pairIndex) => ({
-          jobId: '',
-          pairIndex,
-          done: false,
-        }))
-
-        const startResults = await Promise.all(
-          pairs.map((pair) =>
-            startDirectoryCompare(pair.leftBase, pair.rightBase, nextCompareOptions),
-          ),
-        )
-
+        directoryComparePairJobs = pairs.map((_, pairIndex) => ({ jobId: '', pairIndex, done: false }))
+        const startResults = await Promise.all(pairs.map((pair) =>
+          startDirectoryCompare(pair.leftBase, pair.rightBase, nextCompareOptions),
+        ))
         if (revision !== compareRevision) {
-          for (const response of startResults) {
-            void cancelDirectoryCompare(response.jobId).catch(() => undefined)
-          }
+          for (const response of startResults) void cancelDirectoryCompare(response.jobId).catch(() => undefined)
           return
         }
-
         for (const [pairIndex, response] of startResults.entries()) {
-          directoryComparePairJobs[pairIndex] = {
-            jobId: response.jobId,
-            pairIndex,
-            done: false,
-          }
-        }
-
-        activeDirectoryCompareJobId = startResults[0]?.jobId ?? ''
-
-        for (const [pairIndex, response] of startResults.entries()) {
+          directoryComparePairJobs[pairIndex] = { jobId: response.jobId, pairIndex, done: false }
           void pollDirectoryCompareJob(
-            response.jobId,
-            pairIndex,
-            previousSelectedPath,
-            revision,
-            restoreScroll,
+            response.jobId, pairIndex, previousSelectedPath, revision, restoreScroll,
           )
         }
+        activeDirectoryCompareJobId = startResults[0]?.jobId ?? ''
         directoryPollingStarted = true
         return
       }
 
-      const response = await comparePaths(
-        nextLeftPath,
-        nextRightPath,
-        mode,
-        nextCompareOptions,
-      )
+      const source: DiffSource = {
+        kind: 'local',
+        compareMode: 'file',
+        leftPath: nextLeftPath,
+        rightPath: nextRightPath,
+      }
+      const session = await createDiffSession(source, nextCompareOptions)
+      const result = await openDiffEntry(session.sessionId, 'file', nextCompareOptions)
 
       if (revision !== compareRevision) {
+        disposeDiffSessionQuietly(session.sessionId)
         return
       }
 
-      if (response.kind === 'directory') {
-        directoryEntries = response.entries
-        directoryEntriesRevision += 1
-        syncFilteredDirectoryState(response.entries)
+      activeDiffSource = source
+      activeDiffSessionId = session.sessionId
 
-        const preservedEntry = filteredDirectoryEntries.find(
-          (entry) => entry.relativePath === previousSelectedPath,
-        )
-
-        if (preservedEntry) {
-          void selectEntry(preservedEntry, compareRevision, restoreScroll)
-        } else if (filteredDirectoryEntries.length > 0) {
-          const nextEntry = defaultDirectoryEntry(filteredDirectoryEntries)
-          void selectEntry(nextEntry, compareRevision)
-        } else {
-          selectedRelativePath = ''
-          activeDiff = null
-          cancelBackgroundDiffPreload()
-          finishCompareTiming('compare-ready-empty', {
-            entries: response.entries.length,
-          })
-        }
-      } else {
-        selectedRelativePath = ''
-        activeDiff = response.result
-        cancelBackgroundDiffPreload()
-        markCompareTiming('first-entry-loaded', {
-          contentKind: response.result.contentKind,
-          hasTextDiff: Boolean(response.result.contentKind === 'text' && response.result.text),
+      selectedRelativePath = ''
+      activeDiff = result
+      cancelBackgroundDiffPreload()
+      markCompareTiming('first-entry-loaded', {
+        contentKind: result.contentKind,
+        hasTextDiff: Boolean(result.contentKind === 'text' && result.text),
+        mode,
+      })
+      if (result.contentKind === 'text' && result.text) {
+        markCompareTiming('first-text-entry-loaded', {
           mode,
         })
-        if (response.result.contentKind === 'text' && response.result.text) {
-          markCompareTiming('first-text-entry-loaded', {
-            mode,
-          })
-        } else {
-          finishCompareTimingOnNextFrame('compare-ready-non-text', {
-            contentKind: response.result.contentKind,
-            mode,
-          })
-        }
+      } else {
+        finishCompareTimingOnNextFrame('compare-ready-non-text', {
+          contentKind: result.contentKind,
+          mode,
+        })
       }
     } catch (error) {
       if (requestRevision === compareRevision) {
@@ -2514,6 +2652,54 @@
       if (!directoryPollingStarted && requestRevision === compareRevision) {
         loading = false
       }
+    }
+  }
+
+  async function refreshActiveSession(invalidateRelativePath?: string) {
+    const sessionId = activeDiffSessionId
+    if (!sessionId) {
+      await runCompare()
+      return
+    }
+    const previousSelectedPath = selectedRelativePath
+    try {
+      const session = await refreshDiffSession(sessionId)
+      if (activeDiffSessionId !== sessionId) return
+      const targetedRefresh = mode === 'directory' && Boolean(invalidateRelativePath)
+      if (targetedRefresh) {
+        invalidatedEntryPath = invalidateRelativePath!
+        invalidatedEntryRevision += 1
+      } else {
+        compareRevision += 1
+        diffCache.clearDetailDiffs()
+      }
+      if (mode === 'file') {
+        activeDiff = await openDiffEntry(sessionId, 'file', activeCompareOptions)
+        pulseCompareSurface()
+        return
+      }
+      const mapped = mapSessionDiffEntries(session.entries)
+      const isScopedGit = activeDiffSource?.kind === 'git' &&
+        activeDiffSource.selection.kind === 'workingTree'
+      if (isScopedGit) {
+        gitScopeEntries = session.entries
+        gitScopeDirectoryEntries = mapped
+        directoryEntries = mapped.filter((entry) => entry.diffEntryScope === gitScope)
+      } else {
+        directoryEntries = mapped
+      }
+      directoryEntriesRevision += 1
+      syncFilteredDirectoryState(directoryEntries)
+      const nextEntry = filteredDirectoryEntries.find((entry) => entry.relativePath === previousSelectedPath)
+        ?? defaultDirectoryEntry(filteredDirectoryEntries)
+      if (nextEntry) await selectEntry(nextEntry, compareRevision)
+      else {
+        selectedRelativePath = ''
+        activeDiff = null
+      }
+      pulseCompareSurface()
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Unable to refresh comparison.'
     }
   }
 
@@ -2732,6 +2918,10 @@
   $: textDiffActive = mode === 'directory'
     ? directoryRenderableEntryCount > 0
     : activeDiff?.contentKind === 'text'
+  $: if (activeDiffSessionId && activeDiffSessionId !== recoveryCheckedSessionId) {
+    recoveryCheckedSessionId = activeDiffSessionId
+    void checkDraftRecovery(activeDiffSessionId)
+  }
   $: directoryDetailLoader = activeDiffSessionId
     ? { kind: 'diffSession', sessionId: activeDiffSessionId }
     : { kind: 'localPaths' }
@@ -2899,6 +3089,7 @@
     {compareLoadingState}
     {selectedRelativePath}
     {activeDiffSource}
+    {activeDiffSessionId}
     {viewMode}
     {textDiffActive}
     {toggleViewMode}
@@ -2909,6 +3100,7 @@
     {openExternalUrl}
     {compareNeedsRefresh}
     {runCompare}
+    refreshSession={refreshActiveSession}
     {openSettings}
     {goToSetup}
     {errorMessage}
@@ -2932,6 +3124,8 @@
     {directoryScrollTargetRevision}
     {viewerSettings}
     {compareRevision}
+    {invalidatedEntryPath}
+    {invalidatedEntryRevision}
     {leftPath}
     {rightPath}
     {activeCompareOptions}
@@ -3003,5 +3197,44 @@
     />
   {/if}
 {/if}
+{#if unsavedDialogOpen}
+  <div class="workspace-dialog-backdrop" role="presentation">
+    <div class="workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title" tabindex="-1">
+      <h2 id="unsaved-dialog-title">Unsaved changes in {Array.from($documentWorkspace.documents.values()).filter((item) => item.dirty).length} file(s)</h2>
+      <p>Save or discard the open drafts before continuing.</p>
+      {#if unsavedDialogError}<p class="workspace-dialog-error">{unsavedDialogError}</p>{/if}
+      <div class="workspace-dialog-actions">
+        <button type="button" disabled={unsavedDialogBusy} on:click={() => resolveUnsavedDecision('save')}>Save All</button>
+        <button class="secondary" type="button" disabled={unsavedDialogBusy} on:click={() => resolveUnsavedDecision('discard')}>Discard All</button>
+        <button class="secondary" type="button" disabled={unsavedDialogBusy} on:click={() => resolveUnsavedDecision('review')}>Review Files</button>
+        <button class="secondary" type="button" disabled={unsavedDialogBusy} on:click={() => resolveUnsavedDecision('cancel')}>Cancel</button>
+      </div>
+    </div>
+  </div>
+{/if}
+{#if recoveryDialogOpen && !unsavedDialogOpen}
+  <div class="workspace-dialog-backdrop" role="presentation">
+    <div class="workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-dialog-title" tabindex="-1">
+      <h2 id="recovery-dialog-title">{$documentWorkspace.recoveredDrafts.length} unsaved document(s) recovered</h2>
+      <p>These drafts survived an earlier shutdown. Restore them, inspect them individually, save copies, or discard them.</p>
+      {#if recoveryDialogError}<p class="workspace-dialog-error">{recoveryDialogError}</p>{/if}
+      <div class="workspace-dialog-actions">
+        <button type="button" disabled={recoveryDialogBusy} on:click={() => handleDraftRecovery('restoreAll')}>Restore all</button>
+        <button class="secondary" type="button" disabled={recoveryDialogBusy} on:click={() => handleDraftRecovery('review')}>Review individually</button>
+        <button class="secondary" type="button" disabled={recoveryDialogBusy} on:click={() => handleDraftRecovery('saveCopies')}>Save copies</button>
+        <button class="secondary" type="button" disabled={recoveryDialogBusy} on:click={() => handleDraftRecovery('discard')}>Discard</button>
+      </div>
+    </div>
+  </div>
+{/if}
   </div>
 </div>
+
+<style>
+  .workspace-dialog-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 24px; background: rgb(0 0 0 / 55%); }
+  .workspace-dialog { width: min(520px, 100%); padding: 18px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--panel-surface); box-shadow: 0 18px 60px rgb(0 0 0 / 45%); }
+  .workspace-dialog h2 { margin: 0 0 8px; font-size: 17px; }
+  .workspace-dialog p { margin: 0 0 14px; color: var(--muted-text); }
+  .workspace-dialog .workspace-dialog-error { color: var(--diff-removed); }
+  .workspace-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+</style>

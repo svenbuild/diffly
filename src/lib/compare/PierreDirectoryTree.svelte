@@ -123,6 +123,13 @@
     }
 
     const badge = getEntryStatusBadge(entry)
+    const openThreads = entry.reviewThreadCount?.open ?? 0
+    if (openThreads > 0) {
+      return {
+        text: `${badge?.text ?? ''} ${openThreads}`.trim(),
+        title: `${badge?.title ? `${badge.title}; ` : ''}${openThreads} open review thread${openThreads === 1 ? '' : 's'}`,
+      }
+    }
     return badge ? { text: badge.text, title: badge.title } : null
   }
 

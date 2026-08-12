@@ -30,6 +30,8 @@
   export let resolvedThemeMode: 'light' | 'dark'
   export let viewMode: ViewMode
   export let revision = 0
+  export let invalidatedEntryPath = ''
+  export let invalidatedEntryRevision = 0
   export let leftPath = ''
   export let rightPath = ''
   export let compareOptions: CompareOptions = {
@@ -51,6 +53,8 @@
   })
   export let reviewModeEnabled = false
   export let reviewSourceKind: CompareSourceKind = 'local'
+  export let reviewSessionId: string | null = null
+  export let reviewEntryId = 'file'
   export let onReviewRefresh: () => Promise<void> | void = () => {}
   export let collapseAllRevision = 0
   export let expandAllRevision = 0
@@ -69,6 +73,8 @@
       {resolvedThemeMode}
       {viewMode}
       {revision}
+      {invalidatedEntryPath}
+      {invalidatedEntryRevision}
       {leftPath}
       {rightPath}
       {compareOptions}
@@ -108,6 +114,8 @@
       {reviewSourceKind}
       reviewLeftPath={leftPath}
       reviewRightPath={rightPath}
+      {reviewSessionId}
+      {reviewEntryId}
       {onReviewRefresh}
     />
   {:else}

@@ -13,12 +13,51 @@ import type {
   PersistedSession,
   RecentSources,
   UpdateChannel,
+  DocumentTarget,
+  EditableDocument,
+  MutationResult,
+  SaveDocumentRequest,
+  SaveDocumentResult,
+  SaveDocumentsRequest,
+  DocumentDraft,
+  DraftSummary,
+  SaveDraftRequest,
+  SearchBatch,
+  SearchJobStarted,
+  StartComparisonSearchRequest,
+  ApplyPartialChangeRequest,
+  CreateDiffSessionResponse,
+  ReviewHunkSummary,
+  ConflictDocument,
+  ResolveConflictRequest,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
+  ReviewBundle,
+  ReviewThread,
+  ReviewAuthor,
+  ReviewCommentDraft,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  ApplyComparisonReplaceResult,
+  ReplaceAllPreview,
+  SaveDocumentAsRequest,
+  SaveDocumentAsResult,
+  ExternalDocumentChange,
+  HunkFingerprint,
+  ReviewDecision,
+  ReviewDecisionStatus,
+  ReviewThreadCount,
 } from '../src/lib/types'
 
 const invoke = <T>(channel: string, payload?: unknown) =>
   ipcRenderer.invoke(channel, payload) as Promise<T>
 
 contextBridge.exposeInMainWorld('diffly', {
+  clipboard: {
+    readText: () => invoke<string>('diffly:clipboard:readText'),
+    writeText: (text: string) => invoke<void>('diffly:clipboard:writeText', { text }),
+  },
   choosePath: (kind: PathKind) =>
     invoke('diffly:choosePath', { kind }),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -129,6 +168,104 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke('diffly:refreshDiffSession', { sessionId }),
   disposeDiffSession: (sessionId: string) =>
     invoke('diffly:disposeDiffSession', { sessionId }),
+  documents: {
+    open: (target: DocumentTarget) =>
+      invoke<EditableDocument>('diffly:documents:open', target),
+    save: (request: SaveDocumentRequest) =>
+      invoke<MutationResult<SaveDocumentResult>>('diffly:documents:save', request),
+    saveAll: (request: SaveDocumentsRequest) =>
+      invoke<MutationResult<EditableDocument[]>>('diffly:documents:saveAll', request),
+    saveAs: (request: SaveDocumentAsRequest) =>
+      invoke<SaveDocumentAsResult>('diffly:documents:saveAs', request),
+    watch: (target: DocumentTarget) => invoke<boolean>('diffly:documents:watch', { target }),
+    unwatch: (target: DocumentTarget) => invoke<void>('diffly:documents:unwatch', { target }),
+    onExternalChange: (callback: (change: ExternalDocumentChange) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, change: ExternalDocumentChange) => callback(change)
+      ipcRenderer.on('diffly:documents:externalChange', listener)
+      return () => ipcRenderer.removeListener('diffly:documents:externalChange', listener)
+    },
+    listDrafts: () =>
+      invoke<DraftSummary[]>('diffly:documents:listDrafts'),
+    loadDraft: (id: string) =>
+      invoke<DocumentDraft | null>('diffly:documents:loadDraft', { id }),
+    saveDraft: (draft: SaveDraftRequest) =>
+      invoke<DraftSummary>('diffly:documents:saveDraft', draft),
+    deleteDraft: (id: string) =>
+      invoke<void>('diffly:documents:deleteDraft', { id }),
+  },
+  search: {
+    start: (request: StartComparisonSearchRequest) =>
+      invoke<SearchJobStarted>('diffly:search:start', request),
+    poll: (jobId: string) =>
+      invoke<SearchBatch>('diffly:search:poll', { jobId }),
+    cancel: (jobId: string) =>
+      invoke<void>('diffly:search:cancel', { jobId }),
+    previewReplace: (request: PreviewComparisonReplaceRequest) =>
+      invoke<ReplaceAllPreview>('diffly:search:previewReplace', request),
+    replaceAll: (request: ApplyComparisonReplaceRequest) =>
+      invoke<ApplyComparisonReplaceResult>('diffly:search:replaceAll', request),
+  },
+  review: {
+    listHunks: (sessionId: string, entryId: string) =>
+      invoke<ReviewHunkSummary[]>('diffly:review:listHunks', { sessionId, entryId }),
+    applyPartialChange: (request: ApplyPartialChangeRequest) =>
+      invoke<CreateDiffSessionResponse>('diffly:review:applyPartialChange', request),
+    undoOperation: (sessionId: string) =>
+      invoke<CreateDiffSessionResponse>('diffly:review:undoOperation', { sessionId }),
+    listThreads: (sessionId: string, entryId?: string) =>
+      invoke<ReviewThread[]>('diffly:review:listThreads', { sessionId, entryId }),
+    listThreadCounts: (sessionId: string) =>
+      invoke<Record<string, ReviewThreadCount>>('diffly:review:listThreadCounts', { sessionId }),
+    createThread: (request: CreateReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:createThread', request),
+    reply: (request: ReplyReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:reply', request),
+    editComment: (sessionId: string, threadId: string, commentId: string, body: string) =>
+      invoke<ReviewThread>('diffly:review:editComment', { sessionId, threadId, commentId, body }),
+    deleteComment: (sessionId: string, threadId: string, commentId: string) =>
+      invoke<ReviewThread | null>('diffly:review:deleteComment', { sessionId, threadId, commentId }),
+    resolveThread: (sessionId: string, threadId: string) =>
+      invoke<ReviewThread>('diffly:review:resolveThread', { sessionId, threadId }),
+    reopenThread: (sessionId: string, threadId: string) =>
+      invoke<ReviewThread>('diffly:review:reopenThread', { sessionId, threadId }),
+    reattachThread: (request: ReattachReviewThreadRequest) =>
+      invoke<ReviewThread>('diffly:review:reattachThread', request),
+    export: (sessionId: string) =>
+      invoke<{ json: string; markdown: string; bundle: ReviewBundle }>('diffly:review:export', { sessionId }),
+    import: (sessionId: string, bundle: ReviewBundle) =>
+      invoke<ReviewThread[]>('diffly:review:import', { sessionId, bundle }),
+    getProfile: () => invoke<ReviewAuthor>('diffly:review:getProfile'),
+    saveProfile: (author: ReviewAuthor) => invoke<ReviewAuthor>('diffly:review:saveProfile', author),
+    listDrafts: (sessionId: string) =>
+      invoke<ReviewCommentDraft[]>('diffly:review:listDrafts', { sessionId }),
+    saveDraft: (sessionId: string, key: string, body: string) =>
+      invoke<ReviewCommentDraft>('diffly:review:saveDraft', { sessionId, key, body }),
+    deleteDraft: (sessionId: string, key: string) =>
+      invoke<void>('diffly:review:deleteDraft', { sessionId, key }),
+    listDecisions: (sessionId: string, entryId: string) =>
+      invoke<ReviewDecision[]>('diffly:review:listDecisions', { sessionId, entryId }),
+    setDecision: (sessionId: string, entryId: string, fingerprint: HunkFingerprint, changeIndex: number | null, status: ReviewDecisionStatus | null) =>
+      invoke<ReviewDecision[]>('diffly:review:setDecision', { sessionId, entryId, fingerprint, changeIndex, status }),
+    resetDecisions: (sessionId: string, entryId: string) =>
+      invoke<void>('diffly:review:resetDecisions', { sessionId, entryId }),
+  },
+  conflicts: {
+    open: (sessionId: string, entryId: string) =>
+      invoke<ConflictDocument>('diffly:conflicts:open', { sessionId, entryId }),
+    resolve: (request: ResolveConflictRequest) =>
+      invoke<CreateDiffSessionResponse>('diffly:conflicts:resolve', request),
+    undoResolution: (sessionId: string) =>
+      invoke<CreateDiffSessionResponse>('diffly:conflicts:undoResolution', { sessionId }),
+  },
+  workspaceLifecycle: {
+    onCloseRequested: (callback: () => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('diffly:workspace:closeRequested', listener)
+      return () => ipcRenderer.removeListener('diffly:workspace:closeRequested', listener)
+    },
+    respondToClose: (allow: boolean) =>
+      invoke<void>('diffly:workspace:closeDecision', { allow }),
+  },
   // Only exposed where the window is frameless (Windows). Its presence is the
   // renderer's feature detection for rendering the custom title bar.
   windowControls:

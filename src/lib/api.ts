@@ -16,6 +16,23 @@ import type {
   PersistedSession,
   RecentSources,
   UpdateChannel,
+  DocumentTarget,
+  SaveDocumentRequest,
+  SaveDocumentsRequest,
+  SaveDraftRequest,
+  StartComparisonSearchRequest,
+  ApplyPartialChangeRequest,
+  ResolveConflictRequest,
+  CreateReviewThreadRequest,
+  ReplyReviewThreadRequest,
+  ReattachReviewThreadRequest,
+  ReviewBundle,
+  ReviewAuthor,
+  PreviewComparisonReplaceRequest,
+  ApplyComparisonReplaceRequest,
+  SaveDocumentAsRequest,
+  HunkFingerprint,
+  ReviewDecisionStatus,
 } from './types'
 
 export const choosePath = (kind: PathKind) =>
@@ -151,6 +168,132 @@ export const refreshDiffSession = (sessionId: string): Promise<CreateDiffSession
 
 export const disposeDiffSession = (sessionId: string) =>
   window.diffly.disposeDiffSession(sessionId)
+
+export const openEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.open(target)
+
+export const saveEditableDocument = (request: SaveDocumentRequest) =>
+  window.diffly.documents.save(request)
+
+export const saveEditableDocuments = (request: SaveDocumentsRequest) =>
+  window.diffly.documents.saveAll(request)
+
+export const saveEditableDocumentAs = (request: SaveDocumentAsRequest) =>
+  window.diffly.documents.saveAs(request)
+
+export const watchEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.watch(target)
+
+export const unwatchEditableDocument = (target: DocumentTarget) =>
+  window.diffly.documents.unwatch(target)
+
+export const onEditableDocumentExternalChange = (callback: Parameters<typeof window.diffly.documents.onExternalChange>[0]) =>
+  window.diffly.documents.onExternalChange(callback)
+
+export const onWorkspaceCloseRequested = (callback: () => void) =>
+  window.diffly.workspaceLifecycle.onCloseRequested(callback)
+
+export const respondToWorkspaceClose = (allow: boolean) =>
+  window.diffly.workspaceLifecycle.respondToClose(allow)
+
+export const listDocumentDrafts = () =>
+  window.diffly.documents.listDrafts()
+
+export const loadDocumentDraft = (id: string) =>
+  window.diffly.documents.loadDraft(id)
+
+export const saveDocumentDraft = (draft: SaveDraftRequest) =>
+  window.diffly.documents.saveDraft(draft)
+
+export const deleteDocumentDraft = (id: string) =>
+  window.diffly.documents.deleteDraft(id)
+
+export const startComparisonSearch = (request: StartComparisonSearchRequest) =>
+  window.diffly.search.start(request)
+
+export const pollComparisonSearch = (jobId: string) =>
+  window.diffly.search.poll(jobId)
+
+export const cancelComparisonSearch = (jobId: string) =>
+  window.diffly.search.cancel(jobId)
+
+export const previewComparisonReplace = (request: PreviewComparisonReplaceRequest) =>
+  window.diffly.search.previewReplace(request)
+
+export const applyComparisonReplace = (request: ApplyComparisonReplaceRequest) =>
+  window.diffly.search.replaceAll(request)
+
+export const applyPartialChange = (request: ApplyPartialChangeRequest) =>
+  window.diffly.review.applyPartialChange(request)
+
+export const listReviewHunks = (sessionId: string, entryId: string) =>
+  window.diffly.review.listHunks(sessionId, entryId)
+
+export const undoWorkspaceOperation = (sessionId: string) =>
+  window.diffly.review.undoOperation(sessionId)
+
+export const openConflict = (sessionId: string, entryId: string) =>
+  window.diffly.conflicts.open(sessionId, entryId)
+
+export const resolveConflict = (request: ResolveConflictRequest) =>
+  window.diffly.conflicts.resolve(request)
+
+export const undoConflictResolution = (sessionId: string) =>
+  window.diffly.conflicts.undoResolution(sessionId)
+
+export const listReviewThreads = (sessionId: string, entryId?: string) =>
+  window.diffly.review.listThreads(sessionId, entryId)
+
+export const listReviewThreadCounts = (sessionId: string) =>
+  window.diffly.review.listThreadCounts(sessionId)
+
+export const createReviewThread = (request: CreateReviewThreadRequest) =>
+  window.diffly.review.createThread(request)
+
+export const replyReviewThread = (request: ReplyReviewThreadRequest) =>
+  window.diffly.review.reply(request)
+
+export const editReviewComment = (sessionId: string, threadId: string, commentId: string, body: string) =>
+  window.diffly.review.editComment(sessionId, threadId, commentId, body)
+
+export const deleteReviewComment = (sessionId: string, threadId: string, commentId: string) =>
+  window.diffly.review.deleteComment(sessionId, threadId, commentId)
+
+export const resolveReviewThread = (sessionId: string, threadId: string) =>
+  window.diffly.review.resolveThread(sessionId, threadId)
+
+export const reopenReviewThread = (sessionId: string, threadId: string) =>
+  window.diffly.review.reopenThread(sessionId, threadId)
+
+export const reattachReviewThread = (request: ReattachReviewThreadRequest) =>
+  window.diffly.review.reattachThread(request)
+
+export const exportReviewBundle = (sessionId: string) =>
+  window.diffly.review.export(sessionId)
+
+export const importReviewBundle = (sessionId: string, bundle: ReviewBundle) =>
+  window.diffly.review.import(sessionId, bundle)
+
+export const getReviewProfile = () => window.diffly.review.getProfile()
+
+export const saveReviewProfile = (author: ReviewAuthor) => window.diffly.review.saveProfile(author)
+
+export const listReviewDrafts = (sessionId: string) => window.diffly.review.listDrafts(sessionId)
+
+export const saveReviewDraft = (sessionId: string, key: string, body: string) =>
+  window.diffly.review.saveDraft(sessionId, key, body)
+
+export const deleteReviewDraft = (sessionId: string, key: string) =>
+  window.diffly.review.deleteDraft(sessionId, key)
+
+export const listReviewDecisions = (sessionId: string, entryId: string) =>
+  window.diffly.review.listDecisions(sessionId, entryId)
+
+export const setReviewDecision = (sessionId: string, entryId: string, fingerprint: HunkFingerprint, changeIndex: number | null, status: ReviewDecisionStatus | null) =>
+  window.diffly.review.setDecision(sessionId, entryId, fingerprint, changeIndex, status)
+
+export const resetReviewDecisions = (sessionId: string, entryId: string) =>
+  window.diffly.review.resetDecisions(sessionId, entryId)
 
 export interface WindowControls {
   minimize(): Promise<void>

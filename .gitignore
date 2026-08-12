@@ -28,6 +28,8 @@ src-tauri/
 .vite/
 .svelte-kit/
 coverage/
+test-results/
+playwright-report/
 *.tsbuildinfo
 
 # Local generated assets

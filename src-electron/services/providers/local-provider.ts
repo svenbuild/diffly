@@ -14,6 +14,9 @@ import type {
   FileDiffResult,
   PollDirectoryCompareResponse,
   StartDirectoryCompareResponse,
+  DocumentTarget,
+  EditableDocument,
+  SaveDocumentRequest,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -34,6 +37,9 @@ import {
   sampleFile,
   type FileIdentity,
 } from '../file-diff'
+import { localEntryCapabilities } from '../diff/capabilities'
+import { readLocalDocument } from '../documents/document-reader'
+import { writeLocalDocument } from '../documents/document-writer'
 
 const DIRECTORY_COMPARE_CONCURRENCY = 16
 const DIRECTORY_WALK_CONCURRENCY = 16
@@ -103,6 +109,46 @@ export class LocalProvider implements DiffSessionProvider {
 
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData> {
     return this.create(session.source, session.options)
+  }
+
+  openDocument(
+    session: DiffSessionRecordLike,
+    target: DocumentTarget,
+  ): Promise<EditableDocument> {
+    const resolved = resolveLocalDocument(session, target)
+    return readLocalDocument({
+      path: resolved.path,
+      target,
+      displayPath: resolved.displayPath,
+    }).then((document) => ({
+      ...document,
+      readOnly: target.kind === 'scratch',
+    }))
+  }
+
+  async saveDocument(
+    session: DiffSessionRecordLike,
+    request: SaveDocumentRequest,
+  ): Promise<EditableDocument> {
+    if (request.target.kind !== 'local') {
+      throw new Error('This local document target is read-only.')
+    }
+    const resolved = resolveLocalDocument(session, request.target)
+    const current = await readLocalDocument({
+      path: resolved.path,
+      target: request.target,
+      displayPath: resolved.displayPath,
+    })
+    return writeLocalDocument({
+      path: resolved.path,
+      target: request.target,
+      displayPath: resolved.displayPath,
+      contents: request.contents,
+      expectedRevision: request.expectedRevision,
+      originalFormat: current.format,
+      format: request.format,
+      overwrite: request.overwrite,
+    })
   }
 
   async comparePaths(
@@ -231,6 +277,7 @@ export class LocalProvider implements DiffSessionProvider {
         status: 'modified',
         leftSize: await getFileSize(source.leftPath),
         rightSize: await getFileSize(source.rightPath),
+        capabilities: localEntryCapabilities('modified'),
       }
       entries.push(entry)
       entryData.set(entry.id, {
@@ -654,15 +701,17 @@ async function computeDirectoryEntry(
 }
 
 function mapDirectoryEntryToDiffEntry(entry: DirectoryEntryResult): DiffEntry {
+  const status = mapDirectoryEntryStatus(entry.status)
   return {
     id: encodeURIComponent(entry.relativePath),
     path: entry.relativePath,
     oldPath: null,
     displayPath: entry.relativePath,
-    status: mapDirectoryEntryStatus(entry.status),
+    status,
     leftSize: entry.leftSize,
     rightSize: entry.rightSize,
     binary: entry.status === 'unsupported' ? true : undefined,
+    capabilities: localEntryCapabilities(status, entry.status === 'unsupported'),
   }
 }
 
@@ -680,6 +729,35 @@ function mapDirectoryEntryStatus(status: DirectoryEntryResult['status']): DiffEn
     case 'unchanged':
       return 'unsupported'
   }
+}
+
+function resolveLocalDocument(
+  session: DiffSessionRecordLike,
+  target: DocumentTarget,
+): { path: string; displayPath: string } {
+  const entryId = target.kind === 'scratch' ? target.sourceEntryId : target.entryId
+  const side = target.kind === 'scratch' ? target.sourceSide : target.kind === 'local' ? target.side : null
+  if (side === null) {
+    throw new Error('Invalid local document target.')
+  }
+  const entry = session.entryData.get(entryId)
+  if (!entry) {
+    throw new Error('Diff entry was not found.')
+  }
+
+  if (entry.kind === 'localFile') {
+    return {
+      path: side === 'left' ? entry.leftPath : entry.rightPath,
+      displayPath: side === 'left' ? entry.leftLabel : entry.rightLabel,
+    }
+  }
+  if (entry.kind === 'localDirectory') {
+    return {
+      path: join(side === 'left' ? entry.leftBase : entry.rightBase, entry.relativePath),
+      displayPath: entry.relativePath,
+    }
+  }
+  throw new Error('Unsupported local document target.')
 }
 
 function throwUnsupportedLocalEntry(entry: ProviderEntryData): Promise<FileDiffResult> {

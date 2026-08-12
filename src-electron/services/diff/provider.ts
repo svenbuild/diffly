@@ -7,6 +7,9 @@ import type {
   GitWorkingTreeReviewAction,
   GitWorkingTreeReviewCapabilities,
   GitWorkingTreeScope,
+  DocumentTarget,
+  EditableDocument,
+  SaveDocumentRequest,
 } from '../../../src/lib/types'
 
 export interface DiffSessionProvider {
@@ -17,6 +20,14 @@ export interface DiffSessionProvider {
     options: CompareOptions,
   ): Promise<FileDiffResult>
   refresh(session: DiffSessionRecordLike): Promise<ProviderSessionData>
+  openDocument?(
+    session: DiffSessionRecordLike,
+    target: DocumentTarget,
+  ): Promise<EditableDocument>
+  saveDocument?(
+    session: DiffSessionRecordLike,
+    request: SaveDocumentRequest,
+  ): Promise<EditableDocument>
   applyGitWorkingTreeAction?(
     session: DiffSessionRecordLike,
     entryId: string,
@@ -58,6 +69,7 @@ export type ProviderEntryData =
       path: string
       oldPath: string | null
       status: DiffEntryStatus
+      conflictKind?: 'UU' | 'AA' | 'UD' | 'DU' | 'AU' | 'UA' | 'DD'
       gitReviewCapabilities?: GitWorkingTreeReviewCapabilities
       // Full blob oids from the raw diff for this scope; null when unknown.
       // srcOid is the left side of the scope's diff command, dstOid the right.

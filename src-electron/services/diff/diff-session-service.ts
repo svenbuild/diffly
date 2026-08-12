@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import type {
   CompareOptions,
   CreateDiffSessionResponse,
@@ -7,6 +8,9 @@ import type {
   DiffSource,
   FileDiffResult,
   GitWorkingTreeReviewAction,
+  DocumentTarget,
+  EditableDocument,
+  SaveDocumentRequest,
 } from '../../../src/lib/types'
 import type {
   DiffSessionProvider,
@@ -25,6 +29,13 @@ export interface DiffSession {
   updatedAt: number
   entries: DiffEntry[]
   metadata: DiffSessionMetadata
+}
+
+export interface SearchDocumentDescriptor {
+  entryId: string
+  path: string
+  side: 'left' | 'right'
+  target: DocumentTarget
 }
 
 interface DiffSessionServiceProviders {
@@ -88,6 +99,43 @@ export class DiffSessionService {
     return session.entries.filter((entry) => matchesDiffEntryFilter(entry, filter))
   }
 
+  getProviderEntry(sessionId: string, entryId: string) {
+    const entry = this.getSession(sessionId).entryData.get(entryId)
+    if (!entry) throw new Error('Diff entry was not found.')
+    return entry
+  }
+
+  getSource(sessionId: string) {
+    return this.getSession(sessionId).source
+  }
+
+  getEntry(sessionId: string, entryId: string) {
+    const session = this.getSession(sessionId)
+    const entry = session.entries.find((item) => item.id === entryId)
+    if (!entry) throw new Error('Diff entry was not found.')
+    return entry
+  }
+
+  listSearchDocuments(sessionId: string): SearchDocumentDescriptor[] {
+    const session = this.getSession(sessionId)
+    const documents: SearchDocumentDescriptor[] = []
+    for (const entry of session.entries) {
+      if (!entry.capabilities.search || entry.binary) continue
+      const sides: Array<'left' | 'right'> = []
+      if (entry.status !== 'added' && entry.status !== 'untracked') sides.push('left')
+      if (entry.status !== 'deleted') sides.push('right')
+      for (const side of sides) {
+        documents.push({
+          entryId: entry.id,
+          path: side === 'left' ? entry.oldPath ?? entry.path : entry.path,
+          side,
+          target: searchTargetFor(session, entry, side),
+        })
+      }
+    }
+    return documents
+  }
+
   openEntry(
     sessionId: string,
     entryId: string,
@@ -95,6 +143,43 @@ export class DiffSessionService {
   ): Promise<FileDiffResult> {
     const session = this.getSession(sessionId)
     return session.provider.openEntry(session, entryId, options)
+  }
+
+  openEntryForSearch(sessionId: string, entryId: string): Promise<FileDiffResult> {
+    const session = this.getSession(sessionId)
+    return session.provider.openEntry(session, entryId, session.options)
+  }
+
+  openDocument(target: DocumentTarget): Promise<EditableDocument> {
+    const session = this.getSession(documentTargetSessionId(target))
+    if (typeof session.provider.openDocument !== 'function') {
+      throw new Error('Documents are unavailable for this source.')
+    }
+    return session.provider.openDocument(session, target)
+  }
+
+  saveDocument(request: SaveDocumentRequest): Promise<EditableDocument> {
+    if (request.target.kind === 'scratch') {
+      throw new Error('Scratch documents must be saved with Save As.')
+    }
+    const session = this.getSession(documentTargetSessionId(request.target))
+    if (typeof session.provider.saveDocument !== 'function') {
+      throw new Error('This source is read-only.')
+    }
+    return session.provider.saveDocument(session, request)
+  }
+
+  resolveWatchPath(target: DocumentTarget) {
+    if (target.kind === 'scratch' || target.kind === 'gitIndex') return null
+    const entry = this.getProviderEntry(target.sessionId, target.entryId)
+    if (target.kind === 'local') {
+      if (entry.kind === 'localFile') return target.side === 'left' ? entry.leftPath : entry.rightPath
+      if (entry.kind === 'localDirectory') {
+        return join(target.side === 'left' ? entry.leftBase : entry.rightBase, entry.relativePath)
+      }
+      return null
+    }
+    return entry.kind === 'gitWorkingTree' ? join(entry.repositoryRoot, entry.path) : null
   }
 
   async refresh(sessionId: string): Promise<CreateDiffSessionResponse> {
@@ -156,6 +241,33 @@ export class DiffSessionService {
     }
 
     return session
+  }
+}
+
+function documentTargetSessionId(target: DocumentTarget) {
+  return target.kind === 'scratch' ? target.sourceSessionId : target.sessionId
+}
+
+function searchTargetFor(
+  session: DiffSessionRecord,
+  entry: DiffEntry,
+  side: 'left' | 'right',
+): DocumentTarget {
+  if (session.source.kind === 'local') {
+    return { kind: 'local', sessionId: session.id, entryId: entry.id, side }
+  }
+  if (session.source.kind === 'git' && session.source.selection.kind === 'workingTree') {
+    if (side === 'right') {
+      return entry.scope === 'staged'
+        ? { kind: 'gitIndex', sessionId: session.id, entryId: entry.id }
+        : { kind: 'gitWorktree', sessionId: session.id, entryId: entry.id }
+    }
+  }
+  return {
+    kind: 'scratch',
+    sourceSessionId: session.id,
+    sourceEntryId: entry.id,
+    sourceSide: side,
   }
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import AppTopBar from '../AppTopBar.svelte'
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
@@ -12,7 +13,6 @@
   import collapseAllIconUrl from '../assets/icons/toolbar-collapse-all.svg'
   import expandAllIconUrl from '../assets/icons/toolbar-expand-all.svg'
   import reloadIconUrl from '../assets/icons/toolbar-reload.svg'
-  import reviewIconUrl from '../assets/icons/toolbar-review.svg'
   import settingsIconUrl from '../assets/icons/toolbar-settings.svg'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -28,11 +28,29 @@
     GitWorkingTreeScope,
     SystemMonitorSnapshot,
     ViewMode,
+    DocumentTarget,
   } from '../types'
   import type { SettingsSection } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
   import UpdateIndicator from './UpdateIndicator.svelte'
+  import WorkspaceEditor from '../workspace/WorkspaceEditor.svelte'
+  import {
+    activeWorkspaceDocument,
+    dirtyDocumentCount,
+    documentWorkspace,
+    setWorkspaceMode,
+  } from '../workspace/document-store'
+  import { workspaceDocumentController } from '../workspace/document-controller'
+  import SearchPanel from '../search/SearchPanel.svelte'
+  import { comparisonSearch } from '../search/search-store'
+  import { workspaceSearchController } from '../search/search-controller'
+  import type { SearchMatch } from '../search-types'
+  import ReviewWorkspacePanel from '../review/ReviewWorkspacePanel.svelte'
+  import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
+  import { workspaceConflictController } from '../conflicts/conflict-controller'
+  import { listReviewThreadCounts } from '../api'
+  import type { ReviewThreadCount } from '../review-types'
 
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
@@ -51,6 +69,7 @@
   }
   export let selectedRelativePath = ''
   export let activeDiffSource: DiffSource | null = null
+  export let activeDiffSessionId: string | null = null
   export let viewMode: ViewMode = 'sideBySide'
   export let textDiffActive = false
   export let toggleViewMode: () => void
@@ -61,6 +80,7 @@
   export let openExternalUrl: (url: string) => void = () => {}
   export let compareNeedsRefresh = false
   export let runCompare: () => Promise<void> | void
+  export let refreshSession: (invalidateRelativePath?: string) => Promise<void> | void = runCompare
   export let openSettings: (section?: SettingsSection) => void
   export let goToSetup: () => void
   export let errorMessage = ''
@@ -89,6 +109,8 @@
   export let directoryScrollTargetRevision = 0
   export let viewerSettings: CompareViewerSettings
   export let compareRevision = 0
+  export let invalidatedEntryPath = ''
+  export let invalidatedEntryRevision = 0
   export let leftPath = ''
   export let rightPath = ''
   export let activeCompareOptions: CompareOptions
@@ -107,6 +129,12 @@
   let collapseAllRevision = 0
   let expandAllRevision = 0
   let toolbarReloadPending = false
+  let canUndoResolution = false
+  let resolutionError = ''
+  let reviewThreadCounts: Record<string, ReviewThreadCount> = {}
+  let reviewThreadCountsSession = ''
+  let reviewThreadCountsGeneration = 0
+  let reviewThreadCountsRevision = 0
 
   $: showGitScopeTabs =
     mode === 'directory' &&
@@ -116,9 +144,90 @@
   $: srcActions = sourceActions(activeDiffSource)
 
   $: reviewSourceKind = compareSourceKind(activeDiffSource)
+  $: sidebarDirectoryEntries = directoryEntries.map((entry) => ({
+    ...entry,
+    reviewThreadCount: entry.diffEntryId ? reviewThreadCounts[entry.diffEntryId] : undefined,
+  }))
+  $: sidebarEntriesRevision = directoryEntriesRevision * 1_000_000 + reviewThreadCountsRevision
+  $: if (activeDiffSessionId !== reviewThreadCountsSession) {
+    reviewThreadCountsSession = activeDiffSessionId ?? ''
+    reviewThreadCounts = {}
+    if (activeDiffSessionId) void loadReviewThreadCounts(activeDiffSessionId)
+  }
+  $: selectedEntry = directoryEntries.find((entry) => entry.relativePath === selectedRelativePath) ?? null
+  $: selectedEntryId = mode === 'file' ? 'file' : selectedEntry?.diffEntryId ?? null
+  $: hunkEntryId = gitScope === 'all' && selectedEntry?.diffEntryAliasIds?.length === 1
+    ? selectedEntry.diffEntryAliasIds[0]!
+    : selectedEntryId
+  $: canEditSelected = mode === 'file'
+    ? textDiffActive
+    : Boolean(selectedEntry && !selectedEntry.binary && (
+      selectedEntry.capabilities?.editLeft ||
+      selectedEntry.capabilities?.editRight ||
+      selectedEntry.capabilities?.editIndex ||
+      selectedEntry.capabilities?.saveAs
+    ))
+  $: showHunkReviewPanel =
+    $documentWorkspace.mode === 'review' &&
+    !$comparisonSearch.open &&
+    Boolean(activeDiffSessionId && selectedEntryId)
 
-  function toggleReviewMode() {
-    reviewModeEnabled.update((enabled) => !enabled)
+  $: hunkReviewSourceKind = activeDiffSource?.kind === 'local'
+    ? 'local' as const
+    : activeDiffSource?.kind === 'git' && activeDiffSource.selection.kind === 'workingTree'
+      ? 'git' as const
+      : 'readOnly' as const
+
+  function selectWorkspaceMode(nextMode: 'review' | 'edit' | 'resolve') {
+    setWorkspaceMode(nextMode)
+    reviewModeEnabled.set(nextMode === 'review')
+    if (nextMode === 'edit') void openSelectedDocument()
+  }
+
+  async function openSelectedDocument(side: 'left' | 'right' = 'right') {
+    const target = selectedDocumentTarget(side)
+    if (!target) return
+    try {
+      await workspaceDocumentController.open(target)
+    } catch (error) {
+      console.error('Unable to open editable document', error)
+    }
+  }
+
+  function selectedDocumentTarget(side: 'left' | 'right'): DocumentTarget | null {
+    if (!activeDiffSessionId || !activeDiffSource) return null
+    const entryId = mode === 'file'
+      ? 'file'
+      : directoryEntries.find((entry) => entry.relativePath === selectedRelativePath)?.diffEntryId
+    if (!entryId) return null
+
+    if (activeDiffSource.kind === 'local') {
+      return { kind: 'local', sessionId: activeDiffSessionId, entryId, side }
+    }
+    if (activeDiffSource.kind === 'git') {
+      if (activeDiffSource.selection.kind === 'workingTree') {
+        return gitScope === 'staged'
+          ? { kind: 'gitIndex', sessionId: activeDiffSessionId, entryId }
+          : { kind: 'gitWorktree', sessionId: activeDiffSessionId, entryId }
+      }
+      return {
+        kind: 'scratch',
+        sourceSessionId: activeDiffSessionId,
+        sourceEntryId: entryId,
+        sourceSide: side,
+      }
+    }
+    return {
+      kind: 'scratch',
+      sourceSessionId: activeDiffSessionId,
+      sourceEntryId: entryId,
+      sourceSide: side,
+    }
+  }
+
+  async function saveAllDocuments() {
+    const result = await workspaceDocumentController.saveAll()
+    if (result?.ok) await runCompare()
   }
 
   function toggleAllFileDiffs() {
@@ -139,6 +248,24 @@
       await runCompare()
     } finally {
       toolbarReloadPending = false
+    }
+  }
+
+  async function handleConflictResolved() {
+    canUndoResolution = true
+    resolutionError = ''
+    await refreshSession(selectedRelativePath)
+  }
+
+  async function undoLastResolution() {
+    if (!activeDiffSessionId) return
+    try {
+      await workspaceConflictController.undo(activeDiffSessionId)
+      canUndoResolution = false
+      resolutionError = ''
+      await refreshSession(selectedRelativePath)
+    } catch (error) {
+      resolutionError = error instanceof Error ? error.message : String(error)
     }
   }
 
@@ -166,6 +293,24 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      comparisonSearch.update((state) => ({ ...state, open: true }))
+      return
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      comparisonSearch.update((state) => ({ ...state, open: true }))
+      return
+    }
+    if (event.key === 'F3') {
+      event.preventDefault()
+      workspaceSearchController.next(event.shiftKey ? -1 : 1)
+      const state = $comparisonSearch
+      const match = state.results[state.selectedIndex]
+      if (match) void navigateToSearchMatch(match)
+      return
+    }
     if (
       mode !== 'directory' ||
       event.defaultPrevented ||
@@ -180,11 +325,52 @@
     if (event.key === 'F2') {
       event.preventDefault()
       toggleSidebarPanel('diffStats')
-    } else if (event.key === 'F3') {
-      event.preventDefault()
-      toggleSidebarPanel('systemMonitor')
     }
   }
+
+  async function navigateToSearchMatch(match: SearchMatch) {
+    const entry = directoryEntries.find((candidate) => candidate.diffEntryId === match.entryId)
+    if (entry && selectedRelativePath !== entry.relativePath) await selectEntry(entry)
+    if ($documentWorkspace.mode === 'edit') {
+      await workspaceDocumentController.open(match.target)
+      workspaceDocumentController.focusMatch(
+        match.target,
+        match.lineNumber,
+        match.startColumn,
+        match.endColumn,
+      )
+    }
+  }
+
+  async function navigateToReviewThread(side: 'deletions' | 'additions', lineNumber: number) {
+    window.dispatchEvent(new CustomEvent('diffly:scroll-to-diff-line', {
+      detail: { entryId: selectedEntryId, side, lineNumber },
+    }))
+  }
+
+  async function loadReviewThreadCounts(sessionId: string) {
+    const generation = ++reviewThreadCountsGeneration
+    try {
+      const counts = await listReviewThreadCounts(sessionId)
+      if (generation !== reviewThreadCountsGeneration || activeDiffSessionId !== sessionId) return
+      reviewThreadCounts = counts
+      reviewThreadCountsRevision += 1
+    } catch {
+      if (generation === reviewThreadCountsGeneration) reviewThreadCounts = {}
+    }
+  }
+
+  function handleReviewCountsChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string }>).detail
+    if (detail?.sessionId && detail.sessionId === activeDiffSessionId) {
+      void loadReviewThreadCounts(detail.sessionId)
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
+    return () => window.removeEventListener('diffly:review-changed', handleReviewCountsChanged)
+  })
 </script>
 
 <svelte:window on:keydown={handleCompareKeydown} />
@@ -239,18 +425,36 @@
           {/if}
         </button>
 
-        <button
-          aria-label={$reviewModeEnabled ? 'Turn review mode off' : 'Turn review mode on'}
-          aria-pressed={$reviewModeEnabled}
-          class="secondary toolbar-button icon-button review-mode-button"
-          title={$reviewModeEnabled
-            ? 'Review mode on — per-file actions are shown in diff headers'
-            : 'Review mode off — click to show per-file actions in diff headers'}
-          type="button"
-          on:click={toggleReviewMode}
-        >
-          <ToolbarSvgIcon src={reviewIconUrl} className="review-mode-icon" />
-        </button>
+        <div class="workspace-mode-switcher" aria-label="Workspace mode">
+          <button
+            class:active={$documentWorkspace.mode === 'review'}
+            aria-pressed={$documentWorkspace.mode === 'review'}
+            class="secondary toolbar-button"
+            type="button"
+            on:click={() => selectWorkspaceMode('review')}
+          >Review</button>
+          <button
+            class:active={$documentWorkspace.mode === 'edit'}
+            aria-pressed={$documentWorkspace.mode === 'edit'}
+            class="secondary toolbar-button"
+            type="button"
+            disabled={!activeDiffSessionId || !canEditSelected}
+            on:click={() => selectWorkspaceMode('edit')}
+          >Edit</button>
+          <button
+            class:active={$documentWorkspace.mode === 'resolve'}
+            aria-pressed={$documentWorkspace.mode === 'resolve'}
+            class="secondary toolbar-button"
+            type="button"
+            disabled={selectedEntry?.diffEntryStatus !== 'conflicted'}
+            on:click={() => selectWorkspaceMode('resolve')}
+          >Resolve</button>
+        </div>
+
+        {#if $documentWorkspace.mode === 'edit' && activeDiffSource?.kind === 'local'}
+          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('left')}>Edit Left</button>
+          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('right')}>Edit Right</button>
+        {/if}
 
         {#if mode === 'directory'}
           <button
@@ -284,6 +488,14 @@
       {/if}
 
       <div class="compare-action-group utility-actions">
+        <button
+          class:active={$comparisonSearch.open}
+          aria-pressed={$comparisonSearch.open}
+          class="secondary toolbar-button"
+          type="button"
+          disabled={!activeDiffSessionId}
+          on:click={() => comparisonSearch.update((state) => ({ ...state, open: !state.open }))}
+        >Search</button>
         {#if srcActions.showSwap}
           <button
             class="secondary toolbar-button icon-button swap-button"
@@ -325,6 +537,12 @@
 
       <div class="compare-action-group global-actions">
         <button
+          class="secondary toolbar-button"
+          type="button"
+          disabled={$dirtyDocumentCount === 0}
+          on:click={saveAllDocuments}
+        >Save All{#if $dirtyDocumentCount > 0} ({$dirtyDocumentCount}){/if}</button>
+        <button
           class="secondary toolbar-button icon-button settings-button"
           aria-label="Settings"
           title="Settings"
@@ -354,14 +572,16 @@
   <section
     class:resizing-sidebar={compareSidebarResizeActive}
     class:single-pane={mode === 'file'}
+    class:search-panel-open={$comparisonSearch.open && Boolean(activeDiffSessionId)}
+    class:review-panel-open={showHunkReviewPanel}
     class="compare-layout"
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
     {#if mode === 'directory'}
       <CompareDirectorySidebar
         {loading}
-        {directoryEntries}
-        entriesRevision={directoryEntriesRevision}
+        directoryEntries={sidebarDirectoryEntries}
+        entriesRevision={sidebarEntriesRevision}
         {selectedRelativePath}
         {treeSettings}
         {appearanceSettings}
@@ -383,7 +603,33 @@
       ></button>
     {/if}
 
-    {#if CompareViewerComponent}
+    {#if $documentWorkspace.mode === 'edit' && $activeWorkspaceDocument}
+      <WorkspaceEditor
+        state={$activeWorkspaceDocument}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        {viewMode}
+        reviewSessionId={activeDiffSessionId ?? ''}
+        reviewEntryId={selectedEntryId ?? ''}
+        onSaved={() => refreshSession(selectedRelativePath)}
+      />
+    {:else if $documentWorkspace.mode === 'resolve' && activeDiffSessionId && selectedEntryId && selectedEntry?.diffEntryStatus === 'conflicted'}
+      <MergeConflictViewer
+        sessionId={activeDiffSessionId}
+        entryId={selectedEntryId}
+        {appearanceSettings}
+        {resolvedThemeMode}
+        onResolved={handleConflictResolved}
+      />
+    {:else if $documentWorkspace.mode === 'resolve'}
+      <section class="compare-viewer">
+        <div class="compare-viewer-state">
+          <p>Select a conflicted file to resolve.</p>
+          {#if canUndoResolution}<button type="button" on:click={undoLastResolution}>Undo last resolution</button>{/if}
+          {#if resolutionError}<p class="error-banner">{resolutionError}</p>{/if}
+        </div>
+      </section>
+    {:else if CompareViewerComponent}
       <svelte:component
         this={CompareViewerComponent}
         {mode}
@@ -400,6 +646,8 @@
         {resolvedThemeMode}
         {viewMode}
         revision={compareRevision}
+        {invalidatedEntryPath}
+        {invalidatedEntryRevision}
         {leftPath}
         {rightPath}
         compareOptions={activeCompareOptions}
@@ -410,6 +658,8 @@
         resolveEntryBases={getDetailBasesForPath}
         reviewModeEnabled={$reviewModeEnabled}
         {reviewSourceKind}
+        reviewSessionId={activeDiffSessionId}
+        reviewEntryId={selectedEntryId ?? 'file'}
         onReviewRefresh={runCompare}
         {collapseAllRevision}
         {expandAllRevision}
@@ -424,6 +674,27 @@
           <p>Opening compare view...</p>
         </div>
       </section>
+    {/if}
+
+    {#if $comparisonSearch.open && activeDiffSessionId}
+      <SearchPanel
+        sessionId={activeDiffSessionId}
+        onNavigate={navigateToSearchMatch}
+        onReplaced={refreshSession}
+      />
+    {/if}
+    {#if showHunkReviewPanel && activeDiffSessionId && selectedEntryId}
+      <ReviewWorkspacePanel
+        sessionId={activeDiffSessionId}
+        entryId={selectedEntryId}
+        entryPath={selectedRelativePath || activeDiff?.rightLabel || activeDiff?.leftLabel || ''}
+        hunkEntryId={hunkEntryId ?? selectedEntryId}
+        gitCapabilities={selectedEntry?.gitReviewCapabilities ?? null}
+        sourceKind={hunkReviewSourceKind}
+        {gitScope}
+        onApplied={() => refreshSession(selectedRelativePath)}
+        onNavigateThread={navigateToReviewThread}
+      />
     {/if}
   </section>
 

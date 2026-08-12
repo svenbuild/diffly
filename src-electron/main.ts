@@ -41,6 +41,7 @@ if (startupUserDataDir) {
 let mainWindow: Electron.BrowserWindow | null = null
 const windows = new Set<Electron.BrowserWindow>()
 const pendingLaunchContexts: LaunchContext[] = []
+const closeApproved = new Set<number>()
 const mainStartupStartedAt = Date.now()
 
 function markMainStartup(name: string, detail?: Record<string, unknown>) {
@@ -123,8 +124,12 @@ function createWindow(launchContext: LaunchContext | null = null) {
   window.on('maximize', sendMaximizedChange)
   window.on('unmaximize', sendMaximizedChange)
 
-  window.on('close', () => {
+  window.on('close', (event) => {
     saveWindowState(window)
+    if (!closeApproved.has(window.id) && !window.webContents.isDestroyed()) {
+      event.preventDefault()
+      window.webContents.send('diffly:workspace:closeRequested')
+    }
   })
 
   window.on('closed', () => {
@@ -171,9 +176,18 @@ function installStartupProfileExit(window: Electron.BrowserWindow) {
 }
 
 function startupProfileQuery() {
-  return process.env.DIFFLY_STARTUP_PROFILE === '1'
-    ? { difflyStartupProfile: '1' }
-    : undefined
+  const query: Record<string, string> = {}
+  if (process.env.DIFFLY_STARTUP_PROFILE === '1') query.difflyStartupProfile = '1'
+  const left = process.env.DIFFLY_E2E_LEFT?.trim()
+  const right = process.env.DIFFLY_E2E_RIGHT?.trim()
+  const git = process.env.DIFFLY_E2E_GIT?.trim()
+  if (left && right) {
+    query.difflyE2ELeft = left
+    query.difflyE2ERight = right
+  } else if (git) {
+    query.difflyE2EGit = git
+  }
+  return Object.keys(query).length > 0 ? query : undefined
 }
 
 function appendStartupProfileQuery(params: URLSearchParams) {
@@ -208,6 +222,14 @@ function registerWindowControlIpcHandlers() {
   ipcMain.handle('diffly:windowIsMaximized', (event) =>
     windowFromIpcEvent(event)?.isMaximized() ?? false,
   )
+  ipcMain.handle('diffly:workspace:closeDecision', (event, payload: unknown) => {
+    const window = windowFromIpcEvent(event)
+    if (!window || typeof payload !== 'object' || payload === null || !('allow' in payload)) return
+    if (payload.allow === true) {
+      closeApproved.add(window.id)
+      window.close()
+    }
+  })
 }
 
 function openLaunchWindow(launchContext: LaunchContext) {

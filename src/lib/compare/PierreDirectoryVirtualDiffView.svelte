@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import {
     CodeView,
     parseDiffFromFile,
@@ -36,12 +36,17 @@
     estimatePlaceholderLineCount,
   } from './directory-code-view-items'
   import {
-    loadStoredCommentAnnotations,
-    persistCommentAnnotations,
     removeCommentAnnotation,
     renderCommentAnnotationElement,
+    reviewThreadsToAnnotations,
     type DifflyCommentAnnotation,
   } from './directory-code-view-comments'
+  import {
+    createReviewThread,
+    deleteReviewComment,
+    getReviewProfile,
+    listReviewThreads,
+  } from '../api'
   import { findOpenDraft, focusDraftEditor } from './comment-drafts'
   import {
     DIFF_HEADER_UNSAFE_CSS,
@@ -153,6 +158,7 @@
   let diffRenderPaths = new Set<string>()
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
+  let hydratedReviewEntryKey = ''
 
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
@@ -367,23 +373,33 @@
     commentAnnotations = next
   }
 
-  function persistComments() {
-    persistCommentAnnotations(compareKey, commentAnnotations)
+  function resetReviewAnnotations() {
+    commentAnnotations = new Map()
+    hydratedReviewEntryKey = ''
   }
 
-  function loadStoredComments() {
-    const stored = loadStoredCommentAnnotations(compareKey, commentId)
-    commentAnnotations = stored.annotations
-    commentId = stored.commentId
+  async function hydrateReviewAnnotations(itemId: string, entryId: string, key: string) {
+    if (!reviewSessionId) return
+    try {
+      const threads = await listReviewThreads(reviewSessionId, entryId)
+      if (`${reviewSessionId}:${entryId}` !== key) return
+      updateAnnotations(itemId, reviewThreadsToAnnotations(threads))
+    } catch (error) {
+      setInteractionMessage(error instanceof Error ? error.message : 'Unable to load review threads.')
+    }
   }
 
-  function handleGutterUtilityClick(range: SelectedLineRange, context: CodeViewItemContext) {
+  async function handleGutterUtilityClick(range: SelectedLineRange, context: CodeViewItemContext) {
     const itemId = context.item?.id ?? selectedLineSelection?.id ?? ''
     if (!itemId) {
       return
     }
 
     applyControlledSelection({ id: itemId, range })
+    const entryId = entryByPath.get(itemId)?.entry.diffEntryId
+    if (reviewSessionId && entryId) {
+      await hydrateReviewAnnotations(itemId, entryId, `${reviewSessionId}:${entryId}`)
+    }
     const side = range.endSide ?? range.side ?? 'additions'
     const lineNumber = range.end
     const openDraft = findOpenDraft(annotationsFor(itemId), side, lineNumber)
@@ -410,18 +426,46 @@
     annotation: DiffLineAnnotation<DifflyCommentAnnotation> | LineAnnotation<DifflyCommentAnnotation>,
   ) {
     return renderCommentAnnotationElement(annotation, {
-      onDelete: (target) => {
+      onDelete: async (target) => {
+        if (reviewSessionId && target.metadata.threadId && target.metadata.commentId) {
+          await deleteReviewComment(reviewSessionId, target.metadata.threadId, target.metadata.commentId)
+          const item = [...commentAnnotations].find(([, annotations]) => annotations.includes(target as DiffLineAnnotation<DifflyCommentAnnotation>))
+          const entryId = item ? entryByPath.get(item[0])?.entry.diffEntryId : null
+          window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+            detail: { sessionId: reviewSessionId, entryId },
+          }))
+        }
         const result = removeCommentAnnotation(commentAnnotations, target)
         if (!result.removed) {
           return
         }
 
         commentAnnotations = result.annotations
-        persistComments()
         setInteractionMessage('Comment deleted.')
       },
-      onSave: () => {
-        persistComments()
+      onSave: async (target) => {
+        if (!reviewSessionId) throw new Error('Review persistence is unavailable for this comparison.')
+        const anchored = target as DiffLineAnnotation<DifflyCommentAnnotation>
+        const item = [...commentAnnotations].find(([, annotations]) => annotations.includes(target as DiffLineAnnotation<DifflyCommentAnnotation>))
+        const entryId = item ? entryByPath.get(item[0])?.entry.diffEntryId : null
+        if (!entryId) throw new Error('Review entry is unavailable.')
+        const author = await getReviewProfile()
+        const thread = await createReviewThread({
+          sessionId: reviewSessionId,
+          entryId,
+          side: anchored.side,
+          lineNumber: anchored.lineNumber,
+          body: target.metadata.text,
+          author,
+        })
+        const comment = thread.comments[0]!
+        target.metadata.threadId = thread.id
+        target.metadata.commentId = comment.id
+        target.metadata.author = comment.author
+        target.metadata.state = thread.state
+        window.dispatchEvent(new CustomEvent('diffly:review-changed', {
+          detail: { sessionId: reviewSessionId, entryId },
+        }))
         setInteractionMessage('Comment saved.')
       },
     })
@@ -1436,12 +1480,60 @@
     }
   }
 
+  function handleReviewThreadNavigation(event: Event) {
+    const detail = (event as CustomEvent<{
+      entryId?: string | null
+      side?: 'deletions' | 'additions'
+      lineNumber?: number
+    }>).detail
+    if (!detail || !Number.isSafeInteger(detail.lineNumber) || !detail.side) return
+    const item = entries.find((candidate) => candidate.entry.diffEntryId === detail.entryId)
+    const id = item?.entry.relativePath ?? selectedRelativePath
+    if (!id || !codeView?.getItem(id)) return
+    codeView.scrollTo({
+      type: 'line',
+      id,
+      lineNumber: detail.lineNumber!,
+      side: detail.side,
+      align: 'center',
+      behavior: 'smooth-auto',
+    })
+  }
+
+  function handleReviewChanged(event: Event) {
+    const detail = (event as CustomEvent<{ sessionId?: string; entryId?: string | null }>).detail
+    if (!reviewSessionId || detail?.sessionId !== reviewSessionId || !detail.entryId) return
+    const loaded = entries.find((candidate) => candidate.entry.diffEntryId === detail.entryId)
+    if (!loaded) return
+    const key = `${reviewSessionId}:${detail.entryId}`
+    if (loaded.entry.relativePath === selectedRelativePath) hydratedReviewEntryKey = key
+    void hydrateReviewAnnotations(loaded.entry.relativePath, detail.entryId, key)
+  }
+
+  onMount(() => {
+    window.addEventListener('diffly:scroll-to-diff-line', handleReviewThreadNavigation)
+    window.addEventListener('diffly:review-changed', handleReviewChanged)
+    return () => {
+      window.removeEventListener('diffly:scroll-to-diff-line', handleReviewThreadNavigation)
+      window.removeEventListener('diffly:review-changed', handleReviewChanged)
+    }
+  })
+
   $: host,
     syncNativeScrollHandling()
 
-  // Load any saved comments whenever the active comparison changes so they
-  // survive reloads and re-opening the same compare.
-  $: compareKey, loadStoredComments()
+  // Backend-backed annotations are hydrated again for each comparison.
+  $: compareKey, resetReviewAnnotations()
+
+  $: {
+    const loaded = entryByPath.get(selectedRelativePath)
+    const entryId = loaded?.entry.diffEntryId
+    const key = reviewSessionId && entryId ? `${reviewSessionId}:${entryId}` : ''
+    if (key && hydratedReviewEntryKey !== key) {
+      hydratedReviewEntryKey = key
+      void hydrateReviewAnnotations(selectedRelativePath, entryId!, key)
+    }
+  }
 
   $: host,
     entries,

@@ -168,6 +168,21 @@ function diffEntry(overrides: Partial<DiffEntry> = {}): DiffEntry {
     scope: 'all',
     leftSize: null,
     rightSize: 12,
+    capabilities: {
+      editLeft: false,
+      editRight: true,
+      editIndex: true,
+      save: true,
+      saveAs: true,
+      partialApplyLeftToRight: false,
+      partialApplyRightToLeft: false,
+      stageHunks: true,
+      unstageHunks: true,
+      discardHunks: true,
+      resolveConflict: false,
+      comment: true,
+      search: true,
+    },
     ...overrides,
   }
 }

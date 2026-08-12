@@ -5,6 +5,7 @@ import type {
 } from '@pierre/diffs'
 import { pickAvatar } from '../assets/avatars'
 import { createAppIcon } from '../icons/app-icons'
+import type { ReviewAuthor, ReviewThread } from '../review-types'
 import { markDraftSaved, registerDraftEditor } from './comment-drafts'
 
 export interface DifflyCommentAnnotation {
@@ -12,18 +13,15 @@ export interface DifflyCommentAnnotation {
   text: string
   draft?: boolean
   savedAt?: string
+  threadId?: string
+  commentId?: string
+  author?: ReviewAuthor
+  state?: ReviewThread['state']
 }
 
 type CommentAnnotation =
   | DiffLineAnnotation<DifflyCommentAnnotation>
   | LineAnnotation<DifflyCommentAnnotation>
-
-interface StoredComment {
-  side: AnnotationSide
-  lineNumber: number
-  id: string
-  text: string
-}
 
 const sendIcon = () => createAppIcon('send')
 const closeIcon = () => createAppIcon('close')
@@ -36,108 +34,6 @@ function createCommentAvatar(seed: string): HTMLImageElement {
   img.setAttribute('aria-hidden', 'true')
   img.draggable = false
   return img
-}
-
-export function commentsStorageKey(compareKey: string) {
-  return `diffly:comments:${compareKey}`
-}
-
-export function persistCommentAnnotations(
-  compareKey: string,
-  commentAnnotations: Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>,
-) {
-  if (typeof localStorage === 'undefined' || !compareKey) {
-    return
-  }
-
-  const payload: Record<string, StoredComment[]> = {}
-  for (const [itemId, list] of commentAnnotations) {
-    const stored = list
-      .filter((entry) => entry.metadata.text.trim().length > 0)
-      .map((entry) => ({
-        side: entry.side,
-        lineNumber: entry.lineNumber,
-        id: entry.metadata.id,
-        text: entry.metadata.text,
-      }))
-    if (stored.length > 0) {
-      payload[itemId] = stored
-    }
-  }
-
-  try {
-    if (Object.keys(payload).length === 0) {
-      localStorage.removeItem(commentsStorageKey(compareKey))
-    } else {
-      localStorage.setItem(commentsStorageKey(compareKey), JSON.stringify(payload))
-    }
-  } catch {
-    // Storage may be unavailable or full; comments stay in-memory.
-  }
-}
-
-export function loadStoredCommentAnnotations(
-  compareKey: string,
-  currentCommentId: number,
-) {
-  if (typeof localStorage === 'undefined' || !compareKey) {
-    return {
-      annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
-      commentId: currentCommentId,
-    }
-  }
-
-  let raw: string | null = null
-  try {
-    raw = localStorage.getItem(commentsStorageKey(compareKey))
-  } catch {
-    raw = null
-  }
-
-  const next = new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>()
-  let maxId = currentCommentId
-  let generatedCommentId = currentCommentId
-
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, StoredComment[]>
-      for (const [itemId, list] of Object.entries(parsed)) {
-        if (!Array.isArray(list)) {
-          continue
-        }
-        const annotations = list
-          .filter((entry) => entry && typeof entry.lineNumber === 'number')
-          .map((entry) => {
-            const match = /(\d+)$/.exec(String(entry.id ?? ''))
-            if (match) {
-              maxId = Math.max(maxId, Number(match[1]))
-            }
-
-            return {
-              side: (entry.side === 'deletions' ? 'deletions' : 'additions') as AnnotationSide,
-              lineNumber: entry.lineNumber,
-              metadata: {
-                id: String(entry.id ?? `comment-${(generatedCommentId += 1)}`),
-                text: String(entry.text ?? ''),
-              },
-            }
-          })
-        if (annotations.length > 0) {
-          next.set(itemId, annotations)
-        }
-      }
-    } catch {
-      return {
-        annotations: new Map<string, Array<DiffLineAnnotation<DifflyCommentAnnotation>>>(),
-        commentId: currentCommentId,
-      }
-    }
-  }
-
-  return {
-    annotations: next,
-    commentId: Math.max(generatedCommentId, maxId),
-  }
 }
 
 export function removeCommentAnnotation(
@@ -169,8 +65,29 @@ export function removeCommentAnnotation(
 }
 
 interface CommentCallbacks {
-  onSave: () => void
-  onDelete: (annotation: CommentAnnotation) => void
+  onSave: (annotation: CommentAnnotation) => void | Promise<void>
+  onDelete: (annotation: CommentAnnotation) => void | Promise<void>
+}
+
+export function reviewThreadsToAnnotations(threads: ReviewThread[]) {
+  return threads.flatMap((thread): Array<DiffLineAnnotation<DifflyCommentAnnotation>> => {
+    if (thread.state === 'outdated') return []
+    const comment = thread.comments[0]
+    if (!comment) return []
+    return [{
+      side: thread.anchor.side,
+      lineNumber: thread.anchor.lineNumber,
+      metadata: {
+        id: `thread-${thread.id}`,
+        text: thread.comments.map((item) => item.body).join('\n\n'),
+        threadId: thread.id,
+        commentId: comment.id,
+        author: comment.author,
+        state: thread.state,
+        savedAt: thread.updatedAt,
+      },
+    }]
+  })
 }
 
 function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbacks): HTMLElement {
@@ -181,7 +98,7 @@ function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbac
   body.className = 'diffly-comment-body'
   const author = document.createElement('strong')
   author.className = 'diffly-comment-author'
-  author.textContent = pickAvatar(annotation.metadata.id).name
+  author.textContent = annotation.metadata.author?.name ?? pickAvatar(annotation.metadata.id).name
   const text = document.createElement('p')
   text.className = 'diffly-comment-text'
   text.textContent = annotation.metadata.text
@@ -196,7 +113,11 @@ function buildSavedCard(annotation: CommentAnnotation, callbacks: CommentCallbac
   remove.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
-    callbacks.onDelete(annotation)
+    remove.disabled = true
+    void Promise.resolve(callbacks.onDelete(annotation)).catch((error) => {
+      remove.disabled = false
+      remove.title = error instanceof Error ? error.message : 'Unable to delete comment.'
+    })
   })
 
   card.append(createCommentAvatar(annotation.metadata.id), body, remove)
@@ -224,15 +145,19 @@ function buildComposer(
   submit.appendChild(sendIcon())
 
   input.addEventListener('input', () => {
+    input.setCustomValidity('')
     annotation.metadata.text = input.value
   })
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      callbacks.onDelete(annotation)
+      void Promise.resolve(callbacks.onDelete(annotation)).catch((error) => {
+        input.setCustomValidity(error instanceof Error ? error.message : 'Unable to delete comment.')
+        input.reportValidity()
+      })
     }
   })
   const unregisterDraftEditor = registerDraftEditor(annotation.metadata.id, input)
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault()
     const value = input.value.trim()
     if (!value) {
@@ -240,10 +165,18 @@ function buildComposer(
       return
     }
     annotation.metadata.text = value
-    markDraftSaved(annotation)
-    unregisterDraftEditor()
-    callbacks.onSave()
-    onSaved()
+    submit.disabled = true
+    try {
+      await callbacks.onSave(annotation)
+      markDraftSaved(annotation)
+      unregisterDraftEditor()
+      onSaved()
+    } catch (error) {
+      input.setCustomValidity(error instanceof Error ? error.message : 'Unable to save comment.')
+      input.reportValidity()
+    } finally {
+      submit.disabled = false
+    }
   })
 
   form.append(createCommentAvatar(annotation.metadata.id), input, submit)

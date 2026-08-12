@@ -420,29 +420,6 @@ describe('GitProvider working tree entries', () => {
     expect(result.unsupported?.reason).toBe('tooLarge')
   })
 
-  it('throws for conflicted entries', async () => {
-    const repoPath = await createRepo()
-    const provider = new GitProvider()
-    const source = gitSource(repoPath)
-    const entryData = new Map()
-    entryData.set('conflict', {
-      kind: 'gitWorkingTree',
-      repoPath,
-      repositoryRoot: repoPath,
-      scope: 'all',
-      path: 'conflict.txt',
-      oldPath: null,
-      status: 'conflicted',
-    })
-
-    await expect(provider.openEntry({
-      source,
-      options: defaultOptions(),
-      entryData,
-    }, 'conflict', defaultOptions())).rejects.toThrow(
-      'Git conflicted file details are not implemented yet.',
-    )
-  })
 })
 
 describe('GitProvider ref range and commit entries', () => {
