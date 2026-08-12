@@ -1,8 +1,10 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { _electron as electron } from 'playwright'
+import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 let app: ElectronApplication
 let page: Page
@@ -10,6 +12,7 @@ let root: string
 let left: string
 let right: string
 const editorEndShortcut = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End'
+const execFileAsync = promisify(execFile)
 
 async function launchWorkspace() {
   const appEnvironment = { ...process.env }
@@ -29,6 +32,18 @@ async function launchWorkspace() {
     const state = (window as unknown as { __difflyE2E: { getState(): { screen: string; loading: boolean; directoryEntries: number } } }).__difflyE2E.getState()
     return state.screen === 'compare' && !state.loading && state.directoryEntries > 0
   })
+}
+
+async function terminateWorkspaceAbruptly() {
+  const child = app.process()
+  if (child.exitCode !== null) return
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
+  if (process.platform === 'win32') {
+    await execFileAsync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true })
+  } else {
+    child.kill('SIGKILL')
+  }
+  await exited
 }
 
 test.beforeEach(async () => {
@@ -158,9 +173,7 @@ test('recovers a debounced editor draft after an unclean shutdown', async () => 
     }
   }).toBe(1)
 
-  const rendererClosed = page.waitForEvent('close')
-  app.process().kill('SIGKILL')
-  await rendererClosed
+  await terminateWorkspaceAbruptly()
   await launchWorkspace()
 
   const recovery = page.getByRole('dialog', { name: /unsaved document.*recovered/i })
