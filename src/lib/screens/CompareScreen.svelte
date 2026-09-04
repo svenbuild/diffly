@@ -130,6 +130,11 @@
   let toolbarReloadPending = false
   let canUndoResolution = false
   let resolutionError = ''
+  let reviewPanelOpen = false
+  let editSide: 'left' | 'right' = 'right'
+  let editSurface: 'diff' | 'file' = 'diff'
+  let editorOpenError = ''
+  let requestedEditableKey = ''
   let reviewThreadCounts: Record<string, ReviewThreadCount> = {}
   let reviewThreadCountsSession = ''
   let reviewThreadCountsGeneration = 0
@@ -167,6 +172,7 @@
       selectedEntry.capabilities?.saveAs
     ))
   $: showHunkReviewPanel =
+    reviewPanelOpen &&
     $documentWorkspace.mode === 'review' &&
     !$comparisonSearch.open &&
     Boolean(activeDiffSessionId && selectedEntryId)
@@ -178,18 +184,31 @@
       : 'readOnly' as const
 
   function selectWorkspaceMode(nextMode: 'review' | 'edit' | 'resolve') {
+    if (nextMode !== 'edit') workspaceDocumentController.cancelPendingOpen()
     setWorkspaceMode(nextMode)
-    reviewModeEnabled.set(nextMode === 'review')
-    if (nextMode === 'edit') void openSelectedDocument()
+    if (nextMode !== 'review') reviewPanelOpen = false
   }
 
-  async function openSelectedDocument(side: 'left' | 'right' = 'right') {
+  $: reviewModeEnabled.set(reviewPanelOpen && $documentWorkspace.mode === 'review')
+  $: editableKey = `${activeDiffSessionId}:${selectedEntryId}:${editSide}:${gitScope}`
+  $: if ($documentWorkspace.mode === 'edit') {
+    if (requestedEditableKey !== editableKey) {
+      requestedEditableKey = editableKey
+      void openSelectedDocument(editSide)
+    }
+  } else requestedEditableKey = ''
+
+  async function openSelectedDocument(side: 'left' | 'right' = editSide) {
+    const requestKey = requestedEditableKey
     const target = selectedDocumentTarget(side)
-    if (!target) return
+    editorOpenError = ''
+    if (!target) { editorOpenError = 'Select a text file to edit.'; return }
     try {
       await workspaceDocumentController.open(target)
     } catch (error) {
-      console.error('Unable to open editable document', error)
+      if (requestKey === requestedEditableKey && $documentWorkspace.mode === 'edit') {
+        editorOpenError = error instanceof Error ? error.message : 'Unable to open this file for editing.'
+      }
     }
   }
 
@@ -268,9 +287,6 @@
     }
   }
 
-  // Planned file operations are preview state for one specific compare;
-  // switching source or compared paths invalidates every recorded plan.
-
   function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
     activeSidebarPanel = activeSidebarPanel === panel ? null : panel
   }
@@ -290,17 +306,13 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'f') {
-      event.preventDefault()
-      comparisonSearch.update((state) => ({ ...state, open: true }))
-      return
-    }
+    if (event.defaultPrevented) return
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
       event.preventDefault()
       comparisonSearch.update((state) => ({ ...state, open: true }))
       return
     }
-    if (event.key === 'F3') {
+    if (event.key === 'F3' && $comparisonSearch.open) {
       event.preventDefault()
       workspaceSearchController.next(event.shiftKey ? -1 : 1)
       const state = $comparisonSearch
@@ -336,6 +348,10 @@
         match.startColumn,
         match.endColumn,
       )
+    } else {
+      window.dispatchEvent(new CustomEvent('diffly:scroll-to-diff-line', {
+        detail: { entryId: match.entryId, side: match.target.kind === 'local' && match.target.side === 'left' ? 'deletions' : 'additions', lineNumber: match.lineNumber },
+      }))
     }
   }
 
@@ -404,7 +420,7 @@
           aria-label={viewMode === 'sideBySide' ? 'Switch to unified view' : 'Switch to split view'}
           aria-pressed={viewMode === 'unified'}
           class="secondary toolbar-button icon-button view-mode-button"
-          disabled={!textDiffActive}
+          disabled={!textDiffActive || ($documentWorkspace.mode === 'edit' && editSurface === 'file')}
           title={viewMode === 'sideBySide' ? 'Split view — click for unified' : 'Unified view — click for split'}
           type="button"
           on:click={toggleViewMode}
@@ -424,20 +440,14 @@
 
         <div class="workspace-mode-switcher" aria-label="Workspace mode">
           <button
-            class:active={$documentWorkspace.mode === 'review'}
-            aria-pressed={$documentWorkspace.mode === 'review'}
-            class="secondary toolbar-button"
-            type="button"
-            on:click={() => selectWorkspaceMode('review')}
-          >Review</button>
-          <button
             class:active={$documentWorkspace.mode === 'edit'}
             aria-pressed={$documentWorkspace.mode === 'edit'}
             class="secondary toolbar-button"
             type="button"
             disabled={!activeDiffSessionId || !canEditSelected}
-            on:click={() => selectWorkspaceMode('edit')}
+            on:click={() => selectWorkspaceMode($documentWorkspace.mode === 'edit' ? 'review' : 'edit')}
           >Edit</button>
+          {#if selectedEntry?.diffEntryStatus === 'conflicted' || $documentWorkspace.mode === 'resolve'}
           <button
             class:active={$documentWorkspace.mode === 'resolve'}
             aria-pressed={$documentWorkspace.mode === 'resolve'}
@@ -446,14 +456,17 @@
             disabled={selectedEntry?.diffEntryStatus !== 'conflicted'}
             on:click={() => selectWorkspaceMode('resolve')}
           >Resolve</button>
+          {/if}
         </div>
 
         {#if $documentWorkspace.mode === 'edit' && activeDiffSource?.kind === 'local'}
-          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('left')}>Edit Left</button>
-          <button class="secondary toolbar-button" type="button" on:click={() => openSelectedDocument('right')}>Edit Right</button>
+          <select class="edit-side-select" aria-label="File to edit" bind:value={editSide}>
+            <option value="right">Right file</option>
+            <option value="left">Left file</option>
+          </select>
         {/if}
 
-        {#if mode === 'directory'}
+        {#if mode === 'directory' && $documentWorkspace.mode === 'review'}
           <button
             aria-label={directoryDiffsAllCollapsed ? 'Expand all file diffs' : 'Collapse all file diffs'}
             class="secondary toolbar-button icon-button collapse-all-button"
@@ -485,13 +498,16 @@
       {/if}
 
       <div class="compare-action-group utility-actions">
+        <button class="secondary toolbar-button" type="button" aria-pressed={reviewPanelOpen} disabled={!activeDiffSessionId || !selectedEntryId}
+          title="Comments and change actions"
+          on:click={() => { workspaceSearchController.close(); selectWorkspaceMode('review'); reviewPanelOpen = !reviewPanelOpen }}>Review</button>
         <button
           class:active={$comparisonSearch.open}
           aria-pressed={$comparisonSearch.open}
           class="secondary toolbar-button"
           type="button"
           disabled={!activeDiffSessionId}
-          on:click={() => comparisonSearch.update((state) => ({ ...state, open: !state.open }))}
+          on:click={() => { reviewPanelOpen = false; comparisonSearch.update((state) => ({ ...state, open: !state.open })) }}
         >Search</button>
         {#if srcActions.showSwap}
           <button
@@ -533,12 +549,14 @@
       </div>
 
       <div class="compare-action-group global-actions">
+        {#if $dirtyDocumentCount > 1 || ($dirtyDocumentCount > 0 && $documentWorkspace.mode !== 'edit')}
         <button
           class="secondary toolbar-button"
           type="button"
           disabled={$dirtyDocumentCount === 0}
           on:click={saveAllDocuments}
-        >Save All{#if $dirtyDocumentCount > 0} ({$dirtyDocumentCount}){/if}</button>
+        >Save All ({$dirtyDocumentCount})</button>
+        {/if}
         <button
           class="secondary toolbar-button icon-button settings-button"
           aria-label="Settings"
@@ -600,9 +618,13 @@
       ></button>
     {/if}
 
-    {#if $documentWorkspace.mode === 'edit' && $activeWorkspaceDocument}
+    {#if $documentWorkspace.mode === 'edit' && editorOpenError}
+      <section class="compare-viewer"><p class="error-banner" role="alert">{editorOpenError}</p></section>
+    {:else if $documentWorkspace.mode === 'edit' && $activeWorkspaceDocument}
       <WorkspaceEditor
         state={$activeWorkspaceDocument}
+        opening={$documentWorkspace.loading}
+        onSurfaceChange={(surface) => editSurface = surface}
         {appearanceSettings}
         {resolvedThemeMode}
         {viewMode}
@@ -610,6 +632,8 @@
         reviewEntryId={selectedEntryId ?? ''}
         onSaved={() => refreshSession(selectedRelativePath)}
       />
+    {:else if $documentWorkspace.mode === 'edit'}
+      <section class="compare-viewer"><div class="compare-viewer-state">Opening editable diff…</div></section>
     {:else if $documentWorkspace.mode === 'resolve' && activeDiffSessionId && selectedEntryId && selectedEntry?.diffEntryStatus === 'conflicted'}
       <MergeConflictViewer
         sessionId={activeDiffSessionId}

@@ -18,16 +18,19 @@
   let manual = false
   let initialConflictCount = 0
   let renderedDraft = ''
-  let inspectSide: 'base' | 'current' | 'incoming' = 'current'
 
   $: remaining = countMarkers($conflictStore.draft)
   $: solved = Math.max(0, initialConflictCount - remaining)
   $: canResolveContents = Boolean($conflictStore.document) && remaining === 0
 
-  onMount(async () => {
-    const document = await workspaceConflictController.open(sessionId, entryId)
-    initialConflictCount = countMarkers(document.markerContents ?? '')
-    renderUnresolved()
+  onMount(() => {
+    let cancelled = false
+    void workspaceConflictController.open(sessionId, entryId).then(document => {
+      if (cancelled) return
+      initialConflictCount = countMarkers(document.markerContents ?? '')
+      renderUnresolved()
+    }).catch(() => {})
+    return () => { cancelled = true }
   })
 
   onDestroy(() => unresolved?.cleanUp())
@@ -63,8 +66,12 @@
   }
 
   async function finish(side?: 'current' | 'incoming' | 'delete') {
-    await workspaceConflictController.resolve(sessionId, entryId, side)
-    await onResolved()
+    try {
+      await workspaceConflictController.resolve(sessionId, entryId, side)
+      await onResolved()
+    } catch {
+      // The controller exposes the error without losing the resolution draft.
+    }
   }
 
   function toggleManual() {
@@ -81,9 +88,6 @@
     renderUnresolved()
   }
 
-  function inspectedContents() {
-    return $conflictStore.document?.[inspectSide]?.contents ?? 'This side has no text content.'
-  }
 
   $: if (host && !manual) renderUnresolved()
 </script>
@@ -99,24 +103,22 @@
         <span>{solved} of {initialConflictCount} conflicts resolved</span>
       </div>
       <div class="conflict-actions">
-        <details class="conflict-versions">
-          <summary>Inspect versions</summary>
-          <div class="conflict-version-tabs">
-            <button class:active={inspectSide === 'base'} type="button" on:click={() => inspectSide = 'base'}>Base</button>
-            <button class:active={inspectSide === 'current'} type="button" on:click={() => inspectSide = 'current'}>Current</button>
-            <button class:active={inspectSide === 'incoming'} type="button" on:click={() => inspectSide = 'incoming'}>Incoming</button>
-          </div>
-          <pre>{inspectedContents()}</pre>
-        </details>
         {#if !$conflictStore.document.binary && !$conflictStore.document.submodule && ($conflictStore.document.conflictKind !== 'UU' && $conflictStore.document.conflictKind !== 'AA')}
           {#if $conflictStore.document.current}<button class="secondary" type="button" on:click={() => finish('current')}>Keep Current</button>{/if}
           {#if $conflictStore.document.incoming}<button class="secondary" type="button" on:click={() => finish('incoming')}>Keep Incoming</button>{/if}
           <button class="danger" type="button" on:click={() => finish('delete')}>Resolve as Delete</button>
         {/if}
         {#if !$conflictStore.document.binary && !$conflictStore.document.submodule}
-          <button class="secondary" type="button" on:click={() => resolveAll('current')}>Resolve all with Current</button>
-          <button class="secondary" type="button" on:click={() => resolveAll('incoming')}>Resolve all with Incoming</button>
-          <button class="secondary" type="button" on:click={() => resolveAll('both')}>Resolve all with Both</button>
+          {#if remaining > 1}
+            <details class="conflict-bulk">
+              <summary>Resolve all…</summary>
+              <div>
+                <button class="secondary" type="button" on:click={() => resolveAll('current')}>Use Current for all</button>
+                <button class="secondary" type="button" on:click={() => resolveAll('incoming')}>Use Incoming for all</button>
+                <button class="secondary" type="button" on:click={() => resolveAll('both')}>Use Both for all</button>
+              </div>
+            </details>
+          {/if}
           <button class="secondary" type="button" on:click={toggleManual}>{manual ? 'Show blocks' : 'Edit manually'}</button>
           <button class="secondary" type="button" on:click={resetDraft}>Reset</button>
         {/if}
@@ -213,13 +215,9 @@
   .merge-conflict-host { min-height: 0; overflow: auto; }
   footer { border-top: 1px solid var(--border-color); border-bottom: 0; justify-content: flex-end; }
   .conflict-state, .binary-conflict-actions { display: grid; place-items: center; gap: 8px; padding: 20px; }
-  .conflict-versions { position: relative; }
-  .conflict-versions > summary { cursor: pointer; color: var(--muted-text); font-size: 11px; }
-  .conflict-versions[open] { z-index: 10; }
-  .conflict-versions[open] > div, .conflict-versions[open] > pre { position: absolute; right: 0; width: min(560px, 70vw); margin: 0; padding: 8px; border: 1px solid var(--border-color); background: var(--panel-surface); }
-  .conflict-versions[open] > div { top: 24px; display: flex; gap: 5px; border-bottom: 0; }
-  .conflict-versions[open] > pre { top: 65px; max-height: 45vh; overflow: auto; white-space: pre-wrap; }
-  .conflict-version-tabs button.active { color: var(--accent); }
+  .conflict-bulk { position: relative; }
+  .conflict-bulk summary { cursor: pointer; padding: 5px 8px; }
+  .conflict-bulk div { position: absolute; top: 100%; right: 0; z-index: 5; display: grid; width: 180px; padding: 5px; background: var(--overlay-surface); border: 1px solid var(--border); }
   .binary-conflict-actions { display: flex; align-items: center; justify-content: center; }
   .conflict-notice, .conflict-error { position: absolute; bottom: 48px; margin: 0; padding: 7px 10px; background: var(--panel-surface); color: var(--muted-text); }
   .conflict-error, .conflict-state.error { color: var(--diff-removed); }

@@ -8,8 +8,10 @@ export class SearchController {
   private generation = 0
 
   async start(sessionId: string, query: ComparisonSearchQuery) {
-    await this.cancel()
-    const generation = ++this.generation
+    const cancellation = this.cancel()
+    const generation = this.generation
+    await cancellation
+    if (generation !== this.generation) return
     comparisonSearch.set({
       open: true,
       query,
@@ -24,7 +26,10 @@ export class SearchController {
     })
     try {
       const { jobId } = await startComparisonSearch({ sessionId, query })
-      if (generation !== this.generation) return
+      if (generation !== this.generation) {
+        await cancelComparisonSearch(jobId).catch(() => undefined)
+        return
+      }
       comparisonSearch.update((state) => ({ ...state, jobId }))
       await this.poll(jobId, generation)
     } catch (error) {
@@ -40,10 +45,10 @@ export class SearchController {
   async cancel() {
     const current = get(comparisonSearch)
     this.generation += 1
+    comparisonSearch.update((state) => ({ ...state, jobId: null, running: false }))
     if (current.jobId && current.running) {
       await cancelComparisonSearch(current.jobId).catch(() => undefined)
     }
-    comparisonSearch.update((state) => ({ ...state, jobId: null, running: false }))
   }
 
   close() {

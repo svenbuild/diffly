@@ -36,10 +36,8 @@
 
   function operations(): Array<{ operation: PartialChangeOperation; label: string }> {
     if (sourceKind === 'local') return [
-      { operation: 'applyRightToLeft', label: '← Keep right' },
-      { operation: 'applyLeftToRight', label: 'Keep left →' },
-      { operation: 'applyBothToLeft', label: 'Both → left' },
-      { operation: 'applyBothToRight', label: 'Both → right' },
+      { operation: 'applyRightToLeft', label: 'Copy right to left' },
+      { operation: 'applyLeftToRight', label: 'Copy left to right' },
     ]
     if (gitScope === 'staged') return [{ operation: 'unstage', label: 'Unstage' }]
     if (gitScope === 'unstaged') return [
@@ -64,9 +62,20 @@
   }
 
   async function apply() {
-    await workspaceHunkController.apply(sessionId, entryId)
-    await onApplied()
-    await workspaceHunkController.load(sessionId, entryId)
+    try {
+      await workspaceHunkController.apply(sessionId, entryId)
+      await onApplied()
+      await workspaceHunkController.load(sessionId, entryId)
+    } catch {
+      // The controller retains the operation error for the panel.
+    }
+  }
+
+  async function chooseOperation(hunk: ReviewHunkSummary, operation: PartialChangeOperation, changeIndex?: number) {
+    if ($hunkResolution.applying) return
+    if (operation === 'stage' || operation === 'unstage') workspaceHunkController.reset(entryId)
+    workspaceHunkController.plan(entryId, operation, { fingerprint: hunk.fingerprint, changeIndex })
+    if (operation === 'stage' || operation === 'unstage') await apply()
   }
 
   async function loadDecisions(nextSessionId: string, nextEntryId: string, key: string) {
@@ -117,7 +126,8 @@
               <button
                 class:active={isPlanned(hunk, action.operation)}
                 type="button"
-                on:click={() => workspaceHunkController.plan(entryId, action.operation, { fingerprint: hunk.fingerprint })}
+                disabled={$hunkResolution.applying}
+                on:click={() => chooseOperation(hunk, action.operation)}
               >{action.label}</button>
             {/each}
             <button class="secondary" type="button" on:click={() => workspaceHunkController.reset(entryId)}>Reset</button>
@@ -134,7 +144,8 @@
                   <button
                     class:active={isPlanned(hunk, action.operation, changeIndex)}
                     type="button"
-                    on:click={() => workspaceHunkController.plan(entryId, action.operation, { fingerprint: hunk.fingerprint, changeIndex })}
+                    disabled={$hunkResolution.applying}
+                    on:click={() => chooseOperation(hunk, action.operation, changeIndex)}
                   >Block {changeIndex + 1}: {action.label}</button>
                 {/each}
               {/if}

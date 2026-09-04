@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { applyComparisonReplace, previewComparisonReplace } from '../api'
   import type { ComparisonSearchQuery, SearchMatch } from '../search-types'
   import type { ReplaceAllPreview } from '../search-types'
@@ -23,6 +23,16 @@
   let resultScrollTop = 0
   let resultViewportHeight = 0
   let ensuredSelectedIndex = -2
+  let panel: HTMLElement
+  let searchTimer: ReturnType<typeof setTimeout> | null = null
+  let queryKey = ''
+  $: nextQueryKey = JSON.stringify({ sessionId, query })
+  $: if (nextQueryKey !== queryKey) {
+    queryKey = nextQueryKey
+    replacePreview = null
+    if (searchTimer !== null) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => { searchTimer = null; run() }, 200)
+  }
 
   const resultRowHeight = 52
   const resultOverscan = 8
@@ -39,10 +49,19 @@
   }
 
   onMount(() => searchInput?.focus())
+  onDestroy(() => {
+    if (searchTimer !== null) clearTimeout(searchTimer)
+    void workspaceSearchController.cancel()
+  })
 
   function run() {
+    if (searchTimer !== null) { clearTimeout(searchTimer); searchTimer = null }
     replacePreview = null
     if (query.text.trim()) void workspaceSearchController.start(sessionId, { ...query })
+    else {
+      void workspaceSearchController.cancel()
+      comparisonSearch.update(state => ({ ...state, results: [], selectedIndex: -1 }))
+    }
   }
 
   async function previewReplace() {
@@ -101,7 +120,9 @@
   }
 
   function keydown(event: KeyboardEvent) {
+    if (event.defaultPrevented || !event.composedPath().includes(panel)) return
     if (event.key === 'Enter') {
+      if (event.target !== searchInput) return
       event.preventDefault()
       run()
     } else if (event.key === 'Escape') {
@@ -129,7 +150,7 @@
 
 <svelte:window on:keydown={keydown} />
 
-<aside class="workspace-search-panel" aria-label="Search entire comparison">
+<aside bind:this={panel} class="workspace-search-panel" aria-label="Search entire comparison">
   <header>
     <strong>Search</strong>
     <button class="secondary" aria-label="Close search" type="button" on:click={() => workspaceSearchController.close()}>×</button>

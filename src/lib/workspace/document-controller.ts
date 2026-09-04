@@ -57,6 +57,7 @@ const defaultApi: DocumentApi = {
 }
 
 export class DocumentController {
+  private openGeneration = 0
   private readonly api: DocumentApi
   private readonly drafts: DraftController
   private unsubscribeExternal: (() => void) | null = null
@@ -67,10 +68,11 @@ export class DocumentController {
   }
 
   async open(target: DocumentTarget) {
+    const generation = ++this.openGeneration
     const id = workspaceDocumentId(target)
     const existing = get(documentWorkspace).documents.get(id)
     if (existing) {
-      documentWorkspace.update((state) => ({ ...state, activeDocumentId: id, mode: 'edit' }))
+      documentWorkspace.update((state) => ({ ...state, activeDocumentId: id, mode: 'edit', loading: false }))
       return existing
     }
 
@@ -81,15 +83,22 @@ export class DocumentController {
       documentWorkspace.update((state) => {
         const documents = new Map(state.documents)
         documents.set(id, item)
-        return { ...state, documents, activeDocumentId: id, loading: false, mode: 'edit' }
+        return generation === this.openGeneration
+          ? { ...state, documents, activeDocumentId: id, loading: false, mode: 'edit' }
+          : { ...state, documents }
       })
       await this.api.watch?.(target).catch(() => false)
       this.ensureExternalSubscription()
       return item
     } catch (error) {
-      documentWorkspace.update((state) => ({ ...state, loading: false }))
+      if (generation === this.openGeneration) documentWorkspace.update((state) => ({ ...state, loading: false }))
       throw error
     }
+  }
+
+  cancelPendingOpen() {
+    this.openGeneration += 1
+    documentWorkspace.update(state => ({ ...state, loading: false }))
   }
 
   updateContents(id: string, contents: string, editorState?: {
@@ -135,7 +144,7 @@ export class DocumentController {
       this.patch(id, { saving: false, error: result.error.code })
       return result
     }
-    this.replaceSaved(id, result.value.document)
+    this.replaceSaved(id, result.value.document, current)
     return result
   }
 
@@ -159,7 +168,7 @@ export class DocumentController {
     }
     result.value.forEach((document, index) => {
       const item = writable[index]
-      if (item) this.replaceSaved(item.id, document)
+      if (item) this.replaceSaved(item.id, document, item)
     })
     for (const item of copies) {
       const exported = await this.saveAs(item.id)
@@ -363,7 +372,7 @@ export class DocumentController {
       expectedRevision: current.externalDocument.revision,
       overwrite: true,
     })
-    if (result.ok) this.replaceSaved(id, result.value.document)
+    if (result.ok) this.replaceSaved(id, result.value.document, current)
     else this.patch(id, { saving: false, error: result.error.code })
     return result
   }
@@ -407,6 +416,7 @@ export class DocumentController {
   }
 
   dispose() {
+    this.cancelPendingOpen()
     this.drafts.dispose()
     this.unsubscribeExternal?.()
     this.unsubscribeExternal = null
@@ -415,18 +425,19 @@ export class DocumentController {
     }
   }
 
-  private replaceSaved(id: string, document: EditableDocument) {
+  private replaceSaved(id: string, document: EditableDocument, submitted?: WorkspaceDocumentState) {
     this.drafts.cancel(id)
     documentWorkspace.update((state) => {
       const current = state.documents.get(id)
       if (!current) return state
+      const editedDuringSave = submitted && (current.contents !== submitted.contents || !formatsEqual(current.format, submitted.format))
       const documents = new Map(state.documents)
       documents.set(id, {
         ...current,
         document,
-        format: document.format,
-        contents: document.contents,
-        dirty: false,
+        format: editedDuringSave ? current.format : document.format,
+        contents: editedDuringSave ? current.contents : document.contents,
+        dirty: Boolean(editedDuringSave),
         saving: false,
         externalChanged: false,
         externalDocument: null,
@@ -434,6 +445,8 @@ export class DocumentController {
       })
       return { ...state, documents }
     })
+    const remaining = get(documentWorkspace).documents.get(id)
+    if (remaining?.dirty) this.drafts.schedule(remaining)
   }
 
   private patch(id: string, patch: Partial<WorkspaceDocumentState>) {

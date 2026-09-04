@@ -98,6 +98,10 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
       font-family: ${darkTokens.uiFont};
     }
 
+    [data-diffs-header] {
+      color: var(--text);
+    }
+
     *,
     *::before,
     *::after {

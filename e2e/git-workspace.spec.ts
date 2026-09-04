@@ -39,11 +39,11 @@ test('stages a selected hunk and refreshes only the active review entry', async 
   await writeFile(path, `${changed.join('\n')}\n`)
 
   await launchGitWorkspace()
+  await page.getByRole('button', { name: 'Review', exact: true }).click()
   await page.getByRole('tab', { name: 'Changes', exact: true }).click()
   const panel = page.getByRole('complementary', { name: 'Hunk review' })
   await expect(panel.getByText('2 hunks')).toBeVisible()
   await panel.getByRole('button', { name: 'Stage', exact: true }).first().click()
-  await panel.getByRole('button', { name: 'Apply selected', exact: true }).click()
 
   await expect.poll(async () => (await git(['diff', '--cached'])).stdout).toContain('changed near start')
   expect((await git(['diff', '--cached'])).stdout).not.toContain('changed near end')
@@ -69,7 +69,7 @@ test('resolves a merge conflict with Current and stages the result', async () =>
   await launchGitWorkspace()
   await page.getByRole('button', { name: 'Resolve', exact: true }).click()
   await expect(page.getByText('0 of 1 conflicts resolved')).toBeVisible()
-  await page.getByRole('button', { name: 'Resolve all with Current', exact: true }).click()
+  await page.getByRole('button', { name: 'Accept current change', exact: true }).click()
   const finish = page.getByRole('button', { name: 'Resolve & Stage', exact: true })
   await expect(finish).toBeEnabled()
   await finish.click()

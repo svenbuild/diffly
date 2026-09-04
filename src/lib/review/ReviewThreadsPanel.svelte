@@ -112,16 +112,20 @@
       <option value="all">All</option>
     </select>
     <span>{$visibleReviewThreads.length} / {$reviewThreads.threads.length}</span>
-    <button class="secondary" type="button" on:click={() => download('json')}>JSON</button>
-    <button class="secondary" type="button" on:click={() => download('markdown')}>Markdown</button>
-    <button class="secondary" type="button" on:click={() => importInput?.click()}>Import</button>
+    <details class="comment-menu">
+      <summary>Export / import</summary>
+      <div>
+        <button class="secondary" type="button" on:click={() => download('json')}>Export JSON</button>
+        <button class="secondary" type="button" on:click={() => download('markdown')}>Export Markdown</button>
+        <button class="secondary" type="button" on:click={() => importInput?.click()}>Import comments</button>
+      </div>
+    </details>
     <input class="hidden" bind:this={importInput} type="file" accept="application/json,.json" on:change={importFile} />
   </div>
 
   <details class="author-settings">
     <summary>Author: {$reviewThreads.author.name}</summary>
     <label>Name <input value={$reviewThreads.author.name} on:change={(event) => reviewThreadController.setAuthor((event.currentTarget as HTMLInputElement).value, $reviewThreads.author.avatar)} /></label>
-    <label>Avatar URL <input value={$reviewThreads.author.avatar ?? ''} on:change={(event) => reviewThreadController.setAuthor($reviewThreads.author.name, (event.currentTarget as HTMLInputElement).value || null)} /></label>
   </details>
 
   <div class="new-thread">
@@ -181,7 +185,7 @@
 </section>
 
 <style>
-  .thread-panel { min-height: 0; display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); background: var(--panel-surface); }
+  .thread-panel { min-height: 0; display: flex; flex-direction: column; background: var(--panel-surface); }
   header, header > div, header nav, .thread-tools, .new-thread > div, .thread-actions, .comment-actions, .comment-meta { display: flex; align-items: center; gap: 6px; }
   header { justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
   header > div { min-width: 0; align-items: baseline; }
@@ -194,7 +198,10 @@
   .new-thread { display: grid; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border-color); }
   .new-thread input[type='number'] { width: 62px; }
   textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-  .threads { min-height: 0; overflow: auto; }
+  .threads { flex: 1; min-height: 0; overflow: auto; }
+  .comment-menu { position: relative; margin-left: auto; }
+  .comment-menu summary { cursor: pointer; font-size: 11px; }
+  .comment-menu > div { position: absolute; z-index: 5; top: 100%; right: 0; display: grid; min-width: 150px; padding: 5px; background: var(--overlay-surface); border: 1px solid var(--border); }
   article { display: grid; gap: 7px; padding: 9px; border-bottom: 1px solid var(--border-color); }
   article.selected { box-shadow: inset 2px 0 var(--accent); }
   article.outdated { background: color-mix(in srgb, var(--diff-removed) 6%, transparent); }
