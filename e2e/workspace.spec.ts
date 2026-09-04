@@ -11,6 +11,7 @@ let page: Page
 let root: string
 let left: string
 let right: string
+let rendererErrors: string[] = []
 const editorEndShortcut = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End'
 const execFileAsync = promisify(execFile)
 
@@ -47,6 +48,7 @@ async function terminateWorkspaceAbruptly() {
 }
 
 test.beforeEach(async () => {
+  rendererErrors = []
   root = await mkdtemp(join(tmpdir(), 'diffly-e2e-'))
   left = join(root, 'left')
   right = join(root, 'right')
@@ -56,13 +58,153 @@ test.beforeEach(async () => {
   await writeFile(join(left, 'app.ts'), 'export const message = "old"\n')
   await writeFile(join(right, 'app.ts'), 'export const message = "new"\n')
   await launchWorkspace()
+  page.on('pageerror', error => rendererErrors.push(error.stack ?? error.message))
 })
 
 test.afterEach(async () => {
   await page?.evaluate(() => window.diffly.workspaceLifecycle.respondToClose(true)).catch(() => undefined)
   await app?.close().catch(() => undefined)
   await rm(root, { recursive: true, force: true })
+  expect(rendererErrors).toEqual([])
 })
+
+test('edits an inactive theme without selecting it and preserves both appearance drafts', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  const selected = page.locator('.t3-theme-circle-button[aria-pressed="true"]')
+  const before = await selected.evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')))
+  const edit = page.getByRole('button', { name: 'Edit Absolutely', exact: true })
+  await edit.click()
+  const panel = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+  await expect(panel).toBeVisible()
+  expect(await selected.evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')))).toEqual(before)
+  await panel.getByRole('button', { name: 'Dark', exact: true }).click()
+  await panel.getByRole('textbox', { name: 'Accent hex value', exact: true }).fill('#123456')
+  await panel.getByRole('button', { name: 'Light', exact: true }).click()
+  await panel.getByRole('textbox', { name: 'Accent hex value', exact: true }).fill('#abcdef')
+  await panel.getByRole('button', { name: 'Dark', exact: true }).click()
+  await expect(panel.getByRole('textbox', { name: 'Accent hex value', exact: true })).toHaveValue('#123456')
+  await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+  expect(await selected.evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')))).toEqual(before)
+  await edit.click()
+  await panel.getByRole('button', { name: 'Dark', exact: true }).click()
+  await expect(panel.getByRole('textbox', { name: 'Accent hex value', exact: true })).toHaveValue('#123456')
+  await panel.getByRole('button', { name: 'Light', exact: true }).click()
+  await expect(panel.getByRole('textbox', { name: 'Accent hex value', exact: true })).toHaveValue('#abcdef')
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+
+test('creates a named theme without changing the current theme and restores it after reload', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Create theme', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: 'Create theme', exact: true })
+  await panel.getByPlaceholder('e.g. Aurora').fill('Audit theme')
+  await panel.getByRole('button', { name: 'Dark', exact: true }).click()
+  await panel.getByRole('textbox', { name: 'Accent hex value', exact: true }).fill('#13579b')
+  await panel.getByRole('button', { name: 'Create theme', exact: true }).click()
+  const useTheme = page.getByRole('button', { name: 'Use Audit theme for dark mode', exact: true })
+  await expect(useTheme).toHaveAttribute('aria-pressed', 'false')
+  await useTheme.click()
+  await expect(useTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => page.evaluate(() => window.diffly.loadSessionState())).toMatchObject({
+    appearance: { customThemes: expect.arrayContaining([expect.objectContaining({ name: 'Audit theme' })]) },
+  })
+  await page.reload()
+  await page.waitForFunction(() => {
+    const harness = (window as unknown as { __difflyE2E?: { getState(): { screen: string; loading: boolean; directoryEntries: number } } }).__difflyE2E
+    const state = harness?.getState()
+    return state?.screen === 'compare' && !state.loading && state.directoryEntries > 0
+  })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit Audit theme', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+  await editor.getByRole('button', { name: 'Dark', exact: true }).click()
+  await expect(editor.getByRole('textbox', { name: 'Accent hex value', exact: true })).toHaveValue('#13579b')
+})
+
+test('compare settings render every section and keep the active comparison intact', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Compare', exact: true }).click()
+  const navigation = page.getByRole('navigation', { name: 'Compare settings sections' })
+  for (const section of ['Layout & context', 'Code rendering', 'Syntax & limits', 'Mouse & selection', 'Tree structure', 'Tree density', 'Tree search']) {
+    await navigation.getByRole('button', { name: section, exact: true }).click()
+    await expect(page.locator('.compare-settings-main .settings-row').first()).toBeVisible()
+    await expect(page.locator('.settings-preview-host')).toBeVisible()
+  }
+  await expect(navigation.getByRole('button', { name: 'Tree mutations' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+})
+
+test('theme inspector highlights app elements and cleans up on escape', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit Absolutely', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+  await panel.getByRole('button', { name: 'Inspect', exact: true }).click()
+  const target = page.locator('.settings-section-link').first()
+  await target.hover()
+  await expect(page.locator('[data-theme-inspector-highlight]')).toBeVisible()
+  await expect(page.locator('[data-theme-inspector-label]')).toHaveText(/Background|Surface|Text|Accent|Border/)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('html')).not.toHaveClass(/theme-inspecting/)
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+
+for (const variant of ['light', 'dark'] as const) {
+  test(`previews, saves, and restores all twelve ${variant} theme colors`, async () => {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+    await page.getByRole('button', { name: `Use ${variant} mode`, exact: true }).click()
+    const originalAccent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent'))
+    await page.getByRole('button', { name: 'Edit Diffly', exact: true }).click()
+    const panel = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+    await panel.getByRole('switch', { name: 'Advanced', exact: true }).check()
+    const fields = [
+      ['Background', '--canvas', '#122334'], ['Surface', '--surface', '#233445'],
+      ['Raised surface', '--surface-alt', '#344556'], ['Overlay', '--surface-strong', '#455667'],
+      ['Text', '--text', '#a1b2c3'], ['Muted text', '--muted', '#b2c3d4'],
+      ['Border', '--border', '#566778'], ['Input', '--input-surface', '#677889'],
+      ['Accent', '--accent', '#789abc'], ['Added changes', '--success', '#89abcd'],
+      ['Removed changes', '--danger', '#9abcde'], ['Syntax accent', '--skill', '#abcdef'],
+    ]
+    for (const [label, variable, color] of fields) {
+      await panel.getByRole('textbox', { name: `${label} hex value`, exact: true }).fill(color)
+      await expect.poll(() => page.evaluate(variable => getComputedStyle(document.documentElement).getPropertyValue(variable).trim().toLowerCase(), variable)).toBe(color)
+    }
+    await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent'))).toBe(originalAccent)
+    await page.getByRole('button', { name: 'Edit Diffly', exact: true }).click()
+    await panel.getByRole('switch', { name: 'Advanced', exact: true }).check()
+    for (const [label, , color] of fields) {
+      await panel.getByRole('textbox', { name: `${label} hex value`, exact: true }).fill(color)
+    }
+    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await page.getByRole('button', { name: 'Edit Diffly', exact: true }).click()
+    await panel.getByRole('switch', { name: 'Advanced', exact: true }).check()
+    for (const [label, variable, color] of fields) {
+      await expect(panel.getByRole('textbox', { name: `${label} hex value`, exact: true })).toHaveValue(new RegExp(`^${color}$`, 'i'))
+      await expect.poll(() => page.evaluate(variable => getComputedStyle(document.documentElement).getPropertyValue(variable).trim().toLowerCase(), variable)).toBe(color)
+    }
+    await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click()
+    await expect.poll(() => page.evaluate(() => {
+      function findKeyword(root: Document | ShadowRoot): string | null {
+        for (const element of root.querySelectorAll('*')) {
+          if (element.shadowRoot) {
+            const found = findKeyword(element.shadowRoot)
+            if (found) return found
+          }
+          if (element.tagName === 'SPAN' && element.textContent?.trim() === 'export') return getComputedStyle(element).color
+        }
+        return null
+      }
+      return findKeyword(document)
+    })).toBe('rgb(171, 205, 239)')
+  })
+}
 
 test('edits, undoes, redoes, and saves through the shared document workspace', async () => {
   await page.getByRole('button', { name: 'Edit', exact: true }).click()

@@ -16,15 +16,14 @@
   } from '../types'
   import type {
     AppearanceSettings,
-    ThemeAdvancedColorKey,
     ThemeDefinition,
-    ThemeSemanticColorKey,
     ThemeVariant,
   } from '../theme'
   import type { SettingsSection } from '../ui-types'
   import UpdateIndicator from './UpdateIndicator.svelte'
 
   export let activeSettingsSection: SettingsSection
+  export let onImportThemes: (themes: ThemeDefinition[]) => void
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: 'light' | 'dark' = 'dark'
   export let lightAppearanceTheme: ThemeDefinition
@@ -50,16 +49,6 @@
   export let onSelectSection: (section: SettingsSection) => void
   export let onSetThemeMode: (mode: AppearanceSettings['mode']) => void
   export let onSetThemePreset: (variant: ThemeVariant, themeId: string) => void
-  export let onSetThemeColor: (
-    variant: ThemeVariant,
-    field: 'accent' | 'surface' | 'ink',
-    value: string,
-  ) => void
-  export let onSetThemeSemanticColor: (
-    variant: ThemeVariant,
-    field: ThemeSemanticColorKey,
-    value: string,
-  ) => void
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
   export let onSetUsePointerCursor: (value: boolean) => void
@@ -72,11 +61,7 @@
     seedName: string,
     editing: boolean,
     availableAppearances: ThemeVariant[],
-  ) => void
-  export let onSetThemeAdvancedColor: (
-    variant: ThemeVariant,
-    field: ThemeAdvancedColorKey,
-    value: string,
+    themeId?: string,
   ) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
   export let onSetCheckForUpdatesOnLaunch: (value: boolean) => void
@@ -154,9 +139,6 @@
     {onSelectSection}
     {onSetThemeMode}
     {onSetThemePreset}
-    {onSetThemeColor}
-    {onSetThemeSemanticColor}
-    {onSetThemeAdvancedColor}
     {onSetThemeFont}
     {onSetThemeContrast}
     {onSetUsePointerCursor}
@@ -165,6 +147,7 @@
     {onSetViewMode}
     {onSetViewerSettings}
     {onOpenThemeEditor}
+    {onImportThemes}
     {onSetTreeSettings}
     {onSetCheckForUpdatesOnLaunch}
     {onSetUpdateChannel}

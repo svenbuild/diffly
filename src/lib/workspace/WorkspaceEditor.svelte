@@ -50,6 +50,7 @@
   let editorSurface: 'file' | 'diff' = 'file'
   let reviewAnnotations: Array<DiffLineAnnotation<DifflyCommentAnnotation>> = []
   let reviewHydrationGeneration = 0
+  let editorReadyFrame: number | null = null
 
   $: canUndo = Boolean(editor?.canUndo) && historyRevision >= 0
   $: canRedo = Boolean(editor?.canRedo) && historyRevision >= 0
@@ -87,8 +88,10 @@
 
   onDestroy(() => {
     if (diagnosticTimer !== null) window.clearTimeout(diagnosticTimer)
+    if (editorReadyFrame !== null) window.cancelAnimationFrame(editorReadyFrame)
     detachEditor?.()
     editor?.cleanUp()
+    editor = null
     fileView?.cleanUp()
     reviewHydrationGeneration += 1
   })
@@ -137,14 +140,33 @@
       fileView.render({ file, containerWrapper: host, lineAnnotations: fileReviewAnnotations() })
     }
     detachEditor = editor.edit(fileView)
-    if (state.selections.length > 0 || state.scrollTop > 0) {
+    restoreWhenEditorReady()
+    renderedCacheKey = renderKey
+    updateStatus()
+  }
+
+  function restoreWhenEditorReady() {
+    if (editorReadyFrame !== null) window.cancelAnimationFrame(editorReadyFrame)
+    const started = performance.now()
+    const restore = () => {
+      editorReadyFrame = null
+      if (!editor || !host?.isConnected) return
+      // FileDiff attaches after its asynchronous highlighter has initialized.
+      if (!editor.getFile()) {
+        if (performance.now() - started < 10000) editorReadyFrame = window.requestAnimationFrame(restore)
+        else loadError = 'The editor could not initialize. Reopen the document to try again.'
+        return
+      }
       editor.setState({
         selections: state.selections,
         view: { scrollLeft: 0, scrollTop: state.scrollTop },
       })
+      handledFocusRevision = state.focusRevision
+      editor.focus({ lineNumber: 'first-visible' })
+      updateDiagnostics(state.contents)
+      updateStatus()
     }
-    renderedCacheKey = renderKey
-    updateStatus()
+    editorReadyFrame = window.requestAnimationFrame(restore)
   }
 
   function handleEditorChange(
@@ -374,7 +396,7 @@
 
   $: state.renderRevision, appearanceSettings, resolvedThemeMode, renderDocument()
   $: reviewSessionId, reviewEntryId, void hydrateReviewAnnotations()
-  $: if (editor && state.focusRevision !== handledFocusRevision) {
+  $: if (editor?.getFile() && state.focusRevision !== handledFocusRevision) {
     handledFocusRevision = state.focusRevision
     editor.setState({ selections: state.selections })
     const selection = state.selections[0]

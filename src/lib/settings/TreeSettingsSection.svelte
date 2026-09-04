@@ -18,13 +18,6 @@
     return Number.isFinite(value) ? value : 0
   }
 
-  function parsePathList(value: string) {
-    return value
-      .split(/\r?\n/)
-      .map((path) => path.trim())
-      .filter(Boolean)
-  }
-
   const sortModeOptions = [
     { value: 'path', label: 'Path order' },
     { value: 'default', label: 'Pierre default' },
@@ -199,19 +192,6 @@
         </span>
       </label>
 
-      <div class="settings-row settings-row-span-full settings-row-block">
-        <div class="settings-row-copy">
-          <strong>{labels.initialExpandedPaths.label}</strong>
-          <p>{labels.initialExpandedPaths.description}</p>
-        </div>
-        <div class="settings-control settings-control-wide">
-          <textarea
-            rows="4"
-            value={treeSettings.initialExpandedPaths.join('\n')}
-            on:input={(event) => updateTreeSettings({ initialExpandedPaths: parsePathList((event.currentTarget as HTMLTextAreaElement).value) })}
-          ></textarea>
-        </div>
-      </div>
     </div>
   </section>
 {/if}
@@ -269,37 +249,7 @@
         </div>
       </div>
 
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{labels.initialVisibleRowCount.label}</strong>
-          <p>{labels.initialVisibleRowCount.description}</p>
-        </div>
-        <div class="settings-control">
-          <input
-            min="1"
-            max="200"
-            type="number"
-            value={treeSettings.initialVisibleRowCount}
-            on:input={(event) => updateTreeSettings({ initialVisibleRowCount: readNumber(event) })}
-          />
-        </div>
-      </div>
 
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{labels.overscan.label}</strong>
-          <p>{labels.overscan.description}</p>
-        </div>
-        <div class="settings-control">
-          <input
-            min="0"
-            max="200"
-            type="number"
-            value={treeSettings.overscan}
-            on:input={(event) => updateTreeSettings({ overscan: readNumber(event) })}
-          />
-        </div>
-      </div>
     </div>
   </section>
 {/if}
@@ -355,79 +305,7 @@
         </div>
       </div>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.searchFakeFocus.label}</strong>
-          <p>{labels.searchFakeFocus.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={treeSettings.searchFakeFocus}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateTreeSettings({ searchFakeFocus: !treeSettings.searchFakeFocus })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
 
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{labels.initialSearchQuery.label}</strong>
-          <p>{labels.initialSearchQuery.description}</p>
-        </div>
-        <div class="settings-control">
-          <input
-            type="text"
-            value={treeSettings.initialSearchQuery}
-            on:input={(event) => updateTreeSettings({ initialSearchQuery: (event.currentTarget as HTMLInputElement).value })}
-          />
-        </div>
-      </div>
-    </div>
-  </section>
-{/if}
-
-{#if activeSection === 'mutations'}
-  <section class="settings-group compare-section-card">
-    <div class="settings-group-grid">
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.dragAndDrop.label}</strong>
-          <p>{labels.dragAndDrop.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={treeSettings.dragAndDrop}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateTreeSettings({ dragAndDrop: !treeSettings.dragAndDrop })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
-
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.renaming.label}</strong>
-          <p>{labels.renaming.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={treeSettings.renaming}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateTreeSettings({ renaming: !treeSettings.renaming })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
     </div>
   </section>
 {/if}

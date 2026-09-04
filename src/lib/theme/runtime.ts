@@ -22,19 +22,19 @@ export function isAppearanceMode(value: string | null | undefined): value is App
   return value === 'light' || value === 'dark' || value === 'system'
 }
 
-export function isThemeId(value: string | null | undefined, variant?: ThemeVariant): value is ThemeId {
+export function isThemeId(value: string | null | undefined, variant?: ThemeVariant, settings?: AppearanceSettings): value is ThemeId {
   if (!value) {
     return false
   }
 
   if (!variant) {
     return (
-      getAvailableThemes('light').some((theme) => theme.id === value) ||
-      getAvailableThemes('dark').some((theme) => theme.id === value)
+      getAvailableThemes('light', settings).some((theme) => theme.id === value) ||
+      getAvailableThemes('dark', settings).some((theme) => theme.id === value)
     )
   }
 
-  return getAvailableThemes(variant).some((theme) => theme.id === value)
+  return getAvailableThemes(variant, settings).some((theme) => theme.id === value)
 }
 
 export function resolveThemeForVariant(
@@ -44,7 +44,7 @@ export function resolveThemeForVariant(
   const presetId = variant === 'dark' ? settings.darkThemeId : settings.lightThemeId
   const overrides = variant === 'dark' ? settings.darkOverrides : settings.lightOverrides
 
-  return applyOverrides(getThemePreset(presetId, variant), overrides)
+  return applyOverrides(getThemePreset(presetId, variant, settings), overrides)
 }
 
 export function normalizeAppearanceSettings(
@@ -53,13 +53,23 @@ export function normalizeAppearanceSettings(
   legacyCodeFontSize?: number | null
 ): AppearanceSettings {
   const defaults = getDefaultAppearanceSettings()
+  const customThemes = normalizeCustomThemes(input?.customThemes)
+  const normalizedLibrary = { ...defaults, customThemes }
+  const validKeys = new Set(
+    [...getAvailableThemes('light', normalizedLibrary), ...getAvailableThemes('dark', normalizedLibrary)]
+      .map(theme => `${theme.id}:${theme.variant}`),
+  )
 
   return {
+    customThemes,
     mode: isAppearanceMode(input?.mode) ? input.mode : isAppearanceMode(legacyMode) ? legacyMode : defaults.mode,
-    lightThemeId: isThemeId(input?.lightThemeId, 'light') ? input.lightThemeId : defaults.lightThemeId,
-    darkThemeId: isThemeId(input?.darkThemeId, 'dark') ? input.darkThemeId : defaults.darkThemeId,
+    lightThemeId: isThemeId(input?.lightThemeId, 'light', normalizedLibrary) ? input.lightThemeId : defaults.lightThemeId,
+    darkThemeId: isThemeId(input?.darkThemeId, 'dark', normalizedLibrary) ? input.darkThemeId : defaults.darkThemeId,
     lightOverrides: normalizeThemeOverrides(input?.lightOverrides),
     darkOverrides: normalizeThemeOverrides(input?.darkOverrides),
+    presetOverrides: Object.fromEntries(
+      Object.entries(input?.presetOverrides ?? {}).filter(([key]) => validKeys.has(key)).map(([key, overrides]) => [key, normalizeThemeOverrides(overrides)]),
+    ),
     usePointerCursor:
       typeof input?.usePointerCursor === 'boolean'
         ? input.usePointerCursor
@@ -120,7 +130,7 @@ export function createThemeCssVariables(
     isDark ? '#000000' : '#ffffff',
     isDark ? scaleByContrast(contrastScale, 0.12, 0.32) : scaleByContrast(contrastScale, 0.015, 0.075)
   )
-  const canvasAlt = mixHex(
+  const canvasAlt = theme.advancedColors?.background ?? mixHex(
     theme.surface,
     isDark ? '#000000' : '#ffffff',
     isDark ? scaleByContrast(contrastScale, 0.06, 0.22) : scaleByContrast(contrastScale, 0.008, 0.05)
@@ -236,20 +246,14 @@ export function createThemeCssVariables(
     theme.ink,
     isDark ? scaleByContrast(contrastScale, 0.32, 0.56) : scaleByContrast(contrastScale, 0.22, 0.44)
   )
-  const textContrastTarget = scaleByContrast(contrastScale, 4.5, 6.4)
   const mutedContrastTarget = scaleByContrast(contrastScale, 4.45, 5.4)
   const secondaryContrastTarget = scaleByContrast(contrastScale, 4.6, 5.9)
   const syntaxContrastTarget = scaleByContrast(contrastScale, 3.45, 4.55)
   const syntaxMutedContrastTarget = scaleByContrast(contrastScale, 3.7, 4.7)
   const syntaxTextSeparationTarget = scaleByContrast(contrastScale, isDark ? 1.26 : 1.2, isDark ? 1.42 : 1.3)
-  const readableText = ensureReadableForeground(
-    theme.ink,
-    [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
-    isDark ? '#FFFFFF' : '#111111',
-    textContrastTarget
-  )
+  const readableText = theme.ink
   const baseMutedText = theme.advancedColors?.mutedText ?? tokens.mutedText
-  const mutedText = ensureReadableForeground(
+  const mutedText = theme.advancedColors?.mutedText ?? ensureReadableForeground(
     baseMutedText,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     readableText,
@@ -373,6 +377,9 @@ export function createThemeCssVariables(
 
   return {
     '--ui-font': tokens.uiFont,
+    '--font-ui': tokens.uiFont,
+    '--font-code': tokens.codeFont,
+    '--font-mono': tokens.codeFont,
     '--code': tokens.codeFont,
     '--ui-font-size': `${tokens.uiFontSize}px`,
     '--code-font-size': `${tokens.codeFontSize}px`,
@@ -387,18 +394,23 @@ export function createThemeCssVariables(
     '--surface': theme.surface,
     '--surface-alt': surfaceAlt,
     '--surface-strong': surfaceStrong,
+    '--panel-surface': surfaceStrong,
     '--input-surface': theme.advancedColors?.input ?? theme.surface,
     '--border': border,
+    '--border-color': border,
+    '--border-subtle': theme.advancedColors?.border ?? rgbaFromHex(theme.ink, isDark ? 0.06 : 0.08),
     '--border-strong': borderStrong,
     '--toolbar-divider': border,
     '--text': readableText,
     '--muted': mutedText,
+    '--muted-text': mutedText,
     '--accent': theme.accent,
     '--accent-strong': accentStrong,
     '--accent-soft': accentSoft,
     '--active-surface': activeSurface,
     '--active-border': activeBorder,
     '--accent-alt': accentAlt,
+    '--skill': theme.semanticColors.skill,
     '--accent-alt-soft': accentAltSoft,
     '--accent-olive': accentOlive,
     '--success': theme.semanticColors.diffAdded,
@@ -499,18 +511,27 @@ export function setVariantThemeId(
   variant: ThemeVariant,
   themeId: ThemeId
 ): AppearanceSettings {
+  const currentId = variant === 'dark' ? settings.darkThemeId : settings.lightThemeId
+  if (currentId === themeId) return settings
+  const presetOverrides = {
+    ...settings.presetOverrides,
+    [`${currentId}:${variant}`]: variant === 'dark' ? settings.darkOverrides : settings.lightOverrides,
+  }
+  const overrides = presetOverrides[`${themeId}:${variant}`] ?? {}
   if (variant === 'dark') {
     return {
       ...settings,
       darkThemeId: themeId,
-      darkOverrides: {},
+      darkOverrides: overrides,
+      presetOverrides,
     }
   }
 
   return {
     ...settings,
     lightThemeId: themeId,
-    lightOverrides: {},
+    lightOverrides: overrides,
+    presetOverrides,
   }
 }
 
@@ -521,7 +542,8 @@ export function setVariantOverride(
 ): AppearanceSettings {
   const base = getThemePreset(
     variant === 'dark' ? settings.darkThemeId : settings.lightThemeId,
-    variant
+    variant,
+    settings,
   )
   const current = variant === 'dark' ? settings.darkOverrides : settings.lightOverrides
   const next = sanitizeOverrideEntries(updater({ ...current }, base))
@@ -882,4 +904,27 @@ function clamp(value: number, min: number, max: number): number {
 
 function scaleByContrast(contrastScale: number, low: number, high: number): number {
   return low + (high - low) * clamp(contrastScale, 0, 1)
+}
+
+function normalizeCustomThemes(input: ThemeDefinition[] | undefined): ThemeDefinition[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  return input.slice(0, 200).flatMap(theme => {
+    if (!theme || typeof theme.id !== 'string' || !/^custom-[a-z0-9-]+$/i.test(theme.id)
+      || (theme.variant !== 'light' && theme.variant !== 'dark') || typeof theme.name !== 'string' || !theme.name.trim()) return []
+    const key = `${theme.id}:${theme.variant}`
+    if (seen.has(key)) return []
+    seen.add(key)
+    const base = getThemePreset('codex', theme.variant)
+    const normalized = applyOverrides(base, normalizeThemeOverrides({
+      accent: theme.accent, surface: theme.surface, ink: theme.ink,
+      contrast: theme.contrast, opaqueWindows: theme.opaqueWindows,
+      uiFont: theme.fonts?.ui, codeFont: theme.fonts?.code,
+      diffAdded: theme.semanticColors?.diffAdded, diffRemoved: theme.semanticColors?.diffRemoved,
+      skill: theme.semanticColors?.skill, ...theme.advancedColors,
+    }))
+    return [{ ...normalized, id: theme.id, name: theme.name.trim().slice(0, 48),
+      codeThemeId: getAvailableThemes(theme.variant).some(preset => preset.codeThemeId === theme.codeThemeId)
+        ? theme.codeThemeId : base.codeThemeId }]
+  })
 }

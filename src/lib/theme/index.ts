@@ -22,6 +22,7 @@ export interface ThemeAdvancedColors {
 export type ThemeAdvancedColorKey = keyof ThemeAdvancedColors
 
 export type ThemeId =
+  | `custom-${string}`
   | 'absolutely'
   | 'ayu'
   | 'catppuccin'
@@ -50,6 +51,7 @@ export type ThemeId =
   | 'vscode-plus'
 
 export interface ThemeDefinition {
+  name?: string
   id: ThemeId
   variant: ThemeVariant
   codeThemeId: string
@@ -86,6 +88,8 @@ export interface ThemeOverrides {
 }
 
 export interface AppearanceSettings {
+  customThemes?: ThemeDefinition[]
+  presetOverrides?: Record<string, ThemeOverrides>
   mode: AppearanceMode
   lightThemeId: ThemeId
   darkThemeId: ThemeId
@@ -874,16 +878,17 @@ function getThemeKey(id: ThemeId, variant: ThemeVariant): string {
   return `${id}:${variant}`
 }
 
-export function getThemePreset(id: ThemeId, variant: ThemeVariant): ThemeDefinition {
-  const theme = THEME_BY_ID_AND_VARIANT.get(getThemeKey(id, variant))
+export function getThemePreset(id: ThemeId, variant: ThemeVariant, settings?: AppearanceSettings): ThemeDefinition {
+  const theme = settings?.customThemes?.find(theme => theme.id === id && theme.variant === variant)
+    ?? THEME_BY_ID_AND_VARIANT.get(getThemeKey(id, variant))
   if (!theme) {
     throw new Error(`Unknown theme preset: ${id} (${variant})`)
   }
   return theme
 }
 
-export function getAvailableThemes(variant: ThemeVariant): ThemeDefinition[] {
-  return THEME_REGISTRY.filter((theme) => theme.variant === variant)
+export function getAvailableThemes(variant: ThemeVariant, settings?: AppearanceSettings): ThemeDefinition[] {
+  return [...THEME_REGISTRY, ...(settings?.customThemes ?? [])].filter((theme) => theme.variant === variant)
 }
 
 export function resolveVariant(mode: AppearanceMode, systemPrefersDark: boolean): ThemeVariant {
@@ -928,7 +933,7 @@ export function resolveTheme(
 ): ThemeDefinition {
   const variant = resolveVariant(settings.mode, systemPrefersDark)
   const presetId = variant === 'dark' ? settings.darkThemeId : settings.lightThemeId
-  const base = getThemePreset(presetId, variant)
+  const base = getThemePreset(presetId, variant, settings)
   const overrides = variant === 'dark' ? settings.darkOverrides : settings.lightOverrides
 
   return applyOverrides(base, overrides)
@@ -976,10 +981,10 @@ export function createThemeTokens(
     opaqueWindows: theme.opaqueWindows,
     contrast: theme.contrast,
     panelSurface: mixHex(theme.surface, theme.ink, 1 - panelAlpha),
-    elevatedSurface: mixHex(theme.surface, theme.ink, 1 - elevatedAlpha),
-    borderColor: mixHex(theme.surface, theme.ink, borderAlpha),
-    mutedText: mixHex(theme.ink, theme.surface, mutedMix),
-    hoverSurface: mixHex(theme.surface, theme.ink, hoverAlpha),
+    elevatedSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, theme.ink, 1 - elevatedAlpha),
+    borderColor: theme.advancedColors?.border ?? mixHex(theme.surface, theme.ink, borderAlpha),
+    mutedText: theme.advancedColors?.mutedText ?? mixHex(theme.ink, theme.surface, mutedMix),
+    hoverSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, theme.ink, hoverAlpha),
   }
 }
 

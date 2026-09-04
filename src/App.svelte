@@ -144,13 +144,15 @@
     getAvailableThemes,
     getDefaultAppearanceSettings,
     type AppearanceSettings,
-    type ThemeAdvancedColorKey,
     type ThemeDefinition,
-    type ThemeSemanticColorKey,
     type ThemeVariant,
   } from './lib/theme'
   import {
     normalizeAppearanceSettings,
+    isThemeId,
+    resolveThemeForVariant,
+    setVariantThemeId,
+    setVariantOverride,
     MAX_CODE_FONT_SIZE,
     MAX_UI_FONT_SIZE,
     MIN_CODE_FONT_SIZE,
@@ -231,9 +233,12 @@
       : true
   let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
   let themeEditorOpen = false
+  let themeEditorPreview: AppearanceSettings | null = null
+  $: effectiveAppearanceSettings = themeEditorPreview ?? appearanceSettings
   let themeEditorRevision = 0
   let themeEditorAppearance: ThemeVariant = resolvedThemeMode
   let themeEditorSeedName = ''
+  let themeEditorTargetId: string | undefined
   let themeEditorEditing = false
   let themeEditorAvailableAppearances: ThemeVariant[] = ['light', 'dark']
   let viewerSettings: CompareViewerSettings = createDefaultViewerSettings()
@@ -376,8 +381,8 @@
   }
   let startupUpdateCheckStarted = false
 
-  const availableLightThemes = getAvailableThemes('light')
-  const availableDarkThemes = getAvailableThemes('dark')
+  $: availableLightThemes = getAvailableThemes('light', appearanceSettings)
+  $: availableDarkThemes = getAvailableThemes('dark', appearanceSettings)
   let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
   let darkAppearanceTheme: ThemeDefinition = getAvailableThemes('dark')[0]
 
@@ -853,22 +858,6 @@
     )
   }
 
-  function setThemeColorOverride(
-    variant: ThemeVariant,
-    field: 'accent' | 'surface' | 'ink',
-    value: string
-  ) {
-    appearanceSettings = applyThemeColorOverride(appearanceSettings, variant, field, value)
-  }
-
-  function setThemeSemanticColorOverride(
-    variant: ThemeVariant,
-    field: ThemeSemanticColorKey,
-    value: string
-  ) {
-    appearanceSettings = applyThemeSemanticColorOverride(appearanceSettings, variant, field, value)
-  }
-
   function setThemeFontOverride(
     variant: ThemeVariant,
     field: 'ui' | 'code',
@@ -881,20 +870,15 @@
     appearanceSettings = applyThemeContrast(appearanceSettings, variant, value)
   }
 
-  function setThemeAdvancedColorOverride(
-    variant: ThemeVariant,
-    field: ThemeAdvancedColorKey,
-    value: string,
-  ) {
-    appearanceSettings = applyThemeAdvancedColorOverride(appearanceSettings, variant, field, value)
-  }
-
   async function openThemeEditor(
     appearance: ThemeVariant,
     seedName: string,
     editing: boolean,
     availableAppearances: ThemeVariant[],
+    themeId?: string,
   ) {
+    themeEditorTargetId = themeId
+    themeEditorPreview = null
     themeEditorAppearance = appearance
     themeEditorSeedName = seedName
     themeEditorEditing = editing
@@ -911,6 +895,23 @@
       await themeEditorPanelPromise
     }
     themeEditorOpen = true
+  }
+
+  function editorTheme(variant: ThemeVariant, appearanceSettings: AppearanceSettings, themeEditorTargetId: string | undefined) {
+    const settings = isThemeId(themeEditorTargetId, variant, appearanceSettings)
+      ? setVariantThemeId(appearanceSettings, variant, themeEditorTargetId)
+      : appearanceSettings
+    return resolveThemeForVariant(settings, variant)
+  }
+
+  function updateEditorTheme(
+    variant: ThemeVariant,
+    update: (settings: AppearanceSettings) => AppearanceSettings,
+  ) {
+    const selectedId = variant === 'light' ? appearanceSettings.lightThemeId : appearanceSettings.darkThemeId
+    const target = isThemeId(themeEditorTargetId, variant, appearanceSettings) ? themeEditorTargetId : selectedId
+    const updated = update(setVariantThemeId(appearanceSettings, variant, target))
+    appearanceSettings = setVariantThemeId(updated, variant, selectedId)
   }
 
   function updateIndicatorTitle() {
@@ -2976,7 +2977,7 @@
   $: canGoToPreviousDiff = false
   $: canGoToNextDiff = false
   $: {
-    const appearanceState = resolveAppearanceState(appearanceSettings, systemPrefersDark)
+    const appearanceState = resolveAppearanceState(effectiveAppearanceSettings, systemPrefersDark)
     resolvedThemeMode = appearanceState.resolvedThemeMode
     lightAppearanceTheme = appearanceState.lightAppearanceTheme
     darkAppearanceTheme = appearanceState.darkAppearanceTheme
@@ -2997,7 +2998,7 @@
 
   $: if (typeof document !== 'undefined') {
     const root = document.documentElement
-    applyAppearanceToRoot(root, appearanceSettings, systemPrefersDark, resolvedThemeMode)
+    applyAppearanceToRoot(root, effectiveAppearanceSettings, systemPrefersDark, resolvedThemeMode)
   }
 
   $: if (persistenceReady) {
@@ -3142,7 +3143,7 @@
     {directoryEntries}
     {directoryEntriesRevision}
     {treeSettings}
-    {appearanceSettings}
+    appearanceSettings={effectiveAppearanceSettings}
     {resolvedThemeMode}
     {selectEntry}
     {resetCompareSidebarWidth}
@@ -3199,9 +3200,6 @@
       onSelectSection={(section) => (activeSettingsSection = section)}
       onSetThemeMode={setThemeMode}
       onSetThemePreset={setThemePreset}
-      onSetThemeColor={setThemeColorOverride}
-      onSetThemeSemanticColor={setThemeSemanticColorOverride}
-      onSetThemeAdvancedColor={setThemeAdvancedColorOverride}
       onSetThemeFont={setThemeFontOverride}
       onSetThemeContrast={setThemeContrast}
       onSetUsePointerCursor={setUsePointerCursor}
@@ -3213,6 +3211,9 @@
         viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
       }}
       onOpenThemeEditor={openThemeEditor}
+      onImportThemes={(themes) => {
+        appearanceSettings = { ...appearanceSettings, customThemes: [...(appearanceSettings.customThemes ?? []), ...themes] }
+      }}
       onSetTreeSettings={(settings) => {
         treeSettings = settings
         // showUnmodified changes what the backend scan returns, so flag the
@@ -3241,12 +3242,36 @@
     editing={themeEditorEditing}
     availableAppearances={themeEditorAvailableAppearances}
     {appearanceSettings}
-    lightTheme={lightAppearanceTheme}
-    darkTheme={darkAppearanceTheme}
-    onSetThemeColor={setThemeColorOverride}
-    onSetThemeAdvancedColor={setThemeAdvancedColorOverride}
-    onSetThemeSemanticColor={setThemeSemanticColorOverride}
-    onClose={() => (themeEditorOpen = false)}
+    lightTheme={editorTheme('light', appearanceSettings, themeEditorTargetId)}
+    darkTheme={editorTheme('dark', appearanceSettings, themeEditorTargetId)}
+    onSetThemeColor={(variant, field, value) => updateEditorTheme(variant, settings => applyThemeColorOverride(settings, variant, field, value))}
+    onSetThemeAdvancedColor={(variant, field, value) => updateEditorTheme(variant, settings => applyThemeAdvancedColorOverride(settings, variant, field, value))}
+    onSetThemeSemanticColor={(variant, field, value) => updateEditorTheme(variant, settings => applyThemeSemanticColorOverride(settings, variant, field, value))}
+    onCreateTheme={(name) => {
+      const id = `custom-${crypto.randomUUID()}` as const
+      const themes = (['light', 'dark'] as ThemeVariant[]).map(variant => ({
+        ...resolveThemeForVariant(appearanceSettings, variant), id, name,
+      }))
+      appearanceSettings = { ...appearanceSettings, customThemes: [...(appearanceSettings.customThemes ?? []), ...themes] }
+      themeEditorTargetId = id
+    }}
+    onPreviewTheme={(variant, overrides) => {
+      if (!overrides) {
+        themeEditorPreview = null
+        return
+      }
+      const targetSettings = isThemeId(themeEditorTargetId, variant, appearanceSettings)
+        ? setVariantThemeId(appearanceSettings, variant, themeEditorTargetId)
+        : appearanceSettings
+      themeEditorPreview = {
+        ...setVariantOverride(targetSettings, variant, current => ({ ...current, ...overrides })),
+        mode: variant,
+      }
+    }}
+    onClose={() => {
+      themeEditorOpen = false
+      themeEditorPreview = null
+    }}
   />
 {/if}
 

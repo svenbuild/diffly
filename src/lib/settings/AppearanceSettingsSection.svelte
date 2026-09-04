@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { parseThemeImport } from './theme-import'
   import ThemeLibraryCard from './ThemeLibraryCard.svelte'
   import ThemeWireframe from './ThemeWireframe.svelte'
+  import { applyOverrides } from '../theme'
   import type {
     AppearanceSettings,
-    ThemeAdvancedColorKey,
     ThemeDefinition,
     ThemeId,
-    ThemeSemanticColorKey,
     ThemeVariant,
   } from '../theme'
   import type { CompareViewerSettings } from '../types'
@@ -17,6 +17,7 @@
     dark?: ThemeDefinition
   }
 
+  export let onImportThemes: (themes: ThemeDefinition[]) => void
   export let appearanceSettings: AppearanceSettings
   export let resolvedThemeMode: ThemeVariant
   export let lightTheme: ThemeDefinition
@@ -30,16 +31,6 @@
   export let maxCodeFontSize: number
   export let onSetThemeMode: (theme: AppearanceSettings['mode']) => void
   export let onSetThemePreset: (variant: ThemeVariant, themeId: string) => void
-  export let onSetThemeColor: (
-    variant: ThemeVariant,
-    field: 'accent' | 'surface' | 'ink',
-    value: string,
-  ) => void
-  export let onSetThemeSemanticColor: (
-    variant: ThemeVariant,
-    field: ThemeSemanticColorKey,
-    value: string,
-  ) => void
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
   export let onSetUsePointerCursor: (value: boolean) => void
@@ -51,25 +42,25 @@
     seedName: string,
     editing: boolean,
     availableAppearances: ThemeVariant[],
-  ) => void
-  export let onSetThemeAdvancedColor: (
-    variant: ThemeVariant,
-    field: ThemeAdvancedColorKey,
-    value: string,
+    themeId?: string,
   ) => void
 
   let themeFileInput: HTMLInputElement
   let importMessage = ''
   let themePairs: ThemePair[] = []
 
-  $: themePairs = buildThemePairs(availableLightThemes, availableDarkThemes)
+  $: themePairs = buildThemePairs(availableLightThemes, availableDarkThemes, appearanceSettings)
   $: activeInterfaceTheme = resolvedThemeMode === 'light' ? lightTheme : darkTheme
 
-  function buildThemePairs(light: ThemeDefinition[], dark: ThemeDefinition[]): ThemePair[] {
+  function buildThemePairs(light: ThemeDefinition[], dark: ThemeDefinition[], settings: AppearanceSettings): ThemePair[] {
     const pairs = new Map<ThemeId, ThemePair>()
     for (const theme of [...light, ...dark]) {
       const pair = pairs.get(theme.id) ?? { id: theme.id }
-      pair[theme.variant] = theme
+      const selectedId = theme.variant === 'light' ? settings.lightThemeId : settings.darkThemeId
+      const overrides = theme.id === selectedId
+        ? theme.variant === 'light' ? settings.lightOverrides : settings.darkOverrides
+        : settings.presetOverrides?.[`${theme.id}:${theme.variant}`] ?? {}
+      pair[theme.variant] = applyOverrides(theme, overrides)
       pairs.set(theme.id, pair)
     }
     return [...pairs.values()].sort((left, right) => {
@@ -80,6 +71,8 @@
   }
 
   function formatThemeLabel(value: string) {
+    const customName = appearanceSettings.customThemes?.find(theme => theme.id === value)?.name
+    if (customName) return customName
     if (value === 'codex') return 'Diffly'
     if (value === 'legacy-tuerkis') return 'Original türkis'
     if (value === 'vscode-plus') return 'VS Code Plus'
@@ -95,7 +88,6 @@
   }
 
   function openThemeEditor(pair?: ThemePair) {
-    if (pair) useThemePair(pair)
     const initialAppearance = pair?.[resolvedThemeMode]
       ? resolvedThemeMode
       : pair?.dark
@@ -110,6 +102,7 @@
       pair
         ? (['light', 'dark'] as ThemeVariant[]).filter((variant) => Boolean(pair[variant]))
         : ['light', 'dark'],
+      pair?.id,
     )
   }
 
@@ -128,7 +121,7 @@
   }
 
   function cssColorToHex(value: unknown) {
-    if (typeof value !== 'string') return null
+    if (typeof value !== 'string' || !CSS.supports('color', value) || /var\(|currentcolor|inherit|transparent/i.test(value)) return null
     const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
     if (!context) return null
     context.canvas.width = 1
@@ -147,109 +140,15 @@
       .join('')}`
   }
 
-  function applyT3ThemeColors(variant: ThemeVariant, colors: Record<string, unknown>) {
-    const mappings: Array<{
-      field: 'accent' | 'surface' | 'ink'
-      candidates: string[]
-    }> = [
-      { field: 'accent', candidates: ['accent', 'messageAction', 'focus'] },
-      { field: 'surface', candidates: ['canvas', 'surface', 'codeBackground'] },
-      { field: 'ink', candidates: ['text', 'codeForeground', 'sidebarForeground'] },
-    ]
-    for (const mapping of mappings) {
-      const color = mapping.candidates.map((key) => cssColorToHex(colors[key])).find(Boolean)
-      if (color) onSetThemeColor(variant, mapping.field, color)
-    }
-    const removed = cssColorToHex(colors.error)
-    const syntax = cssColorToHex(colors.messageAction) ?? cssColorToHex(colors.accent)
-    if (removed) onSetThemeSemanticColor(variant, 'diffRemoved', removed)
-    if (syntax) onSetThemeSemanticColor(variant, 'skill', syntax)
-    const advancedMappings: Array<[ThemeAdvancedColorKey, string[]]> = [
-      ['background', ['canvas']],
-      ['raisedSurface', ['surfaceRaised']],
-      ['overlay', ['surfaceOverlay']],
-      ['mutedText', ['textMuted', 'mutedForeground']],
-      ['border', ['border']],
-      ['input', ['input']],
-    ]
-    for (const [field, candidates] of advancedMappings) {
-      const color = candidates.map((key) => cssColorToHex(colors[key])).find(Boolean)
-      if (color) onSetThemeAdvancedColor(variant, field, color)
-    }
-  }
-
-  function applyImportedTheme(raw: string) {
-    const payload = raw.startsWith('codex-theme-v1:') ? raw.slice('codex-theme-v1:'.length) : raw
-    const parsed = JSON.parse(payload) as {
-      version?: number
-      name?: unknown
-      appearance?: ThemeVariant
-      colors?: Record<string, unknown>
-      variants?: Partial<Record<ThemeVariant, Record<string, unknown>>>
-      variant?: ThemeVariant
-      theme?: Partial<ThemeDefinition> & {
-        semanticColors?: Partial<ThemeDefinition['semanticColors']>
-      }
-    }
-
-    if (
-      parsed.version === 1 &&
-      (parsed.appearance === 'light' || parsed.appearance === 'dark') &&
-      parsed.colors
-    ) {
-      applyT3ThemeColors(parsed.appearance, parsed.colors)
-      const importedVariants: ThemeVariant[] = [parsed.appearance]
-      for (const variant of ['light', 'dark'] as const) {
-        const colors = parsed.variants?.[variant]
-        if (colors && variant !== parsed.appearance) {
-          applyT3ThemeColors(variant, colors)
-          importedVariants.push(variant)
-        }
-      }
-      onOpenThemeEditor(
-        importedVariants[0] ?? resolvedThemeMode,
-        typeof parsed.name === 'string' ? parsed.name : 'Imported theme',
-        false,
-        importedVariants,
-      )
-      return
-    }
-
-    const variant = parsed.variant
-    const theme = parsed.theme
-    if ((variant !== 'light' && variant !== 'dark') || !theme) {
-      throw new Error('This file does not contain a Diffly light or dark theme.')
-    }
-    if (theme.accent) onSetThemeColor(variant, 'accent', theme.accent)
-    if (theme.surface) onSetThemeColor(variant, 'surface', theme.surface)
-    if (theme.ink) onSetThemeColor(variant, 'ink', theme.ink)
-    if (theme.semanticColors?.diffAdded) {
-      onSetThemeSemanticColor(variant, 'diffAdded', theme.semanticColors.diffAdded)
-    }
-    if (theme.semanticColors?.diffRemoved) {
-      onSetThemeSemanticColor(variant, 'diffRemoved', theme.semanticColors.diffRemoved)
-    }
-    if (theme.semanticColors?.skill) {
-      onSetThemeSemanticColor(variant, 'skill', theme.semanticColors.skill)
-    }
-    if (theme.fonts?.ui !== undefined) onSetThemeFont(variant, 'ui', theme.fonts.ui ?? '')
-    if (theme.fonts?.code !== undefined) onSetThemeFont(variant, 'code', theme.fonts.code ?? '')
-    if (typeof theme.contrast === 'number') onSetThemeContrast(variant, theme.contrast)
-    for (const [field, color] of Object.entries(theme.advancedColors ?? {})) {
-      if (typeof color === 'string') {
-        onSetThemeAdvancedColor(variant, field as ThemeAdvancedColorKey, color)
-      }
-    }
-    onOpenThemeEditor(variant, 'Imported theme', false, [variant])
-  }
-
   async function importTheme(event: Event) {
     const input = event.currentTarget as HTMLInputElement
     const file = input.files?.[0]
     input.value = ''
     if (!file) return
     try {
-      applyImportedTheme(await file.text())
+      if (file.size > 256 * 1024) throw new Error('Theme files must be smaller than 256 KB.')
+      const themes = parseThemeImport(await file.text(), `custom-${crypto.randomUUID()}`, cssColorToHex)
+      onImportThemes(themes)
       importMessage = `${file.name} imported`
     } catch (error) {
       importMessage = error instanceof Error ? error.message : 'Theme import failed.'
@@ -300,12 +199,12 @@
       <h3 class="t3-settings-section-label">Themes</h3>
       <div class="t3-theme-library-actions">
         <button class="secondary t3-small-button" type="button" on:click={() => openThemeEditor()}>
-          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 2.2a5.8 5.8 0 1 0 0 11.6h.9a1.3 1.3 0 0 0 0-2.6H8a1 1 0 0 1 0-2h1.3a4.7 4.7 0 0 0 0-9.4H8Z"></path><circle cx="5" cy="5.5" r=".65"></circle><circle cx="4.3" cy="8.2" r=".65"></circle><circle cx="7" cy="3.9" r=".65"></circle></svg>
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>
           Create theme
         </button>
         <button class="secondary t3-small-button" type="button" on:click={() => themeFileInput.click()}>
-          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>
-          Add theme
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3"></path></svg>
+          Import theme
         </button>
         <input bind:this={themeFileInput} accept=".json,application/json,text/plain" class="t3-theme-file-input" type="file" on:change={importTheme} />
       </div>

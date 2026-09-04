@@ -1158,7 +1158,9 @@
         continue
       }
 
-      if (!shouldBatchCodeViewUpdate && !codeView.updateItem(item)) {
+      if (!shouldBatchCodeViewUpdate && (
+        codeView.getItem(item.id)?.type !== item.type || !codeView.updateItem(item)
+      )) {
         return false
       }
 
@@ -1182,10 +1184,23 @@
     publishSystemMonitorStats()
 
     if (shouldBatchCodeViewUpdate) {
-      codeView.setItems(nextRenderedItems)
+      replaceCodeViewItems(nextRenderedItems)
     }
 
     return true
+  }
+
+  function replaceCodeViewItems(items: Array<CodeViewItem<DifflyCommentAnnotation>>) {
+    const view = codeView
+    if (!view) return
+    // Pierre's update/append paths require an existing id to keep its item type.
+    // Loading placeholders and completed diffs intentionally use the same path.
+    const compatibleItems = items.filter(item => {
+      const previous = view.getItem(item.id)
+      return !previous || previous.type === item.type
+    })
+    if (compatibleItems.length !== items.length) view.setItems(compatibleItems)
+    view.setItems(items)
   }
 
   function scheduleVisibleEntryRequest(delayMs = DIRECTORY_CODE_VIEW_VISIBLE_LOAD_IDLE_MS) {
@@ -1440,7 +1455,7 @@
     if (shouldSetItems) {
       hasRenderedItems = true
       lastRequestedVisibleKey = ''
-      codeView.setItems(items)
+      replaceCodeViewItems(items)
     }
 
     if (viewerSettings.controlledSelection) {

@@ -316,23 +316,6 @@
         </div>
       </div>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.useCSSClasses.label}</strong>
-          <p>{labels.useCSSClasses.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.useCSSClasses}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ useCSSClasses: !viewerSettings.useCSSClasses })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
 
       <div class="settings-row">
         <div class="settings-row-copy">
@@ -403,23 +386,6 @@
         </div>
       </div>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.enableTokenInteractionsOnWhitespace.label}</strong>
-          <p>{labels.enableTokenInteractionsOnWhitespace.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.enableTokenInteractionsOnWhitespace}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ enableTokenInteractionsOnWhitespace: !viewerSettings.enableTokenInteractionsOnWhitespace })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
 
       <label class="settings-row settings-row-interactive">
         <div class="settings-row-copy">
@@ -475,41 +441,7 @@
         </span>
       </label>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.controlledSelection.label}</strong>
-          <p>{labels.controlledSelection.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.controlledSelection}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ controlledSelection: !viewerSettings.controlledSelection })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
 
-      <label class="settings-row settings-row-interactive">
-        <div class="settings-row-copy">
-          <strong>{labels.disableVirtualizationBuffers.label}</strong>
-          <p>{labels.disableVirtualizationBuffers.description}</p>
-        </div>
-        <span class="settings-control">
-          <span class="settings-switch">
-            <input
-              checked={viewerSettings.disableVirtualizationBuffers}
-              role="switch"
-              type="checkbox"
-              on:change={() => updateViewerSettings({ disableVirtualizationBuffers: !viewerSettings.disableVirtualizationBuffers })}
-            />
-            <span aria-hidden="true" class="settings-switch-ui"></span>
-          </span>
-        </span>
-      </label>
     </div>
   </section>
 {/if}

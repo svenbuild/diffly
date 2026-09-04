@@ -14,9 +14,9 @@ export type InspectableThemeRole =
 
 const VARIABLE_ROLES: ReadonlyArray<readonly [InspectableThemeRole, readonly string[]]> = [
   ['background', ['--canvas', '--canvas-alt', '--app-bg', '--editor-bg']],
-  ['surface', ['--surface', '--panel-bg', '--sidebar-panel-bg', '--pane-bg']],
-  ['raised', ['--surface-alt', '--panel-bg-raised', '--card-bg', '--list-bg']],
-  ['overlay', ['--surface-strong', '--elevated-surface', '--list-header-bg']],
+  ['surface', ['--surface', '--panel-bg', '--sidebar-panel-bg', '--pane-bg', '--list-bg', '--app-bar-bg']],
+  ['raised', ['--surface-alt', '--panel-bg-raised', '--card-bg']],
+  ['overlay', ['--surface-strong', '--list-header-bg']],
   ['text', ['--text', '--title', '--strong-text', '--panel-title', '--active-text']],
   ['muted', ['--muted', '--subtitle', '--secondary-text', '--panel-meta']],
   ['border', ['--border', '--border-subtle', '--border-strong', '--toolbar-divider']],
@@ -24,7 +24,7 @@ const VARIABLE_ROLES: ReadonlyArray<readonly [InspectableThemeRole, readonly str
   ['accent', ['--accent', '--accent-strong', '--active-border', '--status-modified-text']],
   ['added', ['--success', '--success-bg', '--diff-added', '--insert-highlight-bg']],
   ['removed', ['--danger', '--danger-bg', '--diff-removed', '--delete-highlight-bg']],
-  ['syntax', ['--skill', '--accent-alt', '--accent-olive']],
+  ['syntax', ['--skill', '--accent-alt', '--syntax-keyword', '--diffs-token-keyword', '--diffs-token-function']],
 ]
 
 export function themeRoleFromCssValue(value: string): InspectableThemeRole | null {

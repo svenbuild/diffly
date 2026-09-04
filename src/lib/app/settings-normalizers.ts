@@ -93,23 +93,23 @@ export function normalizeViewerSettings(
     disableLineNumbers: settings?.disableLineNumbers ?? false,
     disableFileHeader: settings?.disableFileHeader ?? false,
     disableBackground: settings?.disableBackground ?? false,
-    disableVirtualizationBuffers: settings?.disableVirtualizationBuffers ?? false,
+    disableVirtualizationBuffers: false,
     stickyHeader: settings?.stickyHeader ?? false,
     syntaxMode: settings?.syntaxMode ?? legacySyntaxMode,
     preferredHighlighter: isPreferredHighlighter(settings?.preferredHighlighter)
       ? settings.preferredHighlighter
       : current.preferredHighlighter,
-    useCSSClasses: settings?.useCSSClasses ?? false,
+    useCSSClasses: false,
     tokenizeMaxLineLength: clampNumber(settings?.tokenizeMaxLineLength, 0, 20000, current.tokenizeMaxLineLength),
     tokenizeMaxLength: clampNumber(settings?.tokenizeMaxLength, 0, 1000000, current.tokenizeMaxLength),
     maxLineDiffLength: clampNumber(settings?.maxLineDiffLength, 0, 20000, current.maxLineDiffLength),
     lineHoverHighlight: isLineHoverHighlight(settings?.lineHoverHighlight)
       ? settings.lineHoverHighlight
       : current.lineHoverHighlight,
-    enableTokenInteractionsOnWhitespace: settings?.enableTokenInteractionsOnWhitespace ?? false,
+    enableTokenInteractionsOnWhitespace: false,
     enableGutterUtility: settings?.enableGutterUtility ?? false,
     enableLineSelection: settings?.enableLineSelection ?? false,
-    controlledSelection: settings?.controlledSelection ?? false,
+    controlledSelection: false,
     tokenHover: settings?.tokenHover ?? false,
   }
 }
@@ -120,29 +120,26 @@ export function normalizeTreeSettings(
 ): CompareTreeSettings {
   return {
     density: isTreeDensity(settings?.density) ? settings.density : current.density,
-    customDensity: clampNumber(settings?.customDensity, 0.5, 2, current.customDensity),
+    customDensity: typeof settings?.customDensity === 'number' && Number.isFinite(settings.customDensity)
+      ? Math.min(2, Math.max(0.5, settings.customDensity)) : current.customDensity,
     flattenEmptyDirectories: settings?.flattenEmptyDirectories ?? true,
     stickyFolders: settings?.stickyFolders ?? true,
     initialExpansion: isTreeInitialExpansion(settings?.initialExpansion)
       ? settings.initialExpansion
       : current.initialExpansion,
     initialExpansionDepth: clampNumber(settings?.initialExpansionDepth, 0, 12, current.initialExpansionDepth),
-    initialExpandedPaths: Array.isArray(settings?.initialExpandedPaths)
-      ? settings.initialExpandedPaths
-          .filter((path) => typeof path === 'string' && path.trim())
-          .map((path) => path.trim())
-      : current.initialExpandedPaths,
+    initialExpandedPaths: [],
     sortMode: settings?.sortMode === 'default' ? 'default' : 'path',
     searchMode: isTreeSearchMode(settings?.searchMode) ? settings.searchMode : current.searchMode,
     search: settings?.search ?? true,
-    searchFakeFocus: settings?.searchFakeFocus ?? false,
+    searchFakeFocus: false,
     searchBlurBehavior: settings?.searchBlurBehavior === 'retain' ? 'retain' : 'close',
-    initialSearchQuery: typeof settings?.initialSearchQuery === 'string' ? settings.initialSearchQuery : '',
-    initialVisibleRowCount: clampNumber(settings?.initialVisibleRowCount, 1, 200, current.initialVisibleRowCount),
+    initialSearchQuery: '',
+    initialVisibleRowCount: 18,
     itemHeight: clampNumber(settings?.itemHeight, 18, 60, current.itemHeight),
-    overscan: clampNumber(settings?.overscan, 0, 200, current.overscan),
-    dragAndDrop: settings?.dragAndDrop ?? false,
-    renaming: settings?.renaming ?? false,
+    overscan: 8,
+    dragAndDrop: false,
+    renaming: false,
     iconSet: isTreeIconSet(settings?.iconSet) ? settings.iconSet : current.iconSet,
     coloredIcons: settings?.coloredIcons ?? current.coloredIcons,
     showUnmodified: settings?.showUnmodified ?? false,

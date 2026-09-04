@@ -11,11 +11,9 @@
     | 'rendering'
     | 'syntax'
     | 'mouse'
-    | 'rules'
     | 'structure'
     | 'density'
     | 'search'
-    | 'mutations'
 
   export let viewMode: ViewMode
   export let viewerSettings: CompareViewerSettings
@@ -29,7 +27,6 @@
   interface SectionItem {
     id: CompareSectionId
     label: string
-    summary: string
   }
 
   interface SectionGroup {
@@ -43,20 +40,19 @@
       domain: 'diffs',
       label: 'Diffs',
       sections: [
-        { id: 'layout', label: 'Layout & context', summary: 'Structure, wrapping, collapsed regions, and sticky headers.' },
-        { id: 'rendering', label: 'Code rendering', summary: 'Inline highlights, gutters, hunk separators, and backgrounds.' },
-        { id: 'syntax', label: 'Syntax & limits', summary: 'Highlighter engine, CSS output, and tokenization limits.' },
-        { id: 'mouse', label: 'Mouse & selection', summary: 'Hover state, token callbacks, gutter buttons, and ranges.' },
+        { id: 'layout', label: 'Layout & context' },
+        { id: 'rendering', label: 'Code rendering' },
+        { id: 'syntax', label: 'Syntax & limits' },
+        { id: 'mouse', label: 'Mouse & selection' },
       ],
     },
     {
       domain: 'trees',
       label: 'Trees',
       sections: [
-        { id: 'structure', label: 'Tree structure', summary: 'Sorting, icons, initial expansion, and sticky parents.' },
-        { id: 'density', label: 'Tree density', summary: 'Preset density, row height, and virtualized windows.' },
-        { id: 'search', label: 'Tree search', summary: 'Built-in search, match handling, focus, and initial query.' },
-        { id: 'mutations', label: 'Tree mutations', summary: 'Local drag-and-drop and inline rename behavior.' },
+        { id: 'structure', label: 'Tree structure' },
+        { id: 'density', label: 'Tree density' },
+        { id: 'search', label: 'Tree search' },
       ],
     },
   ]

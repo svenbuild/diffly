@@ -1,7 +1,22 @@
+import { registerCustomCSSVariableTheme } from '@pierre/diffs'
 import { themeToTreeStyles } from '@pierre/trees'
 import type { AppearanceSettings } from './index'
 import { createThemeTokens, resolveTheme } from './index'
 import { resolveThemeForVariant } from './runtime'
+
+const EDITABLE_SYNTAX_THEME = 'diffly-editable-syntax'
+let editableSyntaxRegistered = false
+
+function syntaxTheme(settings: AppearanceSettings, variant: 'light' | 'dark') {
+  const theme = resolveThemeForVariant(settings, variant)
+  const overrides = variant === 'light' ? settings.lightOverrides : settings.darkOverrides
+  if (!theme.id.startsWith('custom-') && overrides.skill === undefined && overrides.ink === undefined && overrides.mutedText === undefined) return theme.codeThemeId
+  if (!editableSyntaxRegistered) {
+    registerCustomCSSVariableTheme(EDITABLE_SYNTAX_THEME, {})
+    editableSyntaxRegistered = true
+  }
+  return EDITABLE_SYNTAX_THEME
+}
 
 function cssDeclarations(styles: Record<string, string>) {
   return Object.entries(styles)
@@ -20,8 +35,8 @@ export function resolvePierreDiffTheme(
   settings: AppearanceSettings,
 ): string | { light: string; dark: string } {
   return {
-    light: resolveThemeForVariant(settings, 'light').codeThemeId,
-    dark: resolveThemeForVariant(settings, 'dark').codeThemeId,
+    light: syntaxTheme(settings, 'light'),
+    dark: syntaxTheme(settings, 'dark'),
   }
 }
 
@@ -31,6 +46,19 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
 
   return `
     :host {
+      --diffs-foreground: var(--text);
+      --diffs-background: var(--editor-bg);
+      --diffs-token-keyword: var(--skill);
+      --diffs-token-comment: var(--muted);
+      --diffs-token-string: var(--success);
+      --diffs-token-string-expression: var(--success);
+      --diffs-token-constant: var(--accent);
+      --diffs-token-function: var(--skill);
+      --diffs-token-parameter: var(--text);
+      --diffs-token-punctuation: var(--muted);
+      --diffs-token-link: var(--accent);
+      --diffs-token-inserted: var(--success);
+      --diffs-token-deleted: var(--danger);
       --diffs-light-bg: var(--editor-bg);
       --diffs-dark-bg: var(--editor-bg);
       --diffs-font-family-override: ${darkTokens.codeFont};
@@ -77,8 +105,10 @@ export function buildPierreTreeUnsafeCss(
   settings: AppearanceSettings,
   resolvedThemeMode: 'light' | 'dark',
 ) {
+  const theme = resolveThemeForVariant(settings, resolvedThemeMode)
+  const inputSurface = theme.advancedColors?.input ?? theme.surface
   const tokens = createThemeTokens(
-    resolveThemeForVariant(settings, resolvedThemeMode),
+    theme,
     settings.uiFontSize,
     settings.codeFontSize,
   )
@@ -98,7 +128,7 @@ export function buildPierreTreeUnsafeCss(
         'list.activeSelectionBackground': tokens.hoverSurface,
         'list.activeSelectionForeground': tokens.ink,
         'focusBorder': tokens.accent,
-        'input.background': tokens.elevatedSurface,
+        'input.background': inputSurface,
         'input.foreground': tokens.ink,
         'input.border': tokens.borderColor,
         'scrollbarSlider.background': tokens.borderColor,
@@ -132,8 +162,8 @@ ${themeDeclarations}
       --trees-selected-bg-override: ${tokens.hoverSurface};
       --trees-selected-fg-override: ${tokens.ink};
       --trees-selected-focused-border-color-override: ${tokens.accent};
-      --trees-input-bg-override: ${tokens.elevatedSurface};
-      --trees-search-bg-override: ${tokens.elevatedSurface};
+      --trees-input-bg-override: ${inputSurface};
+      --trees-search-bg-override: ${inputSurface};
       --trees-search-fg-override: ${tokens.ink};
       --trees-focus-ring-color-override: ${tokens.accent};
       --trees-scrollbar-thumb-override: ${tokens.borderColor};

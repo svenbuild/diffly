@@ -4,6 +4,7 @@
     AppearanceSettings,
     ThemeAdvancedColorKey,
     ThemeDefinition,
+    ThemeOverrides,
     ThemeSemanticColorKey,
     ThemeVariant,
   } from '../theme'
@@ -42,6 +43,8 @@
     field: ThemeAdvancedColorKey,
     value: string,
   ) => void
+  export let onCreateTheme: (name: string) => void
+  export let onPreviewTheme: (variant: ThemeVariant, overrides: ThemeOverrides | null) => void
   export let onClose: () => void
 
   const foundationFields: ColorField[] = [
@@ -71,6 +74,8 @@
   let selectedRole: ColorRole | null = null
   let query = ''
   let draftColors: Record<ColorRole, string> = emptyColors()
+  let drafts: Partial<Record<ThemeVariant, Record<ColorRole, string>>> = {}
+  let originals: Partial<Record<ThemeVariant, Record<ColorRole, string>>> = {}
   let panel: HTMLDivElement
   let position: { x: number; y: number } | null = null
   let dragOffset: { x: number; y: number } | null = null
@@ -93,10 +98,13 @@
     selectedRole = null
     query = ''
     position = null
-    draftColors = colorsForTheme(activeAppearance === 'light' ? lightTheme : darkTheme)
+    originals = { light: colorsForTheme(lightTheme), dark: colorsForTheme(darkTheme) }
+    drafts = { light: { ...originals.light! }, dark: { ...originals.dark! } }
+    draftColors = drafts[activeAppearance]!
   }
 
   $: syncInspectorListeners(open && inspecting)
+  $: invalidColor = Object.values(draftColors).some(value => !/^#[0-9a-f]{6}$/i.test(value))
 
   onDestroy(() => {
     syncInspectorListeners(false)
@@ -129,8 +137,8 @@
       text: variables['--text'] ?? theme.ink,
       muted: variables['--muted'] ?? theme.ink,
       border: variables['--border'] ?? theme.ink,
-      input: variables['--surface-strong'] ?? theme.surface,
-      accent: theme.accent,
+      input: variables['--input-surface'] ?? theme.surface,
+      accent: theme.accent.toLowerCase(),
       added: theme.semanticColors.diffAdded,
       removed: theme.semanticColors.diffRemoved,
       syntax: theme.semanticColors.skill,
@@ -139,35 +147,58 @@
 
   function setAppearance(variant: ThemeVariant) {
     if (!availableAppearances.includes(variant)) return
+    drafts[activeAppearance] = draftColors
     activeAppearance = variant
     selectedRole = null
-    draftColors = colorsForTheme(variant === 'light' ? lightTheme : darkTheme)
+    draftColors = drafts[variant]!
+    previewTheme()
   }
 
   function updateColor(role: ColorRole, value: string) {
     draftColors = { ...draftColors, [role]: value.toLowerCase() }
     selectedRole = role
+    previewTheme()
+  }
+
+  function previewTheme() {
+    const original = originals[activeAppearance]
+    if (!original) return
+    const mapping: Record<ColorRole, keyof ThemeOverrides> = {
+      background: 'background', surface: 'surface', raised: 'raisedSurface', overlay: 'overlay',
+      text: 'ink', muted: 'mutedText', border: 'border', input: 'input', accent: 'accent',
+      added: 'diffAdded', removed: 'diffRemoved', syntax: 'skill',
+    }
+    const overrides: ThemeOverrides = {}
+    for (const role of Object.keys(mapping) as ColorRole[]) {
+      const value = draftColors[role]
+      if (value.toLowerCase() === original[role].toLowerCase() || !/^#[0-9a-f]{6}$/i.test(value)) continue
+      Object.assign(overrides, { [mapping[role]]: value })
+    }
+    if (!advanced && overrides.background) overrides.surface = overrides.background
+    onPreviewTheme(activeAppearance, Object.keys(overrides).length ? overrides : null)
   }
 
   function saveTheme() {
-    if (!editing && !name.trim()) return
-    onSetThemeColor(
-      activeAppearance,
-      'surface',
-      advanced ? draftColors.surface : draftColors.background,
-    )
-    onSetThemeColor(activeAppearance, 'accent', draftColors.accent)
-    if (advanced) {
-      onSetThemeColor(activeAppearance, 'ink', draftColors.text)
-      onSetThemeAdvancedColor(activeAppearance, 'background', draftColors.background)
-      onSetThemeAdvancedColor(activeAppearance, 'raisedSurface', draftColors.raised)
-      onSetThemeAdvancedColor(activeAppearance, 'overlay', draftColors.overlay)
-      onSetThemeAdvancedColor(activeAppearance, 'mutedText', draftColors.muted)
-      onSetThemeAdvancedColor(activeAppearance, 'border', draftColors.border)
-      onSetThemeAdvancedColor(activeAppearance, 'input', draftColors.input)
-      onSetThemeSemanticColor(activeAppearance, 'diffAdded', draftColors.added)
-      onSetThemeSemanticColor(activeAppearance, 'diffRemoved', draftColors.removed)
-      onSetThemeSemanticColor(activeAppearance, 'skill', draftColors.syntax)
+    if ((!editing && !name.trim()) || invalidColor) return
+    drafts[activeAppearance] = draftColors
+    if (!editing) onCreateTheme(name.trim())
+    for (const variant of availableAppearances) {
+      const colors = drafts[variant]!
+      const original = originals[variant]!
+      for (const role of Object.keys(colors) as ColorRole[]) {
+        const value = colors[role]
+        if (value === original[role] || !/^#[0-9a-f]{6}$/i.test(value)) continue
+        if (role === 'accent' || role === 'surface') onSetThemeColor(variant, role, value)
+        else if (role === 'text') onSetThemeColor(variant, 'ink', value)
+        else if (role === 'added') onSetThemeSemanticColor(variant, 'diffAdded', value)
+        else if (role === 'removed') onSetThemeSemanticColor(variant, 'diffRemoved', value)
+        else if (role === 'syntax') onSetThemeSemanticColor(variant, 'skill', value)
+        else {
+          const key = role === 'raised' ? 'raisedSurface' : role === 'muted' ? 'mutedText' : role
+          onSetThemeAdvancedColor(variant, key, value)
+          if (role === 'background' && !advanced) onSetThemeColor(variant, 'surface', value)
+        }
+      }
     }
     onClose()
   }
@@ -260,7 +291,8 @@
     while (element && element !== document.documentElement) {
       role = roleFromElement(element)
       if (role) break
-      element = element.parentElement
+      const root = element.getRootNode()
+      element = element.parentElement ?? (root instanceof ShadowRoot ? root.host : null)
     }
     if (!role || !(element instanceof HTMLElement)) {
       clearInspectorHighlight()
@@ -473,7 +505,7 @@
             <label class="t3-editor-advanced">
               <strong>Advanced</strong>
               <span class="settings-switch">
-                <input checked={advanced} role="switch" type="checkbox" on:change={(event) => (advanced = (event.currentTarget as HTMLInputElement).checked)} />
+                <input checked={advanced} role="switch" type="checkbox" on:change={(event) => { advanced = (event.currentTarget as HTMLInputElement).checked; previewTheme() }} />
                 <span aria-hidden="true" class="settings-switch-ui"></span>
               </span>
             </label>
@@ -487,7 +519,7 @@
               <label class:selected={selectedRole === field.role} class="t3-editor-color-row">
                 <span>{field.label}</span>
                 <input aria-label={`${field.label} color`} type="color" value={draftColors[field.role]} on:input={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
-                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role]} on:focus={() => (selectedRole = field.role)} on:change={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
+                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role]} on:focus={() => (selectedRole = field.role)} on:input={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
               </label>
             {/each}
           </section>
@@ -497,7 +529,7 @@
               <label class:selected={selectedRole === field.role} class="t3-editor-color-row">
                 <span>{field.label}</span>
                 <input aria-label={`${field.label} color`} type="color" value={draftColors[field.role]} on:input={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
-                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role]} on:focus={() => (selectedRole = field.role)} on:change={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
+                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role]} on:focus={() => (selectedRole = field.role)} on:input={(event) => updateColor(field.role, (event.currentTarget as HTMLInputElement).value)} />
               </label>
             {/each}
           </section>
@@ -507,7 +539,7 @@
               <label class:selected={selectedRole === field.role} class="t3-editor-color-row">
                 <span>{field.label}</span>
                 <input aria-label={`${field.label} color`} type="color" value={draftColors[field.role as ColorRole]} on:input={(event) => updateColor(field.role as ColorRole, (event.currentTarget as HTMLInputElement).value)} />
-                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role as ColorRole]} on:focus={() => (selectedRole = field.role as ColorRole)} on:change={(event) => updateColor(field.role as ColorRole, (event.currentTarget as HTMLInputElement).value)} />
+                <input aria-label={`${field.label} hex value`} class="t3-editor-hex" spellcheck="false" type="text" value={draftColors[field.role as ColorRole]} on:focus={() => (selectedRole = field.role as ColorRole)} on:input={(event) => updateColor(field.role as ColorRole, (event.currentTarget as HTMLInputElement).value)} />
               </label>
             {/each}
           </div>
@@ -516,8 +548,8 @@
 
       <footer class="t3-theme-editor-panel-footer">
         <button class="t3-editor-cancel" type="button" on:click={onClose}>Cancel</button>
-        <button class="primary t3-editor-create" disabled={!editing && !name.trim()} type="button" on:click={saveTheme}>
-          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 2.2a5.8 5.8 0 1 0 0 11.6h.9a1.3 1.3 0 0 0 0-2.6H8a1 1 0 0 1 0-2h1.3a4.7 4.7 0 0 0 0-9.4H8Z"></path><circle cx="5" cy="5.5" r=".65"></circle><circle cx="4.3" cy="8.2" r=".65"></circle><circle cx="7" cy="3.9" r=".65"></circle></svg>
+        <button class="primary t3-editor-create" disabled={invalidColor || (!editing && !name.trim())} type="button" on:click={saveTheme}>
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d={editing ? 'm3 8 3 3 7-7' : 'M8 3v10M3 8h10'}></path></svg>
           {editing ? 'Save changes' : 'Create theme'}
         </button>
       </footer>

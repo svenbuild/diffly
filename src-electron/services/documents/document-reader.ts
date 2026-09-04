@@ -153,7 +153,9 @@ export function decodeDocument(bytes: Uint8Array): {
     }
   } catch {
     return {
-      contents: new TextDecoder('windows-1252').decode(bytes),
+      contents: Buffer.from(bytes).toString('latin1').replace(/[\u0080-\u009f]/g, character =>
+        String.fromCodePoint(WINDOWS_1252_FORWARD.get(character.charCodeAt(0)) ?? character.charCodeAt(0)),
+      ),
       encoding: 'windows1252',
     }
   }
@@ -197,6 +199,10 @@ const WINDOWS_1252_REVERSE = new Map<number, number>([
   [0x02dc, 0x98], [0x2122, 0x99], [0x0161, 0x9a], [0x203a, 0x9b],
   [0x0153, 0x9c], [0x017e, 0x9e], [0x0178, 0x9f],
 ])
+
+const WINDOWS_1252_FORWARD = new Map(
+  [...WINDOWS_1252_REVERSE].map(([codePoint, byte]) => [byte, codePoint]),
+)
 
 function encodeSingleByte(
   contents: string,

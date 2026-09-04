@@ -4,7 +4,6 @@
   import CompareLoadingOverlay from '../compare/CompareLoadingOverlay.svelte'
   import CompareDirectorySidebar from '../compare/CompareDirectorySidebar.svelte'
   import ToolbarSvgIcon from '../components/ToolbarSvgIcon.svelte'
-  import { clearPlannedOperations } from '../compare/file-operation-preview'
   import GitScopeTabs from '../compare/GitScopeTabs.svelte'
   import { reviewModeEnabled } from '../compare/review-mode'
   import { sourceActions } from '../compare/source-actions'
@@ -271,8 +270,6 @@
 
   // Planned file operations are preview state for one specific compare;
   // switching source or compared paths invalidates every recorded plan.
-  $: compareIdentityKey = JSON.stringify({ activeDiffSource, leftPath, rightPath })
-  $: compareIdentityKey, clearPlannedOperations()
 
   function toggleSidebarPanel(panel: 'diffStats' | 'systemMonitor') {
     activeSidebarPanel = activeSidebarPanel === panel ? null : panel

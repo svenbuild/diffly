@@ -1,10 +1,4 @@
 <script lang="ts">
-  import {
-    clearPlannedOperations,
-    discardPlannedOperation,
-    plannedFileOperations,
-    plannedOperationNotice,
-  } from './file-operation-preview'
   import { isDiffableDirectoryEntry } from '../app/directory-state'
   import type { AppearanceSettings } from '../theme'
   import type {
@@ -75,58 +69,6 @@
       </div>
     {/if}
   </div>
-
-  {#if $plannedFileOperations.length > 0 || $plannedOperationNotice}
-    <div class="planned-operations-panel" aria-label="Planned file operations">
-      {#if $plannedOperationNotice}
-        <p class="planned-operations-notice" role="status">{$plannedOperationNotice}</p>
-      {/if}
-      {#if $plannedFileOperations.length > 0}
-        <div class="planned-operations-header">
-          <span class="planned-operations-title">Planned changes</span>
-          <div class="planned-operations-actions">
-            <button
-              class="planned-operations-button"
-              disabled
-              title="Applying file operations is not implemented yet"
-              type="button"
-            >
-              Apply
-            </button>
-            <button
-              class="planned-operations-button"
-              type="button"
-              on:click={() => clearPlannedOperations()}
-            >
-              Discard all
-            </button>
-          </div>
-        </div>
-        <ul class="planned-operations-list">
-          {#each $plannedFileOperations as operation (operation.id)}
-            <li class="planned-operation-row">
-              <span
-                class="planned-operation-text"
-                title={`${operation.fromRelativePath} -> ${operation.toRelativePath}`}
-              >
-                {operation.kind === 'rename' ? 'Rename planned' : 'Move planned'}:
-                {operation.fromRelativePath} -&gt; {operation.toRelativePath}
-              </span>
-              <button
-                aria-label={`Discard planned change for ${operation.fromRelativePath}`}
-                class="planned-operation-discard"
-                title="Discard"
-                type="button"
-                on:click={() => discardPlannedOperation(operation.id)}
-              >
-                &times;
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-  {/if}
 
   <div class="compare-sidebar-metrics" aria-label="Compare metrics">
     <section class="sidebar-metric-section">
