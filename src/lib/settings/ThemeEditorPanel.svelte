@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { getThemePreset } from '../theme'
   import type {
     AppearanceSettings,
     ThemeAdvancedColorKey,
@@ -44,7 +45,8 @@
     value: string,
   ) => void
   export let onCreateTheme: (name: string) => void
-  export let onPreviewTheme: (variant: ThemeVariant, overrides: ThemeOverrides | null) => void
+  export let onPreviewTheme: (variant: ThemeVariant, overrides: ThemeOverrides | null, resetColors?: boolean) => void
+  export let onResetThemeColors: (variant: ThemeVariant) => void
   export let onClose: () => void
 
   const foundationFields: ColorField[] = [
@@ -76,6 +78,8 @@
   let draftColors: Record<ColorRole, string> = emptyColors()
   let drafts: Partial<Record<ThemeVariant, Record<ColorRole, string>>> = {}
   let originals: Partial<Record<ThemeVariant, Record<ColorRole, string>>> = {}
+  let resetVariants = new Set<ThemeVariant>()
+  let resetBaselines: Partial<Record<ThemeVariant, Record<ColorRole, string>>> = {}
   let panel: HTMLDivElement
   let position: { x: number; y: number } | null = null
   let dragOffset: { x: number; y: number } | null = null
@@ -98,6 +102,8 @@
     selectedRole = null
     query = ''
     position = null
+    resetVariants = new Set()
+    resetBaselines = {}
     originals = { light: colorsForTheme(lightTheme), dark: colorsForTheme(darkTheme) }
     drafts = { light: { ...originals.light! }, dark: { ...originals.dark! } }
     draftColors = drafts[activeAppearance]!
@@ -105,6 +111,7 @@
 
   $: syncInspectorListeners(open && inspecting)
   $: invalidColor = Object.values(draftColors).some(value => !/^#[0-9a-f]{6}$/i.test(value))
+  $: canResetColors = editing && !(activeAppearance === 'light' ? lightTheme : darkTheme).id.startsWith('custom-')
 
   onDestroy(() => {
     syncInspectorListeners(false)
@@ -133,7 +140,7 @@
       background: variables['--canvas'] ?? theme.surface,
       surface: variables['--surface'] ?? theme.surface,
       raised: variables['--surface-alt'] ?? theme.surface,
-      overlay: variables['--surface-strong'] ?? theme.surface,
+      overlay: variables['--overlay-surface'] ?? theme.surface,
       text: variables['--text'] ?? theme.ink,
       muted: variables['--muted'] ?? theme.ink,
       border: variables['--border'] ?? theme.ink,
@@ -161,7 +168,7 @@
   }
 
   function previewTheme() {
-    const original = originals[activeAppearance]
+    const original = resetBaselines[activeAppearance] ?? originals[activeAppearance]
     if (!original) return
     const mapping: Record<ColorRole, keyof ThemeOverrides> = {
       background: 'background', surface: 'surface', raised: 'raisedSurface', overlay: 'overlay',
@@ -175,7 +182,20 @@
       Object.assign(overrides, { [mapping[role]]: value })
     }
     if (!advanced && overrides.background) overrides.surface = overrides.background
-    onPreviewTheme(activeAppearance, Object.keys(overrides).length ? overrides : null)
+    onPreviewTheme(activeAppearance, Object.keys(overrides).length ? overrides : null, resetVariants.has(activeAppearance))
+  }
+
+  function resetColors() {
+    if (!canResetColors) return
+    const theme = activeAppearance === 'light' ? lightTheme : darkTheme
+    const preset = getThemePreset(theme.id, activeAppearance)
+    const colors = colorsForTheme({ ...preset, contrast: theme.contrast, fonts: theme.fonts, opaqueWindows: theme.opaqueWindows })
+    resetVariants = new Set([...resetVariants, activeAppearance])
+    resetBaselines[activeAppearance] = colors
+    draftColors = { ...colors }
+    drafts[activeAppearance] = draftColors
+    selectedRole = null
+    previewTheme()
   }
 
   function saveTheme() {
@@ -183,8 +203,9 @@
     drafts[activeAppearance] = draftColors
     if (!editing) onCreateTheme(name.trim())
     for (const variant of availableAppearances) {
+      if (resetVariants.has(variant)) onResetThemeColors(variant)
       const colors = drafts[variant]!
-      const original = originals[variant]!
+      const original = resetBaselines[variant] ?? originals[variant]!
       for (const role of Object.keys(colors) as ColorRole[]) {
         const value = colors[role]
         if (value === original[role] || !/^#[0-9a-f]{6}$/i.test(value)) continue
@@ -547,6 +568,12 @@
       </div>
 
       <footer class="t3-theme-editor-panel-footer">
+        {#if canResetColors}
+          <button class="t3-editor-reset" type="button" title={`Reset ${activeAppearance} colors to the built-in defaults`} on:click={resetColors}>
+            <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M3 3v4h4M3.5 7a5 5 0 1 1 .5 4"></path></svg>
+            Reset colors
+          </button>
+        {/if}
         <button class="t3-editor-cancel" type="button" on:click={onClose}>Cancel</button>
         <button class="primary t3-editor-create" disabled={invalidColor || (!editing && !name.trim())} type="button" on:click={saveTheme}>
           <svg aria-hidden="true" viewBox="0 0 16 16"><path d={editing ? 'm3 8 3 3 7-7' : 'M8 3v10M3 8h10'}></path></svg>

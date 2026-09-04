@@ -15,11 +15,11 @@ export type InspectableThemeRole =
 const VARIABLE_ROLES: ReadonlyArray<readonly [InspectableThemeRole, readonly string[]]> = [
   ['background', ['--canvas', '--canvas-alt', '--app-bg', '--editor-bg']],
   ['surface', ['--surface', '--panel-bg', '--sidebar-panel-bg', '--pane-bg', '--list-bg', '--app-bar-bg']],
-  ['raised', ['--surface-alt', '--panel-bg-raised', '--card-bg']],
-  ['overlay', ['--surface-strong', '--list-header-bg']],
+  ['raised', ['--surface-alt', '--surface-strong', '--panel-bg-raised', '--card-bg', '--list-header-bg']],
+  ['overlay', ['--overlay-surface', '--panel-surface']],
   ['text', ['--text', '--title', '--strong-text', '--panel-title', '--active-text']],
-  ['muted', ['--muted', '--subtitle', '--secondary-text', '--panel-meta']],
-  ['border', ['--border', '--border-subtle', '--border-strong', '--toolbar-divider']],
+  ['muted', ['--muted', '--muted-text', '--subtitle', '--secondary-text', '--panel-meta']],
+  ['border', ['--border', '--border-color', '--border-subtle', '--border-strong', '--toolbar-divider']],
   ['input', ['--input-surface']],
   ['accent', ['--accent', '--accent-strong', '--active-border', '--status-modified-text']],
   ['added', ['--success', '--success-bg', '--diff-added', '--insert-highlight-bg']],
@@ -28,11 +28,9 @@ const VARIABLE_ROLES: ReadonlyArray<readonly [InspectableThemeRole, readonly str
 ]
 
 export function themeRoleFromCssValue(value: string): InspectableThemeRole | null {
-  const referencedVariables = new Set(
-    Array.from(value.toLowerCase().matchAll(/var\(\s*(--[a-z0-9-]+)/g), (match) => match[1]),
-  )
-  for (const [role, roleVariables] of VARIABLE_ROLES) {
-    if (roleVariables.some((variable) => referencedVariables.has(variable))) return role
+  for (const match of value.toLowerCase().matchAll(/var\(\s*(--[a-z0-9-]+)/g)) {
+    const entry = VARIABLE_ROLES.find(([, variables]) => variables.includes(match[1]))
+    if (entry) return entry[0]
   }
   return null
 }

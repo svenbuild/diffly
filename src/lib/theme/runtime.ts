@@ -114,15 +114,16 @@ export function createThemeCssVariables(
 ): Record<string, string> {
   const tokens = createThemeTokens(theme, settings.uiFontSize, settings.codeFontSize)
   const isDark = theme.variant === 'dark'
+  const surfaceInk = theme.baseInk ?? theme.ink
   const contrastScale = clamp(theme.contrast / 100, 0, 1)
   const surfaceAlt = theme.advancedColors?.raisedSurface ?? mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.04, 0.18) : scaleByContrast(contrastScale, 0.015, 0.11)
   )
-  const surfaceStrong = theme.advancedColors?.overlay ?? mixHex(
+  const surfaceStrong = theme.advancedColors?.raisedSurface ?? mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.08, 0.28) : scaleByContrast(contrastScale, 0.04, 0.18)
   )
   const canvas = theme.advancedColors?.background ?? mixHex(
@@ -137,12 +138,12 @@ export function createThemeCssVariables(
   )
   const border = theme.advancedColors?.border ?? mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.16, 0.46) : scaleByContrast(contrastScale, 0.08, 0.3)
   )
   const borderStrong = theme.advancedColors?.border ?? mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.24, 0.58) : scaleByContrast(contrastScale, 0.16, 0.42)
   )
   const accentStrong = mixHex(
@@ -238,12 +239,12 @@ export function createThemeCssVariables(
   )
   const scrollbarThumb = mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.22, 0.46) : scaleByContrast(contrastScale, 0.12, 0.34)
   )
   const scrollbarThumbHover = mixHex(
     theme.surface,
-    theme.ink,
+    surfaceInk,
     isDark ? scaleByContrast(contrastScale, 0.32, 0.56) : scaleByContrast(contrastScale, 0.22, 0.44)
   )
   const mutedContrastTarget = scaleByContrast(contrastScale, 4.45, 5.4)
@@ -256,13 +257,13 @@ export function createThemeCssVariables(
   const mutedText = theme.advancedColors?.mutedText ?? ensureReadableForeground(
     baseMutedText,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
-    readableText,
+    surfaceInk,
     mutedContrastTarget
   )
   const secondaryText = theme.advancedColors?.mutedText ?? ensureReadableForeground(
-    mixHex(theme.ink, theme.surface, isDark ? 0.08 : 0.14),
+    mixHex(surfaceInk, theme.surface, isDark ? 0.08 : 0.14),
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
-    readableText,
+    surfaceInk,
     secondaryContrastTarget
   )
   const activeSurface = ensureDistinguishableSurface(
@@ -272,13 +273,13 @@ export function createThemeCssVariables(
       isDark ? scaleByContrast(contrastScale, 0.22, 0.44) : scaleByContrast(contrastScale, 0.18, 0.34)
     ),
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved, listBgResolved],
-    readableText,
+    surfaceInk,
     isDark ? 1.18 : 1.16
   )
   const activeBorder = ensureReadableForeground(
     accentStrong,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved, listBgResolved],
-    readableText,
+    surfaceInk,
     scaleByContrast(contrastScale, 2.7, 3.3)
   )
   const activeText = pickReadableText(activeSurface, readableText, 4.5)
@@ -298,7 +299,7 @@ export function createThemeCssVariables(
       isDark ? scaleByContrast(contrastScale, 0.18, 0.34) : scaleByContrast(contrastScale, 0.15, 0.28)
     ),
     [theme.surface, surfaceAlt, panelBgResolved, listBgResolved],
-    readableText,
+    surfaceInk,
     isDark ? 1.16 : 1.14
   )
   const syntaxBackgrounds = [diffContextBgResolved, diffInsertBg, diffDeleteBg]
@@ -394,11 +395,12 @@ export function createThemeCssVariables(
     '--surface': theme.surface,
     '--surface-alt': surfaceAlt,
     '--surface-strong': surfaceStrong,
-    '--panel-surface': surfaceStrong,
+    '--overlay-surface': theme.advancedColors?.overlay ?? surfaceStrong,
+    '--panel-surface': theme.advancedColors?.overlay ?? surfaceStrong,
     '--input-surface': theme.advancedColors?.input ?? theme.surface,
     '--border': border,
     '--border-color': border,
-    '--border-subtle': theme.advancedColors?.border ?? rgbaFromHex(theme.ink, isDark ? 0.06 : 0.08),
+    '--border-subtle': theme.advancedColors?.border ?? rgbaFromHex(surfaceInk, isDark ? 0.06 : 0.08),
     '--border-strong': borderStrong,
     '--toolbar-divider': border,
     '--text': readableText,
@@ -442,7 +444,7 @@ export function createThemeCssVariables(
     '--pane-bg': panelBg,
     '--card-bg': elevatedBg,
     '--card-top-border': rgbaFromHex(
-      theme.ink,
+      surfaceInk,
       isDark ? scaleByContrast(contrastScale, 0.04, 0.1) : scaleByContrast(contrastScale, 0.04, 0.09)
     ),
     '--list-bg': listBg,
@@ -457,7 +459,7 @@ export function createThemeCssVariables(
     '--status-danger-border': mixHex(theme.surface, theme.semanticColors.diffRemoved, isDark ? 0.32 : 0.2),
     '--status-danger-text': statusDangerText,
     '--diff-divider': rgbaFromHex(
-      theme.ink,
+      surfaceInk,
       isDark ? scaleByContrast(contrastScale, 0.08, 0.2) : scaleByContrast(contrastScale, 0.08, 0.18)
     ),
     '--diff-context-bg': diffContextBgResolved,
@@ -495,7 +497,7 @@ export function createThemeCssVariables(
     '--insert-highlight-bg': rgbaFromHex(theme.semanticColors.diffAdded, isDark ? 0.5 : 0.34),
     '--delete-highlight-bg': rgbaFromHex(theme.semanticColors.diffRemoved, isDark ? 0.5 : 0.34),
     '--line-divider': rgbaFromHex(
-      theme.ink,
+      surfaceInk,
       isDark ? scaleByContrast(contrastScale, 0.06, 0.14) : scaleByContrast(contrastScale, 0.08, 0.16)
     ),
     '--highlight-bg': rgbaFromHex(theme.accent, isDark ? 0.2 : 0.14),
@@ -559,6 +561,11 @@ export function setVariantOverride(
     ...settings,
     lightOverrides: next,
   }
+}
+
+export function resetThemeColorOverrides(overrides: ThemeOverrides): ThemeOverrides {
+  const { uiFont, codeFont, contrast, opaqueWindows } = overrides
+  return sanitizeOverrideEntries({ uiFont, codeFont, contrast, opaqueWindows })
 }
 
 function normalizeThemeOverrides(input: ThemeOverrides | null | undefined): ThemeOverrides {
@@ -924,6 +931,7 @@ function normalizeCustomThemes(input: ThemeDefinition[] | undefined): ThemeDefin
       skill: theme.semanticColors?.skill, ...theme.advancedColors,
     }))
     return [{ ...normalized, id: theme.id, name: theme.name.trim().slice(0, 48),
+      baseInk: isHexColor(theme.baseInk) ? theme.baseInk : normalized.ink,
       codeThemeId: getAvailableThemes(theme.variant).some(preset => preset.codeThemeId === theme.codeThemeId)
         ? theme.codeThemeId : base.codeThemeId }]
   })

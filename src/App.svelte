@@ -153,6 +153,7 @@
     resolveThemeForVariant,
     setVariantThemeId,
     setVariantOverride,
+    resetThemeColorOverrides,
     MAX_CODE_FONT_SIZE,
     MAX_UI_FONT_SIZE,
     MIN_CODE_FONT_SIZE,
@@ -3255,8 +3256,10 @@
       appearanceSettings = { ...appearanceSettings, customThemes: [...(appearanceSettings.customThemes ?? []), ...themes] }
       themeEditorTargetId = id
     }}
-    onPreviewTheme={(variant, overrides) => {
-      if (!overrides) {
+    onResetThemeColors={(variant) => updateEditorTheme(variant, settings =>
+      setVariantOverride(settings, variant, resetThemeColorOverrides))}
+    onPreviewTheme={(variant, overrides, resetColors) => {
+      if (!overrides && !resetColors) {
         themeEditorPreview = null
         return
       }
@@ -3264,7 +3267,9 @@
         ? setVariantThemeId(appearanceSettings, variant, themeEditorTargetId)
         : appearanceSettings
       themeEditorPreview = {
-        ...setVariantOverride(targetSettings, variant, current => ({ ...current, ...overrides })),
+        ...setVariantOverride(targetSettings, variant, current => ({
+          ...(resetColors ? resetThemeColorOverrides(current) : current), ...overrides,
+        })),
         mode: variant,
       }
     }}

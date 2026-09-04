@@ -1389,7 +1389,7 @@
   resize: both;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+  background: color-mix(in srgb, var(--overlay-surface) 94%, transparent);
   color: var(--text);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(12px);
@@ -1654,6 +1654,7 @@
 }
 
 .t3-editor-cancel,
+.t3-editor-reset,
 .t3-editor-create {
   min-height: 32px;
   padding: 0 10px;
@@ -1665,6 +1666,24 @@
 .t3-editor-cancel {
   border-color: transparent;
   background: transparent;
+}
+
+.t3-editor-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  background: transparent;
+}
+
+.t3-editor-reset svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .t3-editor-create {

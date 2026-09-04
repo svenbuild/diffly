@@ -258,7 +258,7 @@
     padding: 0 10px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--control-radius);
-    background: color-mix(in srgb, var(--surface) 90%, var(--panel-bg));
+    background: var(--input-surface, var(--surface));
     color: var(--text);
     font-size: 12px;
     text-align: left;
@@ -267,7 +267,7 @@
   .dropdown-trigger:hover:not(:disabled),
   .dropdown-trigger:focus-visible {
     border-color: color-mix(in srgb, var(--accent) 42%, var(--border-strong));
-    background: color-mix(in srgb, var(--surface-strong) 22%, var(--surface));
+    background: color-mix(in srgb, var(--input-surface, var(--surface)) 92%, var(--text));
   }
 
   .dropdown-trigger > span {
@@ -302,7 +302,7 @@
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--overlay-surface);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
     outline: none;
   }

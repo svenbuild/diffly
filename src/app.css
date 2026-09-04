@@ -382,7 +382,7 @@ input:not([type='checkbox']):hover:not(:disabled),
 select:hover:not(:disabled) {
   border-color: var(--border-strong);
   /* background-color only, so the select's chevron background-image survives */
-  background-color: color-mix(in srgb, var(--surface-strong) 15%, var(--input-surface, var(--surface)));
+  background-color: color-mix(in srgb, var(--input-surface, var(--surface)) 92%, var(--text));
 }
 
 input[type='checkbox'] {

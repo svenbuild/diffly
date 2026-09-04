@@ -153,6 +153,65 @@ test('theme inspector highlights app elements and cleans up on escape', async ()
   await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
 })
 
+test('overlay and input edits change only their corresponding UI surfaces', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit Diffly', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+  await panel.getByRole('switch', { name: 'Advanced', exact: true }).check()
+  const surfaces = () => page.evaluate(() => {
+    const bg = (selector: string) => getComputedStyle(document.querySelector(selector)!).backgroundColor
+    return { overlay: bg('.t3-theme-editor-panel'), input: bg('.t3-editor-form-row input'), surface: bg('.t3-theme-card') }
+  })
+  const before = await surfaces()
+  const heading = panel.locator('.t3-theme-editor-panel-heading strong')
+  const previousTextColor = await heading.evaluate(element => getComputedStyle(element).color)
+  await panel.getByRole('textbox', { name: 'Text hex value', exact: true }).fill('#d32a8f')
+  await expect.poll(() => heading.evaluate(element => getComputedStyle(element).color)).not.toBe(previousTextColor)
+  expect(await surfaces()).toEqual(before)
+  await panel.getByRole('textbox', { name: 'Overlay hex value', exact: true }).fill('#13579b')
+  await expect.poll(async () => (await surfaces()).overlay).not.toBe(before.overlay)
+  const overlayChanged = await surfaces()
+  expect(overlayChanged.input).toBe(before.input)
+  expect(overlayChanged.surface).toBe(before.surface)
+  await panel.getByRole('textbox', { name: 'Input hex value', exact: true }).fill('#2468ac')
+  await expect.poll(async () => (await surfaces()).input).not.toBe(before.input)
+  const inputChanged = await surfaces()
+  expect(inputChanged.overlay).toBe(overlayChanged.overlay)
+  expect(inputChanged.surface).toBe(before.surface)
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+
+test('resets built-in colors with cancel, live preview, and independent variants', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Use dark mode', exact: true }).click()
+  const edit = page.getByRole('button', { name: 'Edit Diffly', exact: true })
+  await edit.click()
+  const panel = page.getByRole('dialog', { name: 'Edit theme', exact: true })
+  const accent = panel.getByRole('textbox', { name: 'Accent hex value', exact: true })
+  const original = await accent.inputValue()
+  await accent.fill('#123456')
+  await panel.getByRole('button', { name: 'Light', exact: true }).click()
+  await accent.fill('#abcdef')
+  await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await edit.click()
+  await panel.getByRole('button', { name: 'Reset colors', exact: true }).click()
+  await expect(accent).toHaveValue(original)
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().toLowerCase())).toBe(original.toLowerCase())
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await edit.click()
+  await expect(accent).toHaveValue('#123456')
+  await panel.getByRole('button', { name: 'Reset colors', exact: true }).click()
+  await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await edit.click()
+  await expect(accent).toHaveValue(original)
+  await panel.getByRole('button', { name: 'Light', exact: true }).click()
+  await expect(accent).toHaveValue('#abcdef')
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect.poll(() => page.evaluate(async () => (await window.diffly.loadSessionState())?.appearance?.darkOverrides)).toEqual({})
+})
+
 for (const variant of ['light', 'dark'] as const) {
   test(`previews, saves, and restores all twelve ${variant} theme colors`, async () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -164,7 +223,7 @@ for (const variant of ['light', 'dark'] as const) {
     await panel.getByRole('switch', { name: 'Advanced', exact: true }).check()
     const fields = [
       ['Background', '--canvas', '#122334'], ['Surface', '--surface', '#233445'],
-      ['Raised surface', '--surface-alt', '#344556'], ['Overlay', '--surface-strong', '#455667'],
+      ['Raised surface', '--surface-alt', '#344556'], ['Overlay', '--overlay-surface', '#455667'],
       ['Text', '--text', '#a1b2c3'], ['Muted text', '--muted', '#b2c3d4'],
       ['Border', '--border', '#566778'], ['Input', '--input-surface', '#677889'],
       ['Accent', '--accent', '#789abc'], ['Added changes', '--success', '#89abcd'],

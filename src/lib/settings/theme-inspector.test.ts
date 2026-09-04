@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { themeRoleFromCssValue } from './theme-inspector'
 
 describe('theme inspector role mapping', () => {
+  it('uses the primary variable instead of a fallback from another role', () => {
+    expect(themeRoleFromCssValue('var(--input-surface, var(--surface))')).toBe('input')
+    expect(themeRoleFromCssValue('color-mix(in srgb, var(--input-surface) 92%, var(--text))')).toBe('input')
+    expect(themeRoleFromCssValue('var(--overlay-surface)')).toBe('overlay')
+    expect(themeRoleFromCssValue('var(--surface-strong)')).toBe('raised')
+  })
   it('maps direct and nested theme variables to editor roles', () => {
     expect(themeRoleFromCssValue('var(--canvas)')).toBe('background')
     expect(themeRoleFromCssValue('color-mix(in srgb, var(--muted) 80%, transparent)')).toBe('muted')

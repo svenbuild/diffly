@@ -51,6 +51,7 @@ export type ThemeId =
   | 'vscode-plus'
 
 export interface ThemeDefinition {
+  baseInk?: string
   name?: string
   id: ThemeId
   variant: ThemeVariant
@@ -900,6 +901,7 @@ export function resolveVariant(mode: AppearanceMode, systemPrefersDark: boolean)
 export function applyOverrides(base: ThemeDefinition, overrides: ThemeOverrides): ThemeDefinition {
   return {
     ...base,
+    baseInk: base.baseInk ?? base.ink,
     accent: overrides.accent ?? base.accent,
     surface: overrides.surface ?? base.surface,
     ink: overrides.ink ?? base.ink,
@@ -953,6 +955,7 @@ export function createThemeTokens(
   uiFontSize: number,
   codeFontSize: number
 ): ThemeTokens {
+  const surfaceInk = theme.baseInk ?? theme.ink
   const uiFont = theme.fonts.ui ?? DEFAULT_UI_FONT
   const codeFont = theme.fonts.code ?? DEFAULT_CODE_FONT
   const isDark = theme.variant === 'dark'
@@ -980,11 +983,11 @@ export function createThemeTokens(
     codeFontSize,
     opaqueWindows: theme.opaqueWindows,
     contrast: theme.contrast,
-    panelSurface: mixHex(theme.surface, theme.ink, 1 - panelAlpha),
-    elevatedSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, theme.ink, 1 - elevatedAlpha),
-    borderColor: theme.advancedColors?.border ?? mixHex(theme.surface, theme.ink, borderAlpha),
-    mutedText: theme.advancedColors?.mutedText ?? mixHex(theme.ink, theme.surface, mutedMix),
-    hoverSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, theme.ink, hoverAlpha),
+    panelSurface: mixHex(theme.surface, surfaceInk, 1 - panelAlpha),
+    elevatedSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, surfaceInk, 1 - elevatedAlpha),
+    borderColor: theme.advancedColors?.border ?? mixHex(theme.surface, surfaceInk, borderAlpha),
+    mutedText: theme.advancedColors?.mutedText ?? mixHex(surfaceInk, theme.surface, mutedMix),
+    hoverSurface: theme.advancedColors?.raisedSurface ?? mixHex(theme.surface, surfaceInk, hoverAlpha),
   }
 }
 

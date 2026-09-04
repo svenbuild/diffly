@@ -1,21 +1,54 @@
-import { registerCustomCSSVariableTheme } from '@pierre/diffs'
+import { getResolvedOrResolveTheme, registerCustomTheme } from '@pierre/diffs'
 import { themeToTreeStyles } from '@pierre/trees'
 import type { AppearanceSettings } from './index'
 import { createThemeTokens, resolveTheme } from './index'
 import { resolveThemeForVariant } from './runtime'
 
-const EDITABLE_SYNTAX_THEME = 'diffly-editable-syntax'
-let editableSyntaxRegistered = false
+const registeredSyntaxThemes = new Set<string>()
 
 function syntaxTheme(settings: AppearanceSettings, variant: 'light' | 'dark') {
   const theme = resolveThemeForVariant(settings, variant)
   const overrides = variant === 'light' ? settings.lightOverrides : settings.darkOverrides
-  if (!theme.id.startsWith('custom-') && overrides.skill === undefined && overrides.ink === undefined && overrides.mutedText === undefined) return theme.codeThemeId
-  if (!editableSyntaxRegistered) {
-    registerCustomCSSVariableTheme(EDITABLE_SYNTAX_THEME, {})
-    editableSyntaxRegistered = true
+  const custom = theme.id.startsWith('custom-')
+  const text = custom || overrides.ink !== undefined
+  const muted = custom || overrides.mutedText !== undefined
+  const syntax = custom || overrides.skill !== undefined
+  if (!text && !muted && !syntax) return theme.codeThemeId
+  const name = `diffly-${theme.codeThemeId}-${Number(text)}${Number(muted)}${Number(syntax)}`
+  if (!registeredSyntaxThemes.has(name)) {
+    registerCustomTheme(name, async () => {
+      const original = await getResolvedOrResolveTheme(theme.codeThemeId)
+      const rules = original.settings.flatMap(rule => {
+        if (!rule.scope) return [text
+          ? { ...rule, settings: { ...rule.settings, foreground: 'var(--text)' } }
+          : rule]
+        const scopes = Array.isArray(rule.scope) ? rule.scope : rule.scope.split(',')
+        const unchanged: string[] = []
+        const changed: typeof original.settings = []
+        for (const scope of scopes) {
+          const foreground = muted && /(?:^|\s)(?:comment|\bstring\.quoted\.docstring)(?:\.|$)/.test(scope)
+            ? 'var(--muted)'
+            : syntax && /(?:^|\s)(?:keyword|storage|entity\.name\.function|support\.function)(?:\.|$)/.test(scope)
+              ? 'var(--skill)' : null
+          if (foreground) changed.push({ ...rule, scope, settings: { ...rule.settings, foreground } })
+          else unchanged.push(scope)
+        }
+        if (changed.length === 0) return [rule]
+        return [...(unchanged.length ? [{ ...rule, scope: unchanged }] : []), ...changed]
+      })
+      if (muted) rules.push({ scope: ['comment', 'string.quoted.docstring.multi'], settings: { foreground: 'var(--muted)' } })
+      if (syntax) rules.push({ scope: ['keyword', 'storage', 'entity.name.function', 'support.function'], settings: { foreground: 'var(--skill)' } })
+      return {
+        ...original, name,
+        fg: text ? 'var(--text)' : original.fg,
+        colors: { ...original.colors, ...(text ? { 'editor.foreground': 'var(--text)' } : {}) },
+        settings: rules,
+        tokenColors: rules,
+      }
+    })
+    registeredSyntaxThemes.add(name)
   }
-  return EDITABLE_SYNTAX_THEME
+  return name
 }
 
 function cssDeclarations(styles: Record<string, string>) {
@@ -48,17 +81,6 @@ export function buildPierreDiffUnsafeCss(settings: AppearanceSettings) {
     :host {
       --diffs-foreground: var(--text);
       --diffs-background: var(--editor-bg);
-      --diffs-token-keyword: var(--skill);
-      --diffs-token-comment: var(--muted);
-      --diffs-token-string: var(--success);
-      --diffs-token-string-expression: var(--success);
-      --diffs-token-constant: var(--accent);
-      --diffs-token-function: var(--skill);
-      --diffs-token-parameter: var(--text);
-      --diffs-token-punctuation: var(--muted);
-      --diffs-token-link: var(--accent);
-      --diffs-token-inserted: var(--success);
-      --diffs-token-deleted: var(--danger);
       --diffs-light-bg: var(--editor-bg);
       --diffs-dark-bg: var(--editor-bg);
       --diffs-font-family-override: ${darkTokens.codeFont};

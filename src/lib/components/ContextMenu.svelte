@@ -117,7 +117,7 @@
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--overlay-surface);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--app-bar-shadow-strong) 28%, transparent);
   }
 
