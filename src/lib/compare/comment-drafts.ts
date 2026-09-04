@@ -34,16 +34,16 @@ export function findOpenDraft(
 
 export function markDraftSaved(annotation: CommentAnnotation) {
   annotation.metadata.draft = false
-  annotation.metadata.savedAt = new Date().toISOString()
+  annotation.metadata.savedAt ??= new Date().toISOString()
 }
 
 // Pierre caches annotation DOM by id, so the composer input rendered for a
 // draft stays alive across re-renders. Track the inputs so a second gutter
 // click on the same line can focus the existing editor instead of opening a
 // duplicate one.
-const draftEditors = new Map<string, HTMLInputElement>()
+const draftEditors = new Map<string, HTMLInputElement | HTMLTextAreaElement>()
 
-export function registerDraftEditor(annotationId: string, input: HTMLInputElement) {
+export function registerDraftEditor(annotationId: string, input: HTMLInputElement | HTMLTextAreaElement) {
   draftEditors.set(annotationId, input)
   return () => {
     if (draftEditors.get(annotationId) === input) {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { loadInlineHunks } from "../review/inline-hunks"
   import { onDestroy, onMount, tick } from 'svelte'
   import {
     CodeView,
@@ -159,6 +160,7 @@
   let interactionMessage = ''
   let interactionMessageTimer: number | null = null
   let hydratedReviewEntryKey = ''
+  const hydratedReviewItems = new Map<string, string>()
 
   const parsedDiffs = new Map<string, CachedCodeViewDiff>()
   const placeholderItems = new Map<string, CachedPlaceholderItem>()
@@ -376,14 +378,22 @@
   function resetReviewAnnotations() {
     commentAnnotations = new Map()
     hydratedReviewEntryKey = ''
+    hydratedReviewItems.clear()
   }
 
   async function hydrateReviewAnnotations(itemId: string, entryId: string, key: string) {
     if (!reviewSessionId) return
+    const comparison = compareKey
+    hydratedReviewItems.set(itemId, key)
     try {
-      const threads = await listReviewThreads(reviewSessionId, entryId)
-      if (`${reviewSessionId}:${entryId}` !== key) return
-      updateAnnotations(itemId, reviewThreadsToAnnotations(threads))
+      const entry = entryByPath.get(itemId)?.entry
+      const mutationEntryId = entry?.diffEntryAliasIds?.length === 1 ? entry.diffEntryAliasIds[0]! : entryId
+      const [threads, hunks] = await Promise.all([
+        listReviewThreads(reviewSessionId, entryId),
+        loadInlineHunks(reviewSessionId, mutationEntryId, reviewSourceKind, entry?.gitReviewCapabilities, onReviewRefresh),
+      ])
+      if (comparison !== compareKey || `${reviewSessionId}:${entryId}` !== key) return
+      updateAnnotations(itemId, [...hunks, ...reviewThreadsToAnnotations(threads, reviewSessionId, entryId, annotationsFor(itemId)), ...annotationsFor(itemId).filter(item => item.metadata.draft)])
     } catch (error) {
       setInteractionMessage(error instanceof Error ? error.message : 'Unable to load review threads.')
     }
@@ -459,6 +469,11 @@
           author,
         })
         const comment = thread.comments[0]!
+        target.metadata.sessionId = reviewSessionId
+        target.metadata.entryId = entryId
+        target.metadata.savedAt = thread.updatedAt
+        target.metadata.comments = thread.comments
+        target.metadata.draft = false
         target.metadata.threadId = thread.id
         target.metadata.commentId = comment.id
         target.metadata.author = comment.author
@@ -537,6 +552,14 @@
       scheduleVisibleEntryRequest,
     })
     finishFirstRenderedDiff(args)
+    if (reviewModeEnabled && reviewSessionId) {
+      const itemId = getCodeViewItemContext(args)?.item?.id
+      const entryId = itemId ? entryByPath.get(itemId)?.entry.diffEntryId : null
+      if (itemId && entryId) {
+        const key = `${reviewSessionId}:${entryId}`
+        if (hydratedReviewItems.get(itemId) !== key) void hydrateReviewAnnotations(itemId, entryId, key)
+      }
+    }
   }
 
   function finishFirstRenderedDiff(args: unknown[]) {
@@ -617,9 +640,10 @@
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
       enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
-      enableGutterUtility: viewerSettings.enableGutterUtility,
+      enableGutterUtility: reviewModeEnabled || viewerSettings.enableGutterUtility,
       controlledSelection: viewerSettings.controlledSelection,
       enableLineSelection:
+        reviewModeEnabled ||
         viewerSettings.enableLineSelection ||
         viewerSettings.controlledSelection ||
         viewerSettings.enableGutterUtility,
@@ -731,6 +755,8 @@
         annotation.lineNumber,
         annotation.metadata.id,
         annotation.metadata.text,
+        annotation.metadata.state,
+        annotation.metadata.savedAt,
       ].join(':'))
       .join('\u0001')
   }

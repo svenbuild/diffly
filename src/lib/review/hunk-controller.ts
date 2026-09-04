@@ -89,7 +89,7 @@ export class HunkController {
   }
 }
 
-async function loadRevisions(
+export async function loadRevisions(
   sessionId: string,
   entryId: string,
   operation: PartialChangeOperation,

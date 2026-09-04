@@ -10,7 +10,7 @@ import { LocalProvider } from '../providers/local-provider'
 import { OperationJournal } from './operation-journal'
 import { PartialApplyService } from './partial-apply-service'
 
-describe('PartialApplyService Git integration', () => {
+describe('PartialApplyService integration', () => {
   let root: string
   let sessions: DiffSessionService | undefined
   let sessionId: string | undefined
@@ -29,6 +29,35 @@ describe('PartialApplyService Git integration', () => {
     sessions = undefined
     sessionId = undefined
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  })
+
+  it('copies only a selected local hunk and can undo it', async () => {
+    const left = join(root, 'left.txt')
+    const right = join(root, 'right.txt')
+    const original = Array.from({ length: 24 }, (_, index) => `line ${index + 1}`)
+    const changed = [...original]
+    changed[1] = 'first change'
+    changed[20] = 'second change'
+    await writeFile(left, original.join('\n') + '\n')
+    await writeFile(right, changed.join('\n') + '\n')
+    sessions = new DiffSessionService({ localProvider: new LocalProvider(), gitProvider: new GitProvider() })
+    const session = await sessions.create({ kind: 'local', compareMode: 'file', leftPath: left, rightPath: right }, { ignoreCase: false, ignoreWhitespace: false })
+    sessionId = session.sessionId
+    const entryId = session.entries[0]!.id
+    const service = new PartialApplyService(sessions, new OperationJournal(join(root, '.journal')))
+    const hunks = await service.listHunks(sessionId, entryId)
+    expect(hunks).toHaveLength(2)
+    const [leftDocument, rightDocument] = await Promise.all([
+      sessions.openDocument({ kind: 'local', sessionId, entryId, side: 'left' }),
+      sessions.openDocument({ kind: 'local', sessionId, entryId, side: 'right' }),
+    ])
+    await service.apply({ sessionId, entryId, operation: 'applyLeftToRight',
+      selections: [{ fingerprint: hunks[0]!.fingerprint }],
+      leftRevision: leftDocument.revision, rightRevision: rightDocument.revision })
+    expect(await readFile(right, 'utf8')).not.toContain('first change')
+    expect(await readFile(right, 'utf8')).toContain('second change')
+    await service.undoLast(sessionId)
+    expect(await readFile(right, 'utf8')).toBe(changed.join('\n') + '\n')
   })
 
   it('stages only the selected hunk and leaves the other worktree change untouched', async () => {

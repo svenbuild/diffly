@@ -131,6 +131,7 @@
   let canUndoResolution = false
   let resolutionError = ''
   let reviewPanelOpen = false
+  let reviewDetailsOpen = false
   let editSide: 'left' | 'right' = 'right'
   let editSurface: 'diff' | 'file' = 'diff'
   let editorOpenError = ''
@@ -172,7 +173,7 @@
       selectedEntry.capabilities?.saveAs
     ))
   $: showHunkReviewPanel =
-    reviewPanelOpen &&
+    reviewPanelOpen && reviewDetailsOpen &&
     $documentWorkspace.mode === 'review' &&
     !$comparisonSearch.open &&
     Boolean(activeDiffSessionId && selectedEntryId)
@@ -501,6 +502,10 @@
         <button class="secondary toolbar-button" type="button" aria-pressed={reviewPanelOpen} disabled={!activeDiffSessionId || !selectedEntryId}
           title="Comments and change actions"
           on:click={() => { workspaceSearchController.close(); selectWorkspaceMode('review'); reviewPanelOpen = !reviewPanelOpen }}>Review</button>
+        {#if reviewPanelOpen}
+          <button class="secondary toolbar-button" type="button" aria-pressed={reviewDetailsOpen} on:click={() => reviewDetailsOpen = !reviewDetailsOpen}>Review history</button>
+          <span class="toolbar-review-hint">Click + beside a line to comment</span>
+        {/if}
         <button
           class:active={$comparisonSearch.open}
           aria-pressed={$comparisonSearch.open}
@@ -589,6 +594,7 @@
     class:single-pane={mode === 'file'}
     class:search-panel-open={$comparisonSearch.open && Boolean(activeDiffSessionId)}
     class:review-panel-open={showHunkReviewPanel}
+    class:inline-review-active={reviewPanelOpen}
     class="compare-layout"
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { loadInlineHunks } from "../review/inline-hunks"
   import { onDestroy, onMount, tick } from 'svelte'
   import {
     FileDiff,
@@ -153,6 +154,8 @@
         annotation.lineNumber,
         annotation.metadata.id,
         annotation.metadata.text,
+        annotation.metadata.state,
+        annotation.metadata.savedAt,
       ].join(':'))
       .join('\u0001')
   }
@@ -208,9 +211,12 @@
   async function hydrateReviewAnnotations(key: string) {
     if (!reviewSessionId) return
     try {
-      const threads = await listReviewThreads(reviewSessionId, reviewEntryId)
+      const [threads, hunks] = await Promise.all([
+        listReviewThreads(reviewSessionId, reviewEntryId),
+        loadInlineHunks(reviewSessionId, reviewEntryId, reviewSourceKind, null, onReviewRefresh),
+      ])
       if (`${reviewSessionId}:${reviewEntryId}:${textKey()}` !== key) return
-      commentAnnotations = reviewThreadsToAnnotations(threads)
+      commentAnnotations = [...hunks, ...reviewThreadsToAnnotations(threads, reviewSessionId, reviewEntryId, commentAnnotations), ...commentAnnotations.filter(item => item.metadata.draft)]
     } catch (error) {
       setInteractionMessage(error instanceof Error ? error.message : 'Unable to load review threads.')
     }
@@ -336,6 +342,11 @@
           author,
         })
         const comment = thread.comments[0]!
+        target.metadata.sessionId = reviewSessionId
+        target.metadata.entryId = reviewEntryId
+        target.metadata.savedAt = thread.updatedAt
+        target.metadata.comments = thread.comments
+        target.metadata.draft = false
         target.metadata.threadId = thread.id
         target.metadata.commentId = comment.id
         target.metadata.author = comment.author
@@ -386,10 +397,11 @@
       maxLineDiffLength: viewerSettings.maxLineDiffLength,
       lineHoverHighlight: viewerSettings.lineHoverHighlight,
       enableTokenInteractionsOnWhitespace: viewerSettings.enableTokenInteractionsOnWhitespace,
-      enableGutterUtility: viewerSettings.enableGutterUtility,
+      enableGutterUtility: reviewModeEnabled || viewerSettings.enableGutterUtility,
       onGutterUtilityClick: handleGutterUtilityClick,
       renderAnnotation: renderCommentAnnotation,
       enableLineSelection:
+        reviewModeEnabled ||
         viewerSettings.enableLineSelection ||
         viewerSettings.controlledSelection ||
         viewerSettings.enableGutterUtility,

@@ -719,12 +719,12 @@
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 90%, #000);
-  box-shadow: 0 10px 24px color-mix(in srgb, #000 24%, transparent);
+  box-shadow: none;
 }
 
 .diffly-comment-composer {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) auto 34px;
   align-items: center;
   gap: 11px;
   min-height: 56px;
@@ -771,10 +771,11 @@ img.diffly-comment-avatar {
   overflow-wrap: anywhere;
 }
 
-.diffly-comment-composer input {
+.diffly-comment-composer textarea {
   width: 100%;
   min-width: 0;
-  height: 34px;
+  min-height: 64px;
+  resize: vertical;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -782,7 +783,7 @@ img.diffly-comment-avatar {
   font-size: 13px;
 }
 
-.diffly-comment-composer input::placeholder {
+.diffly-comment-composer textarea::placeholder {
   color: var(--muted);
 }
 
@@ -1988,3 +1989,26 @@ button.filter-chip.tooLarge:focus-visible {
   background: var(--hover-surface);
   color: var(--accent);
 }
+
+.diffly-review-thread {
+  width: min(100%, 640px);
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 13px/1.5 var(--font-sans, sans-serif);
+}
+.diffly-thread-actions { display: flex; justify-content: space-between; align-items: center; }
+.diffly-review-thread .diffly-comment-body { padding: 10px 0; }
+.diffly-review-thread form { display: flex; gap: 8px; align-items: flex-end; }
+.diffly-review-thread textarea { flex: 1; min-width: 0; resize: vertical; font: inherit; color: inherit; background: transparent; border: 1px solid var(--border-subtle); padding: 8px; border-radius: 4px; }
+.diffly-review-thread button { font: inherit; cursor: pointer; padding: 4px 8px; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text); background: var(--surface); }
+.diffly-review-thread button:hover, .diffly-hunk-actions button:hover { background: var(--hover-surface); }
+.diffly-review-thread button:focus-visible, .diffly-hunk-actions button:focus-visible, .diffly-comment-composer textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.diffly-review-thread [role="alert"]:empty { display: none; }
+.diffly-hunk-actions { display: flex; align-items: center; gap: 8px; padding: 6px 10px; color: var(--text); font: 12px/1.5 var(--font-sans, sans-serif); }
+.diffly-hunk-actions button { padding: 3px 8px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; }
+.compare-layout:not(.inline-review-active) .diffly-hunk-actions { display: none; }
+.diffly-comment-text { white-space: pre-wrap; }
+.toolbar-review-hint { color: var(--muted); font-size: 12px; }

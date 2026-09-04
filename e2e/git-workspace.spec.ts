@@ -40,10 +40,8 @@ test('stages a selected hunk and refreshes only the active review entry', async 
 
   await launchGitWorkspace()
   await page.getByRole('button', { name: 'Review', exact: true }).click()
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click()
-  const panel = page.getByRole('complementary', { name: 'Hunk review' })
-  await expect(panel.getByText('2 hunks')).toBeVisible()
-  await panel.getByRole('button', { name: 'Stage', exact: true }).first().click()
+  await expect(page.getByRole('button', { name: 'Stage change', exact: true })).toHaveCount(2)
+  await page.getByRole('button', { name: 'Stage change', exact: true }).first().click()
 
   await expect.poll(async () => (await git(['diff', '--cached'])).stdout).toContain('changed near start')
   expect((await git(['diff', '--cached'])).stdout).not.toContain('changed near end')

@@ -1,3 +1,5 @@
+import { buildUnifiedPatch, MAX_PATCH_SOURCE_LENGTH } from '../../../src/lib/compare/unified-patch'
+import type { TextDiffPayload } from '../../../src/lib/types'
 import type {
   ApplyPartialChangeRequest,
   DocumentTarget,
@@ -47,7 +49,7 @@ export class PartialApplyService {
 
   async apply(request: ApplyPartialChangeRequest) {
     const diff = await this.sessions.openEntryForSearch(request.sessionId, request.entryId)
-    const patch = diff.text?.patchText
+    const patch = reviewPatch(diff.text)
     if (!patch) throw new Error('PATCH_DOES_NOT_APPLY')
     const entry = this.sessions.getProviderEntry(request.sessionId, request.entryId)
     const journalId = await this.journal.start({
@@ -72,7 +74,7 @@ export class PartialApplyService {
 
   async listHunks(sessionId: string, entryId: string) {
     const diff = await this.sessions.openEntryForSearch(sessionId, entryId)
-    const patch = diff.text?.patchText
+    const patch = reviewPatch(diff.text)
     if (!patch) return []
     return parseSingleFilePatch(patch).hunks.map((hunk, index) => ({
       index,
@@ -273,4 +275,13 @@ function readUndoData(entry: OperationJournalEntry): FileUndoData | IndexUndoDat
     throw new Error('Operation journal entry is invalid.')
   }
   return entry.payload.data as FileUndoData | IndexUndoData | DocumentsUndoData
+}
+function reviewPatch(text: TextDiffPayload | null | undefined) {
+  if (!text) return null
+  if (text.patchText) return text.patchText
+  if (text.leftText.length + text.rightText.length > MAX_PATCH_SOURCE_LENGTH) return null
+  return buildUnifiedPatch({
+    leftLabel: 'left', rightLabel: 'right',
+    leftText: text.leftText, rightText: text.rightText,
+  })
 }
