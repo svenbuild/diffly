@@ -39,7 +39,6 @@
   .toolbar-svg-icon,
   .refresh-spinner,
   .settings-group,
-  .settings-theme-tile,
   .settings-color-control,
   .settings-switch-ui,
   .settings-dialog {
@@ -117,14 +116,12 @@
     width: 100%;
   }
 
-  .settings-appearance-shell,
   .library-settings,
   .update-settings,
   .settings-reset-page {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .settings-appearance-preview-column,
   .library-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
   .settings-reset-page > .settings-page-heading {
@@ -188,21 +185,18 @@
     overflow: visible;
   }
 
-  .settings-appearance-shell,
   .library-settings,
   .update-settings,
   .settings-reset-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-appearance-preview-column,
   .library-settings > .settings-page-heading,
   .update-settings > .settings-page-heading,
   .settings-reset-page > .settings-page-heading {
     grid-column: auto;
   }
 
-  .settings-theme-grid-three,
   .settings-update-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -351,14 +345,10 @@
     justify-content: flex-start;
   }
 
-  .settings-theme-grid,
-  .settings-theme-grid-three,
-  .settings-appearance-preview-grid[data-count='2'],
   .settings-update-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-appearance-mode-bar,
   .settings-theme-editor-header,
   .settings-theme-editor-actions {
     grid-template-columns: minmax(0, 1fr);
@@ -372,19 +362,6 @@
 
   .settings-group-header-actions {
     justify-content: flex-start;
-  }
-
-  .settings-theme-mode-control {
-    width: 100%;
-  }
-
-  .settings-appearance-preview-diff {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-appearance-preview-pane-removed {
-    border-right: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--preview-removed) 30%, var(--preview-surface));
   }
 
   .settings-theme-editor-row {

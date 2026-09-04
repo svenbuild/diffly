@@ -783,19 +783,11 @@
     }
   }
 
-  function stepUiFontSize(direction: -1 | 1) {
-    setUiFontSize(appearanceSettings.uiFontSize + direction)
-  }
-
   function setCodeFontSize(value: number) {
     appearanceSettings = {
       ...appearanceSettings,
       codeFontSize: clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE),
     }
-  }
-
-  function stepCodeFontSize(direction: -1 | 1) {
-    setCodeFontSize(appearanceSettings.codeFontSize + direction)
   }
 
   function setViewMode(nextViewMode: ViewMode) {
@@ -3173,8 +3165,8 @@
       onSetThemeFont={setThemeFontOverride}
       onSetThemeContrast={setThemeContrast}
       onSetUsePointerCursor={setUsePointerCursor}
-      onStepUiFontSize={stepUiFontSize}
-      onStepCodeFontSize={stepCodeFontSize}
+      onSetUiFontSize={setUiFontSize}
+      onSetCodeFontSize={setCodeFontSize}
       onSetViewMode={setViewMode}
       onSetViewerSettings={(settings) => {
         viewerSettings = settings

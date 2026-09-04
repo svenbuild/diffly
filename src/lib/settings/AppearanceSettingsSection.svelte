@@ -1,25 +1,36 @@
 <script lang="ts">
   import ThemeEditorPanel from './ThemeEditorPanel.svelte'
-  import ThemePreviewCard from './ThemePreviewCard.svelte'
-  import type { AppearanceSettings, ThemeDefinition, ThemeSemanticColorKey, ThemeVariant } from '../theme'
-  import type { CompareViewerSettings, ViewMode } from '../types'
-  import { createThemeCssVariables } from '../theme/runtime'
+  import ThemeLibraryCard from './ThemeLibraryCard.svelte'
+  import ThemeWireframe from './ThemeWireframe.svelte'
+  import type {
+    AppearanceSettings,
+    ThemeDefinition,
+    ThemeId,
+    ThemeSemanticColorKey,
+    ThemeVariant,
+  } from '../theme'
+  import type { CompareViewerSettings } from '../types'
 
   interface ThemeState {
     availableThemes: ThemeDefinition[]
     presetId: string
-    previewStyle: string
     theme: ThemeDefinition
   }
 
+  interface ThemePair {
+    id: ThemeId
+    light?: ThemeDefinition
+    dark?: ThemeDefinition
+  }
+
   export let appearanceSettings: AppearanceSettings
+  export let resolvedThemeMode: ThemeVariant
   export let lightTheme: ThemeDefinition
   export let darkTheme: ThemeDefinition
   export let visibleThemeVariants: ThemeVariant[]
   export let availableLightThemes: ThemeDefinition[]
   export let availableDarkThemes: ThemeDefinition[]
   export let viewerSettings: CompareViewerSettings
-  export let viewMode: ViewMode
   export let minUiFontSize: number
   export let maxUiFontSize: number
   export let minCodeFontSize: number
@@ -39,242 +50,359 @@
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
   export let onSetUsePointerCursor: (value: boolean) => void
-  export let onStepUiFontSize: (direction: -1 | 1) => void
-  export let onStepCodeFontSize: (direction: -1 | 1) => void
+  export let onSetUiFontSize: (value: number) => void
+  export let onSetCodeFontSize: (value: number) => void
+  export let onSetViewerSettings: (settings: CompareViewerSettings) => void
 
-  const themeTitles: Record<ThemeVariant, string> = {
-    light: 'Light theme',
-    dark: 'Dark theme',
-  }
-
-  const previewTitles: Record<ThemeVariant, string> = {
-    light: 'Light preview',
-    dark: 'Dark preview',
-  }
-
+  let editorOpen = false
+  let editorVariants: ThemeVariant[] = []
+  let themeFileInput: HTMLInputElement
+  let importMessage = ''
+  let themePairs: ThemePair[] = []
   let resolvedThemeState: Record<ThemeVariant, ThemeState>
 
-  function formatThemeLabel(value: string) {
-    if (value === 'legacy-tuerkis') {
-      return 'Original türkis'
-    }
+  $: resolvedThemeState = {
+    light: {
+      availableThemes: availableLightThemes,
+      presetId: appearanceSettings.lightThemeId,
+      theme: lightTheme,
+    },
+    dark: {
+      availableThemes: availableDarkThemes,
+      presetId: appearanceSettings.darkThemeId,
+      theme: darkTheme,
+    },
+  }
 
+  $: themePairs = buildThemePairs(availableLightThemes, availableDarkThemes)
+  $: activeInterfaceTheme = resolvedThemeMode === 'light' ? lightTheme : darkTheme
+
+  function buildThemePairs(light: ThemeDefinition[], dark: ThemeDefinition[]): ThemePair[] {
+    const pairs = new Map<ThemeId, ThemePair>()
+    for (const theme of [...light, ...dark]) {
+      const pair = pairs.get(theme.id) ?? { id: theme.id }
+      pair[theme.variant] = theme
+      pairs.set(theme.id, pair)
+    }
+    return [...pairs.values()].sort((left, right) =>
+      formatThemeLabel(left.id).localeCompare(formatThemeLabel(right.id)),
+    )
+  }
+
+  function formatThemeLabel(value: string) {
+    if (value === 'legacy-tuerkis') return 'Original türkis'
+    if (value === 'vscode-plus') return 'VS Code Plus'
     return value
       .split('-')
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
       .join(' ')
   }
 
-  function getThemeTitle(variant: ThemeVariant) {
-    return themeTitles[variant]
+  function useThemePair(pair: ThemePair) {
+    if (pair.light) onSetThemePreset('light', pair.light.id)
+    if (pair.dark) onSetThemePreset('dark', pair.dark.id)
   }
 
-  function getThemePalette(theme: ThemeDefinition) {
-    return [
-      { label: 'Accent', value: theme.accent },
-      { label: 'Surface', value: theme.surface },
-      { label: 'Text', value: theme.ink },
-      { label: 'Added', value: theme.semanticColors.diffAdded },
-      { label: 'Removed', value: theme.semanticColors.diffRemoved },
-      { label: 'Syntax', value: theme.semanticColors.skill },
+  function customizeThemePair(pair?: ThemePair) {
+    if (pair) useThemePair(pair)
+    editorVariants = pair
+      ? (['light', 'dark'] as ThemeVariant[]).filter((variant) => Boolean(pair[variant]))
+      : [...visibleThemeVariants]
+    editorOpen = true
+  }
+
+  function setInterfaceContrast(value: number) {
+    if (appearanceSettings.mode === 'system') {
+      onSetThemeContrast('light', value)
+      onSetThemeContrast('dark', value)
+      return
+    }
+    onSetThemeContrast(appearanceSettings.mode, value)
+  }
+
+  function setGlobalFont(field: 'ui' | 'code', value: string) {
+    onSetThemeFont('light', field, value)
+    onSetThemeFont('dark', field, value)
+  }
+
+  function closeEditor() {
+    editorOpen = false
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (editorOpen && event.key === 'Escape') closeEditor()
+  }
+
+  function cssColorToHex(value: unknown) {
+    if (typeof value !== 'string') return null
+    const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+    if (!context) return null
+    context.canvas.width = 1
+    context.canvas.height = 1
+    context.clearRect(0, 0, 1, 1)
+    context.fillStyle = '#000000'
+    try {
+      context.fillStyle = value
+    } catch {
+      return null
+    }
+    context.fillRect(0, 0, 1, 1)
+    const [red, green, blue] = context.getImageData(0, 0, 1, 1).data
+    return `#${[red, green, blue]
+      .map((channel) => channel.toString(16).padStart(2, '0'))
+      .join('')}`
+  }
+
+  function applyT3ThemeColors(variant: ThemeVariant, colors: Record<string, unknown>) {
+    const mappings: Array<{
+      field: 'accent' | 'surface' | 'ink'
+      candidates: string[]
+    }> = [
+      { field: 'accent', candidates: ['accent', 'messageAction', 'focus'] },
+      { field: 'surface', candidates: ['canvas', 'surface', 'codeBackground'] },
+      { field: 'ink', candidates: ['text', 'codeForeground', 'sidebarForeground'] },
     ]
+    for (const mapping of mappings) {
+      const color = mapping.candidates.map((key) => cssColorToHex(colors[key])).find(Boolean)
+      if (color) onSetThemeColor(variant, mapping.field, color)
+    }
+    const removed = cssColorToHex(colors.error)
+    const syntax = cssColorToHex(colors.messageAction) ?? cssColorToHex(colors.accent)
+    if (removed) onSetThemeSemanticColor(variant, 'diffRemoved', removed)
+    if (syntax) onSetThemeSemanticColor(variant, 'skill', syntax)
   }
 
-  function getPreviewTitle(variant: ThemeVariant) {
-    return previewTitles[variant]
+  function applyImportedTheme(raw: string) {
+    const payload = raw.startsWith('codex-theme-v1:') ? raw.slice('codex-theme-v1:'.length) : raw
+    const parsed = JSON.parse(payload) as {
+      version?: number
+      appearance?: ThemeVariant
+      colors?: Record<string, unknown>
+      variants?: Partial<Record<ThemeVariant, Record<string, unknown>>>
+      variant?: ThemeVariant
+      theme?: Partial<ThemeDefinition> & {
+        semanticColors?: Partial<ThemeDefinition['semanticColors']>
+      }
+    }
+
+    if (
+      parsed.version === 1 &&
+      (parsed.appearance === 'light' || parsed.appearance === 'dark') &&
+      parsed.colors
+    ) {
+      applyT3ThemeColors(parsed.appearance, parsed.colors)
+      const importedVariants: ThemeVariant[] = [parsed.appearance]
+      for (const variant of ['light', 'dark'] as const) {
+        const colors = parsed.variants?.[variant]
+        if (colors && variant !== parsed.appearance) {
+          applyT3ThemeColors(variant, colors)
+          importedVariants.push(variant)
+        }
+      }
+      editorVariants = importedVariants
+      editorOpen = true
+      return
+    }
+
+    const variant = parsed.variant
+    const theme = parsed.theme
+    if ((variant !== 'light' && variant !== 'dark') || !theme) {
+      throw new Error('This file does not contain a Diffly light or dark theme.')
+    }
+    if (theme.accent) onSetThemeColor(variant, 'accent', theme.accent)
+    if (theme.surface) onSetThemeColor(variant, 'surface', theme.surface)
+    if (theme.ink) onSetThemeColor(variant, 'ink', theme.ink)
+    if (theme.semanticColors?.diffAdded) {
+      onSetThemeSemanticColor(variant, 'diffAdded', theme.semanticColors.diffAdded)
+    }
+    if (theme.semanticColors?.diffRemoved) {
+      onSetThemeSemanticColor(variant, 'diffRemoved', theme.semanticColors.diffRemoved)
+    }
+    if (theme.semanticColors?.skill) {
+      onSetThemeSemanticColor(variant, 'skill', theme.semanticColors.skill)
+    }
+    if (theme.fonts?.ui !== undefined) onSetThemeFont(variant, 'ui', theme.fonts.ui ?? '')
+    if (theme.fonts?.code !== undefined) onSetThemeFont(variant, 'code', theme.fonts.code ?? '')
+    if (typeof theme.contrast === 'number') onSetThemeContrast(variant, theme.contrast)
+    editorVariants = [variant]
+    editorOpen = true
   }
 
-  function buildInlineStyle(values: Record<string, string>) {
-    return Object.entries(values)
-      .map(([property, value]) => `${property}: ${value}`)
-      .join('; ')
-  }
-
-  function getPreviewStyle(theme: ThemeDefinition) {
-    return buildInlineStyle(
-      createThemeCssVariables(theme, {
-        codeFontSize: appearanceSettings.codeFontSize,
-        uiFontSize: appearanceSettings.uiFontSize,
-        usePointerCursor: appearanceSettings.usePointerCursor,
-      }),
-    )
-  }
-
-  $: resolvedThemeState = {
-    light: {
-      availableThemes: availableLightThemes,
-      presetId: appearanceSettings.lightThemeId,
-      previewStyle: getPreviewStyle(lightTheme),
-      theme: lightTheme,
-    },
-    dark: {
-      availableThemes: availableDarkThemes,
-      presetId: appearanceSettings.darkThemeId,
-      previewStyle: getPreviewStyle(darkTheme),
-      theme: darkTheme,
-    },
+  async function importTheme(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    try {
+      applyImportedTheme(await file.text())
+      importMessage = `${file.name} imported`
+    } catch (error) {
+      importMessage = error instanceof Error ? error.message : 'Theme import failed.'
+    }
   }
 </script>
 
-<section class="settings-page">
+<svelte:window on:keydown={handleWindowKeydown} />
+
+<section class="settings-page t3-appearance-page">
   <div class="settings-page-heading">
     <h2>Appearance</h2>
-    <p>Choose how Diffly should look across the app.</p>
+    <p>Customize colors, themes, typography, and interface behavior.</p>
   </div>
 
-  <section class="settings-group settings-appearance-group">
-    <div class="settings-group-header">
-      <h3>Color scheme</h3>
-      <p>Presets control the full theme. The fields below override only what the UI exposes.</p>
+  <section class="t3-settings-section t3-settings-section-plain">
+    <h3 class="t3-settings-section-label">Color scheme</h3>
+    <div aria-label="Appearance mode" class="t3-mode-grid" role="group">
+      <button
+        aria-label="Follow the system appearance"
+        aria-pressed={appearanceSettings.mode === 'system'}
+        class:active={appearanceSettings.mode === 'system'}
+        class="t3-mode-tile"
+        type="button"
+        on:click={() => onSetThemeMode('system')}
+      >
+        <ThemeWireframe panes={[{ theme: lightTheme, clip: 'left' }, { theme: darkTheme, clip: 'right' }]} />
+        <span>System</span>
+      </button>
+      <button
+        aria-label="Use light mode"
+        aria-pressed={appearanceSettings.mode === 'light'}
+        class:active={appearanceSettings.mode === 'light'}
+        class="t3-mode-tile"
+        type="button"
+        on:click={() => onSetThemeMode('light')}
+      >
+        <ThemeWireframe panes={[{ theme: lightTheme }]} />
+        <span>Light</span>
+      </button>
+      <button
+        aria-label="Use dark mode"
+        aria-pressed={appearanceSettings.mode === 'dark'}
+        class:active={appearanceSettings.mode === 'dark'}
+        class="t3-mode-tile"
+        type="button"
+        on:click={() => onSetThemeMode('dark')}
+      >
+        <ThemeWireframe panes={[{ theme: darkTheme }]} />
+        <span>Dark</span>
+      </button>
     </div>
 
-    <div class="settings-appearance-shell">
-      <div class="settings-appearance-preview-column">
-        <div class="settings-appearance-mode-bar">
-          <span>Theme</span>
-          <div
-            class="segmented-control toolbar-segmented-control settings-theme-mode-control"
-            role="group"
-            aria-label="Theme mode"
-          >
-            <button
-              aria-pressed={appearanceSettings.mode === 'light'}
-              class:active={appearanceSettings.mode === 'light'}
-              type="button"
-              on:click={() => onSetThemeMode('light')}
-            >
-              <span>Light</span>
-            </button>
-            <button
-              aria-pressed={appearanceSettings.mode === 'dark'}
-              class:active={appearanceSettings.mode === 'dark'}
-              type="button"
-              on:click={() => onSetThemeMode('dark')}
-            >
-              <span>Dark</span>
-            </button>
-            <button
-              aria-pressed={appearanceSettings.mode === 'system'}
-              class:active={appearanceSettings.mode === 'system'}
-              type="button"
-              on:click={() => onSetThemeMode('system')}
-            >
-              <span>System</span>
-            </button>
-          </div>
-        </div>
+    <div class="t3-theme-library-header">
+      <h3 class="t3-settings-section-label">Theme</h3>
+      <div class="t3-theme-library-actions">
+        <button class="secondary t3-small-button" type="button" on:click={() => customizeThemePair()}>
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 2.2a5.8 5.8 0 1 0 0 11.6h.9a1.3 1.3 0 0 0 0-2.6H8a1 1 0 0 1 0-2h1.3a4.7 4.7 0 0 0 0-9.4H8Z"></path><circle cx="5" cy="5.5" r=".65"></circle><circle cx="4.3" cy="8.2" r=".65"></circle><circle cx="7" cy="3.9" r=".65"></circle></svg>
+          Create theme
+        </button>
+        <button class="secondary t3-small-button" type="button" on:click={() => themeFileInput.click()}>
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>
+          Add theme
+        </button>
+        <input bind:this={themeFileInput} accept=".json,application/json,text/plain" class="t3-theme-file-input" type="file" on:change={importTheme} />
+      </div>
+    </div>
+    {#if importMessage}<p class="t3-import-message" role="status">{importMessage}</p>{/if}
 
-        <div class="settings-appearance-preview-grid" data-count={visibleThemeVariants.length}>
-          {#each visibleThemeVariants as variant}
-            {@const themeState = resolvedThemeState[variant]}
-            <ThemePreviewCard
-              title={getPreviewTitle(variant)}
-              themeLabel={formatThemeLabel(themeState.theme.id)}
-              previewStyle={themeState.previewStyle}
-              palette={getThemePalette(themeState.theme)}
-              {viewerSettings}
-              {viewMode}
-              {appearanceSettings}
-              resolvedThemeMode={variant}
-            />
-          {/each}
+    <div class="t3-theme-library-grid">
+      {#each themePairs as pair (pair.id)}
+        <ThemeLibraryCard
+          label={formatThemeLabel(pair.id)}
+          lightTheme={pair.light}
+          darkTheme={pair.dark}
+          activeLightId={appearanceSettings.lightThemeId}
+          activeDarkId={appearanceSettings.darkThemeId}
+          onUseTheme={onSetThemePreset}
+          onUseBoth={() => useThemePair(pair)}
+          onCustomize={() => customizeThemePair(pair)}
+        />
+      {/each}
+    </div>
+  </section>
+
+  <section class="t3-settings-section">
+    <h3 class="t3-settings-section-title">Interface</h3>
+    <div class="t3-settings-group">
+      <div class="t3-settings-row">
+        <div><strong>Contrast</strong><p>Adjust the contrast of colors and borders across the interface.</p></div>
+        <div class="t3-slider-control">
+          <output>{activeInterfaceTheme.contrast}%</output>
+          <input aria-label="Contrast" max="100" min="0" step="5" type="range" value={activeInterfaceTheme.contrast} on:input={(event) => setInterfaceContrast(Number((event.currentTarget as HTMLInputElement).value))} />
         </div>
       </div>
+      <label class="t3-settings-row t3-settings-row-clickable">
+        <div><strong>Pointer cursors</strong><p>Show a pointer cursor for buttons and other interactive controls.</p></div>
+        <span class="settings-switch">
+          <input checked={appearanceSettings.usePointerCursor} role="switch" type="checkbox" on:change={(event) => onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)} />
+          <span aria-hidden="true" class="settings-switch-ui"></span>
+        </span>
+      </label>
+    </div>
+  </section>
 
-      <div class="settings-theme-editor-stack">
-        <div class="settings-theme-editor-variants" data-variant-count={visibleThemeVariants.length}>
-          {#each visibleThemeVariants as variant}
-            {@const themeState = resolvedThemeState[variant]}
-            {#key `${variant}:${themeState.presetId}`}
-              <ThemeEditorPanel
-                title={getThemeTitle(variant)}
-                subtitle="Preset changes stay in sync here. Manual edits become overrides."
-                {variant}
-                {themeState}
-                {formatThemeLabel}
-                {onSetThemePreset}
-                {onSetThemeColor}
-                {onSetThemeSemanticColor}
-                {onSetThemeFont}
-                {onSetThemeContrast}
-              />
-            {/key}
-          {/each}
-        </div>
-
-        <section class="settings-theme-editor settings-theme-editor-global">
-          <header class="settings-theme-editor-header">
-            <div class="settings-theme-editor-title">
-              <strong>Global appearance</strong>
-              <span>These settings apply across both light and dark variants.</span>
-            </div>
-          </header>
-
-          <div class="settings-theme-editor-grid">
-            <label class="settings-theme-editor-row settings-theme-editor-row-interactive">
-              <span>Use pointer cursors</span>
-              <span class="settings-switch">
-                <input
-                  checked={appearanceSettings.usePointerCursor}
-                  role="switch"
-                  type="checkbox"
-                  on:change={(event) =>
-                    onSetUsePointerCursor((event.currentTarget as HTMLInputElement).checked)}
-                />
-                <span aria-hidden="true" class="settings-switch-ui"></span>
-              </span>
-            </label>
-
-            <div class="settings-theme-editor-row">
-              <span>UI font size</span>
-              <div class="settings-stepper">
-                <button
-                  class="secondary settings-stepper-button"
-                  disabled={appearanceSettings.uiFontSize <= minUiFontSize}
-                  type="button"
-                  on:click={() => onStepUiFontSize(-1)}
-                >
-                  -
-                </button>
-                <span class="settings-stepper-value">{appearanceSettings.uiFontSize}</span>
-                <button
-                  class="secondary settings-stepper-button"
-                  disabled={appearanceSettings.uiFontSize >= maxUiFontSize}
-                  type="button"
-                  on:click={() => onStepUiFontSize(1)}
-                >
-                  +
-                </button>
-                <small class="settings-stepper-unit">px</small>
-              </div>
-            </div>
-
-            <div class="settings-theme-editor-row">
-              <span>Code font size</span>
-              <div class="settings-stepper">
-                <button
-                  class="secondary settings-stepper-button"
-                  disabled={appearanceSettings.codeFontSize <= minCodeFontSize}
-                  type="button"
-                  on:click={() => onStepCodeFontSize(-1)}
-                >
-                  -
-                </button>
-                <span class="settings-stepper-value">{appearanceSettings.codeFontSize}</span>
-                <button
-                  class="secondary settings-stepper-button"
-                  disabled={appearanceSettings.codeFontSize >= maxCodeFontSize}
-                  type="button"
-                  on:click={() => onStepCodeFontSize(1)}
-                >
-                  +
-                </button>
-                <small class="settings-stepper-unit">px</small>
-              </div>
-            </div>
+  <section class="t3-settings-section">
+    <h3 class="t3-settings-section-title">Typography</h3>
+    <div class="t3-settings-group">
+      <div class="t3-settings-row t3-font-row">
+        <div><strong>Interface font</strong><p>Everything outside diffs, code previews, and editors.</p></div>
+        <div class="t3-font-controls">
+          <input aria-label="Interface font family" placeholder="System default" type="text" value={activeInterfaceTheme.fonts.ui ?? ''} on:change={(event) => setGlobalFont('ui', (event.currentTarget as HTMLInputElement).value)} />
+          <div class="t3-slider-control t3-font-size-control">
+            <output>{appearanceSettings.uiFontSize}px</output>
+            <input aria-label="Interface font size" max={maxUiFontSize} min={minUiFontSize} step="1" type="range" value={appearanceSettings.uiFontSize} on:input={(event) => onSetUiFontSize(Number((event.currentTarget as HTMLInputElement).value))} />
           </div>
-        </section>
+        </div>
       </div>
+      <div class="t3-settings-row t3-font-row">
+        <div><strong>Monospace font</strong><p>Diffs, code previews, and document editors.</p></div>
+        <div class="t3-font-controls">
+          <input aria-label="Monospace font family" placeholder="System monospace" type="text" value={activeInterfaceTheme.fonts.code ?? ''} on:change={(event) => setGlobalFont('code', (event.currentTarget as HTMLInputElement).value)} />
+          <div class="t3-slider-control t3-font-size-control">
+            <output>{appearanceSettings.codeFontSize}px</output>
+            <input aria-label="Code font size" max={maxCodeFontSize} min={minCodeFontSize} step="1" type="range" value={appearanceSettings.codeFontSize} on:input={(event) => onSetCodeFontSize(Number((event.currentTarget as HTMLInputElement).value))} />
+          </div>
+        </div>
+      </div>
+      <label class="t3-settings-row t3-settings-row-clickable">
+        <div><strong>Word wrap</strong><p>Wrap long lines in diffs and file previews by default.</p></div>
+        <span class="settings-switch">
+          <input checked={viewerSettings.codeOverflow === 'wrap'} role="switch" type="checkbox" on:change={(event) => onSetViewerSettings({ ...viewerSettings, codeOverflow: (event.currentTarget as HTMLInputElement).checked ? 'wrap' : 'scroll' })} />
+          <span aria-hidden="true" class="settings-switch-ui"></span>
+        </span>
+      </label>
     </div>
   </section>
 </section>
+
+{#if editorOpen}
+  <div class="t3-theme-editor-backdrop" role="presentation">
+    <button aria-label="Close theme editor" class="t3-theme-editor-scrim" type="button" on:click={closeEditor}></button>
+    <aside aria-label="Theme editor" class="t3-theme-editor-drawer">
+      <header class="t3-theme-editor-drawer-header">
+        <div><strong>Theme editor</strong><span>Changes are saved immediately.</span></div>
+        <button aria-label="Close theme editor" class="t3-icon-button" type="button" on:click={closeEditor}>
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"></path></svg>
+        </button>
+      </header>
+      <div class="t3-theme-editor-drawer-content">
+        {#each editorVariants as variant}
+          {@const themeState = resolvedThemeState[variant]}
+          {#key `${variant}:${themeState.presetId}`}
+            <ThemeEditorPanel
+              title={`${variant === 'light' ? 'Light' : 'Dark'} theme`}
+              subtitle="Preset changes stay in sync. Manual edits become overrides."
+              {variant}
+              {themeState}
+              {formatThemeLabel}
+              {onSetThemePreset}
+              {onSetThemeColor}
+              {onSetThemeSemanticColor}
+              {onSetThemeFont}
+              {onSetThemeContrast}
+            />
+          {/key}
+        {/each}
+      </div>
+    </aside>
+  </div>
+{/if}

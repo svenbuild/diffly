@@ -81,8 +81,8 @@
   export let onSetThemeFont: (variant: ThemeVariant, field: 'ui' | 'code', value: string) => void
   export let onSetThemeContrast: (variant: ThemeVariant, value: number) => void
   export let onSetUsePointerCursor: (value: boolean) => void
-  export let onStepUiFontSize: (direction: -1 | 1) => void
-  export let onStepCodeFontSize: (direction: -1 | 1) => void
+  export let onSetUiFontSize: (value: number) => void
+  export let onSetCodeFontSize: (value: number) => void
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
@@ -143,13 +143,13 @@
       {#if activeSection === 'appearance'}
         <AppearanceSettingsSection
           {appearanceSettings}
+          {resolvedThemeMode}
           {lightTheme}
           {darkTheme}
           {visibleThemeVariants}
           {availableLightThemes}
           {availableDarkThemes}
           {viewerSettings}
-          {viewMode}
           {minUiFontSize}
           {maxUiFontSize}
           {minCodeFontSize}
@@ -161,8 +161,9 @@
           {onSetThemeFont}
           {onSetThemeContrast}
           {onSetUsePointerCursor}
-          {onStepUiFontSize}
-          {onStepCodeFontSize}
+          {onSetUiFontSize}
+          {onSetCodeFontSize}
+          {onSetViewerSettings}
         />
       {/if}
 
