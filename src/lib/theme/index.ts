@@ -10,6 +10,17 @@ export interface ThemeSemanticColors {
 
 export type ThemeSemanticColorKey = keyof ThemeSemanticColors
 
+export interface ThemeAdvancedColors {
+  background?: string
+  raisedSurface?: string
+  overlay?: string
+  mutedText?: string
+  border?: string
+  input?: string
+}
+
+export type ThemeAdvancedColorKey = keyof ThemeAdvancedColors
+
 export type ThemeId =
   | 'absolutely'
   | 'ayu'
@@ -52,6 +63,7 @@ export interface ThemeDefinition {
     code: string | null
   }
   semanticColors: ThemeSemanticColors
+  advancedColors?: ThemeAdvancedColors
 }
 
 export interface ThemeOverrides {
@@ -65,6 +77,12 @@ export interface ThemeOverrides {
   uiFont?: string | null
   codeFont?: string | null
   opaqueWindows?: boolean
+  background?: string
+  raisedSurface?: string
+  overlay?: string
+  mutedText?: string
+  border?: string
+  input?: string
 }
 
 export interface AppearanceSettings {
@@ -884,6 +902,15 @@ export function applyOverrides(base: ThemeDefinition, overrides: ThemeOverrides)
       diffAdded: overrides.diffAdded ?? base.semanticColors.diffAdded,
       diffRemoved: overrides.diffRemoved ?? base.semanticColors.diffRemoved,
       skill: overrides.skill ?? base.semanticColors.skill,
+    },
+    advancedColors: {
+      ...base.advancedColors,
+      background: overrides.background ?? base.advancedColors?.background,
+      raisedSurface: overrides.raisedSurface ?? base.advancedColors?.raisedSurface,
+      overlay: overrides.overlay ?? base.advancedColors?.overlay,
+      mutedText: overrides.mutedText ?? base.advancedColors?.mutedText,
+      border: overrides.border ?? base.advancedColors?.border,
+      input: overrides.input ?? base.advancedColors?.input,
     },
     contrast: overrides.contrast !== undefined ? overrides.contrast : base.contrast,
     opaqueWindows:

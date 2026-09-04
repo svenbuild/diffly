@@ -12,6 +12,7 @@
   } from './types'
   import type {
     AppearanceSettings,
+    ThemeAdvancedColorKey,
     ThemeDefinition,
     ThemeSemanticColorKey,
     ThemeVariant,
@@ -45,7 +46,6 @@
   export let resolvedThemeMode: 'light' | 'dark' = 'dark'
   export let lightTheme: ThemeDefinition
   export let darkTheme: ThemeDefinition
-  export let visibleThemeVariants: ThemeVariant[]
   export let availableLightThemes: ThemeDefinition[]
   export let availableDarkThemes: ThemeDefinition[]
   export let viewMode: ViewMode
@@ -85,6 +85,17 @@
   export let onSetCodeFontSize: (value: number) => void
   export let onSetViewMode: (viewMode: ViewMode) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
+  export let onOpenThemeEditor: (
+    appearance: ThemeVariant,
+    seedName: string,
+    editing: boolean,
+    availableAppearances: ThemeVariant[],
+  ) => void
+  export let onSetThemeAdvancedColor: (
+    variant: ThemeVariant,
+    field: ThemeAdvancedColorKey,
+    value: string,
+  ) => void
   export let onSetTreeSettings: (settings: CompareTreeSettings) => void
   export let onSetCheckForUpdatesOnLaunch: (value: boolean) => void
   export let onSetUpdateChannel: (value: 'stable' | 'prerelease') => void
@@ -146,7 +157,6 @@
           {resolvedThemeMode}
           {lightTheme}
           {darkTheme}
-          {visibleThemeVariants}
           {availableLightThemes}
           {availableDarkThemes}
           {viewerSettings}
@@ -158,12 +168,14 @@
           {onSetThemePreset}
           {onSetThemeColor}
           {onSetThemeSemanticColor}
+          {onSetThemeAdvancedColor}
           {onSetThemeFont}
           {onSetThemeContrast}
           {onSetUsePointerCursor}
           {onSetUiFontSize}
           {onSetCodeFontSize}
           {onSetViewerSettings}
+          {onOpenThemeEditor}
         />
       {/if}
 

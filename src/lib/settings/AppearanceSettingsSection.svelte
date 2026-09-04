@@ -1,21 +1,15 @@
 <script lang="ts">
-  import ThemeEditorPanel from './ThemeEditorPanel.svelte'
   import ThemeLibraryCard from './ThemeLibraryCard.svelte'
   import ThemeWireframe from './ThemeWireframe.svelte'
   import type {
     AppearanceSettings,
+    ThemeAdvancedColorKey,
     ThemeDefinition,
     ThemeId,
     ThemeSemanticColorKey,
     ThemeVariant,
   } from '../theme'
   import type { CompareViewerSettings } from '../types'
-
-  interface ThemeState {
-    availableThemes: ThemeDefinition[]
-    presetId: string
-    theme: ThemeDefinition
-  }
 
   interface ThemePair {
     id: ThemeId
@@ -27,7 +21,6 @@
   export let resolvedThemeMode: ThemeVariant
   export let lightTheme: ThemeDefinition
   export let darkTheme: ThemeDefinition
-  export let visibleThemeVariants: ThemeVariant[]
   export let availableLightThemes: ThemeDefinition[]
   export let availableDarkThemes: ThemeDefinition[]
   export let viewerSettings: CompareViewerSettings
@@ -53,26 +46,21 @@
   export let onSetUiFontSize: (value: number) => void
   export let onSetCodeFontSize: (value: number) => void
   export let onSetViewerSettings: (settings: CompareViewerSettings) => void
+  export let onOpenThemeEditor: (
+    appearance: ThemeVariant,
+    seedName: string,
+    editing: boolean,
+    availableAppearances: ThemeVariant[],
+  ) => void
+  export let onSetThemeAdvancedColor: (
+    variant: ThemeVariant,
+    field: ThemeAdvancedColorKey,
+    value: string,
+  ) => void
 
-  let editorOpen = false
-  let editorVariants: ThemeVariant[] = []
   let themeFileInput: HTMLInputElement
   let importMessage = ''
   let themePairs: ThemePair[] = []
-  let resolvedThemeState: Record<ThemeVariant, ThemeState>
-
-  $: resolvedThemeState = {
-    light: {
-      availableThemes: availableLightThemes,
-      presetId: appearanceSettings.lightThemeId,
-      theme: lightTheme,
-    },
-    dark: {
-      availableThemes: availableDarkThemes,
-      presetId: appearanceSettings.darkThemeId,
-      theme: darkTheme,
-    },
-  }
 
   $: themePairs = buildThemePairs(availableLightThemes, availableDarkThemes)
   $: activeInterfaceTheme = resolvedThemeMode === 'light' ? lightTheme : darkTheme
@@ -84,12 +72,15 @@
       pair[theme.variant] = theme
       pairs.set(theme.id, pair)
     }
-    return [...pairs.values()].sort((left, right) =>
-      formatThemeLabel(left.id).localeCompare(formatThemeLabel(right.id)),
-    )
+    return [...pairs.values()].sort((left, right) => {
+      if (left.id === 'codex') return -1
+      if (right.id === 'codex') return 1
+      return formatThemeLabel(left.id).localeCompare(formatThemeLabel(right.id))
+    })
   }
 
   function formatThemeLabel(value: string) {
+    if (value === 'codex') return 'Diffly'
     if (value === 'legacy-tuerkis') return 'Original türkis'
     if (value === 'vscode-plus') return 'VS Code Plus'
     return value
@@ -103,12 +94,23 @@
     if (pair.dark) onSetThemePreset('dark', pair.dark.id)
   }
 
-  function customizeThemePair(pair?: ThemePair) {
+  function openThemeEditor(pair?: ThemePair) {
     if (pair) useThemePair(pair)
-    editorVariants = pair
-      ? (['light', 'dark'] as ThemeVariant[]).filter((variant) => Boolean(pair[variant]))
-      : [...visibleThemeVariants]
-    editorOpen = true
+    const initialAppearance = pair?.[resolvedThemeMode]
+      ? resolvedThemeMode
+      : pair?.dark
+        ? 'dark'
+        : pair?.light
+          ? 'light'
+          : resolvedThemeMode
+    onOpenThemeEditor(
+      initialAppearance,
+      pair ? formatThemeLabel(pair.id) : '',
+      Boolean(pair),
+      pair
+        ? (['light', 'dark'] as ThemeVariant[]).filter((variant) => Boolean(pair[variant]))
+        : ['light', 'dark'],
+    )
   }
 
   function setInterfaceContrast(value: number) {
@@ -123,14 +125,6 @@
   function setGlobalFont(field: 'ui' | 'code', value: string) {
     onSetThemeFont('light', field, value)
     onSetThemeFont('dark', field, value)
-  }
-
-  function closeEditor() {
-    editorOpen = false
-  }
-
-  function handleWindowKeydown(event: KeyboardEvent) {
-    if (editorOpen && event.key === 'Escape') closeEditor()
   }
 
   function cssColorToHex(value: unknown) {
@@ -170,12 +164,25 @@
     const syntax = cssColorToHex(colors.messageAction) ?? cssColorToHex(colors.accent)
     if (removed) onSetThemeSemanticColor(variant, 'diffRemoved', removed)
     if (syntax) onSetThemeSemanticColor(variant, 'skill', syntax)
+    const advancedMappings: Array<[ThemeAdvancedColorKey, string[]]> = [
+      ['background', ['canvas']],
+      ['raisedSurface', ['surfaceRaised']],
+      ['overlay', ['surfaceOverlay']],
+      ['mutedText', ['textMuted', 'mutedForeground']],
+      ['border', ['border']],
+      ['input', ['input']],
+    ]
+    for (const [field, candidates] of advancedMappings) {
+      const color = candidates.map((key) => cssColorToHex(colors[key])).find(Boolean)
+      if (color) onSetThemeAdvancedColor(variant, field, color)
+    }
   }
 
   function applyImportedTheme(raw: string) {
     const payload = raw.startsWith('codex-theme-v1:') ? raw.slice('codex-theme-v1:'.length) : raw
     const parsed = JSON.parse(payload) as {
       version?: number
+      name?: unknown
       appearance?: ThemeVariant
       colors?: Record<string, unknown>
       variants?: Partial<Record<ThemeVariant, Record<string, unknown>>>
@@ -199,8 +206,12 @@
           importedVariants.push(variant)
         }
       }
-      editorVariants = importedVariants
-      editorOpen = true
+      onOpenThemeEditor(
+        importedVariants[0] ?? resolvedThemeMode,
+        typeof parsed.name === 'string' ? parsed.name : 'Imported theme',
+        false,
+        importedVariants,
+      )
       return
     }
 
@@ -224,8 +235,12 @@
     if (theme.fonts?.ui !== undefined) onSetThemeFont(variant, 'ui', theme.fonts.ui ?? '')
     if (theme.fonts?.code !== undefined) onSetThemeFont(variant, 'code', theme.fonts.code ?? '')
     if (typeof theme.contrast === 'number') onSetThemeContrast(variant, theme.contrast)
-    editorVariants = [variant]
-    editorOpen = true
+    for (const [field, color] of Object.entries(theme.advancedColors ?? {})) {
+      if (typeof color === 'string') {
+        onSetThemeAdvancedColor(variant, field as ThemeAdvancedColorKey, color)
+      }
+    }
+    onOpenThemeEditor(variant, 'Imported theme', false, [variant])
   }
 
   async function importTheme(event: Event) {
@@ -242,14 +257,7 @@
   }
 </script>
 
-<svelte:window on:keydown={handleWindowKeydown} />
-
 <section class="settings-page t3-appearance-page">
-  <div class="settings-page-heading">
-    <h2>Appearance</h2>
-    <p>Customize colors, themes, typography, and interface behavior.</p>
-  </div>
-
   <section class="t3-settings-section t3-settings-section-plain">
     <h3 class="t3-settings-section-label">Color scheme</h3>
     <div aria-label="Appearance mode" class="t3-mode-grid" role="group">
@@ -289,9 +297,9 @@
     </div>
 
     <div class="t3-theme-library-header">
-      <h3 class="t3-settings-section-label">Theme</h3>
+      <h3 class="t3-settings-section-label">Themes</h3>
       <div class="t3-theme-library-actions">
-        <button class="secondary t3-small-button" type="button" on:click={() => customizeThemePair()}>
+        <button class="secondary t3-small-button" type="button" on:click={() => openThemeEditor()}>
           <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 2.2a5.8 5.8 0 1 0 0 11.6h.9a1.3 1.3 0 0 0 0-2.6H8a1 1 0 0 1 0-2h1.3a4.7 4.7 0 0 0 0-9.4H8Z"></path><circle cx="5" cy="5.5" r=".65"></circle><circle cx="4.3" cy="8.2" r=".65"></circle><circle cx="7" cy="3.9" r=".65"></circle></svg>
           Create theme
         </button>
@@ -314,7 +322,7 @@
           activeDarkId={appearanceSettings.darkThemeId}
           onUseTheme={onSetThemePreset}
           onUseBoth={() => useThemePair(pair)}
-          onCustomize={() => customizeThemePair(pair)}
+          onCustomize={() => openThemeEditor(pair)}
         />
       {/each}
     </div>
@@ -373,36 +381,3 @@
     </div>
   </section>
 </section>
-
-{#if editorOpen}
-  <div class="t3-theme-editor-backdrop" role="presentation">
-    <button aria-label="Close theme editor" class="t3-theme-editor-scrim" type="button" on:click={closeEditor}></button>
-    <aside aria-label="Theme editor" class="t3-theme-editor-drawer">
-      <header class="t3-theme-editor-drawer-header">
-        <div><strong>Theme editor</strong><span>Changes are saved immediately.</span></div>
-        <button aria-label="Close theme editor" class="t3-icon-button" type="button" on:click={closeEditor}>
-          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"></path></svg>
-        </button>
-      </header>
-      <div class="t3-theme-editor-drawer-content">
-        {#each editorVariants as variant}
-          {@const themeState = resolvedThemeState[variant]}
-          {#key `${variant}:${themeState.presetId}`}
-            <ThemeEditorPanel
-              title={`${variant === 'light' ? 'Light' : 'Dark'} theme`}
-              subtitle="Preset changes stay in sync. Manual edits become overrides."
-              {variant}
-              {themeState}
-              {formatThemeLabel}
-              {onSetThemePreset}
-              {onSetThemeColor}
-              {onSetThemeSemanticColor}
-              {onSetThemeFont}
-              {onSetThemeContrast}
-            />
-          {/key}
-        {/each}
-      </div>
-    </aside>
-  </div>
-{/if}

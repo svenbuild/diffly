@@ -39,7 +39,6 @@
   .toolbar-svg-icon,
   .refresh-spinner,
   .settings-group,
-  .settings-color-control,
   .settings-switch-ui,
   .settings-dialog {
     transition:
@@ -349,35 +348,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-theme-editor-header,
-  .settings-theme-editor-actions {
-    grid-template-columns: minmax(0, 1fr);
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .settings-group-header-with-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .settings-group-header-actions {
     justify-content: flex-start;
-  }
-
-  .settings-theme-editor-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-color-control,
-  .settings-theme-text-input,
-  .settings-theme-slider {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-  }
-
-  .settings-theme-slider {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .settings-update-actions,

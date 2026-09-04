@@ -361,7 +361,7 @@ select {
   width: 100%;
   min-height: var(--control-height-md);
   padding: 0 28px 0 10px;
-  background: var(--surface);
+  background: var(--input-surface, var(--surface));
   color: var(--text);
   transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
@@ -382,7 +382,7 @@ input:not([type='checkbox']):hover:not(:disabled),
 select:hover:not(:disabled) {
   border-color: var(--border-strong);
   /* background-color only, so the select's chevron background-image survives */
-  background-color: color-mix(in srgb, var(--surface-strong) 15%, var(--surface));
+  background-color: color-mix(in srgb, var(--surface-strong) 15%, var(--input-surface, var(--surface)));
 }
 
 input[type='checkbox'] {

@@ -81,6 +81,7 @@
     resolveAppearanceState,
     scheduleThemeTransitionCleanup as scheduleThemeCleanup,
     setThemeColorOverride as applyThemeColorOverride,
+    setThemeAdvancedColorOverride as applyThemeAdvancedColorOverride,
     setThemeContrast as applyThemeContrast,
     setThemeFontOverride as applyThemeFontOverride,
     setThemeMode as applyThemeMode,
@@ -143,6 +144,7 @@
     getAvailableThemes,
     getDefaultAppearanceSettings,
     type AppearanceSettings,
+    type ThemeAdvancedColorKey,
     type ThemeDefinition,
     type ThemeSemanticColorKey,
     type ThemeVariant,
@@ -228,6 +230,12 @@
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
   let resolvedThemeMode: Exclude<ThemeMode, 'system'> = 'dark'
+  let themeEditorOpen = false
+  let themeEditorRevision = 0
+  let themeEditorAppearance: ThemeVariant = resolvedThemeMode
+  let themeEditorSeedName = ''
+  let themeEditorEditing = false
+  let themeEditorAvailableAppearances: ThemeVariant[] = ['light', 'dark']
   let viewerSettings: CompareViewerSettings = createDefaultViewerSettings()
   let treeSettings: CompareTreeSettings = createDefaultTreeSettings()
   let checkForUpdatesOnLaunch = true
@@ -349,6 +357,8 @@
   let SettingsRouteComponent: typeof import('./lib/screens/SettingsRoute.svelte').default | null = null
   let settingsRoutePromise: Promise<void> | null = null
   let settingsRouteRequestId = 0
+  let ThemeEditorPanelComponent: typeof import('./lib/settings/ThemeEditorPanel.svelte').default | null = null
+  let themeEditorPanelPromise: Promise<void> | null = null
   let localPickerHydrationSession: PersistedSession | null = null
   let localPickersHydrated = false
   let localPickerHydrationPromise: Promise<void> | null = null
@@ -370,7 +380,6 @@
   const availableDarkThemes = getAvailableThemes('dark')
   let lightAppearanceTheme: ThemeDefinition = getAvailableThemes('light')[0]
   let darkAppearanceTheme: ThemeDefinition = getAvailableThemes('dark')[0]
-  let visibleAppearanceVariants: ThemeVariant[] = ['light']
 
   const getPendingCompareOptions = (): CompareOptions => ({
     ignoreWhitespace,
@@ -870,6 +879,38 @@
 
   function setThemeContrast(variant: ThemeVariant, value: number) {
     appearanceSettings = applyThemeContrast(appearanceSettings, variant, value)
+  }
+
+  function setThemeAdvancedColorOverride(
+    variant: ThemeVariant,
+    field: ThemeAdvancedColorKey,
+    value: string,
+  ) {
+    appearanceSettings = applyThemeAdvancedColorOverride(appearanceSettings, variant, field, value)
+  }
+
+  async function openThemeEditor(
+    appearance: ThemeVariant,
+    seedName: string,
+    editing: boolean,
+    availableAppearances: ThemeVariant[],
+  ) {
+    themeEditorAppearance = appearance
+    themeEditorSeedName = seedName
+    themeEditorEditing = editing
+    themeEditorAvailableAppearances = availableAppearances
+    themeEditorRevision += 1
+    if (!ThemeEditorPanelComponent) {
+      themeEditorPanelPromise ??= import('./lib/settings/ThemeEditorPanel.svelte')
+        .then((module) => {
+          ThemeEditorPanelComponent = module.default
+        })
+        .finally(() => {
+          themeEditorPanelPromise = null
+        })
+      await themeEditorPanelPromise
+    }
+    themeEditorOpen = true
   }
 
   function updateIndicatorTitle() {
@@ -2939,7 +2980,6 @@
     resolvedThemeMode = appearanceState.resolvedThemeMode
     lightAppearanceTheme = appearanceState.lightAppearanceTheme
     darkAppearanceTheme = appearanceState.darkAppearanceTheme
-    visibleAppearanceVariants = appearanceState.visibleAppearanceVariants
   }
 
   $: if (screen === 'compare') {
@@ -3138,7 +3178,6 @@
       {resolvedThemeMode}
       {lightAppearanceTheme}
       {darkAppearanceTheme}
-      {visibleAppearanceVariants}
       {availableLightThemes}
       {availableDarkThemes}
       {viewMode}
@@ -3162,6 +3201,7 @@
       onSetThemePreset={setThemePreset}
       onSetThemeColor={setThemeColorOverride}
       onSetThemeSemanticColor={setThemeSemanticColorOverride}
+      onSetThemeAdvancedColor={setThemeAdvancedColorOverride}
       onSetThemeFont={setThemeFontOverride}
       onSetThemeContrast={setThemeContrast}
       onSetUsePointerCursor={setUsePointerCursor}
@@ -3172,6 +3212,7 @@
         viewerSettings = settings
         viewMode = settings.diffStyle === 'split' ? 'sideBySide' : 'unified'
       }}
+      onOpenThemeEditor={openThemeEditor}
       onSetTreeSettings={(settings) => {
         treeSettings = settings
         // showUnmodified changes what the backend scan returns, so flag the
@@ -3189,6 +3230,26 @@
     />
   {/if}
 {/if}
+
+{#if ThemeEditorPanelComponent}
+  <svelte:component
+    this={ThemeEditorPanelComponent}
+    open={themeEditorOpen}
+    revision={themeEditorRevision}
+    initialAppearance={themeEditorAppearance}
+    seedName={themeEditorSeedName}
+    editing={themeEditorEditing}
+    availableAppearances={themeEditorAvailableAppearances}
+    {appearanceSettings}
+    lightTheme={lightAppearanceTheme}
+    darkTheme={darkAppearanceTheme}
+    onSetThemeColor={setThemeColorOverride}
+    onSetThemeAdvancedColor={setThemeAdvancedColorOverride}
+    onSetThemeSemanticColor={setThemeSemanticColorOverride}
+    onClose={() => (themeEditorOpen = false)}
+  />
+{/if}
+
 {#if unsavedDialogOpen}
   <div class="workspace-dialog-backdrop" role="presentation">
     <div class="workspace-dialog" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title" tabindex="-1">

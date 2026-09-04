@@ -79,6 +79,7 @@ export function createThemeExport(theme: ThemeDefinition): string {
     codeThemeId: theme.codeThemeId,
     theme: {
       accent: theme.accent,
+      advancedColors: theme.advancedColors,
       contrast: theme.contrast,
       fonts: theme.fonts,
       ink: theme.ink,
@@ -104,17 +105,17 @@ export function createThemeCssVariables(
   const tokens = createThemeTokens(theme, settings.uiFontSize, settings.codeFontSize)
   const isDark = theme.variant === 'dark'
   const contrastScale = clamp(theme.contrast / 100, 0, 1)
-  const surfaceAlt = mixHex(
+  const surfaceAlt = theme.advancedColors?.raisedSurface ?? mixHex(
     theme.surface,
     theme.ink,
     isDark ? scaleByContrast(contrastScale, 0.04, 0.18) : scaleByContrast(contrastScale, 0.015, 0.11)
   )
-  const surfaceStrong = mixHex(
+  const surfaceStrong = theme.advancedColors?.overlay ?? mixHex(
     theme.surface,
     theme.ink,
     isDark ? scaleByContrast(contrastScale, 0.08, 0.28) : scaleByContrast(contrastScale, 0.04, 0.18)
   )
-  const canvas = mixHex(
+  const canvas = theme.advancedColors?.background ?? mixHex(
     theme.surface,
     isDark ? '#000000' : '#ffffff',
     isDark ? scaleByContrast(contrastScale, 0.12, 0.32) : scaleByContrast(contrastScale, 0.015, 0.075)
@@ -124,12 +125,12 @@ export function createThemeCssVariables(
     isDark ? '#000000' : '#ffffff',
     isDark ? scaleByContrast(contrastScale, 0.06, 0.22) : scaleByContrast(contrastScale, 0.008, 0.05)
   )
-  const border = mixHex(
+  const border = theme.advancedColors?.border ?? mixHex(
     theme.surface,
     theme.ink,
     isDark ? scaleByContrast(contrastScale, 0.16, 0.46) : scaleByContrast(contrastScale, 0.08, 0.3)
   )
-  const borderStrong = mixHex(
+  const borderStrong = theme.advancedColors?.border ?? mixHex(
     theme.surface,
     theme.ink,
     isDark ? scaleByContrast(contrastScale, 0.24, 0.58) : scaleByContrast(contrastScale, 0.16, 0.42)
@@ -158,9 +159,10 @@ export function createThemeCssVariables(
   const panelBg = theme.opaqueWindows
     ? tokens.panelSurface
     : rgbaFromHex(tokens.panelSurface, panelAlpha)
+  const elevatedSurface = theme.advancedColors?.raisedSurface ?? tokens.elevatedSurface
   const elevatedBg = theme.opaqueWindows
-    ? tokens.elevatedSurface
-    : rgbaFromHex(tokens.elevatedSurface, elevatedAlpha)
+    ? elevatedSurface
+    : rgbaFromHex(elevatedSurface, elevatedAlpha)
   const listBg = theme.opaqueWindows
     ? theme.surface
     : rgbaFromHex(
@@ -184,8 +186,8 @@ export function createThemeCssVariables(
     ? tokens.panelSurface
     : compositeHex(tokens.panelSurface, canvasAlt, panelAlpha)
   const cardBgResolved = theme.opaqueWindows
-    ? tokens.elevatedSurface
-    : compositeHex(tokens.elevatedSurface, theme.surface, elevatedAlpha)
+    ? elevatedSurface
+    : compositeHex(elevatedSurface, theme.surface, elevatedAlpha)
   const listHeaderBgResolved = theme.opaqueWindows
     ? surfaceStrong
     : compositeHex(surfaceStrong, panelBgResolved, paneHeaderAlpha)
@@ -246,14 +248,14 @@ export function createThemeCssVariables(
     isDark ? '#FFFFFF' : '#111111',
     textContrastTarget
   )
-  const baseMutedText = tokens.mutedText
+  const baseMutedText = theme.advancedColors?.mutedText ?? tokens.mutedText
   const mutedText = ensureReadableForeground(
     baseMutedText,
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     readableText,
     mutedContrastTarget
   )
-  const secondaryText = ensureReadableForeground(
+  const secondaryText = theme.advancedColors?.mutedText ?? ensureReadableForeground(
     mixHex(theme.ink, theme.surface, isDark ? 0.08 : 0.14),
     [theme.surface, surfaceAlt, panelBgResolved, cardBgResolved, listHeaderBgResolved],
     readableText,
@@ -385,6 +387,7 @@ export function createThemeCssVariables(
     '--surface': theme.surface,
     '--surface-alt': surfaceAlt,
     '--surface-strong': surfaceStrong,
+    '--input-surface': theme.advancedColors?.input ?? theme.surface,
     '--border': border,
     '--border-strong': borderStrong,
     '--toolbar-divider': border,
@@ -565,6 +568,30 @@ function sanitizeOverrideEntries(input: ThemeOverrides): ThemeOverrides {
 
   if (isHexColor(input.skill)) {
     next.skill = normalizeHexColor(input.skill)
+  }
+
+  if (isHexColor(input.background)) {
+    next.background = normalizeHexColor(input.background)
+  }
+
+  if (isHexColor(input.raisedSurface)) {
+    next.raisedSurface = normalizeHexColor(input.raisedSurface)
+  }
+
+  if (isHexColor(input.overlay)) {
+    next.overlay = normalizeHexColor(input.overlay)
+  }
+
+  if (isHexColor(input.mutedText)) {
+    next.mutedText = normalizeHexColor(input.mutedText)
+  }
+
+  if (isHexColor(input.border)) {
+    next.border = normalizeHexColor(input.border)
+  }
+
+  if (isHexColor(input.input)) {
+    next.input = normalizeHexColor(input.input)
   }
 
   if (typeof input.contrast === 'number' && Number.isFinite(input.contrast)) {

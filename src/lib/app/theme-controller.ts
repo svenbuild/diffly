@@ -1,6 +1,7 @@
 import {
   resolveVariant,
   type AppearanceSettings,
+  type ThemeAdvancedColorKey,
   type ThemeDefinition,
   type ThemeId,
   type ThemeSemanticColorKey,
@@ -18,7 +19,6 @@ export interface ResolvedAppearanceState {
   resolvedThemeMode: Exclude<ThemeMode, 'system'>
   lightAppearanceTheme: ThemeDefinition
   darkAppearanceTheme: ThemeDefinition
-  visibleAppearanceVariants: ThemeVariant[]
 }
 
 export function resolveAppearanceState(
@@ -29,8 +29,6 @@ export function resolveAppearanceState(
     resolvedThemeMode: resolveVariant(appearanceSettings.mode, systemPrefersDark),
     lightAppearanceTheme: resolveThemeForVariant(appearanceSettings, 'light'),
     darkAppearanceTheme: resolveThemeForVariant(appearanceSettings, 'dark'),
-    visibleAppearanceVariants:
-      appearanceSettings.mode === 'system' ? ['light', 'dark'] : [appearanceSettings.mode],
   }
 }
 
@@ -100,6 +98,25 @@ export function setThemeSemanticColorOverride(
 
   return setVariantOverride(appearanceSettings, variant, (next, base) => {
     if (nextColor === base.semanticColors[field].toUpperCase()) {
+      delete next[field]
+    } else {
+      next[field] = nextColor
+    }
+
+    return next
+  })
+}
+
+export function setThemeAdvancedColorOverride(
+  appearanceSettings: AppearanceSettings,
+  variant: ThemeVariant,
+  field: ThemeAdvancedColorKey,
+  value: string,
+) {
+  const nextColor = normalizeHexColor(value)
+
+  return setVariantOverride(appearanceSettings, variant, (next, base) => {
+    if (nextColor === base.advancedColors?.[field]?.toUpperCase()) {
       delete next[field]
     } else {
       next[field] = nextColor

@@ -77,9 +77,9 @@
       on:click|stopPropagation={onUseBoth}
     >{label}</button>
     <button
-      aria-label={`Customize ${label}`}
+      aria-label={`Edit ${label}`}
       class="t3-theme-card-action"
-      title="Customize theme"
+      title="Edit theme"
       type="button"
       on:click|stopPropagation={onCustomize}
     >
