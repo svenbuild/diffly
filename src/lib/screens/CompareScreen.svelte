@@ -48,7 +48,7 @@
   import ReviewWorkspacePanel from '../review/ReviewWorkspacePanel.svelte'
   import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
   import { workspaceConflictController } from '../conflicts/conflict-controller'
-  import { listReviewThreadCounts } from '../api'
+  import { listReviewThreadCounts, undoWorkspaceOperation } from '../api'
   import type { ReviewThreadCount } from '../review-types'
 
   export let updateIndicatorState: UpdateIndicatorState
@@ -132,6 +132,10 @@
   let resolutionError = ''
   let reviewPanelOpen = false
   let reviewDetailsOpen = false
+  let undoReviewSession = ''
+  let undoReviewBusy = false
+  let undoReviewError = ''
+  $: if (undoReviewSession && undoReviewSession !== activeDiffSessionId) undoReviewSession = ''
   let editSide: 'left' | 'right' = 'right'
   let editSurface: 'diff' | 'file' = 'diff'
   let editorOpenError = ''
@@ -381,9 +385,31 @@
     }
   }
 
+  function handlePartialChange(event: Event) {
+    const sessionId = (event as CustomEvent<{ sessionId: string }>).detail.sessionId
+    if (sessionId === activeDiffSessionId) { undoReviewSession = sessionId; undoReviewError = '' }
+  }
+
+  async function undoReviewChange() {
+    if (!undoReviewSession || undoReviewBusy) return
+    undoReviewBusy = true
+    undoReviewError = ''
+    try {
+      await undoWorkspaceOperation(undoReviewSession)
+      undoReviewSession = ''
+      await refreshSession(selectedRelativePath)
+    } catch (error) {
+      undoReviewError = error instanceof Error ? error.message : 'Unable to undo change.'
+    } finally { undoReviewBusy = false }
+  }
+
   onMount(() => {
+    window.addEventListener('diffly:partial-change-applied', handlePartialChange)
     window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
-    return () => window.removeEventListener('diffly:review-changed', handleReviewCountsChanged)
+    return () => {
+      window.removeEventListener('diffly:review-changed', handleReviewCountsChanged)
+      window.removeEventListener('diffly:partial-change-applied', handlePartialChange)
+    }
   })
 </script>
 
@@ -503,7 +529,11 @@
           title="Comments and change actions"
           on:click={() => { workspaceSearchController.close(); selectWorkspaceMode('review'); reviewPanelOpen = !reviewPanelOpen }}>Review</button>
         {#if reviewPanelOpen}
-          <button class="secondary toolbar-button" type="button" aria-pressed={reviewDetailsOpen} on:click={() => reviewDetailsOpen = !reviewDetailsOpen}>Review history</button>
+          <button class="secondary toolbar-button" type="button" aria-pressed={reviewDetailsOpen} on:click={() => reviewDetailsOpen = !reviewDetailsOpen}>Comments</button>
+          {#if undoReviewSession}
+            <button class="secondary toolbar-button" type="button" disabled={undoReviewBusy} on:click={undoReviewChange}>Undo last change</button>
+          {/if}
+          {#if undoReviewError}<span role="alert">{undoReviewError}</span>{/if}
           <span class="toolbar-review-hint">Click + beside a line to comment</span>
         {/if}
         <button
@@ -687,7 +717,7 @@
         {reviewSourceKind}
         reviewSessionId={activeDiffSessionId}
         reviewEntryId={selectedEntryId ?? 'file'}
-        onReviewRefresh={runCompare}
+        onReviewRefresh={() => refreshSession()}
         {collapseAllRevision}
         {expandAllRevision}
         onDirectoryCollapseStateChange={(allCollapsed) => {

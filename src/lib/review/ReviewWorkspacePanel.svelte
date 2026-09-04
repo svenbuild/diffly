@@ -16,11 +16,13 @@
 </script>
 
 <aside class="review-workspace-panel" aria-label="Review workspace">
+  {#if sourceKind === 'readOnly'}
   <div class="tabs" role="tablist" aria-label="Review panel">
     <button class:active={tab === 'threads'} role="tab" aria-selected={tab === 'threads'} type="button" on:click={() => tab = 'threads'}>Threads</button>
     <button class:active={tab === 'changes'} role="tab" aria-selected={tab === 'changes'} type="button" on:click={() => tab = 'changes'}>Changes</button>
   </div>
-  {#if tab === 'threads'}
+  {/if}
+  {#if sourceKind !== 'readOnly' || tab === 'threads'}
     <ReviewThreadsPanel {sessionId} {entryId} {entryPath} onNavigate={onNavigateThread} />
   {:else}
     <HunkReviewPanel {sessionId} entryId={hunkEntryId} {sourceKind} {gitScope} {gitCapabilities} {onApplied} embedded />

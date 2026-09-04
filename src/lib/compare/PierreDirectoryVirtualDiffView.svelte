@@ -381,6 +381,11 @@
     hydratedReviewItems.clear()
   }
 
+  function reviewAnnotationKey(itemId: string, entryId: string) {
+    const text = entryByPath.get(itemId)?.diff?.text
+    return [reviewSessionId, entryId, text?.leftCacheKey, text?.rightCacheKey, text?.patchCacheKey].join(':')
+  }
+
   async function hydrateReviewAnnotations(itemId: string, entryId: string, key: string) {
     if (!reviewSessionId) return
     const comparison = compareKey
@@ -392,7 +397,7 @@
         listReviewThreads(reviewSessionId, entryId),
         loadInlineHunks(reviewSessionId, mutationEntryId, reviewSourceKind, entry?.gitReviewCapabilities, onReviewRefresh),
       ])
-      if (comparison !== compareKey || `${reviewSessionId}:${entryId}` !== key) return
+      if (comparison !== compareKey || reviewAnnotationKey(itemId, entryId) !== key) return
       updateAnnotations(itemId, [...hunks, ...reviewThreadsToAnnotations(threads, reviewSessionId, entryId, annotationsFor(itemId)), ...annotationsFor(itemId).filter(item => item.metadata.draft)])
     } catch (error) {
       setInteractionMessage(error instanceof Error ? error.message : 'Unable to load review threads.')
@@ -408,7 +413,7 @@
     applyControlledSelection({ id: itemId, range })
     const entryId = entryByPath.get(itemId)?.entry.diffEntryId
     if (reviewSessionId && entryId) {
-      await hydrateReviewAnnotations(itemId, entryId, `${reviewSessionId}:${entryId}`)
+      await hydrateReviewAnnotations(itemId, entryId, reviewAnnotationKey(itemId, entryId))
     }
     const side = range.endSide ?? range.side ?? 'additions'
     const lineNumber = range.end
@@ -512,7 +517,7 @@
       reviewSourceKind,
       reviewEntryInfoFromEntry(loadedEntry.entry, Boolean(loadedEntry.diff?.text)),
     )
-    const buttons = renderReviewActionButtons(actions, (action) => {
+    const buttons = renderReviewActionButtons(actions.filter(action => !action.mutating), (action) => {
       void runEntryReviewAction(action, loadedEntry.entry.relativePath)
     })
     return renderDiffHeaderMetadataWithActions(metadata, buttons)
@@ -556,7 +561,7 @@
       const itemId = getCodeViewItemContext(args)?.item?.id
       const entryId = itemId ? entryByPath.get(itemId)?.entry.diffEntryId : null
       if (itemId && entryId) {
-        const key = `${reviewSessionId}:${entryId}`
+        const key = reviewAnnotationKey(itemId, entryId)
         if (hydratedReviewItems.get(itemId) !== key) void hydrateReviewAnnotations(itemId, entryId, key)
       }
     }
@@ -1546,7 +1551,7 @@
     if (!reviewSessionId || detail?.sessionId !== reviewSessionId || !detail.entryId) return
     const loaded = entries.find((candidate) => candidate.entry.diffEntryId === detail.entryId)
     if (!loaded) return
-    const key = `${reviewSessionId}:${detail.entryId}`
+    const key = reviewAnnotationKey(loaded.entry.relativePath, detail.entryId)
     if (loaded.entry.relativePath === selectedRelativePath) hydratedReviewEntryKey = key
     void hydrateReviewAnnotations(loaded.entry.relativePath, detail.entryId, key)
   }
@@ -1569,7 +1574,7 @@
   $: {
     const loaded = entryByPath.get(selectedRelativePath)
     const entryId = loaded?.entry.diffEntryId
-    const key = reviewSessionId && entryId ? `${reviewSessionId}:${entryId}` : ''
+    const key = reviewSessionId && entryId ? reviewAnnotationKey(selectedRelativePath, entryId) : ''
     if (key && hydratedReviewEntryKey !== key) {
       hydratedReviewEntryKey = key
       void hydrateReviewAnnotations(selectedRelativePath, entryId!, key)

@@ -1,4 +1,5 @@
-import { buildUnifiedPatch, MAX_PATCH_SOURCE_LENGTH } from '../../../src/lib/compare/unified-patch'
+import { createTwoFilesPatch } from 'diff'
+import { MAX_PATCH_SOURCE_LENGTH } from '../../../src/lib/compare/unified-patch'
 import type { TextDiffPayload } from '../../../src/lib/types'
 import type {
   ApplyPartialChangeRequest,
@@ -9,7 +10,7 @@ import type {
 import type { DiffSessionService } from '../diff/diff-session-service'
 import { revisionsEqual } from '../documents/document-revision'
 import { runGit } from '../git/git-service'
-import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
+import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch, changedRanges } from './hunk-patch'
 import { OperationJournal } from './operation-journal'
 
 const GIT_OPTIONS = {
@@ -80,7 +81,8 @@ export class PartialApplyService {
       index,
       header: hunk.header,
       fingerprint: hunk.fingerprint,
-      changeCount: countChangeBlocks(hunk.lines),
+      changeCount: changedRanges(hunk).length,
+      changes: changedRanges(hunk),
     }))
   }
 
@@ -211,7 +213,7 @@ export class PartialApplyService {
       }
       assertRevision(await this.sessions.openDocument(right), request.rightRevision)
     }
-    const selectedPatch = buildSelectedPatch(patch, request.selections)
+    const selectedPatch = buildSelectedPatch(patch, request.selections, request.operation === 'unstage' ? 'reverse' : 'forward')
     const before = await readIndexEntry(entry.repositoryRoot, entry.path)
     const args = [
       'apply',
@@ -238,16 +240,6 @@ export class PartialApplyService {
   }
 }
 
-function countChangeBlocks(lines: string[]) {
-  let count = 0
-  let changed = false
-  for (const line of lines) {
-    const nextChanged = line.startsWith('+') || line.startsWith('-')
-    if (nextChanged && !changed) count += 1
-    changed = nextChanged
-  }
-  return count
-}
 
 function assertRevision(document: EditableDocument, expected: EditableDocument['revision'] | null) {
   if (!expected || !revisionsEqual(document.revision, expected)) {
@@ -279,9 +271,9 @@ function readUndoData(entry: OperationJournalEntry): FileUndoData | IndexUndoDat
 function reviewPatch(text: TextDiffPayload | null | undefined) {
   if (!text) return null
   if (text.patchText) return text.patchText
+  if (text.leftText === text.rightText) return null
   if (text.leftText.length + text.rightText.length > MAX_PATCH_SOURCE_LENGTH) return null
-  return buildUnifiedPatch({
-    leftLabel: 'left', rightLabel: 'right',
-    leftText: text.leftText, rightText: text.rightText,
-  })
+  const patch = createTwoFilesPatch('left', 'right', text.leftText, text.rightText, undefined, undefined, { timeout: 1000 })
+  if (!patch) throw new Error('This comparison is too complex for safe partial changes. Use the file editor instead.')
+  return patch
 }

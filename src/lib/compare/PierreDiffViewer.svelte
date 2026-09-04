@@ -307,7 +307,7 @@
     }
 
     const actions = reviewActionsForSource(reviewSourceKind, reviewEntryInfoFromText(text))
-    const buttons = renderReviewActionButtons(actions, (action) => {
+    const buttons = renderReviewActionButtons(actions.filter(action => !action.mutating), (action) => {
       void runFileReviewAction(action)
     })
     return renderDiffHeaderMetadataWithActions(metadata, buttons)

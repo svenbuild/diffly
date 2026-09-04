@@ -2012,3 +2012,6 @@ button.filter-chip.tooLarge:focus-visible {
 .compare-layout:not(.inline-review-active) .diffly-hunk-actions { display: none; }
 .diffly-comment-text { white-space: pre-wrap; }
 .toolbar-review-hint { color: var(--muted); font-size: 12px; }
+.diffly-change-scope { color: var(--muted); margin-right: 4px; }
+.diffly-hunk-actions { flex-wrap: wrap; border-top: 1px solid var(--border-subtle); }
+@media (max-width: 1100px) { .toolbar-review-hint { display: none; } }

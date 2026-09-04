@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch } from './hunk-patch'
+import { applySelectedHunks, applySelectedHunksBoth, buildSelectedPatch, parseSingleFilePatch, changedRanges } from './hunk-patch'
 
 const patch = [
   'diff --git a/file.txt b/file.txt',
@@ -17,6 +17,22 @@ const patch = [
 ].join('\n')
 
 describe('hunk patch operations', () => {
+  it('anchors each contiguous change to changed lines, excluding surrounding context', () => {
+    expect(changedRanges(parseSingleFilePatch(patch).hunks[0]!)).toEqual([
+      { changeIndex: 0, leftStart: 2, leftCount: 1, rightStart: 2, rightCount: 1 },
+      { changeIndex: 1, leftStart: 4, leftCount: 1, rightStart: 4, rightCount: 1 },
+    ])
+  })
+
+  it('reverses one block without replacing adjacent changes in the same hunk', () => {
+    const fingerprint = parseSingleFilePatch(patch).hunks[0]!.fingerprint
+    const selection = [{ fingerprint, changeIndex: 1 }]
+    expect(applySelectedHunks('one\nnew-a\nmiddle\nnew-b\ntail\n', patch, selection, 'reverse'))
+      .toBe('one\nnew-a\nmiddle\nold-b\ntail\n')
+    expect(buildSelectedPatch(patch, selection, 'reverse')).toContain(' new-a')
+    expect(buildSelectedPatch(patch, selection, 'reverse')).not.toContain('old-a')
+  })
+
   it('creates stable content fingerprints', () => {
     const first = parseSingleFilePatch(patch).hunks[0]
     const second = parseSingleFilePatch(patch).hunks[0]

@@ -14,10 +14,19 @@ export interface PartialChangeSelection {
   changeIndex?: number
 }
 
+export interface ReviewChangeRange {
+  changeIndex: number
+  leftStart: number
+  leftCount: number
+  rightStart: number
+  rightCount: number
+}
+
 export interface ReviewHunkSummary {
   index: number
   header: string
   fingerprint: HunkFingerprint
+  changes: ReviewChangeRange[]
   changeCount: number
 }
 

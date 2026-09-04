@@ -3,7 +3,7 @@ import { applyPartialChange, listReviewHunks } from '../api'
 import type { CompareSourceKind } from '../actions/compare-actions'
 import type { GitWorkingTreeReviewCapabilities } from '../types'
 import type { DifflyCommentAnnotation } from '../compare/directory-code-view-comments'
-import type { PartialChangeOperation, ReviewHunkSummary } from '../review-types'
+import type { PartialChangeOperation, ReviewHunkSummary, ReviewChangeRange } from '../review-types'
 import { loadRevisions } from './hunk-controller'
 
 export function inlineHunkOperations(source: CompareSourceKind, capabilities?: GitWorkingTreeReviewCapabilities | null): Array<{ operation: PartialChangeOperation; label: string }> {
@@ -27,42 +27,52 @@ export async function loadInlineHunks(
   const operations = inlineHunkOperations(source, capabilities)
   if (!operations.length) return []
   const hunks = await listReviewHunks(sessionId, entryId)
-  return hunks.map(hunk => ({
-    side: hunk.fingerprint.newCount > 0 ? 'additions' : 'deletions',
-    lineNumber: Math.max(1, hunk.fingerprint.newCount > 0 ? hunk.fingerprint.newStart : hunk.fingerprint.oldStart),
+  return hunks.flatMap(hunk => hunk.changes.map(change => ({
+    side: change.rightCount > 0 ? 'additions' : 'deletions',
+    lineNumber: change.rightCount > 0 ? change.rightStart + change.rightCount - 1 : change.leftStart + change.leftCount - 1,
     metadata: {
-      id: `hunk-${entryId}-${hunk.index}-${hunk.fingerprint.changeHash}`,
+      id: `hunk-${entryId}-${hunk.index}-${change.changeIndex}-${hunk.fingerprint.changeHash}`,
       text: hunk.header,
-      render: () => renderActions(sessionId, entryId, hunk, operations, refresh),
+      render: () => renderActions(sessionId, entryId, hunk, change, operations, refresh),
     },
-  }))
+  })))
 }
 
-function renderActions(sessionId: string, entryId: string, hunk: ReviewHunkSummary,
+function renderActions(sessionId: string, entryId: string, hunk: ReviewHunkSummary, change: ReviewChangeRange,
   operations: ReturnType<typeof inlineHunkOperations>, refresh: () => void | Promise<void>) {
   const row = document.createElement('div')
   row.className = 'diffly-hunk-actions'
   row.setAttribute('role', 'group')
-  row.setAttribute('aria-label', `Change ${hunk.index + 1}`)
+  row.setAttribute('aria-label', `Change ${hunk.index + 1}.${change.changeIndex + 1}`)
   const error = document.createElement('span')
   error.setAttribute('role', 'alert')
   let busy = false
   const draw = () => {
     row.replaceChildren()
+    const scope = document.createElement('span')
+    scope.className = 'diffly-change-scope'
+    scope.textContent = `${change.leftCount} removed · ${change.rightCount} added`
+    row.append(scope)
     for (const action of operations) {
       const button = document.createElement('button')
       button.type = 'button'
-      button.textContent = action.label
+      const actionLabel = action.operation === 'applyLeftToRight' && change.leftCount === 0 ? 'Delete from right'
+        : action.operation === 'applyRightToLeft' && change.rightCount === 0 ? 'Delete from left'
+        : action.label
+      button.textContent = actionLabel
+      button.title = `${actionLabel}: only this highlighted change (${change.leftCount} removed, ${change.rightCount} added)`
       button.onclick = () => {
         if (busy) return
         const apply = async () => {
           if (busy) return
           busy = true
           row.querySelectorAll('button').forEach(item => item.disabled = true)
+          error.textContent = ''
           try {
             const revisions = await loadRevisions(sessionId, entryId, action.operation)
             await applyPartialChange({ sessionId, entryId, operation: action.operation,
-              selections: [{ fingerprint: hunk.fingerprint }], ...revisions })
+              selections: [{ fingerprint: hunk.fingerprint, changeIndex: change.changeIndex }], ...revisions })
+            window.dispatchEvent(new CustomEvent('diffly:partial-change-applied', { detail: { sessionId } }))
             await refresh()
           } catch (cause) {
             error.textContent = cause instanceof Error ? cause.message : 'Unable to apply change.'
@@ -77,7 +87,7 @@ function renderActions(sessionId: string, entryId: string, hunk: ReviewHunkSumma
         }
         row.replaceChildren()
         const label = document.createElement('span')
-        label.textContent = action.operation === 'discard' ? 'Discard this change from the working file?' : `${action.label} for this change?`
+        label.textContent = action.operation === 'discard' ? 'Discard this change from the working file?' : `${actionLabel} for this change?`
         const confirm = document.createElement('button')
         confirm.type = 'button'
         confirm.textContent = 'Confirm'

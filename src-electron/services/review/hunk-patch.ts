@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { HunkFingerprint, PartialChangeSelection } from '../../../src/lib/review-types'
+import type { HunkFingerprint, PartialChangeSelection, ReviewChangeRange } from '../../../src/lib/review-types'
 
 export interface ParsedHunk {
   header: string
@@ -51,9 +51,9 @@ export function parseSingleFilePatch(patch: string): ParsedSingleFilePatch {
   return { headers, hunks }
 }
 
-export function buildSelectedPatch(patch: string, selections: PartialChangeSelection[]) {
+export function buildSelectedPatch(patch: string, selections: PartialChangeSelection[], direction: 'forward' | 'reverse' = 'forward') {
   const parsed = parseSingleFilePatch(patch)
-  const selected = selectHunks(parsed.hunks, selections)
+  const selected = selectHunks(parsed.hunks, selections, direction)
   return [
     ...parsed.headers,
     ...selected.flatMap((hunk) => [hunkHeader(hunk), ...hunk.lines]),
@@ -68,7 +68,7 @@ export function applySelectedHunks(
   direction: 'forward' | 'reverse',
 ) {
   const parsed = parseSingleFilePatch(patch)
-  const hunks = selectHunks(parsed.hunks, selections)
+  const hunks = selectHunks(parsed.hunks, selections, direction)
   const eol = contents.includes('\r\n') ? '\r\n' : contents.includes('\r') ? '\r' : '\n'
   const trailing = /(?:\r\n|\r|\n)$/.test(contents)
   const source = contents.split(/\r\n|\r|\n/)
@@ -97,7 +97,7 @@ export function applySelectedHunksBoth(
   targetSide: 'left' | 'right',
 ) {
   const parsed = parseSingleFilePatch(patch)
-  const hunks = selectHunks(parsed.hunks, selections)
+  const hunks = selectHunks(parsed.hunks, selections, targetSide === 'left' ? 'forward' : 'reverse')
   const eol = contents.includes('\r\n') ? '\r\n' : contents.includes('\r') ? '\r' : '\n'
   const trailing = /(?:\r\n|\r|\n)$/.test(contents)
   const source = contents.split(/\r\n|\r|\n/)
@@ -132,7 +132,7 @@ export function fingerprintHunk(hunk: Omit<ParsedHunk, 'fingerprint'>): HunkFing
   }
 }
 
-function selectHunks(hunks: ParsedHunk[], selections: PartialChangeSelection[]) {
+function selectHunks(hunks: ParsedHunk[], selections: PartialChangeSelection[], direction: 'forward' | 'reverse' = 'forward') {
   const byFingerprint = new Map<string, Set<number> | null>()
   for (const selection of selections) {
     const key = fingerprintKey(selection.fingerprint)
@@ -150,23 +150,23 @@ function selectHunks(hunks: ParsedHunk[], selections: PartialChangeSelection[]) 
   for (const hunk of hunks) {
     const blocks = byFingerprint.get(fingerprintKey(hunk.fingerprint))
     if (blocks === undefined) continue
-    selected.push(blocks === null ? hunk : selectChangeBlocks(hunk, blocks))
+    selected.push(blocks === null ? hunk : selectChangeBlocks(hunk, blocks, direction))
   }
   if (selected.length !== byFingerprint.size) throw new Error('PATCH_DOES_NOT_APPLY')
   return selected
 }
 
-function selectChangeBlocks(hunk: ParsedHunk, selected: Set<number>): ParsedHunk {
+function selectChangeBlocks(hunk: ParsedHunk, selected: Set<number>, direction: 'forward' | 'reverse'): ParsedHunk {
   const lines: string[] = []
   let changeIndex = -1
   let inChange = false
   for (const line of hunk.lines) {
     const changed = line.startsWith('+') || line.startsWith('-')
     if (changed && !inChange) changeIndex += 1
-    inChange = changed
+    if (!line.startsWith('\\')) inChange = changed
     if (!changed || selected.has(changeIndex) || line.startsWith('\\')) {
       lines.push(line)
-    } else if (line.startsWith('-')) {
+    } else if (line.startsWith(direction === 'forward' ? '-' : '+')) {
       lines.push(` ${line.slice(1)}`)
     }
   }
@@ -201,4 +201,26 @@ function arraysEqual(left: string[], right: string[]) {
 
 function hash(value: string) {
   return createHash('sha256').update(value).digest('hex')
+}
+export function changedRanges(hunk: ParsedHunk): ReviewChangeRange[] {
+  const ranges: ReviewChangeRange[] = []
+  let left = hunk.oldStart
+  let right = hunk.newStart
+  let current: ReviewChangeRange | null = null
+  for (const line of hunk.lines) {
+    if (line.startsWith('\\')) continue
+    if (line.startsWith(' ')) {
+      current = null
+      left += 1
+      right += 1
+      continue
+    }
+    if (!current) {
+      current = { changeIndex: ranges.length, leftStart: left, leftCount: 0, rightStart: right, rightCount: 0 }
+      ranges.push(current)
+    }
+    if (line.startsWith('-')) { current.leftCount += 1; left += 1 }
+    if (line.startsWith('+')) { current.rightCount += 1; right += 1 }
+  }
+  return ranges
 }
