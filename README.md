@@ -67,6 +67,7 @@ npm run electron:package:linux
 
 ## Links
 
+- [Product description and requirements](docs/product-requirements.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
