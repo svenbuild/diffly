@@ -1,10 +1,10 @@
-# Diffly Product Description and Requirements
+# Desktop Comparison Tool Requirements
 
-Diffly is a desktop application for comparing files, folders, and code changes. It brings local comparisons, Git working trees, commit history, and public GitHub changes into one workspace where users can inspect differences, leave review notes, edit text, and apply supported changes.
+A desktop comparison tool lets users compare files, folders, and code changes. It brings local comparisons, Git working trees, commit history, and public GitHub changes into one workspace where users can inspect differences, leave review notes, edit text, and apply supported changes.
 
 Its central promise is straightforward: help users understand what changed and act on those changes without losing their work or their place.
 
-This document describes the current product scope and the behavior it should preserve. Requirements express expected product behavior; they are not a claim that every failure case has been verified. Future features are outside this scope unless explicitly identified.
+The following requirements define the tool's functional scope, expected workflows, and quality standards.
 
 ## Users and primary jobs
 
@@ -16,7 +16,7 @@ The product should make large comparisons practical while keeping the common wor
 
 ## Product structure
 
-Diffly has three main screens:
+The application has three main screens:
 
 1. **Setup:** choose Local, Git, or GitHub and open a comparison. Recent sources help users return to previous work.
 2. **Compare:** browse files, read diffs, search, review, edit, or resolve conflicts. Actions depend on the selected source and file.
@@ -37,17 +37,17 @@ Local setup must support path entry, filesystem browsing, navigation history, an
 
 Git setup must validate the repository and refs. Advanced comparisons support branches, tags, commit references, direct two-dot comparisons, and merge-base three-dot comparisons. The selected comparison and working-tree scope must remain clear in the workspace.
 
-GitHub setup must validate supported URLs and explain network, access, and rate-limit failures. A remote comparison can be opened in the browser. The current integration uses unauthenticated access to public repositories.
+GitHub setup must validate supported URLs and explain network, access, and rate-limit failures. A remote comparison can be opened in the browser. Access to public repositories does not require signing in.
 
 ## Reading and navigating changes
 
-The viewer must provide side-by-side and unified text diffs, with clear additions, deletions, file labels, and line numbers. Users can adjust context, expand unchanged sections, collapse file diffs, wrap long lines, and configure syntax and inline change highlighting. Optional Token Hover provides syntax-token context.
+The viewer must provide side-by-side and unified text diffs, with clear additions, deletions, file labels, and line numbers. Users can adjust context, expand unchanged sections, collapse file diffs, wrap long lines, and configure syntax and inline change highlighting. Optional hover information provides syntax-token context.
 
 Directory comparisons must preserve folder structure and identify modified files and files present on only one side. Git comparisons additionally distinguish statuses such as renamed, untracked, and conflicted. Tree search, configurable expansion, and an option to include unchanged local files help users narrow the view.
 
 Selecting a tree entry should navigate to its corresponding diff. Reloading or changing presentation settings should preserve selection and viewing context where the underlying content allows it. Comparison-rule changes that require recalculation must make the need to reload visible.
 
-Unsupported content must have an explicit state showing the reason and available path and size information. The current viewer uses this fallback for images, binary files, oversized text, missing files, and read failures. Image previews and hex inspection are not part of the active viewer flow.
+Unsupported content must have an explicit state showing the reason and available path and size information. This fallback covers images, binary files, oversized text, missing files, and read failures. Image previews and hex inspection are outside the scope of the text viewer.
 
 ## Editing and applying changes
 
@@ -57,7 +57,7 @@ The destination must always be clear: left local file, right local file, Git wor
 
 Local review actions can copy a supported hunk, or an individual changed block within it, in either direction. Git review actions can stage, unstage, or discard eligible changes. Controls must reflect the actual operation scope and file capabilities. Applying one changed block must preserve unrelated changes in the same surrounding hunk.
 
-Before writing, Diffly must detect when the target has changed since it was loaded. It must preserve the user's edits and offer recovery rather than silently overwrite newer content. Saves should preserve supported encoding and line-ending information. Supported review mutations provide an action to undo the last change; undo must also respect intervening file changes.
+Before writing, the application must detect when the target has changed since it was loaded. It must preserve the user's edits and offer recovery rather than silently overwrite newer content. Saves should preserve supported encoding and line-ending information. Supported review mutations provide an action to undo the last change; undo must also respect intervening file changes.
 
 ## Review comments and decisions
 
@@ -81,7 +81,7 @@ The workspace must distinguish editing a proposed resolution from marking the co
 
 ## Continuity and settings
 
-Diffly remembers setup locations, recent sources, comparison preferences, and appearance across restarts. Local comparisons and saved app state support returning to previous work. Unsaved document drafts have a recovery flow with restore, individual review, save-copy, and discard choices.
+The application remembers setup locations, recent sources, comparison preferences, and appearance across restarts. Local comparisons and saved app state support returning to previous work. Unsaved document drafts have a recovery flow with restore, individual review, save-copy, and discard choices.
 
 Leaving work with unsaved edits must offer Save All, Discard All, Review Files, or Cancel. A failed save must keep the work available and explain the failure.
 
@@ -95,9 +95,9 @@ Updates support manual checks, optional launch checks, stable or prerelease chan
 - **Correctness:** partial results, cancellation, stale responses, and failed operations must never appear as a successfully completed comparison or write.
 - **Recovery:** errors must retain user context and provide a clear next action. Repeated initialization or commands must not duplicate work or corrupt state.
 - **Local operation:** local file and Git workflows work offline. GitHub loading and release checks require network access.
-- **Platform scope:** desktop builds target Windows, macOS, and Linux. Windows is the primary tested platform; macOS and Linux need broader validation.
+- **Platform scope:** desktop builds target Windows, macOS, and Linux, with platform-appropriate file dialogs and installation options.
 
-Diffly's scope is comparison, review, editing, and targeted change application. A full Git hosting client, private GitHub authentication, live collaborative review, and automatic folder synchronization are outside the current scope. No numeric performance guarantee is defined here; performance targets require measurements against representative files and repositories.
+The scope is comparison, review, editing, and targeted change application. A full Git hosting client, private GitHub authentication, live collaborative review, and automatic folder synchronization are outside this scope. No numeric performance guarantee is defined here; performance targets require measurements against representative files and repositories.
 
 ## Acceptance examples
 
