@@ -1988,7 +1988,7 @@
   }
 
   async function dropPathsOnCompare(side: Side, paths: string[]) {
-    if (loading) {
+    if (screen !== 'compare' || loading) {
       return
     }
 
@@ -1998,13 +1998,17 @@
       return
     }
 
-    // A single drop replaces one side of the current local compare. Git and
-    // GitHub compares have no local counterpart, so they need both sides.
+    // A single drop replaces one side of the current local compare. The kept
+    // side must still be what is on screen. Git and GitHub compares have no
+    // local counterpart, so they need both sides.
     const otherSide: Side = side === 'left' ? 'right' : 'left'
-    const currentCompareIsLocal = !activeDiffSource || activeDiffSource.kind === 'local'
+    const otherPane = paneFor(otherSide)
+    const keptSideIsOnScreen =
+      (!activeDiffSource || activeDiffSource.kind === 'local') &&
+      otherPane.selectedTargetPath === (otherSide === 'left' ? leftPath : rightPath)
     if (
       !plan.targets[otherSide] &&
-      (!currentCompareIsLocal || !paneCanCompare(paneFor(otherSide), plan.kind))
+      (!keptSideIsOnScreen || !paneCanCompare(otherPane, plan.kind))
     ) {
       const noun = plan.kind === 'directory' ? 'folders' : 'files'
       errorMessage = `Drop two ${noun} at once to compare them with each other.`
