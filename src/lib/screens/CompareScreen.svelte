@@ -32,6 +32,7 @@
   import type { SettingsSection } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
+  import { resolveCodeFontSizeFromWheel } from '../app/code-font-zoom'
   import UpdateIndicator from './UpdateIndicator.svelte'
   import WorkspaceEditor from '../workspace/WorkspaceEditor.svelte'
   import {
@@ -117,12 +118,14 @@
   export let systemMonitor: SystemMonitorSnapshot
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
+  export let onSetCodeFontSize: (value: number) => void = () => {}
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
     rightBase: string
     relativePath: string
   }
 
+  let compareLayoutElement: HTMLElement | null = null
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
   let directoryDiffsAllCollapsed = false
   let collapseAllRevision = 0
@@ -403,10 +406,25 @@
     } finally { undoReviewBusy = false }
   }
 
+  function handleCompareWheel(event: WheelEvent) {
+    const result = resolveCodeFontSizeFromWheel(event, appearanceSettings.codeFontSize)
+    if (!result) {
+      return
+    }
+
+    event.preventDefault()
+    if (result.changed) {
+      onSetCodeFontSize(result.nextSize)
+    }
+  }
+
   onMount(() => {
+    const layoutElement = compareLayoutElement
+    layoutElement?.addEventListener('wheel', handleCompareWheel, { passive: false })
     window.addEventListener('diffly:partial-change-applied', handlePartialChange)
     window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
     return () => {
+      layoutElement?.removeEventListener('wheel', handleCompareWheel)
       window.removeEventListener('diffly:review-changed', handleReviewCountsChanged)
       window.removeEventListener('diffly:partial-change-applied', handlePartialChange)
     }
@@ -626,6 +644,7 @@
     class:review-panel-open={showHunkReviewPanel}
     class:inline-review-active={reviewPanelOpen}
     class="compare-layout"
+    bind:this={compareLayoutElement}
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
     {#if mode === 'directory'}

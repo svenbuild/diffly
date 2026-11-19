@@ -3167,6 +3167,7 @@
     {systemMonitor}
     onDiffStatsChange={setDiffStats}
     onSystemMonitorChange={setSystemMonitor}
+    onSetCodeFontSize={setCodeFontSize}
     {getDetailBasesForPath}
   />
 {/if}
