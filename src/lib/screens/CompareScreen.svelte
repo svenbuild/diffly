@@ -32,6 +32,7 @@
   import type { SettingsSection } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
+  import { createCodeZoomGestureState, resolveCodeZoomStep } from '../app/code-font-zoom'
   import UpdateIndicator from './UpdateIndicator.svelte'
   import WorkspaceEditor from '../workspace/WorkspaceEditor.svelte'
   import {
@@ -118,12 +119,14 @@
   export let systemMonitor: SystemMonitorSnapshot
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
+  export let onSetCodeFontSize: (value: number) => void
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
     rightBase: string
     relativePath: string
   }
 
+  const codeZoomGesture = createCodeZoomGestureState()
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
   let directoryDiffsAllCollapsed = false
   let collapseAllRevision = 0
@@ -416,6 +419,14 @@
     } finally { undoReviewBusy = false }
   }
 
+  function handleCompareWheel(event: WheelEvent) {
+    const step = resolveCodeZoomStep(event, codeZoomGesture)
+    if (step === null) return
+    // Also blocks Chromium page zoom while the gesture is over a code panel.
+    event.preventDefault()
+    if (step !== 0) onSetCodeFontSize(appearanceSettings.codeFontSize + step)
+  }
+
   onMount(() => {
     window.addEventListener('diffly:partial-change-applied', handlePartialChange)
     window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
@@ -639,6 +650,7 @@
     class:review-panel-open={showHunkReviewPanel}
     class:inline-review-active={reviewPanelOpen}
     class="compare-layout"
+    on:wheel|nonpassive={handleCompareWheel}
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
   >
     {#if mode === 'directory'}
