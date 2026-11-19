@@ -68,3 +68,37 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest.yml
+
+  package-mac:
+    name: Package macOS app
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package macOS app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # Ad hoc signing uses no secrets, so it is safe to run for pull requests.
+          CSC_FOR_PULL_REQUEST: true
+        run: npx electron-builder --mac dir --publish never --config.npmRebuild=false
+
+      - name: Verify macOS code signature
+        run: |
+          for app in release/mac*/Diffly.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app"
+          done
