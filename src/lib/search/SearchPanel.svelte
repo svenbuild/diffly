@@ -56,7 +56,6 @@
 
   function run() {
     if (searchTimer !== null) { clearTimeout(searchTimer); searchTimer = null }
-    replacePreview = null
     if (query.text.trim()) void workspaceSearchController.start(sessionId, { ...query })
     else {
       void workspaceSearchController.cancel()
@@ -68,10 +67,16 @@
     if (!query.text.trim()) return
     replaceError = ''
     replacing = true
+    const requestKey = queryKey
+    const requestReplacement = replacement
     try {
-      replacePreview = await previewComparisonReplace({ sessionId, query: { ...query }, replacement })
-      selectedTargets = new Set(replacePreview.files.map((file) => targetKey(file.target)))
+      const preview = await previewComparisonReplace({ sessionId, query: { ...query }, replacement })
+      // Drop the preview if the query or replacement changed while it was loading.
+      if (requestKey !== queryKey || requestReplacement !== replacement) return
+      replacePreview = preview
+      selectedTargets = new Set(preview.files.map((file) => targetKey(file.target)))
     } catch (error) {
+      if (requestKey !== queryKey) return
       replaceError = error instanceof Error ? error.message : String(error)
     } finally {
       replacing = false

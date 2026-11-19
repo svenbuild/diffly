@@ -13,6 +13,7 @@ let left: string
 let right: string
 let rendererErrors: string[] = []
 const editorEndShortcut = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End'
+const editorReplaceShortcut = process.platform === 'darwin' ? 'Meta+Alt+f' : 'Control+Alt+f'
 const execFileAsync = promisify(execFile)
 
 async function launchWorkspace() {
@@ -311,7 +312,7 @@ test('keeps comparison tools optional and supports reset plus native editor shor
   await editor.getByRole('button', { name: 'Undo', exact: true }).click()
   await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
   await editable.click()
-  await page.keyboard.press('Control+Alt+f')
+  await page.keyboard.press(editorReplaceShortcut)
   await expect(page.getByRole('complementary', { name: 'Search entire comparison' })).toHaveCount(0)
   await expect(editor.getByPlaceholder('Search', { exact: true })).toBeVisible()
   await expect(editor.getByPlaceholder('Replace', { exact: true })).toBeVisible()
@@ -450,9 +451,18 @@ test('recovers a debounced editor draft after an unclean shutdown', async () => 
 test('reviews inline with gutter comments, replies, and local hunk confirmation', async () => {
   await page.getByRole('button', { name: 'Review', exact: true }).click()
   await expect(page.getByRole('complementary', { name: 'Review workspace' })).toHaveCount(0)
-  await page.locator('[data-column-number]').first().hover()
-  await page.locator('[data-utility-button]').first().click()
-  await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Inline review\nSecond line')
+  // The gutter button only appears on pointermove and is replaced while review mode re-renders the diff,
+  // so hover and click again until the comment form opens.
+  const lineNumber = page.locator('[data-column-number]').first()
+  const commentButton = page.locator('[data-utility-button]').first()
+  const commentInput = page.getByRole('textbox', { name: 'Comment', exact: true })
+  await expect(async () => {
+    await page.mouse.move(0, 0)
+    await lineNumber.hover({ timeout: 2000 })
+    await commentButton.click({ timeout: 2000 })
+    await expect(commentInput).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await commentInput.fill('Inline review\nSecond line')
   await page.getByRole('button', { name: 'Save comment', exact: true }).click()
   const thread = page.getByRole('region', { name: 'Review thread', exact: true })
   await expect(thread.getByText('Inline review', { exact: false })).toBeVisible()
