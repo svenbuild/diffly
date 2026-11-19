@@ -799,10 +799,10 @@
   }
 
   function setCodeFontSize(value: number) {
-    appearanceSettings = {
-      ...appearanceSettings,
-      codeFontSize: clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE),
-    }
+    const codeFontSize = clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE)
+    // Zooming past the limit must not re-render the diff with an unchanged size.
+    if (codeFontSize === appearanceSettings.codeFontSize) return
+    appearanceSettings = { ...appearanceSettings, codeFontSize }
   }
 
   function setViewMode(nextViewMode: ViewMode) {
