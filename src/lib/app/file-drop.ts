@@ -86,10 +86,17 @@ export function fileDropZone(node: HTMLElement, initialOptions: FileDropZoneOpti
     options.onHover?.(event)
   }
 
-  function handleLeave() {
+  function handleLeave(event: DragEvent) {
     if (depth === 0) return
     depth -= 1
-    if (depth === 0) options.onLeave?.()
+    // Rows that re-render during the drag never send their dragleave, so the
+    // count can stay too high. Leaving the zone itself always resets it.
+    const target = event.relatedTarget
+    const stillInside = target instanceof Node && node.contains(target)
+    if (depth === 0 || !stillInside) {
+      depth = 0
+      options.onLeave?.()
+    }
   }
 
   function handleDrop(event: DragEvent) {
