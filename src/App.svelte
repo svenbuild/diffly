@@ -1987,12 +1987,20 @@
     await applyDropPlan(plan)
   }
 
+  let latestCompareDropId = 0
+
   async function dropPathsOnCompare(side: Side, paths: string[]) {
     if (screen !== 'compare' || loading) {
       return
     }
+    // A newer drop or leaving the compare screen makes this drop stale.
+    const dropId = ++latestCompareDropId
+    const isStale = () => dropId !== latestCompareDropId || screen !== 'compare'
 
     const plan = await planDroppedPaths(side, paths)
+    if (isStale()) {
+      return
+    }
     if (!plan.ok) {
       errorMessage = plan.error
       return
@@ -2005,6 +2013,7 @@
     const otherPane = paneFor(otherSide)
     const keptSideIsOnScreen =
       (!activeDiffSource || activeDiffSource.kind === 'local') &&
+      otherPane.selectedTargetPaths.length <= 1 &&
       otherPane.selectedTargetPath === (otherSide === 'left' ? leftPath : rightPath)
     if (
       !plan.targets[otherSide] &&
@@ -2016,11 +2025,15 @@
     }
 
     // Ask about unsaved edits before touching any state, so Cancel keeps everything as it was.
-    if (!(await requestUnsavedDecision())) {
+    if (!(await requestUnsavedDecision()) || isStale()) {
       return
     }
 
-    if (!(await applyDropPlan(plan))) {
+    const applied = await applyDropPlan(plan)
+    if (isStale()) {
+      return
+    }
+    if (!applied) {
       errorMessage = 'The dropped item could not be opened.'
       return
     }
