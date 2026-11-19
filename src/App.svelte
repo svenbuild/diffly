@@ -107,6 +107,7 @@
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
+  import { planPathDrop, type PathDropPlan } from './lib/app/file-drop'
   import {
     createDefaultTreeSettings,
     createDefaultViewerSettings,
@@ -131,6 +132,7 @@
     GithubDiffSource,
     GithubPullRequestMetadata,
     GitWorkingTreeScope,
+    PathInfo,
     PersistedExplorerPane,
     PersistedGitSetup,
     PersistedSession,
@@ -1925,33 +1927,24 @@
     void openExternalUrlApi(url)
   }
 
-  async function applyPathToPane(side: Side, targetPath: string): Promise<'file' | 'directory' | null> {
-    const info = await pathInfo(targetPath)
-
-    if (!info.exists) {
-      return null
-    }
-
+  async function applyPathInfoToPane(side: Side, info: PathInfo): Promise<boolean> {
     if (info.isDirectory) {
-      if (await openDirectory(side, info.path)) {
-        selectTarget(side, info.path, 'directory')
-        return 'directory'
+      if (!(await openDirectory(side, info.path))) {
+        return false
       }
-      return null
+      selectTarget(side, info.path, 'directory')
+      return true
     }
 
     if (info.isFile) {
-      if (info.parentPath) {
-        const opened = await openDirectory(side, info.parentPath)
-        if (!opened) {
-          return null
-        }
+      if (info.parentPath && !(await openDirectory(side, info.parentPath))) {
+        return false
       }
       selectTarget(side, info.path, 'file')
-      return 'file'
+      return true
     }
 
-    return null
+    return false
   }
 
   async function browseSystem(side: Side, kind: 'file' | 'directory' = 'file') {
@@ -1961,67 +1954,75 @@
       return
     }
 
-    await applyPathToPane(side, selected)
+    const info = await pathInfo(selected)
+    if (info.exists) {
+      await applyPathInfoToPane(side, info)
+    }
+  }
+
+  async function planDroppedPaths(side: Side, paths: string[]): Promise<PathDropPlan<PathInfo>> {
+    try {
+      return planPathDrop(side, await Promise.all(paths.slice(0, 3).map((path) => pathInfo(path))))
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Unable to read the dropped item.' }
+    }
+  }
+
+  async function applyDropPlan(plan: Extract<PathDropPlan<PathInfo>, { ok: true }>) {
+    const results = await Promise.all(
+      (['left', 'right'] as const).map((side) => {
+        const info = plan.targets[side]
+        return info ? applyPathInfoToPane(side, info) : Promise.resolve(true)
+      }),
+    )
+    return results.every(Boolean)
   }
 
   async function dropPathsOnPane(side: Side, paths: string[]) {
-    if (paths.length === 0) {
+    const plan = await planDroppedPaths(side, paths)
+    if (!plan.ok) {
+      updatePane(side, (pane) => ({ ...pane, error: plan.error }))
       return
     }
-
-    const applied = await applyPathToPane(side, paths[0])
-    if (!applied) {
-      updatePane(side, (pane) => ({
-        ...pane,
-        error: 'The dropped path does not exist.',
-      }))
-    }
+    await applyDropPlan(plan)
   }
 
   async function dropPathsOnCompare(side: Side, paths: string[]) {
-    if (paths.length === 0 || loading) {
+    if (loading) {
       return
     }
 
-    if (paths.length >= 2) {
-      const [leftInfo, rightInfo] = await Promise.all([
-        pathInfo(paths[0]),
-        pathInfo(paths[1]),
-      ])
-
-      const bothDirs = leftInfo.exists && leftInfo.isDirectory && rightInfo.exists && rightInfo.isDirectory
-      const bothFiles = leftInfo.exists && leftInfo.isFile && rightInfo.exists && rightInfo.isFile
-
-      if (bothDirs || bothFiles) {
-        const nextKind: CompareMode = bothDirs ? 'directory' : 'file'
-        setupMode = 'local'
-        mode = nextKind
-        const [leftApplied, rightApplied] = await Promise.all([
-          applyPathToPane('left', leftInfo.path),
-          applyPathToPane('right', rightInfo.path),
-        ])
-        if (leftApplied === nextKind && rightApplied === nextKind) {
-          await runCompare()
-        }
-        return
-      }
-    }
-
-    const appliedKind = await applyPathToPane(side, paths[0])
-    if (!appliedKind) {
-      errorMessage = 'The dropped path does not exist.'
+    const plan = await planDroppedPaths(side, paths)
+    if (!plan.ok) {
+      errorMessage = plan.error
       return
     }
 
+    // A single drop replaces one side of the current local compare. Git and
+    // GitHub compares have no local counterpart, so they need both sides.
     const otherSide: Side = side === 'left' ? 'right' : 'left'
-    setupMode = 'local'
-    mode = appliedKind
-
-    if (paneCanCompare(paneFor(otherSide), appliedKind)) {
-      await runCompare()
-    } else {
-      errorMessage = `Drop or select a ${appliedKind === 'directory' ? 'folder' : 'file'} on the ${otherSide} side to compare.`
+    const currentCompareIsLocal = !activeDiffSource || activeDiffSource.kind === 'local'
+    if (
+      !plan.targets[otherSide] &&
+      (!currentCompareIsLocal || !paneCanCompare(paneFor(otherSide), plan.kind))
+    ) {
+      const noun = plan.kind === 'directory' ? 'folders' : 'files'
+      errorMessage = `Drop two ${noun} at once to compare them with each other.`
+      return
     }
+
+    // Ask about unsaved edits before touching any state, so Cancel keeps everything as it was.
+    if (!(await requestUnsavedDecision())) {
+      return
+    }
+
+    if (!(await applyDropPlan(plan))) {
+      errorMessage = 'The dropped item could not be opened.'
+      return
+    }
+    setupMode = 'local'
+    mode = plan.kind
+    await runLocalCompare()
   }
 
   async function openDirectory(side: Side, path: string, historyMode: 'push' | 'keep' = 'push') {
@@ -2609,6 +2610,11 @@
       return
     }
 
+    await runLocalCompare()
+  }
+
+  /** Compares the targets selected in the local setup panes. Callers handle unsaved edits first. */
+  async function runLocalCompare() {
     if (!paneCanCompare(leftExplorer, mode) || !paneCanCompare(rightExplorer, mode)) {
       errorMessage = 'Select valid targets on both sides first.'
       return

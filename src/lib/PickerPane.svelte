@@ -2,8 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import Dropdown from './components/Dropdown.svelte'
   import EntryIcon from './EntryIcon.svelte'
-  import { getDroppedFilePath } from './api'
-  import { extractDroppedPaths, hasFileDragPayload } from './app/file-drop'
+  import { fileDropZone } from './app/file-drop'
   import { filterRows, reduceTypeAheadKey } from './setup/explorer-typeahead'
 
   import type { ExplorerEntry } from './types'
@@ -24,7 +23,7 @@
   export let updatePathInput: (side: Side, value: string) => void
   export let submitPathInput: (side: Side) => Promise<void>
   export let browseSystem: (side: Side, kind: 'file' | 'directory') => Promise<void>
-  export let onDropPaths: (side: Side, paths: string[]) => Promise<void> | void = () => {}
+  export let onDropPaths: (side: Side, paths: string[]) => Promise<void>
   export let setCurrentFolderAsTarget: (side: Side) => void
   export let isCurrentFolderSelected: (pane: ExplorerPaneState) => boolean
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
@@ -41,7 +40,6 @@
   }
 
   let rowsHost: HTMLDivElement | null = null
-  let dragDepth = 0
   let dropActive = false
   let rowsScrollTop = 0
   let rowsViewportHeight = 0
@@ -172,50 +170,6 @@
     rowsScrollTop = rowsHost.scrollTop
   }
 
-  function handlePaneDragEnter(event: DragEvent) {
-    if (!hasFileDragPayload(event.dataTransfer)) {
-      return
-    }
-    event.preventDefault()
-    dragDepth += 1
-    dropActive = true
-  }
-
-  function handlePaneDragOver(event: DragEvent) {
-    if (!hasFileDragPayload(event.dataTransfer)) {
-      return
-    }
-    event.preventDefault()
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'copy'
-    }
-    dropActive = true
-  }
-
-  function handlePaneDragLeave(event: DragEvent) {
-    if (!dropActive) {
-      return
-    }
-    event.preventDefault()
-    dragDepth = Math.max(0, dragDepth - 1)
-    if (dragDepth === 0) {
-      dropActive = false
-    }
-  }
-
-  function handlePaneDrop(event: DragEvent) {
-    if (!hasFileDragPayload(event.dataTransfer)) {
-      return
-    }
-    event.preventDefault()
-    dragDepth = 0
-    dropActive = false
-    const paths = extractDroppedPaths(event.dataTransfer, getDroppedFilePath)
-    if (paths.length > 0) {
-      void onDropPaths(side, paths)
-    }
-  }
-
   function handleRowClick(index: number, entry: ExplorerEntry, event: MouseEvent) {
     highlightedIndex = index
     selectListEntry(side, entry, event)
@@ -294,10 +248,11 @@
   class:right-picker-pane={side === 'right'}
   class:drop-active={dropActive}
   class="picker-pane"
-  on:dragenter={handlePaneDragEnter}
-  on:dragover={handlePaneDragOver}
-  on:dragleave={handlePaneDragLeave}
-  on:drop={handlePaneDrop}
+  use:fileDropZone={{
+    onHover: () => (dropActive = true),
+    onLeave: () => (dropActive = false),
+    onDrop: (paths) => void onDropPaths(side, paths),
+  }}
 >
   <header class="picker-pane-header">
     <div class="picker-target-heading">

@@ -144,6 +144,14 @@ function createWindow(launchContext: LaunchContext | null = null) {
     void shell.openExternal(details.url)
     return { action: 'deny' }
   })
+  // The window only ever shows the app. Without this, dropping a file outside a
+  // drop zone navigates the window to that file and loses the whole session.
+  // Reloads of the app page itself stay allowed.
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isSameDocumentUrl(url, window.webContents.getURL())) {
+      event.preventDefault()
+    }
+  })
   installStartupProfileExit(window)
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -155,6 +163,16 @@ function createWindow(launchContext: LaunchContext | null = null) {
     const rendererPath = join(__dirname, '../renderer/index.html')
     markMainStartup('window-load-file-start')
     void window.loadFile(rendererPath, { query: startupProfileQuery() })
+  }
+}
+
+function isSameDocumentUrl(nextUrl: string, currentUrl: string) {
+  try {
+    const next = new URL(nextUrl)
+    const current = new URL(currentUrl)
+    return next.origin === current.origin && next.pathname === current.pathname
+  } catch {
+    return false
   }
 }
 
