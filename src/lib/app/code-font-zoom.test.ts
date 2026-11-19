@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_CODE_FONT_SIZE, MIN_CODE_FONT_SIZE } from '../theme/runtime'
 import {
   CODE_ZOOM_TARGET_SELECTOR,
-  isCodeZoomTarget,
-  resolveCodeFontSizeFromWheel,
+  createCodeZoomGestureState,
+  resolveCodeZoomStep,
   type CodeZoomWheelEventLike,
 } from './code-font-zoom'
 
-function mockElement(matchedSelector: string | null) {
+function mockElement(insideCodePanel: boolean) {
   return {
     closest(selector: string) {
-      if (selector === CODE_ZOOM_TARGET_SELECTOR && matchedSelector !== null) {
-        return { selector: matchedSelector }
-      }
-      return null
+      return selector === CODE_ZOOM_TARGET_SELECTOR && insideCodePanel ? {} : null
     },
   } as unknown as EventTarget
 }
@@ -25,53 +21,49 @@ function wheelEvent(overrides: Partial<CodeZoomWheelEventLike> = {}): CodeZoomWh
     shiftKey: false,
     metaKey: false,
     deltaY: -100,
-    target: mockElement('.compare-viewer'),
+    deltaMode: 0,
+    timeStamp: 1000,
+    target: mockElement(true),
     ...overrides,
   }
 }
 
 describe('code-font-zoom', () => {
-  it('detects diff, editor, and merge conflict panels as valid zoom targets', () => {
-    expect(isCodeZoomTarget(mockElement('.compare-viewer'))).toBe(true)
-    expect(isCodeZoomTarget(mockElement('.workspace-editor'))).toBe(true)
-    expect(isCodeZoomTarget(mockElement('.merge-conflict-viewer'))).toBe(true)
-
-    const textNode = { parentElement: mockElement('.compare-viewer') } as unknown as EventTarget
-    expect(isCodeZoomTarget(textNode)).toBe(true)
-
-    expect(isCodeZoomTarget(mockElement(null))).toBe(false)
-    expect(isCodeZoomTarget(null)).toBe(false)
+  it('steps once per mouse wheel notch in the right direction', () => {
+    const state = createCodeZoomGestureState()
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: -100 }), state)).toBe(1)
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: 100, timeStamp: 1050 }), state)).toBe(-1)
+    // Large high-DPI notches still give a single step.
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: -250, timeStamp: 1100 }), state)).toBe(1)
   })
 
-  it('increases monospace font size by 1px on Ctrl + wheel up over a code panel', () => {
-    const result = resolveCodeFontSizeFromWheel(wheelEvent({ deltaY: -120 }), 13)
-    expect(result).toEqual({ nextSize: 14, changed: true })
-  })
-
-  it('decreases monospace font size by 1px on Ctrl + wheel down over a code panel', () => {
-    const result = resolveCodeFontSizeFromWheel(
-      wheelEvent({ deltaY: 120, target: mockElement('.workspace-editor') }),
-      13,
+  it('adds up small touchpad deltas before stepping', () => {
+    const state = createCodeZoomGestureState()
+    const steps = [0, 10, 20, 30, 40, 50].map((offset) =>
+      resolveCodeZoomStep(wheelEvent({ deltaY: -10, timeStamp: 1000 + offset }), state),
     )
-    expect(result).toEqual({ nextSize: 12, changed: true })
+    expect(steps).toEqual([0, 0, 0, 0, 1, 0])
   })
 
-  it('clamps at min and max bounds while still returning a handled result', () => {
-    expect(
-      resolveCodeFontSizeFromWheel(wheelEvent({ deltaY: -100 }), MAX_CODE_FONT_SIZE),
-    ).toEqual({ nextSize: MAX_CODE_FONT_SIZE, changed: false })
-
-    expect(
-      resolveCodeFontSizeFromWheel(wheelEvent({ deltaY: 100 }), MIN_CODE_FONT_SIZE),
-    ).toEqual({ nextSize: MIN_CODE_FONT_SIZE, changed: false })
+  it('forgets leftover delta after a pause', () => {
+    const state = createCodeZoomGestureState()
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: -40, timeStamp: 1000 }), state)).toBe(0)
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: -40, timeStamp: 2000 }), state)).toBe(0)
   })
 
-  it('ignores wheel events without Ctrl, with extra modifiers, zero delta, or outside code panels', () => {
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ ctrlKey: false }), 13)).toBeNull()
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ altKey: true }), 13)).toBeNull()
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ shiftKey: true }), 13)).toBeNull()
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ metaKey: true }), 13)).toBeNull()
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ deltaY: 0 }), 13)).toBeNull()
-    expect(resolveCodeFontSizeFromWheel(wheelEvent({ target: mockElement(null) }), 13)).toBeNull()
+  it('converts line based deltas to pixels', () => {
+    const state = createCodeZoomGestureState()
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: 3, deltaMode: 1 }), state)).toBe(-1)
+  })
+
+  it('ignores events without Ctrl, with extra modifiers, zero delta, or outside code panels', () => {
+    const state = createCodeZoomGestureState()
+    expect(resolveCodeZoomStep(wheelEvent({ ctrlKey: false }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ altKey: true }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ shiftKey: true }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ metaKey: true }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ deltaY: 0 }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ target: mockElement(false) }), state)).toBeNull()
+    expect(resolveCodeZoomStep(wheelEvent({ target: null }), state)).toBeNull()
   })
 })
