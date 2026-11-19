@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  computeRowScrollTop,
   extractDroppedPaths,
+  findRowIndexByPath,
   hasFileDragPayload,
   resolveCompareDropSide,
 } from './file-drop'
@@ -43,5 +45,26 @@ describe('file-drop', () => {
     expect(resolveCompareDropSide(700, rect, 'sideBySide')).toBe('right')
     expect(resolveCompareDropSide(1100, rect, 'unified')).toBe('right')
     expect(resolveCompareDropSide(100, { left: 0, width: 0 }, 'sideBySide')).toBe('right')
+  })
+
+  it('finds matching rows case-insensitively and computes scrollTop to bring selected rows into view', () => {
+    const rows = [
+      { entry: { path: 'C:\src\A.vb' } },
+      { entry: { path: 'C:\src\M.vb' } },
+      { entry: { path: 'C:\src\Resource.vb' } },
+    ]
+
+    expect(findRowIndexByPath(rows, 'c:\src\resource.vb')).toBe(2)
+    expect(findRowIndexByPath(rows, 'C:\src\Missing.vb')).toBe(-1)
+    expect(findRowIndexByPath(rows, '')).toBe(-1)
+
+    // Row 2 at y=60..90 when viewport shows 0..150 is already visible
+    expect(computeRowScrollTop(2, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBeNull()
+
+    // Row 15 at y=450..480 when viewport shows 0..150 scrolls down so bottom aligns with viewBottom
+    expect(computeRowScrollTop(15, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBe(330)
+
+    // Row 2 at y=60..90 when viewport is scrolled to 300..450 scrolls up to row top
+    expect(computeRowScrollTop(2, 30, { scrollTop: 300, clientHeight: 150, scrollHeight: 600 })).toBe(60)
   })
 })

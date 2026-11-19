@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import Dropdown from './components/Dropdown.svelte'
   import EntryIcon from './EntryIcon.svelte'
   import { getDroppedFilePath } from './api'
-  import { extractDroppedPaths, hasFileDragPayload } from './app/file-drop'
+  import {
+    computeRowScrollTop,
+    extractDroppedPaths,
+    findRowIndexByPath,
+    hasFileDragPayload,
+  } from './app/file-drop'
   import { filterRows, reduceTypeAheadKey } from './setup/explorer-typeahead'
 
   import type { ExplorerEntry } from './types'
@@ -43,6 +48,8 @@
   let rowsHost: HTMLDivElement | null = null
   let dragDepth = 0
   let dropActive = false
+  let lastScrolledTargetPath = ''
+  let targetScrollToken = 0
   let rowsScrollTop = 0
   let rowsViewportHeight = 0
   let resizeObserver: ResizeObserver | null = null
@@ -108,6 +115,13 @@
     }
   }
 
+  $: if (pane.selectedTargetPath !== lastScrolledTargetPath) {
+    lastScrolledTargetPath = pane.selectedTargetPath
+    if (pane.selectedTargetPath) {
+      void scrollTargetPathIntoView(pane.selectedTargetPath)
+    }
+  }
+
   function handleListKeydown(event: KeyboardEvent) {
     // Tab toggles focus between the left and right target lists.
     if (event.key === 'Tab') {
@@ -153,23 +167,47 @@
     scrollHighlightedIntoView()
   }
 
+  function scrollRowIndexIntoView(rowIndex: number) {
+    if (rowIndex < 0 || !rowsHost) {
+      return
+    }
+
+    const nextScrollTop = computeRowScrollTop(rowIndex, ROW_HEIGHT, {
+      scrollTop: rowsHost.scrollTop,
+      clientHeight: rowsHost.clientHeight || rowsViewportHeight,
+      scrollHeight: totalRowsHeight || rowsHost.scrollHeight,
+    })
+
+    if (nextScrollTop === null) {
+      return
+    }
+
+    rowsHost.scrollTop = nextScrollTop
+    rowsScrollTop = rowsHost.scrollTop
+  }
+
+  async function scrollTargetPathIntoView(targetPath: string) {
+    const token = ++targetScrollToken
+    await tick()
+    if (token !== targetScrollToken || pane.selectedTargetPath !== targetPath) {
+      return
+    }
+
+    const rowIndex = findRowIndexByPath(filteredRows, targetPath)
+    if (rowIndex < 0) {
+      return
+    }
+
+    highlightedIndex = rowIndex
+    scrollRowIndexIntoView(rowIndex)
+  }
+
   function scrollHighlightedIntoView() {
     if (highlightedIndex < 0 || !rowsHost) {
       return
     }
 
-    const top = highlightedIndex * ROW_HEIGHT
-    const bottom = top + ROW_HEIGHT
-    const viewTop = rowsHost.scrollTop
-    const viewBottom = viewTop + rowsHost.clientHeight
-
-    if (top < viewTop) {
-      rowsHost.scrollTop = top
-    } else if (bottom > viewBottom) {
-      rowsHost.scrollTop = bottom - rowsHost.clientHeight
-    }
-
-    rowsScrollTop = rowsHost.scrollTop
+    scrollRowIndexIntoView(highlightedIndex)
   }
 
   function handlePaneDragEnter(event: DragEvent) {
