@@ -1956,7 +1956,12 @@
     }
   }
 
-  async function openDirectory(side: Side, path: string, historyMode: 'push' | 'keep' = 'push') {
+  async function openDirectory(
+    side: Side,
+    path: string,
+    historyMode: 'push' | 'keep' = 'push',
+    forceRefresh = false,
+  ) {
     const requestId = startPaneNavigationRequest(side)
     updatePane(side, (pane) => ({
       ...pane,
@@ -1966,8 +1971,8 @@
 
     try {
       const pane = paneFor(side)
-      const cached = pane.listings[path]
-      const listing = cached ?? (await listDirectory(path))
+      const cached = forceRefresh ? undefined : pane.listings[path]
+      const listing = cached ?? (await listDirectory(path, { forceRefresh }))
 
       if (!paneNavigationRequestIsCurrent(side, requestId)) {
         return false
@@ -2002,7 +2007,11 @@
     }
   }
 
-  async function openDirectoryForBothPanes(path: string, historyMode: 'push' | 'keep' = 'push') {
+  async function openDirectoryForBothPanes(
+    path: string,
+    historyMode: 'push' | 'keep' = 'push',
+    forceRefresh = false,
+  ) {
     const leftRequestId = startPaneNavigationRequest('left')
     const rightRequestId = startPaneNavigationRequest('right')
 
@@ -2018,10 +2027,11 @@
     }
 
     try {
-      const listing =
-        leftExplorer.listings[path] ??
-        rightExplorer.listings[path] ??
-        await listDirectory(path)
+      const listing = forceRefresh
+        ? await listDirectory(path, { forceRefresh: true })
+        : (leftExplorer.listings[path] ??
+          rightExplorer.listings[path] ??
+          await listDirectory(path))
 
       if (
         !paneNavigationRequestIsCurrent('left', leftRequestId) ||
@@ -2078,6 +2088,35 @@
         error: message,
       }
       return false
+    }
+  }
+
+  async function refreshLocalPickers() {
+    if (pickerLoading) {
+      return
+    }
+
+    const leftCurrentPath = leftExplorer.currentPath
+    const rightCurrentPath = rightExplorer.currentPath
+
+    if (leftCurrentPath && leftCurrentPath === rightCurrentPath) {
+      if (leftExplorer.loading || rightExplorer.loading) {
+        return
+      }
+      await openDirectoryForBothPanes(leftCurrentPath, 'keep', true)
+      return
+    }
+
+    const tasks: Array<Promise<boolean>> = []
+    if (leftCurrentPath && !leftExplorer.loading) {
+      tasks.push(openDirectory('left', leftCurrentPath, 'keep', true))
+    }
+    if (rightCurrentPath && !rightExplorer.loading) {
+      tasks.push(openDirectory('right', rightCurrentPath, 'keep', true))
+    }
+
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
     }
   }
 
@@ -2259,19 +2298,38 @@
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
-    // Local compare retains the global shortcut. Git and GitHub own their
-    // source-specific actions inside their setup panels.
     if (
-      screen === 'setup' &&
-      setupMode === 'local' &&
-      event.key === 'Enter' &&
-      (event.ctrlKey || event.metaKey)
+      event.defaultPrevented ||
+      unsavedDialogOpen ||
+      recoveryDialogOpen ||
+      themeEditorOpen
     ) {
-      if (!pickerCanCompare || loading) {
+      return
+    }
+
+    // Local compare retains the global shortcuts. Git and GitHub own their
+    // source-specific actions inside their setup panels.
+    if (screen === 'setup' && setupMode === 'local') {
+      if (
+        event.key === 'F5' &&
+        !event.repeat &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault()
+        void refreshLocalPickers()
         return
       }
-      event.preventDefault()
-      void runCompare()
+
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        if (!pickerCanCompare || loading) {
+          return
+        }
+        event.preventDefault()
+        void runCompare()
+      }
     }
   }
 
@@ -3113,6 +3171,7 @@
   />
 {:else if shouldKeepCompareMounted()}
   <CompareScreen
+    isActiveScreen={screen === 'compare' && !unsavedDialogOpen && !recoveryDialogOpen && !themeEditorOpen}
     {updateIndicatorState}
     showUpdateIndicator={shouldShowUpdateIndicator()}
     updateIndicatorTitle={updateIndicatorTitle()}

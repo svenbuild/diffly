@@ -47,11 +47,16 @@ export async function listRoots(): Promise<ExplorerEntry[]> {
   return entries.filter((entry): entry is ExplorerEntry => entry !== null)
 }
 
-export async function listDirectory(pathValue: string): Promise<DirectoryListing> {
+export async function listDirectory(
+  pathValue: string,
+  options?: { forceRefresh?: boolean },
+): Promise<DirectoryListing> {
   const directoryInfo = await stat(pathValue)
-  const cached = getCachedDirectoryListing(pathValue, directoryInfo.mtimeMs)
-  if (cached) {
-    return cached
+  if (!options?.forceRefresh) {
+    const cached = getCachedDirectoryListing(pathValue, directoryInfo.mtimeMs)
+    if (cached) {
+      return cached
+    }
   }
 
   const entries = await readdir(pathValue, { withFileTypes: true })

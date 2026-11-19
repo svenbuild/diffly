@@ -51,6 +51,7 @@
   import { listReviewThreadCounts, undoWorkspaceOperation } from '../api'
   import type { ReviewThreadCount } from '../review-types'
 
+  export let isActiveScreen = true
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
   export let updateIndicatorTitle = ''
@@ -311,7 +312,19 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
-    if (event.defaultPrevented) return
+    if (!isActiveScreen || event.defaultPrevented) return
+    if (
+      event.key === 'F5' &&
+      !event.repeat &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault()
+      void runCompareFromToolbar()
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
       event.preventDefault()
       comparisonSearch.update((state) => ({ ...state, open: true }))
@@ -568,7 +581,7 @@
           class:compare-action-busy={loading || toolbarReloadPending}
           class:pending-refresh={compareNeedsRefresh}
           class="secondary toolbar-button icon-button refresh-button"
-          title={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
+          title={compareNeedsRefresh ? 'Reload to apply comparison rule changes (F5)' : 'Reload compare (F5)'}
           type="button"
           disabled={loading || toolbarReloadPending}
           on:click={runCompareFromToolbar}

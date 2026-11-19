@@ -118,6 +118,27 @@
     }
   }
 
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.key !== 'F5'
+    ) {
+      return
+    }
+
+    if (!currentPath || loading) {
+      return
+    }
+
+    event.preventDefault()
+    void loadDirectory(currentPath, { push: false, forceRefresh: true })
+  }
+
   function handleListKeydown(event: KeyboardEvent) {
     const result = reduceTypeAheadKey(event, {
       query: filterQuery,
@@ -216,7 +237,10 @@
     return match?.path ?? roots[0]?.path ?? ''
   })()
 
-  async function loadDirectory(path: string, options: { push: boolean }) {
+  async function loadDirectory(
+    path: string,
+    options: { push: boolean; forceRefresh?: boolean },
+  ) {
     const token = (navToken += 1)
     markStartupProfile('git-browser-directory-load-start', { path })
     loading = true
@@ -229,8 +253,12 @@
     currentFolderIsRepo = false
     focusedPath = ''
 
+    if (options.forceRefresh) {
+      detectionCache.delete(path)
+    }
+
     try {
-      const listing = await listDirectory(path)
+      const listing = await listDirectory(path, { forceRefresh: options.forceRefresh })
       if (token !== navToken) {
         return
       }
@@ -537,6 +565,8 @@
     resizeObserver = null
   })
 </script>
+
+<svelte:window on:keydown={handleWindowKeydown} />
 
 <section class="git-browser" aria-label="Repository folder">
   <header class="git-browser-header">
