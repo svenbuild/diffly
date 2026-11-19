@@ -29,7 +29,7 @@
     ViewMode,
     DocumentTarget,
   } from '../types'
-  import type { SettingsSection } from '../ui-types'
+  import type { SettingsSection, Side } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
   import UpdateIndicator from './UpdateIndicator.svelte'
@@ -48,7 +48,8 @@
   import ReviewWorkspacePanel from '../review/ReviewWorkspacePanel.svelte'
   import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
   import { workspaceConflictController } from '../conflicts/conflict-controller'
-  import { listReviewThreadCounts, undoWorkspaceOperation } from '../api'
+  import { getDroppedFilePath, listReviewThreadCounts, undoWorkspaceOperation } from '../api'
+  import { extractDroppedPaths, hasFileDragPayload, resolveCompareDropSide } from '../app/file-drop'
   import type { ReviewThreadCount } from '../review-types'
 
   export let updateIndicatorState: UpdateIndicatorState
@@ -117,12 +118,16 @@
   export let systemMonitor: SystemMonitorSnapshot
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
+  export let onDropPaths: (side: Side, paths: string[]) => Promise<void> | void = () => {}
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
     rightBase: string
     relativePath: string
   }
 
+  let compareLayoutElement: HTMLElement | null = null
+  let compareDragDepth = 0
+  let compareDropSide: Side | null = null
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
   let directoryDiffsAllCollapsed = false
   let collapseAllRevision = 0
@@ -403,6 +408,59 @@
     } finally { undoReviewBusy = false }
   }
 
+  function resolveDropSideForEvent(event: DragEvent): Side {
+    const viewerElement =
+      compareLayoutElement?.querySelector<HTMLElement>('.compare-viewer, .workspace-editor, .merge-conflict-viewer') ??
+      compareLayoutElement
+    const rect = viewerElement?.getBoundingClientRect() ?? { left: 0, width: 0 }
+    return resolveCompareDropSide(event.clientX, rect, viewMode)
+  }
+
+  function handleCompareDragEnter(event: DragEvent) {
+    if (!hasFileDragPayload(event.dataTransfer)) {
+      return
+    }
+    event.preventDefault()
+    compareDragDepth += 1
+    compareDropSide = resolveDropSideForEvent(event)
+  }
+
+  function handleCompareDragOver(event: DragEvent) {
+    if (!hasFileDragPayload(event.dataTransfer)) {
+      return
+    }
+    event.preventDefault()
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy'
+    }
+    compareDropSide = resolveDropSideForEvent(event)
+  }
+
+  function handleCompareDragLeave(event: DragEvent) {
+    if (!compareDropSide) {
+      return
+    }
+    event.preventDefault()
+    compareDragDepth = Math.max(0, compareDragDepth - 1)
+    if (compareDragDepth === 0) {
+      compareDropSide = null
+    }
+  }
+
+  function handleCompareDrop(event: DragEvent) {
+    if (!hasFileDragPayload(event.dataTransfer)) {
+      return
+    }
+    event.preventDefault()
+    const targetSide = compareDropSide ?? resolveDropSideForEvent(event)
+    compareDragDepth = 0
+    compareDropSide = null
+    const paths = extractDroppedPaths(event.dataTransfer, getDroppedFilePath)
+    if (paths.length > 0) {
+      void onDropPaths(targetSide, paths)
+    }
+  }
+
   onMount(() => {
     window.addEventListener('diffly:partial-change-applied', handlePartialChange)
     window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
@@ -625,8 +683,15 @@
     class:search-panel-open={$comparisonSearch.open && Boolean(activeDiffSessionId)}
     class:review-panel-open={showHunkReviewPanel}
     class:inline-review-active={reviewPanelOpen}
+    class:compare-drop-left={compareDropSide === 'left'}
+    class:compare-drop-right={compareDropSide === 'right'}
     class="compare-layout"
+    bind:this={compareLayoutElement}
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
+    on:dragenter={handleCompareDragEnter}
+    on:dragover={handleCompareDragOver}
+    on:dragleave={handleCompareDragLeave}
+    on:drop={handleCompareDrop}
   >
     {#if mode === 'directory'}
       <CompareDirectorySidebar
@@ -757,3 +822,32 @@
 
   <CompareLoadingOverlay state={compareLoadingState} />
 </main>
+
+<style>
+  .compare-layout.compare-drop-left,
+  .compare-layout.compare-drop-right {
+    position: relative;
+  }
+
+  .compare-layout.compare-drop-left::after,
+  .compare-layout.compare-drop-right::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    width: calc(50% - 8px);
+    border: 2px dashed var(--accent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    pointer-events: none;
+    z-index: 40;
+  }
+
+  .compare-layout.compare-drop-left::after {
+    left: 4px;
+  }
+
+  .compare-layout.compare-drop-right::after {
+    right: 4px;
+  }
+</style>

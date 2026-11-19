@@ -1925,6 +1925,35 @@
     void openExternalUrlApi(url)
   }
 
+  async function applyPathToPane(side: Side, targetPath: string): Promise<'file' | 'directory' | null> {
+    const info = await pathInfo(targetPath)
+
+    if (!info.exists) {
+      return null
+    }
+
+    if (info.isDirectory) {
+      if (await openDirectory(side, info.path)) {
+        selectTarget(side, info.path, 'directory')
+        return 'directory'
+      }
+      return null
+    }
+
+    if (info.isFile) {
+      if (info.parentPath) {
+        const opened = await openDirectory(side, info.parentPath)
+        if (!opened) {
+          return null
+        }
+      }
+      selectTarget(side, info.path, 'file')
+      return 'file'
+    }
+
+    return null
+  }
+
   async function browseSystem(side: Side, kind: 'file' | 'directory' = 'file') {
     const selected = await choosePath(kind)
 
@@ -1932,27 +1961,66 @@
       return
     }
 
-    const info = await pathInfo(selected)
+    await applyPathToPane(side, selected)
+  }
 
-    if (!info.exists) {
+  async function dropPathsOnPane(side: Side, paths: string[]) {
+    if (paths.length === 0) {
       return
     }
 
-    if (info.isDirectory) {
-      if (await openDirectory(side, info.path)) {
-        selectTarget(side, info.path, 'directory')
-      }
+    const applied = await applyPathToPane(side, paths[0])
+    if (!applied) {
+      updatePane(side, (pane) => ({
+        ...pane,
+        error: 'The dropped path does not exist.',
+      }))
+    }
+  }
+
+  async function dropPathsOnCompare(side: Side, paths: string[]) {
+    if (paths.length === 0 || loading) {
       return
     }
 
-    if (info.isFile) {
-      if (info.parentPath) {
-        const opened = await openDirectory(side, info.parentPath)
-        if (!opened) {
-          return
+    if (paths.length >= 2) {
+      const [leftInfo, rightInfo] = await Promise.all([
+        pathInfo(paths[0]),
+        pathInfo(paths[1]),
+      ])
+
+      const bothDirs = leftInfo.exists && leftInfo.isDirectory && rightInfo.exists && rightInfo.isDirectory
+      const bothFiles = leftInfo.exists && leftInfo.isFile && rightInfo.exists && rightInfo.isFile
+
+      if (bothDirs || bothFiles) {
+        const nextKind: CompareMode = bothDirs ? 'directory' : 'file'
+        setupMode = 'local'
+        mode = nextKind
+        const [leftApplied, rightApplied] = await Promise.all([
+          applyPathToPane('left', leftInfo.path),
+          applyPathToPane('right', rightInfo.path),
+        ])
+        if (leftApplied === nextKind && rightApplied === nextKind) {
+          await runCompare()
         }
+        return
       }
-      selectTarget(side, info.path, 'file')
+    }
+
+    const appliedKind = await applyPathToPane(side, paths[0])
+    if (!appliedKind) {
+      errorMessage = 'The dropped path does not exist.'
+      return
+    }
+
+    const otherSide: Side = side === 'left' ? 'right' : 'left'
+    setupMode = 'local'
+    mode = appliedKind
+
+    if (paneCanCompare(paneFor(otherSide), appliedKind)) {
+      await runCompare()
+    } else {
+      errorMessage = `Drop or select a ${appliedKind === 'directory' ? 'folder' : 'file'} on the ${otherSide} side to compare.`
     }
   }
 
@@ -3105,6 +3173,7 @@
     {updatePathInput}
     {submitPathInput}
     {browseSystem}
+    onDropPaths={dropPathsOnPane}
     {useCurrentFolder}
     {isCurrentFolderSelected}
     {selectListEntry}
@@ -3167,6 +3236,7 @@
     {systemMonitor}
     onDiffStatsChange={setDiffStats}
     onSystemMonitorChange={setSystemMonitor}
+    onDropPaths={dropPathsOnCompare}
     {getDetailBasesForPath}
   />
 {/if}
