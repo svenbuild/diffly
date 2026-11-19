@@ -1984,7 +1984,7 @@
         ...current,
         ...historyState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? current.pathInput : path,
         currentListing: listing,
         // A forced refresh also drops other cached folders so they reload on the next visit.
         listings: {
@@ -2048,7 +2048,7 @@
         ...leftExplorer,
         ...leftHistoryState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? leftExplorer.pathInput : path,
         currentListing: listing,
         listings: {
           ...(forceRefresh ? {} : leftExplorer.listings),
@@ -2060,7 +2060,7 @@
         ...rightExplorer,
         ...rightHistoryState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? rightExplorer.pathInput : path,
         currentListing: listing,
         listings: {
           ...(forceRefresh ? {} : rightExplorer.listings),
