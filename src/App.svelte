@@ -1995,7 +1995,11 @@
   }
 
   async function dropPathsOnCompare(side: Side, paths: string[]) {
-    if (screen !== 'compare' || loading) {
+    if (screen !== 'compare') {
+      return
+    }
+    if (loading) {
+      errorMessage = 'Wait until the compare has finished, then drop again.'
       return
     }
     // A newer drop, any compare started meanwhile, or leaving the compare screen makes this drop stale.

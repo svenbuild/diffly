@@ -13,8 +13,9 @@ export interface ScrollBounds {
   scrollHeight: number
 }
 
+// Only separators are normalized: names are case sensitive on macOS and Linux.
 function normalizeComparablePath(value: string): string {
-  return value.trim().replace(/[/\\]+/g, '/').toLowerCase()
+  return value.replace(/[/\\]+/g, '/')
 }
 
 export function hasFileDragPayload(dataTransfer: DropDataTransferLike | null | undefined): boolean {
@@ -30,8 +31,9 @@ export function extractDroppedPaths(
 ): string[] {
   const paths: string[] = []
   for (const file of Array.from(dataTransfer?.files ?? [])) {
-    const resolved = resolvePath(file)?.trim()
-    if (resolved && !paths.includes(resolved)) {
+    // Keep the exact native path: on macOS and Linux a trailing space is part of the name.
+    const resolved = resolvePath(file)
+    if (resolved?.trim() && !paths.includes(resolved)) {
       paths.push(resolved)
     }
   }

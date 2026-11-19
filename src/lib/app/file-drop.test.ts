@@ -4,11 +4,20 @@ import {
   extractDroppedPaths,
   findRowIndexByPath,
   hasFileDragPayload,
-  resolveCompareDropSide,
+  planPathDrop,
+  type DropItemInfo,
 } from './file-drop'
 
 function fakeFile(name: string): File {
   return { name } as unknown as File
+}
+
+function file(path: string): DropItemInfo {
+  return { path, exists: true, isFile: true, isDirectory: false }
+}
+
+function folder(path: string): DropItemInfo {
+  return { path, exists: true, isFile: false, isDirectory: true }
 }
 
 describe('file-drop', () => {
@@ -20,47 +29,63 @@ describe('file-drop', () => {
     expect(hasFileDragPayload(null)).toBe(false)
   })
 
-  it('extracts, trims, and deduplicates dropped file paths in order', () => {
-    const files = [fakeFile('a'), fakeFile('b'), fakeFile('dup'), fakeFile('empty')]
+  it('extracts and deduplicates dropped file paths in order, keeping them exact', () => {
+    const files = ['a', 'b', 'dup', 'empty', 'spaced'].map(fakeFile)
     const map: Record<string, string> = {
-      a: ' C:\\left\\Resource.vb ',
+      a: 'C:\\left\\Resource.vb',
       b: 'C:\\right\\Resource.vb',
       dup: 'C:\\left\\Resource.vb',
       empty: '   ',
+      spaced: '/tmp/report ',
     }
 
-    const paths = extractDroppedPaths({ files }, (file) => map[file.name] ?? '')
-    expect(paths).toEqual(['C:\\left\\Resource.vb', 'C:\\right\\Resource.vb'])
-  })
-
-  it('returns an empty array when no files are present', () => {
+    const paths = extractDroppedPaths({ files }, (entry) => map[entry.name] ?? '')
+    expect(paths).toEqual(['C:\\left\\Resource.vb', 'C:\\right\\Resource.vb', '/tmp/report '])
     expect(extractDroppedPaths(null, () => 'C:\\test.txt')).toEqual([])
-    expect(extractDroppedPaths({ files: [] }, () => 'C:\\test.txt')).toEqual([])
   })
 
-  it('resolves left or right side from pointer position inside the compare viewer', () => {
-    const rect = { left: 200, width: 1000 }
-    expect(resolveCompareDropSide(250, rect, 'sideBySide')).toBe('left')
-    expect(resolveCompareDropSide(699, rect, 'sideBySide')).toBe('left')
-    expect(resolveCompareDropSide(700, rect, 'sideBySide')).toBe('right')
-    expect(resolveCompareDropSide(1100, rect, 'unified')).toBe('right')
-    expect(resolveCompareDropSide(100, { left: 0, width: 0 }, 'sideBySide')).toBe('right')
+  it('puts a single dropped item on the side it was dropped on', () => {
+    expect(planPathDrop('right', [file('b.txt')])).toEqual({
+      ok: true,
+      kind: 'file',
+      targets: { right: file('b.txt') },
+    })
+    expect(planPathDrop('left', [folder('src')])).toEqual({
+      ok: true,
+      kind: 'directory',
+      targets: { left: folder('src') },
+    })
   })
 
-  it('finds matching rows case-insensitively and computes scrollTop to bring selected rows into view', () => {
+  it('spreads two items of the same kind over both sides in drop order', () => {
+    expect(planPathDrop('right', [folder('a'), folder('b')])).toEqual({
+      ok: true,
+      kind: 'directory',
+      targets: { left: folder('a'), right: folder('b') },
+    })
+  })
+
+  it('rejects mixed kinds, missing items, and more than two items', () => {
+    expect(planPathDrop('left', [file('a'), folder('b')]).ok).toBe(false)
+    expect(planPathDrop('left', [{ ...file('a'), exists: false }]).ok).toBe(false)
+    expect(planPathDrop('left', [file('a'), file('b'), file('c')]).ok).toBe(false)
+    expect(planPathDrop('left', []).ok).toBe(false)
+  })
+
+  it('finds the row of a selected path regardless of separator style', () => {
     const rows = [
       { entry: { path: 'C:\\src\\A.vb' } },
-      { entry: { path: 'C:\\src\\M.vb' } },
       { entry: { path: 'C:\\src\\Resource.vb' } },
     ]
-
-    expect(findRowIndexByPath(rows, 'c:\\src\\resource.vb')).toBe(2)
-    expect(findRowIndexByPath(rows, 'c:/src/Resource.vb')).toBe(2)
-    expect(findRowIndexByPath(rows, 'C:\\src\\Missing.vb')).toBe(-1)
+    expect(findRowIndexByPath(rows, 'C:/src/Resource.vb')).toBe(1)
+    expect(findRowIndexByPath(rows, 'C:\\src\\resource.vb')).toBe(-1)
     expect(findRowIndexByPath(rows, '')).toBe(-1)
+  })
 
-    expect(computeRowScrollTop(2, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBeNull()
-    expect(computeRowScrollTop(15, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBe(330)
-    expect(computeRowScrollTop(2, 30, { scrollTop: 300, clientHeight: 150, scrollHeight: 600 })).toBe(60)
+  it('computes the scroll offset that brings a row into view', () => {
+    const bounds = { scrollTop: 0, clientHeight: 150, scrollHeight: 600 }
+    expect(computeRowScrollTop(2, 30, bounds)).toBeNull()
+    expect(computeRowScrollTop(15, 30, bounds)).toBe(330)
+    expect(computeRowScrollTop(2, 30, { ...bounds, scrollTop: 300 })).toBe(60)
   })
 })
