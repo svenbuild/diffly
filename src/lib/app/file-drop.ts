@@ -81,7 +81,8 @@ export function fileDropZone(node: HTMLElement, initialOptions: FileDropZoneOpti
   function handleEnterOrOver(event: DragEvent) {
     if (!hasFileDragPayload(event.dataTransfer)) return
     event.preventDefault()
-    if (event.type === 'dragenter') depth += 1
+    // dragover with a zero count means a reset happened while still inside.
+    if (event.type === 'dragenter' || depth === 0) depth += 1
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
     options.onHover?.(event)
   }
