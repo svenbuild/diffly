@@ -409,7 +409,11 @@
 
   // The highlighted half and the side that receives the drop come from the same rect.
   function updateCompareDropTarget(event: DragEvent) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    // Split the diff area, not the whole layout with sidebar and side panels.
+    const layout = event.currentTarget as HTMLElement
+    const diffArea =
+      layout.querySelector<HTMLElement>('.compare-viewer, .workspace-editor, .merge-conflict-viewer') ?? layout
+    const rect = diffArea.getBoundingClientRect()
     const half = rect.width / 2
     compareDropSide = event.clientX < rect.left + half ? 'left' : 'right'
     compareDropOverlay = {

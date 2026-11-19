@@ -1993,9 +1993,9 @@
     if (screen !== 'compare' || loading) {
       return
     }
-    // A newer drop or leaving the compare screen makes this drop stale.
+    // A newer drop, a compare started meanwhile, or leaving the compare screen makes this drop stale.
     const dropId = ++latestCompareDropId
-    const isStale = () => dropId !== latestCompareDropId || screen !== 'compare'
+    const isStale = () => dropId !== latestCompareDropId || screen !== 'compare' || loading
 
     const plan = await planDroppedPaths(side, paths)
     if (isStale()) {
