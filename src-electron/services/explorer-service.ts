@@ -52,7 +52,11 @@ export async function listDirectory(
   options?: { forceRefresh?: boolean },
 ): Promise<DirectoryListing> {
   const directoryInfo = await stat(pathValue)
-  if (!options?.forceRefresh) {
+  if (options?.forceRefresh) {
+    // Folder mtimes do not change when a file inside is edited, so a refresh
+    // drops every cached folder, matching the renderer side.
+    clearDirectoryListingCache()
+  } else {
     const cached = getCachedDirectoryListing(pathValue, directoryInfo.mtimeMs)
     if (cached) {
       return cached
