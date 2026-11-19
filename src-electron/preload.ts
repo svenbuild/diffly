@@ -73,8 +73,8 @@ contextBridge.exposeInMainWorld('diffly', {
     invoke<void>('diffly:applyGitWorkingTreeAction', payload),
   listRoots: () =>
     invoke('diffly:listRoots'),
-  listDirectory: (path: string) =>
-    invoke('diffly:listDirectory', { path }),
+  listDirectory: (path: string, options?: { forceRefresh?: boolean }) =>
+    invoke('diffly:listDirectory', { path, forceRefresh: options?.forceRefresh === true }),
   pathInfo: (path: string) =>
     invoke('diffly:pathInfo', { path }),
   loadSessionState: () =>

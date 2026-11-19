@@ -77,7 +77,7 @@ declare global {
       /** Optional: absent on older preload builds; feature-detect before use. */
       applyGitWorkingTreeAction?(payload: ApplyGitWorkingTreeActionPayload): Promise<void>
       listRoots(): Promise<ExplorerEntry[]>
-      listDirectory(path: string): Promise<DirectoryListing>
+      listDirectory(path: string, options?: { forceRefresh?: boolean }): Promise<DirectoryListing>
       pathInfo(path: string): Promise<PathInfo>
       loadSessionState(): Promise<PersistedSession | null>
       loadLaunchContext(): Promise<LaunchContext | null>

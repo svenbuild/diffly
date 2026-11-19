@@ -88,8 +88,12 @@ export function registerIpcHandlers() {
   ipcMain.handle('diffly:listRoots', () =>
     loadExplorerService().then(({ listRoots }) => listRoots()),
   )
-  ipcMain.handle('diffly:listDirectory', (_event, payload: { path: string }) =>
-    loadExplorerService().then(({ listDirectory }) => listDirectory(payload.path)),
+  ipcMain.handle(
+    'diffly:listDirectory',
+    (_event, payload: { path: string; forceRefresh?: boolean }) =>
+      loadExplorerService().then(({ listDirectory }) =>
+        listDirectory(payload.path, { forceRefresh: payload.forceRefresh === true }),
+      ),
   )
   ipcMain.handle('diffly:pathInfo', (_event, payload: { path: string }) =>
     loadExplorerService().then(({ pathInfo }) => pathInfo(payload.path)),
