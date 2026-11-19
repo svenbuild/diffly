@@ -451,16 +451,18 @@ test('recovers a debounced editor draft after an unclean shutdown', async () => 
 test('reviews inline with gutter comments, replies, and local hunk confirmation', async () => {
   await page.getByRole('button', { name: 'Review', exact: true }).click()
   await expect(page.getByRole('complementary', { name: 'Review workspace' })).toHaveCount(0)
-  // The gutter button only appears on pointermove, so hover again until review mode has re-rendered the gutter.
+  // The gutter button only appears on pointermove and is replaced while review mode re-renders the diff,
+  // so hover and click again until the comment form opens.
   const lineNumber = page.locator('[data-column-number]').first()
   const commentButton = page.locator('[data-utility-button]').first()
+  const commentInput = page.getByRole('textbox', { name: 'Comment', exact: true })
   await expect(async () => {
     await page.mouse.move(0, 0)
-    await lineNumber.hover()
-    await expect(commentButton).toBeVisible({ timeout: 1000 })
+    await lineNumber.hover({ timeout: 2000 })
+    await commentButton.click({ timeout: 2000 })
+    await expect(commentInput).toBeVisible({ timeout: 1000 })
   }).toPass()
-  await commentButton.click()
-  await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Inline review\nSecond line')
+  await commentInput.fill('Inline review\nSecond line')
   await page.getByRole('button', { name: 'Save comment', exact: true }).click()
   const thread = page.getByRole('region', { name: 'Review thread', exact: true })
   await expect(thread.getByText('Inline review', { exact: false })).toBeVisible()
