@@ -1978,8 +1978,15 @@
     return results.every(Boolean)
   }
 
+  // Only the newest drop may change state; an older one that resolves later is dropped.
+  let latestDropId = 0
+
   async function dropPathsOnPane(side: Side, paths: string[]) {
+    const dropId = ++latestDropId
     const plan = await planDroppedPaths(side, paths)
+    if (dropId !== latestDropId) {
+      return
+    }
     if (!plan.ok) {
       updatePane(side, (pane) => ({ ...pane, error: plan.error }))
       return
@@ -1987,15 +1994,15 @@
     await applyDropPlan(plan)
   }
 
-  let latestCompareDropId = 0
-
   async function dropPathsOnCompare(side: Side, paths: string[]) {
     if (screen !== 'compare' || loading) {
       return
     }
-    // A newer drop, a compare started meanwhile, or leaving the compare screen makes this drop stale.
-    const dropId = ++latestCompareDropId
-    const isStale = () => dropId !== latestCompareDropId || screen !== 'compare' || loading
+    // A newer drop, any compare started meanwhile, or leaving the compare screen makes this drop stale.
+    const dropId = ++latestDropId
+    const startRevision = compareRevision
+    const isStale = () =>
+      dropId !== latestDropId || screen !== 'compare' || loading || compareRevision !== startRevision
 
     const plan = await planDroppedPaths(side, paths)
     if (isStale()) {
@@ -2035,6 +2042,11 @@
     }
     if (!applied) {
       errorMessage = 'The dropped item could not be opened.'
+      return
+    }
+    // Edits typed while the folders were opening would be lost with the old session.
+    if (Array.from(getWorkspaceSnapshot().documents.values()).some((item) => item.dirty)) {
+      errorMessage = 'New unsaved changes were made. Drop the items again to compare them.'
       return
     }
     setupMode = 'local'
