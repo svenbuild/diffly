@@ -63,14 +63,21 @@ export function resolveCodeZoomStep(
     state.accumulatedPixels = 0
   }
   state.lastTimeStamp = event.timeStamp
-  state.accumulatedPixels += deltaPixels(event)
+  const pixels = deltaPixels(event)
 
+  // Wheel up (negative delta) makes the text bigger.
+  if (Math.abs(pixels) >= PIXELS_PER_STEP) {
+    // A mouse notch is always exactly one step, whatever its size.
+    state.accumulatedPixels = 0
+    return pixels < 0 ? 1 : -1
+  }
+
+  state.accumulatedPixels += pixels
   if (Math.abs(state.accumulatedPixels) < PIXELS_PER_STEP) {
     return 0
   }
-
-  // Wheel up (negative delta) makes the text bigger.
+  // Touchpad deltas keep their remainder, so zoom speed follows finger speed.
   const step = state.accumulatedPixels < 0 ? 1 : -1
-  state.accumulatedPixels = 0
+  state.accumulatedPixels += step * PIXELS_PER_STEP
   return step
 }

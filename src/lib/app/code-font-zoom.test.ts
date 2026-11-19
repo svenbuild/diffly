@@ -45,6 +45,14 @@ describe('code-font-zoom', () => {
     expect(steps).toEqual([0, 0, 0, 0, 1, 0])
   })
 
+  it('keeps the touchpad remainder between steps', () => {
+    const state = createCodeZoomGestureState()
+    const steps = [0, 10, 20, 30].map((offset) =>
+      resolveCodeZoomStep(wheelEvent({ deltaY: -40, timeStamp: 1000 + offset }), state),
+    )
+    expect(steps).toEqual([0, 1, 1, 1])
+  })
+
   it('forgets leftover delta after a pause', () => {
     const state = createCodeZoomGestureState()
     expect(resolveCodeZoomStep(wheelEvent({ deltaY: -40, timeStamp: 1000 }), state)).toBe(0)
