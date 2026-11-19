@@ -23,19 +23,19 @@ describe('file-drop', () => {
   it('extracts, trims, and deduplicates dropped file paths in order', () => {
     const files = [fakeFile('a'), fakeFile('b'), fakeFile('dup'), fakeFile('empty')]
     const map: Record<string, string> = {
-      a: ' C:\left\Resource.vb ',
-      b: 'C:\right\Resource.vb',
-      dup: 'C:\left\Resource.vb',
+      a: ' C:\\left\\Resource.vb ',
+      b: 'C:\\right\\Resource.vb',
+      dup: 'C:\\left\\Resource.vb',
       empty: '   ',
     }
 
     const paths = extractDroppedPaths({ files }, (file) => map[file.name] ?? '')
-    expect(paths).toEqual(['C:\left\Resource.vb', 'C:\right\Resource.vb'])
+    expect(paths).toEqual(['C:\\left\\Resource.vb', 'C:\\right\\Resource.vb'])
   })
 
   it('returns an empty array when no files are present', () => {
-    expect(extractDroppedPaths(null, () => 'C:\test.txt')).toEqual([])
-    expect(extractDroppedPaths({ files: [] }, () => 'C:\test.txt')).toEqual([])
+    expect(extractDroppedPaths(null, () => 'C:\\test.txt')).toEqual([])
+    expect(extractDroppedPaths({ files: [] }, () => 'C:\\test.txt')).toEqual([])
   })
 
   it('resolves left or right side from pointer position inside the compare viewer', () => {
@@ -49,22 +49,18 @@ describe('file-drop', () => {
 
   it('finds matching rows case-insensitively and computes scrollTop to bring selected rows into view', () => {
     const rows = [
-      { entry: { path: 'C:\src\A.vb' } },
-      { entry: { path: 'C:\src\M.vb' } },
-      { entry: { path: 'C:\src\Resource.vb' } },
+      { entry: { path: 'C:\\src\\A.vb' } },
+      { entry: { path: 'C:\\src\\M.vb' } },
+      { entry: { path: 'C:\\src\\Resource.vb' } },
     ]
 
-    expect(findRowIndexByPath(rows, 'c:\src\resource.vb')).toBe(2)
-    expect(findRowIndexByPath(rows, 'C:\src\Missing.vb')).toBe(-1)
+    expect(findRowIndexByPath(rows, 'c:\\src\\resource.vb')).toBe(2)
+    expect(findRowIndexByPath(rows, 'c:/src/Resource.vb')).toBe(2)
+    expect(findRowIndexByPath(rows, 'C:\\src\\Missing.vb')).toBe(-1)
     expect(findRowIndexByPath(rows, '')).toBe(-1)
 
-    // Row 2 at y=60..90 when viewport shows 0..150 is already visible
     expect(computeRowScrollTop(2, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBeNull()
-
-    // Row 15 at y=450..480 when viewport shows 0..150 scrolls down so bottom aligns with viewBottom
     expect(computeRowScrollTop(15, 30, { scrollTop: 0, clientHeight: 150, scrollHeight: 600 })).toBe(330)
-
-    // Row 2 at y=60..90 when viewport is scrolled to 300..450 scrolls up to row top
     expect(computeRowScrollTop(2, 30, { scrollTop: 300, clientHeight: 150, scrollHeight: 600 })).toBe(60)
   })
 })

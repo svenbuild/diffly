@@ -12,6 +12,10 @@ export interface ScrollBounds {
   scrollHeight: number
 }
 
+function normalizeComparablePath(value: string): string {
+  return value.trim().replace(/[/\\]+/g, '/').toLowerCase()
+}
+
 export function hasFileDragPayload(dataTransfer: DropDataTransferLike | null | undefined): boolean {
   if (!dataTransfer?.types) {
     return false
@@ -66,12 +70,14 @@ export function findRowIndexByPath<T extends { entry: { path: string } }>(
   rows: readonly T[],
   targetPath: string,
 ): number {
-  if (!targetPath) {
+  const normalizedTarget = normalizeComparablePath(targetPath)
+  if (!normalizedTarget) {
     return -1
   }
 
-  const normalizedTarget = targetPath.toLowerCase()
-  return rows.findIndex((row) => row.entry.path.toLowerCase() === normalizedTarget)
+  return rows.findIndex(
+    (row) => normalizeComparablePath(row.entry.path) === normalizedTarget,
+  )
 }
 
 export function computeRowScrollTop(
