@@ -88,7 +88,8 @@
       ],
       "icon": "build/icons/icon.icns",
       "category": "public.app-category.developer-tools",
-      "identity": null
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "linux": {
       "target": [

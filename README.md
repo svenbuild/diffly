@@ -22,6 +22,12 @@ Supported desktop builds:
 - macOS: DMG and ZIP.
 - Linux: AppImage and DEB.
 
+macOS builds are signed ad hoc but not notarized by Apple. On first launch macOS may block the app. Open **System Settings > Privacy & Security** and click **Open Anyway**, or run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Diffly.app
+```
+
 Note: Windows is the primary tested platform right now. macOS and Linux builds are available but have not been fully tested yet, so expect bugs. Issues and pull requests are very welcome.
 
 ## Features
