@@ -29,7 +29,7 @@
     ViewMode,
     DocumentTarget,
   } from '../types'
-  import type { SettingsSection } from '../ui-types'
+  import type { SettingsSection, Side } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
   import { createCodeZoomGestureState, resolveCodeZoomStep } from '../app/code-font-zoom'
@@ -50,6 +50,7 @@
   import MergeConflictViewer from '../conflicts/MergeConflictViewer.svelte'
   import { workspaceConflictController } from '../conflicts/conflict-controller'
   import { listReviewThreadCounts, undoWorkspaceOperation } from '../api'
+  import { fileDropZone } from '../app/file-drop'
   import type { ReviewThreadCount } from '../review-types'
 
   export let isActiveScreen = true
@@ -120,6 +121,7 @@
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
   export let onSetCodeFontSize: (value: number) => void
+  export let onDropPaths: (side: Side, paths: string[]) => Promise<void>
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
     rightBase: string
@@ -127,6 +129,8 @@
   }
 
   const codeZoomGesture = createCodeZoomGestureState()
+  let compareDropSide: Side | null = null
+  let compareDropOverlay: { left: number; top: number; width: number; height: number } | null = null
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
   let directoryDiffsAllCollapsed = false
   let collapseAllRevision = 0
@@ -427,6 +431,35 @@
     if (step !== 0) onSetCodeFontSize(appearanceSettings.codeFontSize + step)
   }
 
+  // The highlighted half and the side that receives the drop come from the same rect.
+  function updateCompareDropTarget(event: DragEvent) {
+    // Split the diff area, not the whole layout with sidebar and side panels.
+    const layout = event.currentTarget as HTMLElement
+    const diffArea =
+      layout.querySelector<HTMLElement>('.compare-viewer, .workspace-editor, .merge-conflict-viewer') ?? layout
+    const rect = diffArea.getBoundingClientRect()
+    const half = rect.width / 2
+    compareDropSide = event.clientX < rect.left + half ? 'left' : 'right'
+    compareDropOverlay = {
+      left: compareDropSide === 'left' ? rect.left : rect.left + half,
+      top: rect.top,
+      width: half,
+      height: rect.height,
+    }
+  }
+
+  function clearCompareDropTarget() {
+    compareDropSide = null
+    compareDropOverlay = null
+  }
+
+  function handleCompareDrop(paths: string[], event: DragEvent) {
+    updateCompareDropTarget(event)
+    const side = compareDropSide ?? 'left'
+    clearCompareDropTarget()
+    void onDropPaths(side, paths)
+  }
+
   onMount(() => {
     window.addEventListener('diffly:partial-change-applied', handlePartialChange)
     window.addEventListener('diffly:review-changed', handleReviewCountsChanged)
@@ -652,6 +685,11 @@
     class="compare-layout"
     on:wheel|nonpassive={handleCompareWheel}
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
+    use:fileDropZone={{
+      onHover: updateCompareDropTarget,
+      onLeave: clearCompareDropTarget,
+      onDrop: handleCompareDrop,
+    }}
   >
     {#if mode === 'directory'}
       <CompareDirectorySidebar
@@ -781,4 +819,25 @@
   </section>
 
   <CompareLoadingOverlay state={compareLoadingState} />
+
+  {#if compareDropOverlay}
+    <div
+      class="compare-drop-overlay"
+      style:left="{compareDropOverlay.left}px"
+      style:top="{compareDropOverlay.top}px"
+      style:width="{compareDropOverlay.width}px"
+      style:height="{compareDropOverlay.height}px"
+    ></div>
+  {/if}
 </main>
+
+<style>
+  .compare-drop-overlay {
+    position: fixed;
+    box-sizing: border-box;
+    border: 2px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    pointer-events: none;
+    z-index: 40;
+  }
+</style>

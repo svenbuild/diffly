@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import Dropdown from './components/Dropdown.svelte'
   import EntryIcon from './EntryIcon.svelte'
+  import { computeRowScrollTop, fileDropZone, findRowIndexByPath } from './app/file-drop'
   import { filterRows, reduceTypeAheadKey } from './setup/explorer-typeahead'
 
   import type { ExplorerEntry } from './types'
@@ -22,6 +23,7 @@
   export let updatePathInput: (side: Side, value: string) => void
   export let submitPathInput: (side: Side) => Promise<void>
   export let browseSystem: (side: Side, kind: 'file' | 'directory') => Promise<void>
+  export let onDropPaths: (side: Side, paths: string[]) => Promise<void>
   export let setCurrentFolderAsTarget: (side: Side) => void
   export let isCurrentFolderSelected: (pane: ExplorerPaneState) => boolean
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
@@ -38,6 +40,9 @@
   }
 
   let rowsHost: HTMLDivElement | null = null
+  let dropActive = false
+  let lastScrolledTargetPath = ''
+  let targetScrollToken = 0
   let rowsScrollTop = 0
   let rowsViewportHeight = 0
   let resizeObserver: ResizeObserver | null = null
@@ -103,6 +108,14 @@
     }
   }
 
+  // Bring a newly selected target (drop, browse) into view in the virtualized list.
+  $: if (pane.selectedTargetPath !== lastScrolledTargetPath) {
+    lastScrolledTargetPath = pane.selectedTargetPath
+    if (pane.selectedTargetPath) {
+      void scrollTargetPathIntoView(pane.selectedTargetPath)
+    }
+  }
+
   function handleListKeydown(event: KeyboardEvent) {
     // Tab toggles focus between the left and right target lists.
     if (event.key === 'Tab') {
@@ -148,23 +161,42 @@
     scrollHighlightedIntoView()
   }
 
-  function scrollHighlightedIntoView() {
-    if (highlightedIndex < 0 || !rowsHost) {
+  function scrollRowIndexIntoView(rowIndex: number) {
+    if (rowIndex < 0 || !rowsHost) {
       return
     }
 
-    const top = highlightedIndex * ROW_HEIGHT
-    const bottom = top + ROW_HEIGHT
-    const viewTop = rowsHost.scrollTop
-    const viewBottom = viewTop + rowsHost.clientHeight
-
-    if (top < viewTop) {
-      rowsHost.scrollTop = top
-    } else if (bottom > viewBottom) {
-      rowsHost.scrollTop = bottom - rowsHost.clientHeight
+    const nextScrollTop = computeRowScrollTop(rowIndex, ROW_HEIGHT, {
+      scrollTop: rowsHost.scrollTop,
+      clientHeight: rowsHost.clientHeight || rowsViewportHeight,
+      scrollHeight: totalRowsHeight || rowsHost.scrollHeight,
+    })
+    if (nextScrollTop === null) {
+      return
     }
 
+    rowsHost.scrollTop = nextScrollTop
     rowsScrollTop = rowsHost.scrollTop
+  }
+
+  async function scrollTargetPathIntoView(targetPath: string) {
+    const token = ++targetScrollToken
+    await tick()
+    if (token !== targetScrollToken || pane.selectedTargetPath !== targetPath) {
+      return
+    }
+
+    const rowIndex = findRowIndexByPath(filteredRows, targetPath)
+    if (rowIndex < 0) {
+      return
+    }
+
+    highlightedIndex = rowIndex
+    scrollRowIndexIntoView(rowIndex)
+  }
+
+  function scrollHighlightedIntoView() {
+    scrollRowIndexIntoView(highlightedIndex)
   }
 
   function handleRowClick(index: number, entry: ExplorerEntry, event: MouseEvent) {
@@ -243,7 +275,13 @@
 <section
   class:left-picker-pane={side === 'left'}
   class:right-picker-pane={side === 'right'}
+  class:drop-active={dropActive}
   class="picker-pane"
+  use:fileDropZone={{
+    onHover: () => (dropActive = true),
+    onLeave: () => (dropActive = false),
+    onDrop: (paths) => void onDropPaths(side, paths),
+  }}
 >
   <header class="picker-pane-header">
     <div class="picker-target-heading">
@@ -438,3 +476,11 @@
     </div>
   </section>
 </section>
+
+<style>
+  .picker-pane.drop-active {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--accent) 6%, var(--panel-bg, transparent));
+  }
+</style>

@@ -17,6 +17,7 @@
   export let updatePathInput: (side: Side, value: string) => void
   export let submitPathInput: (side: Side) => Promise<void>
   export let browseSystem: (side: Side, kind?: 'file' | 'directory') => Promise<void>
+  export let onDropPaths: (side: Side, paths: string[]) => Promise<void>
   export let useCurrentFolder: (side: Side) => void
   export let isCurrentFolderSelected: (pane: ExplorerPaneState) => boolean
   export let selectListEntry: (side: Side, entry: ExplorerEntry, event?: MouseEvent) => void
@@ -69,6 +70,7 @@
         {updatePathInput}
         {submitPathInput}
         {browseSystem}
+        {onDropPaths}
         setCurrentFolderAsTarget={useCurrentFolder}
         {isCurrentFolderSelected}
         {selectListEntry}

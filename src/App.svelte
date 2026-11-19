@@ -107,6 +107,7 @@
     sanitizePaneForMode,
   } from './lib/app/explorer-state'
   import { buildPersistedSession } from './lib/app/session'
+  import { planPathDrop, type PathDropPlan } from './lib/app/file-drop'
   import {
     createDefaultTreeSettings,
     createDefaultViewerSettings,
@@ -131,6 +132,7 @@
     GithubDiffSource,
     GithubPullRequestMetadata,
     GitWorkingTreeScope,
+    PathInfo,
     PersistedExplorerPane,
     PersistedGitSetup,
     PersistedSession,
@@ -1925,6 +1927,26 @@
     void openExternalUrlApi(url)
   }
 
+  async function applyPathInfoToPane(side: Side, info: PathInfo): Promise<boolean> {
+    if (info.isDirectory) {
+      if (!(await openDirectory(side, info.path))) {
+        return false
+      }
+      selectTarget(side, info.path, 'directory')
+      return true
+    }
+
+    if (info.isFile) {
+      if (info.parentPath && !(await openDirectory(side, info.parentPath))) {
+        return false
+      }
+      selectTarget(side, info.path, 'file')
+      return true
+    }
+
+    return false
+  }
+
   async function browseSystem(side: Side, kind: 'file' | 'directory' = 'file') {
     const selected = await choosePath(kind)
 
@@ -1933,27 +1955,107 @@
     }
 
     const info = await pathInfo(selected)
+    if (info.exists) {
+      await applyPathInfoToPane(side, info)
+    }
+  }
 
-    if (!info.exists) {
+  async function planDroppedPaths(side: Side, paths: string[]): Promise<PathDropPlan<PathInfo>> {
+    try {
+      return planPathDrop(side, await Promise.all(paths.slice(0, 3).map((path) => pathInfo(path))))
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Unable to read the dropped item.' }
+    }
+  }
+
+  async function applyDropPlan(plan: Extract<PathDropPlan<PathInfo>, { ok: true }>) {
+    const results = await Promise.all(
+      (['left', 'right'] as const).map((side) => {
+        const info = plan.targets[side]
+        return info ? applyPathInfoToPane(side, info) : Promise.resolve(true)
+      }),
+    )
+    return results.every(Boolean)
+  }
+
+  // Only the newest drop may change state; an older one that resolves later is dropped.
+  let latestDropId = 0
+
+  async function dropPathsOnPane(side: Side, paths: string[]) {
+    const dropId = ++latestDropId
+    const plan = await planDroppedPaths(side, paths)
+    if (dropId !== latestDropId) {
+      return
+    }
+    if (!plan.ok) {
+      updatePane(side, (pane) => ({ ...pane, error: plan.error }))
+      return
+    }
+    await applyDropPlan(plan)
+  }
+
+  async function dropPathsOnCompare(side: Side, paths: string[]) {
+    if (screen !== 'compare') {
+      return
+    }
+    if (loading) {
+      errorMessage = 'Wait until the compare has finished, then drop again.'
+      return
+    }
+    // A newer drop, any compare started meanwhile, or leaving the compare screen makes this drop stale.
+    const dropId = ++latestDropId
+    const startRevision = compareRevision
+    const isStale = () =>
+      dropId !== latestDropId || screen !== 'compare' || loading || compareRevision !== startRevision
+
+    const plan = await planDroppedPaths(side, paths)
+    if (isStale()) {
+      return
+    }
+    if (!plan.ok) {
+      errorMessage = plan.error
       return
     }
 
-    if (info.isDirectory) {
-      if (await openDirectory(side, info.path)) {
-        selectTarget(side, info.path, 'directory')
-      }
+    // A single drop replaces one side of the current local compare. The kept
+    // side must still be what is on screen. Git and GitHub compares have no
+    // local counterpart, so they need both sides.
+    const otherSide: Side = side === 'left' ? 'right' : 'left'
+    const otherPane = paneFor(otherSide)
+    const keptSideIsOnScreen =
+      (!activeDiffSource || activeDiffSource.kind === 'local') &&
+      otherPane.selectedTargetPaths.length <= 1 &&
+      otherPane.selectedTargetPath === (otherSide === 'left' ? leftPath : rightPath)
+    if (
+      !plan.targets[otherSide] &&
+      (!keptSideIsOnScreen || !paneCanCompare(otherPane, plan.kind))
+    ) {
+      const noun = plan.kind === 'directory' ? 'folders' : 'files'
+      errorMessage = `Drop two ${noun} at once to compare them with each other.`
       return
     }
 
-    if (info.isFile) {
-      if (info.parentPath) {
-        const opened = await openDirectory(side, info.parentPath)
-        if (!opened) {
-          return
-        }
-      }
-      selectTarget(side, info.path, 'file')
+    // Ask about unsaved edits before touching any state, so Cancel keeps everything as it was.
+    if (!(await requestUnsavedDecision()) || isStale()) {
+      return
     }
+
+    const applied = await applyDropPlan(plan)
+    if (isStale()) {
+      return
+    }
+    if (!applied) {
+      errorMessage = 'The dropped item could not be opened.'
+      return
+    }
+    // Edits typed while the folders were opening would be lost with the old session.
+    if (Array.from(getWorkspaceSnapshot().documents.values()).some((item) => item.dirty)) {
+      errorMessage = 'New unsaved changes were made. Drop the items again to compare them.'
+      return
+    }
+    setupMode = 'local'
+    mode = plan.kind
+    await runLocalCompare()
   }
 
   async function openDirectory(
@@ -2600,6 +2702,11 @@
       return
     }
 
+    await runLocalCompare()
+  }
+
+  /** Compares the targets selected in the local setup panes. Callers handle unsaved edits first. */
+  async function runLocalCompare() {
     if (!paneCanCompare(leftExplorer, mode) || !paneCanCompare(rightExplorer, mode)) {
       errorMessage = 'Select valid targets on both sides first.'
       return
@@ -3164,6 +3271,7 @@
     {updatePathInput}
     {submitPathInput}
     {browseSystem}
+    onDropPaths={dropPathsOnPane}
     {useCurrentFolder}
     {isCurrentFolderSelected}
     {selectListEntry}
@@ -3228,6 +3336,7 @@
     onDiffStatsChange={setDiffStats}
     onSystemMonitorChange={setSystemMonitor}
     onSetCodeFontSize={setCodeFontSize}
+    onDropPaths={dropPathsOnCompare}
     {getDetailBasesForPath}
   />
 {/if}
