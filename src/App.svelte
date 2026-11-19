@@ -801,10 +801,10 @@
   }
 
   function setCodeFontSize(value: number) {
-    appearanceSettings = {
-      ...appearanceSettings,
-      codeFontSize: clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE),
-    }
+    const codeFontSize = clampAppearanceSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE)
+    // Zooming past the limit must not re-render the diff with an unchanged size.
+    if (codeFontSize === appearanceSettings.codeFontSize) return
+    appearanceSettings = { ...appearanceSettings, codeFontSize }
   }
 
   function setViewMode(nextViewMode: ViewMode) {
@@ -2058,7 +2058,12 @@
     await runLocalCompare()
   }
 
-  async function openDirectory(side: Side, path: string, historyMode: 'push' | 'keep' = 'push') {
+  async function openDirectory(
+    side: Side,
+    path: string,
+    historyMode: 'push' | 'keep' = 'push',
+    forceRefresh = false,
+  ) {
     const requestId = startPaneNavigationRequest(side)
     updatePane(side, (pane) => ({
       ...pane,
@@ -2068,8 +2073,8 @@
 
     try {
       const pane = paneFor(side)
-      const cached = pane.listings[path]
-      const listing = cached ?? (await listDirectory(path))
+      const cached = forceRefresh ? undefined : pane.listings[path]
+      const listing = cached ?? (await listDirectory(path, { forceRefresh }))
 
       if (!paneNavigationRequestIsCurrent(side, requestId)) {
         return false
@@ -2081,10 +2086,11 @@
         ...current,
         ...historyState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? current.pathInput : path,
         currentListing: listing,
+        // A forced refresh also drops other cached folders so they reload on the next visit.
         listings: {
-          ...current.listings,
+          ...(forceRefresh ? {} : current.listings),
           [path]: listing,
         },
         loading: false,
@@ -2104,7 +2110,11 @@
     }
   }
 
-  async function openDirectoryForBothPanes(path: string, historyMode: 'push' | 'keep' = 'push') {
+  async function openDirectoryForBothPanes(
+    path: string,
+    historyMode: 'push' | 'keep' = 'push',
+    forceRefresh = false,
+  ) {
     const leftRequestId = startPaneNavigationRequest('left')
     const rightRequestId = startPaneNavigationRequest('right')
 
@@ -2120,10 +2130,11 @@
     }
 
     try {
-      const listing =
-        leftExplorer.listings[path] ??
-        rightExplorer.listings[path] ??
-        await listDirectory(path)
+      const listing = forceRefresh
+        ? await listDirectory(path, { forceRefresh: true })
+        : (leftExplorer.listings[path] ??
+          rightExplorer.listings[path] ??
+          await listDirectory(path))
 
       if (
         !paneNavigationRequestIsCurrent('left', leftRequestId) ||
@@ -2139,10 +2150,10 @@
         ...leftExplorer,
         ...leftHistoryState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? leftExplorer.pathInput : path,
         currentListing: listing,
         listings: {
-          ...leftExplorer.listings,
+          ...(forceRefresh ? {} : leftExplorer.listings),
           [path]: listing,
         },
         loading: false,
@@ -2151,10 +2162,10 @@
         ...rightExplorer,
         ...rightHistoryState,
         currentPath: path,
-        pathInput: path,
+        pathInput: forceRefresh ? rightExplorer.pathInput : path,
         currentListing: listing,
         listings: {
-          ...rightExplorer.listings,
+          ...(forceRefresh ? {} : rightExplorer.listings),
           [path]: listing,
         },
         loading: false,
@@ -2180,6 +2191,35 @@
         error: message,
       }
       return false
+    }
+  }
+
+  async function refreshLocalPickers() {
+    if (pickerLoading) {
+      return
+    }
+
+    const leftCurrentPath = leftExplorer.currentPath
+    const rightCurrentPath = rightExplorer.currentPath
+
+    if (leftCurrentPath && leftCurrentPath === rightCurrentPath) {
+      if (leftExplorer.loading || rightExplorer.loading) {
+        return
+      }
+      await openDirectoryForBothPanes(leftCurrentPath, 'keep', true)
+      return
+    }
+
+    const tasks: Array<Promise<boolean>> = []
+    if (leftCurrentPath && !leftExplorer.loading) {
+      tasks.push(openDirectory('left', leftCurrentPath, 'keep', true))
+    }
+    if (rightCurrentPath && !rightExplorer.loading) {
+      tasks.push(openDirectory('right', rightCurrentPath, 'keep', true))
+    }
+
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
     }
   }
 
@@ -2361,19 +2401,38 @@
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
-    // Local compare retains the global shortcut. Git and GitHub own their
-    // source-specific actions inside their setup panels.
     if (
-      screen === 'setup' &&
-      setupMode === 'local' &&
-      event.key === 'Enter' &&
-      (event.ctrlKey || event.metaKey)
+      event.defaultPrevented ||
+      unsavedDialogOpen ||
+      recoveryDialogOpen ||
+      themeEditorOpen
     ) {
-      if (!pickerCanCompare || loading) {
+      return
+    }
+
+    // Local compare retains the global shortcuts. Git and GitHub own their
+    // source-specific actions inside their setup panels.
+    if (screen === 'setup' && setupMode === 'local') {
+      if (
+        event.key === 'F5' &&
+        !event.repeat &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault()
+        void refreshLocalPickers()
         return
       }
-      event.preventDefault()
-      void runCompare()
+
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        if (!pickerCanCompare || loading) {
+          return
+        }
+        event.preventDefault()
+        void runCompare()
+      }
     }
   }
 
@@ -3221,6 +3280,7 @@
   />
 {:else if shouldKeepCompareMounted()}
   <CompareScreen
+    isActiveScreen={screen === 'compare' && !unsavedDialogOpen && !recoveryDialogOpen && !themeEditorOpen}
     {updateIndicatorState}
     showUpdateIndicator={shouldShowUpdateIndicator()}
     updateIndicatorTitle={updateIndicatorTitle()}
@@ -3275,6 +3335,7 @@
     {systemMonitor}
     onDiffStatsChange={setDiffStats}
     onSystemMonitorChange={setSystemMonitor}
+    onSetCodeFontSize={setCodeFontSize}
     onDropPaths={dropPathsOnCompare}
     {getDetailBasesForPath}
   />

@@ -32,6 +32,7 @@
   import type { SettingsSection, Side } from '../ui-types'
   import type { UpdateIndicatorState } from '../app/update-controller'
   import type { CompareLoadingState } from '../app/compare-timing'
+  import { createCodeZoomGestureState, resolveCodeZoomStep } from '../app/code-font-zoom'
   import UpdateIndicator from './UpdateIndicator.svelte'
   import WorkspaceEditor from '../workspace/WorkspaceEditor.svelte'
   import {
@@ -52,6 +53,7 @@
   import { fileDropZone } from '../app/file-drop'
   import type { ReviewThreadCount } from '../review-types'
 
+  export let isActiveScreen = true
   export let updateIndicatorState: UpdateIndicatorState
   export let showUpdateIndicator = false
   export let updateIndicatorTitle = ''
@@ -118,6 +120,7 @@
   export let systemMonitor: SystemMonitorSnapshot
   export let onDiffStatsChange: (stats: DiffStatsSnapshot) => void
   export let onSystemMonitorChange: (stats: SystemMonitorSnapshot) => void
+  export let onSetCodeFontSize: (value: number) => void
   export let onDropPaths: (side: Side, paths: string[]) => Promise<void>
   export let getDetailBasesForPath: (prefixedPath: string) => {
     leftBase: string
@@ -125,6 +128,7 @@
     relativePath: string
   }
 
+  const codeZoomGesture = createCodeZoomGestureState()
   let compareDropSide: Side | null = null
   let compareDropOverlay: { left: number; top: number; width: number; height: number } | null = null
   let activeSidebarPanel: 'diffStats' | 'systemMonitor' | null = null
@@ -315,7 +319,19 @@
   }
 
   function handleCompareKeydown(event: KeyboardEvent) {
-    if (event.defaultPrevented) return
+    if (!isActiveScreen || event.defaultPrevented) return
+    if (
+      event.key === 'F5' &&
+      !event.repeat &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault()
+      void runCompareFromToolbar()
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
       event.preventDefault()
       comparisonSearch.update((state) => ({ ...state, open: true }))
@@ -405,6 +421,14 @@
     } catch (error) {
       undoReviewError = error instanceof Error ? error.message : 'Unable to undo change.'
     } finally { undoReviewBusy = false }
+  }
+
+  function handleCompareWheel(event: WheelEvent) {
+    const step = resolveCodeZoomStep(event, codeZoomGesture)
+    if (step === null) return
+    // Also blocks Chromium page zoom while the gesture is over a code panel.
+    event.preventDefault()
+    if (step !== 0) onSetCodeFontSize(appearanceSettings.codeFontSize + step)
   }
 
   // The highlighted half and the side that receives the drop come from the same rect.
@@ -601,7 +625,7 @@
           class:compare-action-busy={loading || toolbarReloadPending}
           class:pending-refresh={compareNeedsRefresh}
           class="secondary toolbar-button icon-button refresh-button"
-          title={compareNeedsRefresh ? 'Reload to apply comparison rule changes' : 'Reload compare'}
+          title={compareNeedsRefresh ? 'Reload to apply comparison rule changes (F5)' : 'Reload compare (F5)'}
           type="button"
           disabled={loading || toolbarReloadPending}
           on:click={runCompareFromToolbar}
@@ -659,6 +683,7 @@
     class:review-panel-open={showHunkReviewPanel}
     class:inline-review-active={reviewPanelOpen}
     class="compare-layout"
+    on:wheel|nonpassive={handleCompareWheel}
     style:--compare-sidebar-width={mode === 'directory' ? `${compareSidebarWidth}px` : undefined}
     use:fileDropZone={{
       onHover: updateCompareDropTarget,

@@ -47,8 +47,8 @@ export const openExternalUrl = (url: string) =>
 export const listRoots = () =>
   window.diffly.listRoots()
 
-export const listDirectory = (path: string) =>
-  window.diffly.listDirectory(path)
+export const listDirectory = (path: string, options?: { forceRefresh?: boolean }) =>
+  window.diffly.listDirectory(path, options)
 
 export const pathInfo = (path: string) =>
   window.diffly.pathInfo(path)
